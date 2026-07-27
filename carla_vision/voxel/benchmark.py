@@ -12,7 +12,11 @@ from typing import Any
 
 import numpy as np
 
-from .training.dataset import COMPACT_SEMANTIC_NAMES, compact_semantic_labels, load_voxel_episode
+from .training.dataset import (
+    COMPACT_SEMANTIC_NAMES,
+    compact_semantic_labels,
+    load_voxel_episode,
+)
 
 VOXEL_BENCHMARK_SCHEMA_VERSION = "1.0"
 
@@ -147,6 +151,7 @@ class BinaryOccupancyAccumulator:
                 if occupied_iou is None or persistence_iou is None
                 else occupied_iou - persistence_iou
             ),
+            "raw_counts": asdict(self),
         }
 
 
@@ -157,6 +162,10 @@ class SemanticAccumulator:
 
     @classmethod
     def create(cls, class_count: int) -> "SemanticAccumulator":
+        if class_count != len(COMPACT_SEMANTIC_NAMES):
+            raise ValueError(
+                "semantic class count must match the configured compact semantic classes"
+            )
         return cls(
             class_count=class_count,
             confusion=np.zeros((class_count, class_count), dtype=np.int64),
