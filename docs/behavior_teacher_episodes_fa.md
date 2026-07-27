@@ -95,6 +95,37 @@ Verifier موارد زیر را کنترل می‌کند:
 - معتبر بودن throttle، steer و brake؛
 - وجود سرعت Ego و release metadata مخصوص BehaviorAgent.
 
+## مقایسه دو اجرای تکراری
+
+همان Scenario Plan و Episode را با دو Dataset ID متفاوت اجرا کن، سپس شواهد تکرارپذیری را به‌شکل خودکار مقایسه کن:
+
+```bash
+uv run carla-compare-teacher-episodes \
+  datasets/ds-behavior-teacher-repeat-a \
+  datasets/ds-behavior-teacher-repeat-b \
+  --control-tolerance 1e-6 \
+  --timestamp-tolerance 1e-6 \
+  --state-tolerance 1e-4 \
+  --report reports/behavior-teacher-repeat-comparison.json
+```
+
+این ابزار ابتدا هر دو Dataset را verify می‌کند و سپس موارد زیر را براساس Episode و ترتیب نمونه مقایسه می‌کند:
+
+- cadence نسبی frameها؛
+- timestamp نسبی نسبت به اولین نمونه هر Episode؛
+- route ID، شماره leg و spawn مقصد؛
+- throttle، steer و brake؛
+- سرعت Ego؛
+- تعداد Episodeها و نمونه‌ها.
+
+شماره absolute فریم و timestamp شروع می‌تواند پس از reload نقشه متفاوت باشد؛ بنابراین مقایسه روی offsetهای نسبی انجام می‌شود. برای آزمون سخت‌گیرانه‌ی خروجی renderer نیز می‌توان این گزینه را اضافه کرد:
+
+```text
+--require-identical-rgb
+```
+
+یکسان‌نبودن byte دقیق RGB الزاماً به معنی غیردeterministic بودن route/control نیست و ممکن است از renderer یا سخت‌افزار گرافیکی ناشی شود؛ به همین دلیل این gate پیش‌فرض خاموش است.
+
 ## ساختار route
 
 نمونه metadata:
