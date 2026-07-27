@@ -46,6 +46,7 @@ carla-local-drive = "carla_vision.local_drive:main"
 carla-voxel-test = "carla_vision.voxel.capture:main"
 carla-train-voxel = "carla_vision.voxel.training.runner:main"
 carla-voxel-shadow = "carla_vision.voxel.shadow:main"
+carla-train-imitation = "carla_vision.imitation.runner:main"
 
 [dependency-groups]
 dev = [
