@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
 from collections.abc import Sequence
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -106,7 +106,7 @@ def _footprint_values(
     center_indices, valid = spec.metric_to_indices(center)
     if not bool(valid[0]):
         return np.asarray([], dtype=np.float32)
-    iz, iy, ix = center_indices[0]
+    _iz, iy, ix = center_indices[0]
     radius_cells = math.ceil(radius_m / spec.resolution)
     z_start = max(0, math.floor((z_min_m - spec.z_min) / spec.resolution))
     z_end = min(spec.shape[0], math.ceil((z_max_m - spec.z_min) / spec.resolution))
