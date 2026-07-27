@@ -1,0 +1,13 @@
+{
+  "minimum_training_dataset_count": 3,
+  "minimum_route_group_count": 20,
+  "minimum_current_occupied_iou": 0.35,
+  "minimum_future_occupied_iou_1s": 0.20,
+  "maximum_brier_score": 0.20,
+  "maximum_model_p95_latency_ms": 100.0,
+  "minimum_shadow_run_count": 3,
+  "minimum_shadow_record_count": 300,
+  "maximum_shadow_error_rate": 0.01,
+  "maximum_shadow_p95_latency_ms": 120.0,
+  "maximum_shadow_uncertain_fraction": 0.45
+}
