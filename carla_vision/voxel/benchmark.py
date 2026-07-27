@@ -217,10 +217,10 @@ def benchmark_voxel_runs(
 ) -> dict[str, Any]:
     if not roots:
         raise ValueError("at least one voxel evaluation run is required")
-    if not 0.0 < threshold < 1.0:
-        raise ValueError("threshold must be in (0, 1)")
-    if not 0.0 <= uncertainty_band < 0.5:
-        raise ValueError("uncertainty_band must be in [0, 0.5)")
+    if not math.isfinite(threshold) or not 0.0 < threshold < 1.0:
+        raise ValueError("threshold must be finite and in (0, 1)")
+    if not math.isfinite(uncertainty_band) or not 0.0 <= uncertainty_band < 0.5:
+        raise ValueError("uncertainty_band must be finite and in [0, 0.5)")
 
     accumulators: dict[float, BinaryOccupancyAccumulator] = {}
     semantic_accumulators: dict[float, SemanticAccumulator] = {}
