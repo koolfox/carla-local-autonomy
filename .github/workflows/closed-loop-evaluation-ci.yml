@@ -1,0 +1,72 @@
+name: Closed-loop evaluation CI
+
+on:
+  pull_request:
+    paths:
+      - "carla_vision/closed_loop_evaluation.py"
+      - "carla_vision/closed_loop_cli.py"
+      - "carla_vision/closed_loop_report.py"
+      - "tests/test_closed_loop_evaluation.py"
+      - "tests/test_closed_loop_report.py"
+      - "docs/closed_loop_evaluation_fa.md"
+      - "pyproject.toml"
+      - ".github/workflows/closed-loop-evaluation-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "carla_vision/closed_loop_evaluation.py"
+      - "carla_vision/closed_loop_cli.py"
+      - "carla_vision/closed_loop_report.py"
+      - "tests/test_closed_loop_evaluation.py"
+      - "tests/test_closed_loop_report.py"
+      - "pyproject.toml"
+      - ".github/workflows/closed-loop-evaluation-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Install project
+        run: uv sync --all-groups --frozen
+
+      - name: Lint closed-loop evaluator
+        run: >-
+          uv run ruff check
+          carla_vision/closed_loop_evaluation.py
+          carla_vision/closed_loop_cli.py
+          carla_vision/closed_loop_report.py
+          tests/test_closed_loop_evaluation.py
+          tests/test_closed_loop_report.py
+
+      - name: Test read-only metrics and reporting
+        run: >-
+          uv run pytest -q
+          tests/test_closed_loop_evaluation.py
+          tests/test_closed_loop_report.py
+
+      - name: Check evaluator dry run
+        run: >-
+          uv run carla-evaluate-drive
+          --dry-run
+          --driver-label imitation
+          --run-label ci-smoke
+          --destination-index 1
+
+      - name: Check report CLI
+        run: uv run carla-summarize-drive-evaluations --help
