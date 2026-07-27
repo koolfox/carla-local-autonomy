@@ -44,7 +44,7 @@ def test_planner_avoids_occupied_straight_corridor() -> None:
         point = np.asarray([[float(x), 0.0, 0.5]], dtype=np.float32)
         indices, valid = spec.metric_to_indices(point)
         assert bool(valid[0])
-        iz, iy, ix = indices[0]
+        _iz, iy, ix = indices[0]
         occupancy[:, max(0, iy - 1) : iy + 2, ix] = 1.0
     candidates = generate_constant_curvature_trajectories(
         (-0.65, 0.0, 0.65),
