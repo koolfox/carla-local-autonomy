@@ -41,6 +41,7 @@ carla-verify-shadow-matrix = "carla_vision.shadow.verified:main"
 carla-operator-ui = "carla_vision.operator.server:main"
 carla-local-drive = "carla_vision.local_drive:main"
 carla-voxel-test = "carla_vision.voxel.capture:main"
+carla-train-voxel = "carla_vision.voxel.training.runner:main"
 
 [dependency-groups]
 dev = [
