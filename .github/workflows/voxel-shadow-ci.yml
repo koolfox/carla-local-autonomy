@@ -1,0 +1,56 @@
+name: Voxel planner shadow CI
+
+on:
+  pull_request:
+    paths:
+      - "carla_vision/voxel/shadow.py"
+      - "tests/test_voxel_shadow.py"
+      - "docs/voxel_shadow_planner_fa.md"
+      - "pyproject.toml"
+      - ".github/workflows/voxel-shadow-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "carla_vision/voxel/shadow.py"
+      - "tests/test_voxel_shadow.py"
+      - "pyproject.toml"
+      - ".github/workflows/voxel-shadow-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Install project
+        run: uv sync --all-groups --frozen
+
+      - name: Lint shadow observer
+        run: >-
+          uv run ruff check
+          carla_vision/voxel/shadow.py
+          tests/test_voxel_shadow.py
+
+      - name: Test shadow observer and no-actuation invariant
+        run: uv run pytest -q tests/test_voxel_shadow.py
+
+      - name: Check read-only dry run
+        run: >-
+          uv run carla-voxel-shadow
+          --dry-run
+          --frames 5
+          --steering-values=-0.5,0,0.5
