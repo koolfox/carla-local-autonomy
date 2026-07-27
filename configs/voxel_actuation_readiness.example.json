@@ -1,0 +1,29 @@
+{
+  "issue_7_acceptance_complete": false,
+  "operator_review_complete": false,
+  "model": {
+    "rgb_only_runtime_contract": true,
+    "checkpoint_sha256": "REPLACE_WITH_64_CHARACTER_SHA256"
+  },
+  "training": {
+    "dataset_verification_status": "passed",
+    "route_group_leakage": false,
+    "dataset_count": 0,
+    "route_group_count": 0
+  },
+  "validation": {
+    "current_occupied_iou": 0.0,
+    "future_occupied_iou_1s": 0.0,
+    "brier_score": 1.0,
+    "p95_latency_ms": 999999.0
+  },
+  "shadow": {
+    "run_count": 0,
+    "record_count": 0,
+    "error_rate": 1.0,
+    "p95_latency_ms": 999999.0,
+    "maximum_uncertain_voxel_fraction": 1.0,
+    "actuation_enabled": false,
+    "control_calls": 0
+  }
+}

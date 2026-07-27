@@ -1,0 +1,84 @@
+name: Voxel actuation readiness CI
+
+on:
+  pull_request:
+    paths:
+      - "carla_vision/voxel/actuation_gate.py"
+      - "carla_vision/voxel/actuation_supervisor.py"
+      - "tests/test_voxel_actuation_gate.py"
+      - "tests/test_voxel_actuation_supervisor.py"
+      - "configs/voxel_actuation_readiness.example.json"
+      - "configs/voxel_actuation_policy.json"
+      - "docs/voxel_actuation_readiness_fa.md"
+      - "pyproject.toml"
+      - ".github/workflows/voxel-actuation-readiness-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "carla_vision/voxel/actuation_gate.py"
+      - "carla_vision/voxel/actuation_supervisor.py"
+      - "tests/test_voxel_actuation_gate.py"
+      - "tests/test_voxel_actuation_supervisor.py"
+      - "configs/voxel_actuation_readiness.example.json"
+      - "configs/voxel_actuation_policy.json"
+      - "pyproject.toml"
+      - ".github/workflows/voxel-actuation-readiness-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Install project
+        run: uv sync --all-groups --frozen
+
+      - name: Lint readiness gate and supervisor
+        run: >-
+          uv run ruff check
+          carla_vision/voxel/actuation_gate.py
+          carla_vision/voxel/actuation_supervisor.py
+          tests/test_voxel_actuation_gate.py
+          tests/test_voxel_actuation_supervisor.py
+
+      - name: Test fail-closed readiness and supervision
+        run: >-
+          uv run pytest -q
+          tests/test_voxel_actuation_gate.py
+          tests/test_voxel_actuation_supervisor.py
+
+      - name: Check readiness dry run
+        run: uv run carla-verify-voxel-actuation-readiness --dry-run
+
+      - name: Confirm blocked template exits with code two
+        shell: bash
+        run: |
+          set +e
+          uv run carla-verify-voxel-actuation-readiness \
+            --evidence configs/voxel_actuation_readiness.example.json \
+            --policy configs/voxel_actuation_policy.json \
+            --output /tmp/voxel-readiness-report.json
+          status=$?
+          set -e
+          test "$status" -eq 2
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path('/tmp/voxel-readiness-report.json').read_text())
+          assert report['status'] == 'blocked'
+          assert report['actuation_enabled_by_this_report'] is False
+          PY
