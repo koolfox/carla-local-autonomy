@@ -215,10 +215,10 @@ def verify_teacher_dataset(dataset_dir: str | Path) -> dict[str, Any]:
             errors.append(f"{prefix} privileged ego speed is missing or invalid")
 
     for episode_id, frames in frames_by_episode.items():
-        if any(right <= left for left, right in zip(frames, frames[1:])):
+        if any(right <= left for left, right in zip(frames, frames[1:], strict=False)):
             errors.append(f"episode {episode_id} frame IDs are not strictly increasing")
     for episode_id, timestamps in timestamps_by_episode.items():
-        if any(right < left for left, right in zip(timestamps, timestamps[1:])):
+        if any(right < left for left, right in zip(timestamps, timestamps[1:], strict=False)):
             errors.append(f"episode {episode_id} timestamps are not monotonic")
 
     release = dataset.get("release_metadata")
