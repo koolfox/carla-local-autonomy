@@ -121,6 +121,9 @@ class RouteProgressTracker:
         self._best_index = max(self._best_index, nearest)
         return self.completion
 
+    def mark_complete(self) -> None:
+        self._best_index = len(self.points_xy) - 1
+
 
 @dataclass(slots=True)
 class RedLightMonitor:
@@ -204,10 +207,11 @@ class EvaluationEvents:
         full_brake = (
             brake >= threshold and throttle <= 0.05 and speed_mps >= minimum_speed_mps
         )
-        started = full_brake and not self._full_brake_active
-        if started:
-            self.full_brake_intervention_count += 1
-        self._full_brake_active = full_brake
+        with self._lock:
+            started = full_brake and not self._full_brake_active
+            if started:
+                self.full_brake_intervention_count += 1
+            self._full_brake_active = full_brake
         return started
 
     def snapshot(self) -> dict[str, float | int]:
@@ -279,7 +283,7 @@ def _spawn_event_sensor(world: Any, carla: Any, vehicle: Any, blueprint_id: str)
     blueprint = world.get_blueprint_library().find(blueprint_id)
     if blueprint is None:
         raise RuntimeError(f"sensor blueprint is unavailable: {blueprint_id}")
-    return world.spawn_actor(carla.Transform(), blueprint=blueprint, attach_to=vehicle)
+    return world.spawn_actor(blueprint, carla.Transform(), attach_to=vehicle)
 
 
 def _traffic_light_state(vehicle: Any) -> tuple[bool, int | None, str | None]:
@@ -478,7 +482,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 telemetry.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
                 telemetry.flush()
                 if distance_to_destination <= args.destination_threshold_m:
-                    tracker._best_index = len(tracker.points_xy) - 1
+                    tracker.mark_complete()
                     stop_reason = "destination_reached"
                     break
                 now = time.monotonic()
