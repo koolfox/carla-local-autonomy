@@ -1,0 +1,65 @@
+name: Imitation driving CI
+
+on:
+  pull_request:
+    paths:
+      - "carla_vision/imitation/**"
+      - "tests/test_imitation_*.py"
+      - "docs/imitation_driving_baseline_fa.md"
+      - "pyproject.toml"
+      - ".github/workflows/imitation-driving-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "carla_vision/imitation/**"
+      - "tests/test_imitation_*.py"
+      - "pyproject.toml"
+      - ".github/workflows/imitation-driving-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Install project
+        run: uv sync --all-groups --frozen
+
+      - name: Lint imitation modules
+        run: >-
+          uv run ruff check
+          carla_vision/imitation
+          tests/test_imitation_dataset.py
+          tests/test_imitation_model.py
+          tests/test_imitation_predictor.py
+
+      - name: Run imitation tests
+        run: >-
+          uv run pytest -q
+          tests/test_imitation_dataset.py
+          tests/test_imitation_model.py
+          tests/test_imitation_predictor.py
+
+      - name: Check synthetic train step
+        run: >-
+          uv run carla-train-imitation
+          --dry-run
+          --device cpu
+          --image-size 32x48
+          --encoder-channels 8
+          --hidden-dim 16
+          --batch-size 2
