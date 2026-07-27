@@ -1,0 +1,44 @@
+name: Local drive CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8
+        with:
+          enable-cache: true
+
+      - name: Install project
+        run: uv sync --all-groups --frozen
+
+      - name: Lint local-drive modules
+        run: >-
+          uv run ruff check
+          carla_vision/local_drive.py
+          carla_vision/model_driver.py
+          carla_vision/model_examples
+          tests/test_local_drive.py
+          tests/test_model_driver.py
+
+      - name: Run local-drive tests
+        run: uv run pytest -q tests/test_local_drive.py tests/test_model_driver.py
+
+      - name: Check dry-run entry point
+        run: uv run carla-local-drive --dry-run
