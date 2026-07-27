@@ -1,0 +1,28 @@
+{
+  "history_frames": 4,
+  "horizons_s": [0.0, 0.5, 1.0, 2.0],
+  "image_size_hw": [192, 320],
+  "model": {
+    "encoder_channels": 64,
+    "recurrent_channels": 128,
+    "seed_channels": 64,
+    "decoder_channels": 24,
+    "semantic_classes": 7
+  },
+  "optimization": {
+    "epochs": 10,
+    "batch_size": 2,
+    "learning_rate": 0.0003,
+    "weight_decay": 0.0001,
+    "occupancy_focal_gamma": 2.0,
+    "occupied_positive_weight": 4.0,
+    "semantic_weight": 0.25,
+    "temporal_consistency_weight": 0.05
+  },
+  "split": {
+    "group_by": "route_id+seed",
+    "seed": 17,
+    "validation_fraction": 0.2,
+    "test_fraction": 0.1
+  }
+}
