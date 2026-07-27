@@ -1,0 +1,30 @@
+{
+  "assignment_priority": [
+    "test_map_ood",
+    "val_map_ood",
+    "test_weather_ood",
+    "val_weather_ood",
+    "seen_group_hash"
+  ],
+  "group_key_version": "carla-vision-group-v1",
+  "plan_id": "split-native-integration-pilot-v1",
+  "schema_version": "1.0",
+  "seen_group_hash_buckets": {
+    "test_seen": [
+      93,
+      99
+    ],
+    "train": [
+      0,
+      84
+    ],
+    "val_seen": [
+      85,
+      92
+    ]
+  },
+  "test_map_families": [],
+  "test_weather_ids": [],
+  "validation_map_families": [],
+  "validation_weather_ids": []
+}

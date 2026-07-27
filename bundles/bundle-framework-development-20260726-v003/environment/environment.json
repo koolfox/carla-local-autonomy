@@ -1,0 +1,80 @@
+{
+  "dependency_locks": [
+    {
+      "archived": {
+        "path": "environment/lockfiles/uv.lock",
+        "sha256": "cb1237c7e3f6e04d7b98f435c139bfd9e69a17284e4280cd959ca836880eb76e",
+        "size_bytes": 218427
+      },
+      "repository_relative_path": "uv.lock"
+    }
+  ],
+  "environment": {
+    "packages": {
+      "carla": null,
+      "numpy": "2.5.1",
+      "opencv-python": "5.0.0.93",
+      "torch": "2.13.0",
+      "torchvision": "0.28.0",
+      "ultralytics": "8.4.106"
+    },
+    "platform": {
+      "machine": "arm64",
+      "release": "25.5.0",
+      "system": "Darwin"
+    },
+    "python": {
+      "implementation": "CPython",
+      "version": "3.12.11"
+    }
+  },
+  "git": {
+    "available": true,
+    "commit": null,
+    "dirty": true
+  },
+  "hardware": {
+    "accelerators": {
+      "available": true,
+      "cuda": {
+        "available": false,
+        "device_count": 0,
+        "devices": [],
+        "runtime_version": null
+      },
+      "cudnn": {
+        "available": false,
+        "version": null
+      },
+      "determinism": {
+        "cudnn_benchmark": false,
+        "cudnn_deterministic": false,
+        "deterministic_algorithms": false
+      },
+      "mps": {
+        "available": true,
+        "built": true
+      },
+      "rocm_version": null,
+      "version": "2.13.0"
+    },
+    "container": {
+      "detected": false,
+      "image_digest": null
+    },
+    "cpu": {
+      "architecture": "arm64",
+      "logical_count": 8,
+      "model": "Apple M1"
+    },
+    "memory": {
+      "total_bytes": 8589934592
+    },
+    "tools": {
+      "git": "git version 2.50.1 (Apple Git-155)",
+      "python_compiler": "Clang 17.0.0 (clang-1700.0.13.3)",
+      "uv": "uv 0.11.2 (02036a8ba 2026-03-26 aarch64-apple-darwin)"
+    }
+  },
+  "schema_version": "1.0"
+}

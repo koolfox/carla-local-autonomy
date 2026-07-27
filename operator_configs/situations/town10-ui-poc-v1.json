@@ -1,0 +1,110 @@
+{
+  "carla_version": "0.9.16",
+  "master_seed": 20260726,
+  "recipes": [
+    {
+      "camera": {
+        "enable_postprocess_effects": true,
+        "fov_degrees": 90.0,
+        "gamma": 2.2,
+        "height": 720,
+        "mount": {
+          "pitch": 0.0,
+          "roll": 0.0,
+          "x": 1.5,
+          "y": 0.0,
+          "yaw": 0.0,
+          "z": 1.7
+        },
+        "sensor_tick_seconds": 0.1,
+        "width": 1280
+      },
+      "capture": {
+        "capture_every_ticks": 4,
+        "duration_ticks": 300,
+        "minimum_box_height": 2,
+        "minimum_box_width": 2,
+        "minimum_visible_pixels": 16,
+        "warmup_ticks": 100
+      },
+      "ego_blueprint": "vehicle.tesla.model3",
+      "ego_spawn_index": 0,
+      "fixed_delta_seconds": 0.05,
+      "map_name": "Town10HD_Opt",
+      "props": [
+        {
+          "blueprint_id": "static.prop.warningconstruction",
+          "relative_to": "ego_start",
+          "transform": {
+            "pitch": 0.0,
+            "roll": 0.0,
+            "x": 28.0,
+            "y": 3.5,
+            "yaw": 0.0,
+            "z": 0.0
+          }
+        },
+        {
+          "blueprint_id": "static.prop.streetbarrier",
+          "relative_to": "ego_start",
+          "transform": {
+            "pitch": 0.0,
+            "roll": 0.0,
+            "x": 34.0,
+            "y": 2.8,
+            "yaw": 0.0,
+            "z": 0.0
+          }
+        },
+        {
+          "blueprint_id": "static.prop.trafficcone01",
+          "relative_to": "ego_start",
+          "transform": {
+            "pitch": 0.0,
+            "roll": 0.0,
+            "x": 25.0,
+            "y": 1.8,
+            "yaw": 0.0,
+            "z": 0.0
+          }
+        }
+      ],
+      "recipe_id": "operator-town10-ui-poc-v1",
+      "repetitions": 1,
+      "route_region_id": "spawn-000-autopilot",
+      "traffic": {
+        "automatic_vehicle_lights": true,
+        "global_distance_to_leading_vehicle": 3.0,
+        "global_speed_difference_percent": 25.0,
+        "pedestrian_crossing_factor": 0.25,
+        "vehicle_count": 50,
+        "vehicle_filter": "vehicle.*",
+        "vehicle_generation": "All",
+        "walker_count": 40,
+        "walker_filter": "walker.pedestrian.*",
+        "walker_generation": "2"
+      },
+      "weather": {
+        "cloudiness": 70.0,
+        "dust_storm": 0.0,
+        "fog_density": 4.0,
+        "fog_distance": 40.0,
+        "fog_falloff": 0.5,
+        "light": "sunset",
+        "mie_scattering_scale": 0.08,
+        "precipitation": 20.0,
+        "precipitation_deposits": 25.0,
+        "rayleigh_scattering_scale": 0.0331,
+        "scattering_intensity": 1.0,
+        "sun_altitude_angle": 8.0,
+        "sun_azimuth_angle": 250.0,
+        "weather_id": "operator-soft-rain-sunset",
+        "wetness": 55.0,
+        "wind_intensity": 35.0
+      }
+    }
+  ],
+  "schema_version": "1.0",
+  "suite_id": "suite-operator-town10-ui-poc-v1-v1",
+  "traffic_manager_port": 8000
+}

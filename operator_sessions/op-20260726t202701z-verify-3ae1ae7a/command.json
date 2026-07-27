@@ -1,0 +1,15 @@
+{
+  "command": [
+    "/Users/hesam/Documents/CARLA PY/.venv/bin/python3",
+    "-c",
+    "from carla_vision.verification import main; raise SystemExit(main())",
+    "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v004",
+    "--reject-unregistered"
+  ],
+  "destructive": false,
+  "expected_output": null,
+  "kind": "verify",
+  "motion_authorized": false,
+  "note": "Verification is read-only and checks registered hashes and semantic contracts.",
+  "title": "Verify 1 research object(s)"
+}

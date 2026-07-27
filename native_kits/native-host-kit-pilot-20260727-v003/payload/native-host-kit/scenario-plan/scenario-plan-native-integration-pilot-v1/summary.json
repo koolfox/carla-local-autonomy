@@ -1,0 +1,30 @@
+{
+  "carla_version": "0.9.16",
+  "determinism": {
+    "exact_sensor_frame_match_required": true,
+    "fixed_delta_required": true,
+    "reload_world_per_repetition_required": true,
+    "single_tick_owner_required": true,
+    "synchronous_traffic_manager_required": true,
+    "synchronous_world_required": true
+  },
+  "episode_count": 1,
+  "map_family_counts": {
+    "Town10HD": 1
+  },
+  "master_seed": 20260727,
+  "object_type": "scenario_plan",
+  "partition_counts": {
+    "train": 1
+  },
+  "planned_capture_count": 50,
+  "recipe_count": 1,
+  "runtime_sensor_contract": "front_monocular_rgb_only",
+  "schema_version": "1.0",
+  "split_plan_id": "split-native-integration-pilot-v1",
+  "suite_id": "suite-native-integration-pilot-v1",
+  "teacher_data_policy": "Privileged sensors and simulator state may create labels and evaluation metadata but are forbidden as deployable model inputs.",
+  "weather_counts": {
+    "clear-day-native-integration": 1
+  }
+}

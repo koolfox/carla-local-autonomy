@@ -1,0 +1,809 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <title>CARLA Vision Operator</title>
+    <meta
+      name="description"
+      content="Local operator panel for CARLA vision situations, recording, replay, training, and verification."
+    >
+    <link rel="stylesheet" href="/static/app.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand-lockup">
+          <div class="brand-mark" aria-hidden="true">CV</div>
+          <div>
+            <p class="eyebrow">LOCAL RESEARCH CONSOLE</p>
+            <h1>CARLA Vision Operator</h1>
+          </div>
+        </div>
+        <div class="system-status" aria-label="System status">
+          <span id="carla-status" class="status-pill pending">CARLA · checking</span>
+          <span id="pythonapi-status" class="status-pill pending">PythonAPI · checking</span>
+          <span id="jobs-status" class="status-pill neutral">0 active jobs</span>
+        </div>
+      </header>
+
+      <div class="safety-strip">
+        <span class="safety-icon" aria-hidden="true">◎</span>
+        <p>
+          Vision policy is shadow-only. Teacher motion and native world reloads
+          require explicit acknowledgement and remain separately disclosed.
+        </p>
+      </div>
+
+      <nav class="tabs" aria-label="Operator sections">
+        <button class="tab active" data-tab="live" type="button">Live &amp; Record</button>
+        <button class="tab" data-tab="situation" type="button">Situation Builder</button>
+        <button class="tab" data-tab="workflows" type="button">Research Workflows</button>
+        <button class="tab" data-tab="evidence" type="button">
+          Evidence <span id="evidence-count" class="count-badge">0</span>
+        </button>
+        <button class="tab" data-tab="sessions" type="button">
+          Sessions <span id="session-count" class="count-badge">0</span>
+        </button>
+      </nav>
+
+      <main>
+        <section id="panel-live" class="panel active" aria-labelledby="live-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">FRONT MONOCULAR RGB</p>
+              <h2 id="live-title">Run, see, and record what the car sees</h2>
+              <p>
+                Opens the existing exact-frame viewer, records overlays, and
+                optionally evaluates a non-actuating policy proposal.
+              </p>
+            </div>
+            <span class="boundary-badge">Policy output: NOT APPLIED</span>
+          </div>
+
+          <form id="live-form" class="form-grid">
+            <article class="card span-2">
+              <div class="card-heading">
+                <span class="step">01</span>
+                <div>
+                  <h3>Connection</h3>
+                  <p>Use the currently attached vehicle and front RGB camera.</p>
+                </div>
+              </div>
+              <div class="fields four">
+                <label>
+                  Host
+                  <input id="live-host" name="host" value="172.20.10.7" required>
+                </label>
+                <label>
+                  Port
+                  <input id="live-port" name="port" type="number" value="2000" min="1" max="65535" required>
+                </label>
+                <label>
+                  Vehicle actor
+                  <input id="live-vehicle" name="vehicle_id" type="number" value="24" min="1" required>
+                </label>
+                <label>
+                  Camera actor
+                  <input id="live-camera" name="camera_id" type="number" value="25" min="1" required>
+                </label>
+                <label>
+                  Expected map
+                  <input id="live-map" name="expected_map" value="Town10HD_Opt">
+                </label>
+                <label>
+                  Resolution
+                  <select id="live-resolution" name="resolution">
+                    <option value="640x384">640 × 384 · fast</option>
+                    <option value="1280x720">1280 × 720 · source</option>
+                    <option value="1920x1080">1920 × 1080 · heavy</option>
+                  </select>
+                </label>
+                <label>
+                  Camera FPS
+                  <input id="live-camera-fps" name="camera_fps" type="number" value="10" min="0.1" max="120" step="0.1">
+                </label>
+                <label>
+                  FOV
+                  <input id="live-fov" name="camera_fov" type="number" value="90" min="30" max="150" step="1">
+                </label>
+              </div>
+            </article>
+
+            <article class="card">
+              <div class="card-heading">
+                <span class="workflow-icon">QA</span>
+                <div>
+                  <h3>Automated dataset QA</h3>
+                  <p>
+                    Read-only integrity, regenerated labels, plots, and montage.
+                    This is not human review or release signoff.
+                  </p>
+                </div>
+              </div>
+              <form id="qa-form" class="fields">
+                <label>
+                  Manifest-backed dataset
+                  <select id="qa-dataset" required></select>
+                </label>
+                <label>
+                  Unique QA run ID
+                  <input id="qa-run-id" required>
+                </label>
+                <label>
+                  Montage samples
+                  <input id="qa-montage-count" type="number" min="1" max="10000" value="9">
+                </label>
+                <button class="primary" type="submit">Create automated QA evidence</button>
+              </form>
+            </article>
+
+            <article class="card">
+              <div class="card-heading">
+                <span class="step">02</span>
+                <div>
+                  <h3>Vision model</h3>
+                  <p>RT-DETR is primary; YOLO uses the same adapter contract.</p>
+                </div>
+              </div>
+              <div class="fields two">
+                <label>
+                  Detector
+                  <select id="live-detector" name="detector">
+                    <option value="rtdetr">RT-DETR</option>
+                    <option value="yolo">YOLO</option>
+                  </select>
+                </label>
+                <label>
+                  Weights
+                  <select id="live-weights" name="weights" required></select>
+                </label>
+                <label>
+                  Device
+                  <select id="live-device" name="device">
+                    <option value="mps">MPS · Apple</option>
+                    <option value="cuda">CUDA</option>
+                    <option value="cpu">CPU</option>
+                  </select>
+                </label>
+                <label>
+                  Image size
+                  <input id="live-image-size" name="image_size" type="number" value="640" min="64" max="4096" step="32">
+                </label>
+                <label class="range-field span-2">
+                  <span>Confidence <output id="live-confidence-value">0.20</output></span>
+                  <input id="live-confidence" name="confidence" type="range" min="0" max="1" value="0.2" step="0.01">
+                </label>
+              </div>
+            </article>
+
+            <article class="card">
+              <div class="card-heading">
+                <span class="step">03</span>
+                <div>
+                  <h3>Motion &amp; policy</h3>
+                  <p>Teacher is privileged. Policy remains an overlay proposal.</p>
+                </div>
+              </div>
+              <div class="fields two">
+                <label>
+                  Vehicle control
+                  <select id="live-control" name="control">
+                    <option value="none">None · stationary</option>
+                    <option value="teacher">Simulator teacher</option>
+                  </select>
+                </label>
+                <label>
+                  Cruise speed m/s
+                  <input id="live-cruise-speed" name="cruise_speed" type="number" value="2" min="0.1" max="8" step="0.1">
+                </label>
+                <label>
+                  Vision policy
+                  <select id="live-policy" name="shadow_policy">
+                    <option value="hazard-stop">Hazard-stop shadow</option>
+                    <option value="none">No policy</option>
+                  </select>
+                </label>
+                <label>
+                  Close-box bottom
+                  <input id="live-close-bottom" name="close_bottom" type="number" value="0.72" min="0.1" max="1" step="0.01">
+                </label>
+                <label class="check-row span-2 warning-check">
+                  <input id="live-motion-ack" name="motion_ack" type="checkbox">
+                  <span>I authorize low-speed teacher motion for this run.</span>
+                </label>
+              </div>
+            </article>
+
+            <article class="card span-2">
+              <div class="card-heading">
+                <span class="step">04</span>
+                <div>
+                  <h3>Evidence</h3>
+                  <p>Choose duration and retained visual artifacts.</p>
+                </div>
+              </div>
+              <div class="fields five">
+                <label>
+                  Run ID
+                  <input id="live-run-id" name="run_id" required>
+                </label>
+                <label>
+                  Duration seconds
+                  <input id="live-duration" name="duration" type="number" value="20" min="1" max="3600" step="1">
+                </label>
+                <label>
+                  Max stale seconds
+                  <input id="live-stale" name="max_stale_seconds" type="number" value="0.75" min="0.05" max="10" step="0.05">
+                </label>
+                <label>
+                  View
+                  <select id="live-view" name="view">
+                    <option value="split">Raw + annotated</option>
+                    <option value="overlay">Annotated only</option>
+                    <option value="none">Headless</option>
+                  </select>
+                </label>
+                <label class="check-row">
+                  <input id="live-video" name="record_video" type="checkbox" checked>
+                  <span>Record MP4</span>
+                </label>
+              </div>
+              <div class="actions">
+                <button class="primary" type="submit">Start live session</button>
+                <p class="action-note">The viewer opens in a separate local window.</p>
+              </div>
+            </article>
+          </form>
+        </section>
+
+        <section id="panel-situation" class="panel" aria-labelledby="situation-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">SCENARIO + SITUATION MODE</p>
+              <h2 id="situation-title">Compose traffic without editing JSON</h2>
+              <p>
+                Save one strict scenario recipe, then resolve it into deterministic
+                episodes. Saving and planning never contact CARLA.
+              </p>
+            </div>
+            <span class="boundary-badge safe">Offline until native execute</span>
+          </div>
+
+          <form id="situation-form" class="form-grid">
+            <article class="card">
+              <div class="card-heading">
+                <span class="step">01</span>
+                <div>
+                  <h3>World</h3>
+                  <p>Map, weather, starting point, and repeat count.</p>
+                </div>
+              </div>
+              <div class="fields two">
+                <label>
+                  Situation ID
+                  <input id="situation-id" value="town10-operator-poc" pattern="[a-z0-9-]+" required>
+                </label>
+                <label>
+                  Map
+                  <select id="situation-map">
+                    <option value="Town10HD_Opt">Town10HD_Opt</option>
+                    <option value="Town01_Opt">Town01_Opt</option>
+                    <option value="Town02_Opt">Town02_Opt</option>
+                    <option value="Town03_Opt">Town03_Opt</option>
+                    <option value="Town04_Opt">Town04_Opt</option>
+                    <option value="Town05_Opt">Town05_Opt</option>
+                    <option value="Town06_Opt">Town06_Opt</option>
+                    <option value="Town07_Opt">Town07_Opt</option>
+                  </select>
+                </label>
+                <label>
+                  Weather
+                  <select id="situation-weather"></select>
+                </label>
+                <label>
+                  Props
+                  <select id="situation-props"></select>
+                </label>
+                <label>
+                  Ego spawn index
+                  <input id="situation-spawn" type="number" min="0" value="0">
+                </label>
+                <label>
+                  Repetitions
+                  <input id="situation-repetitions" type="number" min="1" max="100" value="1">
+                </label>
+                <label>
+                  Master seed
+                  <input id="situation-seed" type="number" min="0" value="20260726">
+                </label>
+                <label>
+                  Duration seconds
+                  <input id="situation-duration" type="number" min="5" max="3600" value="30">
+                </label>
+              </div>
+            </article>
+
+            <article class="card">
+              <div class="card-heading">
+                <span class="step">02</span>
+                <div>
+                  <h3>Crowdedness</h3>
+                  <p>Direct controls for cars, pedestrians, crossing, and spacing.</p>
+                </div>
+              </div>
+              <div class="fields two">
+                <label class="range-field span-2">
+                  <span>Traffic vehicles <output id="vehicle-count-value">35</output></span>
+                  <input id="vehicle-count" type="range" min="0" max="120" value="35" step="1">
+                </label>
+                <label class="range-field span-2">
+                  <span>Pedestrians <output id="walker-count-value">30</output></span>
+                  <input id="walker-count" type="range" min="0" max="120" value="30" step="1">
+                </label>
+                <label class="range-field span-2">
+                  <span>Crossing probability <output id="crossing-value">0.10</output></span>
+                  <input id="crossing" type="range" min="0" max="1" value="0.1" step="0.01">
+                </label>
+                <label>
+                  Traffic speed difference %
+                  <input id="speed-difference" type="number" min="-100" max="100" value="20" step="1">
+                  <small>Positive values make traffic slower.</small>
+                </label>
+                <label>
+                  Following distance m
+                  <input id="following-distance" type="number" min="0.1" max="20" value="2.5" step="0.1">
+                </label>
+              </div>
+            </article>
+
+            <article class="card span-2">
+              <div class="card-heading">
+                <span class="step">03</span>
+                <div>
+                  <h3>Camera &amp; capture</h3>
+                  <p>Source capture stays front monocular RGB; teacher masks are label-only.</p>
+                </div>
+              </div>
+              <div class="fields five">
+                <label>
+                  Width
+                  <input id="situation-width" type="number" min="320" max="3840" value="1280">
+                </label>
+                <label>
+                  Height
+                  <input id="situation-height" type="number" min="180" max="2160" value="720">
+                </label>
+                <label>
+                  FOV
+                  <input id="situation-fov" type="number" min="30" max="150" value="90">
+                </label>
+                <label>
+                  Capture FPS
+                  <select id="situation-capture-fps">
+                    <option value="1">1 FPS</option>
+                    <option value="2">2 FPS</option>
+                    <option value="5" selected>5 FPS</option>
+                    <option value="10">10 FPS</option>
+                  </select>
+                </label>
+                <label>
+                  Ego blueprint
+                  <input id="situation-ego" value="vehicle.tesla.model3">
+                </label>
+              </div>
+              <div class="actions">
+                <button class="primary" type="submit">Save situation recipe</button>
+                <span id="situation-result" class="inline-result" aria-live="polite"></span>
+              </div>
+            </article>
+          </form>
+
+          <article class="card planner-card">
+            <div class="card-heading">
+              <span class="step">04</span>
+              <div>
+                <h3>Resolve deterministic episodes</h3>
+                <p>Creates a checksum-tracked plan with seeds and leakage-safe partitions.</p>
+              </div>
+            </div>
+            <form id="plan-form" class="fields four">
+              <label>
+                Situation suite
+                <select id="plan-suite" required></select>
+              </label>
+              <label>
+                Split plan
+                <select id="plan-split" required></select>
+              </label>
+              <label>
+                Plan run ID
+                <input id="plan-run-id" required>
+              </label>
+              <div class="button-field">
+                <button class="primary" type="submit">Build scenario plan</button>
+              </div>
+            </form>
+          </article>
+        </section>
+
+        <section id="panel-workflows" class="panel" aria-labelledby="workflow-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">RECORD → REPLAY → TRAIN → VERIFY</p>
+              <h2 id="workflow-title">Run research workflows from frozen inputs</h2>
+              <p>
+                These forms call the same CLI contracts used in terminal experiments.
+                Dry-run remains the default for expensive or destructive actions.
+              </p>
+            </div>
+          </div>
+
+          <div class="workflow-grid">
+            <article class="card">
+              <div class="card-heading">
+                <span class="workflow-icon">DC</span>
+                <div>
+                  <h3>Native dataset capture</h3>
+                  <p>Official PythonAPI, deterministic episodes, RGB + label teacher.</p>
+                </div>
+              </div>
+              <form id="native-form" class="fields two">
+                <label class="span-2">
+                  Scenario plan
+                  <select id="native-plan" required></select>
+                </label>
+                <label>
+                  Dataset ID
+                  <input id="native-dataset-id" required>
+                </label>
+                <label>
+                  Partition
+                  <select id="native-partition">
+                    <option value="train">train</option>
+                    <option value="val_seen">val_seen</option>
+                    <option value="val_map_ood">val_map_ood</option>
+                    <option value="val_weather_ood">val_weather_ood</option>
+                    <option value="test_seen">test_seen</option>
+                    <option value="test_map_ood">test_map_ood</option>
+                    <option value="test_weather_ood">test_weather_ood</option>
+                    <option value="unassigned">unassigned</option>
+                  </select>
+                </label>
+                <label>
+                  Max episodes
+                  <input id="native-max-episodes" type="number" min="1" value="1">
+                </label>
+                <label>
+                  PythonAPI path · optional
+                  <input id="native-pythonapi" placeholder="/path/to/carla egg or directory">
+                </label>
+                <label class="check-row">
+                  <input id="native-dry-run" type="checkbox" checked>
+                  <span>Dry run · no CARLA import</span>
+                </label>
+                <label class="check-row danger-check span-2">
+                  <input id="native-ack" type="checkbox">
+                  <span>I authorize map reload, actor destruction, and exclusive world.tick ownership.</span>
+                </label>
+                <button id="native-preflight" class="secondary span-2" type="button">
+                  Run read-only readiness preflight
+                </button>
+                <button class="primary span-2" type="submit">Start native capture workflow</button>
+              </form>
+            </article>
+
+            <article class="card">
+              <div class="card-heading">
+                <span class="workflow-icon">SM</span>
+                <div>
+                  <h3>Live shadow matrix</h3>
+                  <p>Sequential detectors, live overlays, videos, and policy audits.</p>
+                </div>
+              </div>
+              <form id="matrix-form" class="fields">
+                <label>
+                  Matrix template
+                  <select id="matrix-config" required></select>
+                </label>
+                <label>
+                  New matrix ID
+                  <input id="matrix-id" required>
+                </label>
+                <label class="check-row">
+                  <input id="matrix-execute" type="checkbox">
+                  <span>Execute live · unchecked creates plan only</span>
+                </label>
+                <label class="check-row warning-check">
+                  <input id="matrix-ack" type="checkbox">
+                  <span>I authorize configured teacher motion.</span>
+                </label>
+                <button class="primary" type="submit">Run shadow matrix</button>
+              </form>
+            </article>
+
+            <article class="card">
+              <div class="card-heading">
+                <span class="workflow-icon">RP</span>
+                <div>
+                  <h3>Paired replay</h3>
+                  <p>Exact RGB order for fair multi-model comparison.</p>
+                </div>
+              </div>
+              <form id="replay-form" class="fields">
+                <label>
+                  Replay template
+                  <select id="replay-config" required></select>
+                </label>
+                <label>
+                  New replay ID
+                  <input id="replay-id" required>
+                </label>
+                <label>
+                  Dataset
+                  <select id="replay-dataset" required></select>
+                </label>
+                <label>
+                  Evaluation config
+                  <select id="replay-evaluation" required></select>
+                </label>
+                <label class="check-row danger-check">
+                  <input id="replay-locked" type="checkbox">
+                  <span>Acknowledge locked-test access</span>
+                </label>
+                <button class="primary" type="submit">Start paired replay</button>
+              </form>
+            </article>
+
+            <article class="card">
+              <div class="card-heading">
+                <span class="workflow-icon">TR</span>
+                <div>
+                  <h3>Train detector</h3>
+                  <p>Dataset verified at launch, frozen config, explicit dry-run or compute launch.</p>
+                </div>
+              </div>
+              <form id="train-form" class="fields two">
+                <label class="span-2">
+                  Training config
+                  <select id="train-config" required></select>
+                </label>
+                <label>
+                  Dataset
+                  <select id="train-dataset" required></select>
+                </label>
+                <label>
+                  Initial weights
+                  <select id="train-weights" required></select>
+                </label>
+                <label>
+                  Run ID
+                  <input id="train-run-id" required>
+                </label>
+                <label>
+                  Device
+                  <select id="train-device">
+                    <option value="mps">MPS</option>
+                    <option value="cuda">CUDA</option>
+                    <option value="cpu">CPU</option>
+                  </select>
+                </label>
+                <label class="check-row">
+                  <input id="train-dry-run" type="checkbox" checked>
+                  <span>Dry run</span>
+                </label>
+                <label class="check-row warning-check">
+                  <input id="train-ack" type="checkbox">
+                  <span>Authorize real training compute</span>
+                </label>
+                <button class="primary span-2" type="submit">Start training workflow</button>
+              </form>
+            </article>
+
+            <article class="card">
+              <div class="card-heading">
+                <span class="workflow-icon">AN</span>
+                <div>
+                  <h3>Analyze a recorded run</h3>
+                  <p>Read-only frame CSV, metrics, and plots with lineage.</p>
+                </div>
+              </div>
+              <form id="analysis-form" class="fields">
+                <label>
+                  Source runtime
+                  <select id="analysis-source" required></select>
+                </label>
+                <label>
+                  Analysis run ID
+                  <input id="analysis-run-id" required>
+                </label>
+                <button class="primary" type="submit">Create analysis</button>
+              </form>
+            </article>
+
+            <article class="card">
+              <div class="card-heading">
+                <span class="workflow-icon">VF</span>
+                <div>
+                  <h3>Verify research object</h3>
+                  <p>Read-only hashes, references, semantic contracts, and unregistered files.</p>
+                </div>
+              </div>
+              <form id="verify-form" class="fields">
+                <label>
+                  Artifact
+                  <select id="verify-path" required></select>
+                </label>
+                <label class="check-row">
+                  <input id="verify-non-success" type="checkbox">
+                  <span>Allow retained failed/running evidence</span>
+                </label>
+                <label class="check-row">
+                  <input id="verify-clean-git" type="checkbox">
+                  <span>Require a recorded clean Git commit</span>
+                </label>
+                <button class="primary" type="submit">Verify now</button>
+              </form>
+            </article>
+          </div>
+        </section>
+
+        <section id="panel-evidence" class="panel" aria-labelledby="evidence-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">MANIFEST-DRIVEN EVIDENCE EXPLORER</p>
+              <h2 id="evidence-title">Browse retained research objects</h2>
+              <p>
+                Inspect only artifacts explicitly registered by each object manifest.
+                Availability is shown here; hashes and semantics are checked only by
+                the separate verification workflow.
+              </p>
+            </div>
+            <span class="boundary-badge">Manifest-declared · not verified</span>
+          </div>
+
+          <article class="card evidence-filter-card">
+            <div class="evidence-filters">
+              <label class="evidence-search">
+                Search ID, type, path, or role
+                <input id="evidence-search" type="search" placeholder="e.g. replay, report, annotated_video">
+              </label>
+              <label>
+                Root
+                <select id="evidence-root-filter">
+                  <option value="">All roots</option>
+                </select>
+              </label>
+              <label>
+                Manifest status
+                <select id="evidence-status-filter">
+                  <option value="">All statuses</option>
+                </select>
+              </label>
+              <div class="evidence-counts" aria-live="polite">
+                <span id="evidence-filter-count">0 shown</span>
+                <small id="evidence-root-counts">No research objects discovered.</small>
+              </div>
+            </div>
+          </article>
+
+          <div class="evidence-layout">
+            <article class="card evidence-list-card">
+              <div class="session-table-wrap">
+                <table class="session-table evidence-table">
+                  <thead>
+                    <tr>
+                      <th>Status</th>
+                      <th>Research object</th>
+                      <th>Root / type</th>
+                      <th>Artifacts</th>
+                    </tr>
+                  </thead>
+                  <tbody id="evidence-body">
+                    <tr><td colspan="4" class="empty-state">No research objects discovered.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </article>
+
+            <aside class="card evidence-inspector">
+              <div class="inspector-header">
+                <div>
+                  <p class="eyebrow">SELECTED RESEARCH OBJECT</p>
+                  <h3 id="selected-evidence-title">Choose an object</h3>
+                </div>
+                <span id="selected-evidence-status" class="status-pill neutral">idle</span>
+              </div>
+              <p id="selected-evidence-path" class="inspector-note">
+                Registered artifacts and declared provenance will appear here.
+              </p>
+              <div id="evidence-summary" class="evidence-summary"></div>
+              <div class="actions evidence-actions">
+                <button id="evidence-verify" class="primary" type="button" disabled>
+                  Select in verification workflow
+                </button>
+              </div>
+              <div id="evidence-preview" class="evidence-preview">
+                <p class="empty-preview">Select a registered image or video to preview it.</p>
+                <img id="evidence-image-preview" alt="Registered research artifact preview">
+                <video id="evidence-video-preview" controls preload="metadata"></video>
+              </div>
+              <div class="artifact-table-wrap">
+                <table class="session-table artifact-table">
+                  <thead>
+                    <tr>
+                      <th>Role / file</th>
+                      <th>Declared evidence</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="evidence-artifacts">
+                    <tr><td colspan="3" class="empty-state">No object selected.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        <section id="panel-sessions" class="panel" aria-labelledby="sessions-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">OPERATOR SESSION LEDGER</p>
+              <h2 id="sessions-title">Follow jobs and inspect retained evidence</h2>
+              <p>
+                Every launch keeps the normalized request, exact command tokens,
+                status, logs, provenance manifest, and child-manifest reference.
+              </p>
+            </div>
+            <button id="refresh-jobs" class="secondary" type="button">Refresh</button>
+          </div>
+
+          <div class="session-layout">
+            <article class="card session-list-card">
+              <div class="session-table-wrap">
+                <table class="session-table">
+                  <thead>
+                    <tr>
+                      <th>Status</th>
+                      <th>Workflow</th>
+                      <th>Started</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="jobs-body">
+                    <tr><td colspan="4" class="empty-state">No operator sessions yet.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </article>
+
+            <aside class="card inspector">
+              <div class="inspector-header">
+                <div>
+                  <p class="eyebrow">SELECTED SESSION</p>
+                  <h3 id="selected-job-title">Choose a row</h3>
+                </div>
+                <span id="selected-job-status" class="status-pill neutral">idle</span>
+              </div>
+              <p id="selected-job-note" class="inspector-note">
+                Logs and retained outputs will appear here.
+              </p>
+              <div id="artifact-links" class="artifact-links"></div>
+              <img id="session-preview" class="session-preview" alt="Latest annotated CARLA frame">
+              <div class="log-tabs">
+                <button type="button" class="log-tab active" data-stream="stdout">stdout</button>
+                <button type="button" class="log-tab" data-stream="stderr">stderr</button>
+              </div>
+              <pre id="job-log" class="job-log">No session selected.</pre>
+            </aside>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="/static/app.js" defer></script>
+  </body>
+</html>

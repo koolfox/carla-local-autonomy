@@ -1,0 +1,395 @@
+{
+  "artifacts": [
+    {
+      "metadata": {
+        "report_id": "rpt-framework-validation-20260726-v002",
+        "source_count": 7
+      },
+      "mime_type": "application/octet-stream",
+      "path": "checksums.sha256",
+      "registered_at": "2026-07-26T19:10:24.844065Z",
+      "role": "report_checksum_index",
+      "sha256": "616c13d7c7ab456df3d8d9e4cd9fbfa3b3201542efa4e08fe86cc2dc6633508d",
+      "size_bytes": 888
+    },
+    {
+      "metadata": {
+        "report_id": "rpt-framework-validation-20260726-v002",
+        "source_count": 7
+      },
+      "mime_type": "image/png",
+      "path": "plots/evaluation_summary.png",
+      "registered_at": "2026-07-26T19:10:24.846498Z",
+      "role": "report_plot",
+      "sha256": "22848d20756f584053f4d3df70f8a15f29532a6184b0f9b8db2d04e86057c466",
+      "size_bytes": 51843
+    },
+    {
+      "metadata": {
+        "report_id": "rpt-framework-validation-20260726-v002",
+        "source_count": 7
+      },
+      "mime_type": "image/svg+xml",
+      "path": "plots/evaluation_summary.svg",
+      "registered_at": "2026-07-26T19:10:24.847177Z",
+      "role": "report_plot",
+      "sha256": "e1792c93a124ad06eea3b4faf49c27dcfd3737f72e0e5d2fdd4ae567d65274ad",
+      "size_bytes": 32550
+    },
+    {
+      "metadata": {
+        "report_id": "rpt-framework-validation-20260726-v002",
+        "source_count": 7
+      },
+      "mime_type": "image/png",
+      "path": "plots/source_inventory.png",
+      "registered_at": "2026-07-26T19:10:24.844937Z",
+      "role": "report_plot",
+      "sha256": "02ffdd07c30d8abac6ad7aa9c8d148ca84871e0d18710e2af3caf9507b1e431d",
+      "size_bytes": 103650
+    },
+    {
+      "metadata": {
+        "report_id": "rpt-framework-validation-20260726-v002",
+        "source_count": 7
+      },
+      "mime_type": "image/svg+xml",
+      "path": "plots/source_inventory.svg",
+      "registered_at": "2026-07-26T19:10:24.845724Z",
+      "role": "report_plot",
+      "sha256": "9df6402f9e5f3571410404b84d8396d83a630149b832f42c005f23ffc3559365",
+      "size_bytes": 74703
+    },
+    {
+      "metadata": {
+        "report_id": "rpt-framework-validation-20260726-v002",
+        "source_count": 7
+      },
+      "mime_type": "application/json",
+      "path": "report.json",
+      "registered_at": "2026-07-26T19:10:24.840572Z",
+      "role": "report_release_manifest",
+      "sha256": "683916ad01489aec9ed69f0281523678288133f3a90edda5f4bb831c9d4fc65c",
+      "size_bytes": 11188
+    },
+    {
+      "metadata": {
+        "report_id": "rpt-framework-validation-20260726-v002",
+        "source_count": 7
+      },
+      "mime_type": "text/markdown",
+      "path": "report.md",
+      "registered_at": "2026-07-26T19:10:24.841292Z",
+      "role": "report_document",
+      "sha256": "668ad5e105233246ec72b8d449fb8efa4c7ae96e77df9eba2ad75519815c75fc",
+      "size_bytes": 9843
+    },
+    {
+      "metadata": {
+        "report_id": "rpt-framework-validation-20260726-v002",
+        "source_count": 7
+      },
+      "mime_type": "application/json",
+      "path": "report_config.json",
+      "registered_at": "2026-07-26T19:10:24.839883Z",
+      "role": "report_configuration",
+      "sha256": "9b4a685d1a33e721baec6658bc83041156c84b4c5c3fd00d2bb3bb92938c3f39",
+      "size_bytes": 3418
+    },
+    {
+      "metadata": {
+        "report_id": "rpt-framework-validation-20260726-v002",
+        "source_count": 7
+      },
+      "mime_type": "text/csv",
+      "path": "tables/metrics.csv",
+      "registered_at": "2026-07-26T19:10:24.842712Z",
+      "role": "report_metric_table",
+      "sha256": "88699117e969f6a95e9818ee9487e57b764e3796528b6859d35d51893b89c538",
+      "size_bytes": 7468
+    },
+    {
+      "metadata": {
+        "report_id": "rpt-framework-validation-20260726-v002",
+        "source_count": 7
+      },
+      "mime_type": "text/csv",
+      "path": "tables/source_artifacts.csv",
+      "registered_at": "2026-07-26T19:10:24.843392Z",
+      "role": "report_source_artifact_table",
+      "sha256": "a016d1e9c738a0c3ed9b94285478961fd4bf4ad0b303c89bd3a6e1ae8889f8aa",
+      "size_bytes": 17023
+    },
+    {
+      "metadata": {
+        "report_id": "rpt-framework-validation-20260726-v002",
+        "source_count": 7
+      },
+      "mime_type": "text/csv",
+      "path": "tables/source_inventory.csv",
+      "registered_at": "2026-07-26T19:10:24.842030Z",
+      "role": "report_source_inventory",
+      "sha256": "e75b7368a449d3cbc35434509a83241cbc55750a52ffc6790e5248c7a91ddad7",
+      "size_bytes": 1279
+    }
+  ],
+  "carla": {
+    "endpoint": null,
+    "map": null,
+    "version": null
+  },
+  "environment": {
+    "packages": {
+      "carla": null,
+      "numpy": "2.5.1",
+      "opencv-python": "5.0.0.93",
+      "torch": "2.13.0",
+      "torchvision": "0.28.0",
+      "ultralytics": "8.4.106"
+    },
+    "platform": {
+      "machine": "arm64",
+      "release": "25.5.0",
+      "system": "Darwin"
+    },
+    "python": {
+      "implementation": "CPython",
+      "version": "3.12.11"
+    }
+  },
+  "experiment": null,
+  "failure": null,
+  "git": {
+    "available": true,
+    "commit": null,
+    "dirty": true
+  },
+  "invocation": {
+    "cli_args": {
+      "config": "configs/reports/framework_validation_v2.json",
+      "reports_root": "reports"
+    },
+    "config": {
+      "object_type": "research_report",
+      "report": {
+        "authors": [
+          "CARLA Vision Research Project"
+        ],
+        "claims": [
+          "All included source objects pass registered SHA-256, source-reference, unregistered-file, and object-specific semantic verification.",
+          "The runtime, data factory, scenario planner, evaluator, paired replay, and reporting layers retain machine-readable lineage without manually transcribed metrics.",
+          "RT-DETR and YOLO26 adapters can be replayed over the identical checksum-locked RGB order while preserving independent child evaluations.",
+          "New run manifests retain canonical resolved and experiment-identity configuration hashes, dependency-lock digests, CPU and memory identity, accelerator backend state, deterministic backend flags, and tool versions.",
+          "The standalone development reproduction bundle verifies without access to the ten original source-object directories."
+        ],
+        "include_plots": true,
+        "limitations": [
+          "All empirical sources were created from a dirty, uncommitted workspace and are development evidence rather than confirmatory thesis experiments.",
+          "The retained dataset has only three images from one unassigned episode and cannot support training, threshold selection, or statistical generalization claims.",
+          "RT-DETR and YOLO26 use pretrained COCO weights rather than checkpoints trained on a released CARLA thesis dataset.",
+          "The shared development confidence floor suppresses all YOLO26 predictions on the pilot frames, so the replay must not be interpreted as a model ranking.",
+          "The native synchronous collector has not run against a compatible official CARLA 0.9.16 PythonAPI host.",
+          "No learned vision-only driving policy has been implemented or evaluated.",
+          "The development reproduction bundle excludes CARLA binaries, Unreal assets, model weights, datasets, and videos; their immutable fingerprints remain in source manifests."
+        ],
+        "purpose": "development",
+        "report_id": "rpt-framework-validation-20260726-v002",
+        "schema_version": "1.0",
+        "sources": [
+          {
+            "kind": "dataset",
+            "label": "Exact-frame dataset pilot",
+            "path": "../../datasets/ds-carla0916-town10-pilot-v001"
+          },
+          {
+            "kind": "dataset_qa",
+            "label": "Dataset semantic QA",
+            "path": "../../runs/ds-carla0916-town10-pilot-v001-qa"
+          },
+          {
+            "kind": "scenario_plan",
+            "label": "Deterministic scenario plan",
+            "path": "../../runs/scenario-plan-thesis-pilot-v1"
+          },
+          {
+            "kind": "runtime_analysis",
+            "label": "Live RT-DETR drive analysis",
+            "path": "../../runs/framework-v0-rtdetr-live-drive-analysis"
+          },
+          {
+            "kind": "evaluation",
+            "label": "Pretrained RT-DETR development evaluation",
+            "path": "../../runs/eval-rtdetr-pretrained-pilot-v1"
+          },
+          {
+            "kind": "paired_replay",
+            "label": "Paired RT-DETR and YOLO26 replay",
+            "path": "../../runs/replay-rtdetr-yolo26-pilot-v1"
+          },
+          {
+            "kind": "reproduction_bundle",
+            "label": "Standalone development reproduction bundle",
+            "path": "../../bundles/bundle-framework-development-20260726-v001"
+          }
+        ],
+        "thesis_context": "Traceable framework validation after adding paired replay, validation-only threshold and failure workflows, canonical experiment identities, hardware and lockfile provenance, and standalone source reproduction bundles.",
+        "title": "CARLA Vision Framework Development Validation v0.4"
+      },
+      "schema_version": "1.0"
+    }
+  },
+  "references": {
+    "datasets": [],
+    "inputs": [
+      {
+        "kind": "report_source",
+        "label": "Exact-frame dataset pilot",
+        "path": "/Users/hesam/Documents/CARLA PY/datasets/ds-carla0916-town10-pilot-v001/manifest.json",
+        "root": "/Users/hesam/Documents/CARLA PY/datasets/ds-carla0916-town10-pilot-v001",
+        "run_id": "ds-carla0916-town10-pilot-v001",
+        "sha256": "0b744356ab2b2d10f4efcb5cc7c60d8e460dec5998d501b6427ca076782409db",
+        "size_bytes": 4909,
+        "source_kind": "dataset"
+      },
+      {
+        "kind": "report_source",
+        "label": "Dataset semantic QA",
+        "path": "/Users/hesam/Documents/CARLA PY/runs/ds-carla0916-town10-pilot-v001-qa/manifest.json",
+        "root": "/Users/hesam/Documents/CARLA PY/runs/ds-carla0916-town10-pilot-v001-qa",
+        "run_id": "ds-carla0916-town10-pilot-v001-qa",
+        "sha256": "de09c8e83b46054bcd4ecec1004281cc64078830cd36ed5b9dde7cb386111afd",
+        "size_bytes": 5994,
+        "source_kind": "dataset_qa"
+      },
+      {
+        "kind": "report_source",
+        "label": "Deterministic scenario plan",
+        "path": "/Users/hesam/Documents/CARLA PY/runs/scenario-plan-thesis-pilot-v1/manifest.json",
+        "root": "/Users/hesam/Documents/CARLA PY/runs/scenario-plan-thesis-pilot-v1",
+        "run_id": "scenario-plan-thesis-pilot-v1",
+        "sha256": "e78c5f6fc84e7675b0ba5d82aafee196e2c449bd7e84f4f88f507d0898cf73f2",
+        "size_bytes": 3609,
+        "source_kind": "scenario_plan"
+      },
+      {
+        "kind": "report_source",
+        "label": "Live RT-DETR drive analysis",
+        "path": "/Users/hesam/Documents/CARLA PY/runs/framework-v0-rtdetr-live-drive-analysis/manifest.json",
+        "root": "/Users/hesam/Documents/CARLA PY/runs/framework-v0-rtdetr-live-drive-analysis",
+        "run_id": "framework-v0-rtdetr-live-drive-analysis",
+        "sha256": "8828604185d9374237b0727118af57584ef2b8ef37ddcc30219ff07fcfb607e6",
+        "size_bytes": 5882,
+        "source_kind": "runtime_analysis"
+      },
+      {
+        "kind": "report_source",
+        "label": "Pretrained RT-DETR development evaluation",
+        "path": "/Users/hesam/Documents/CARLA PY/runs/eval-rtdetr-pretrained-pilot-v1/manifest.json",
+        "root": "/Users/hesam/Documents/CARLA PY/runs/eval-rtdetr-pretrained-pilot-v1",
+        "run_id": "eval-rtdetr-pretrained-pilot-v1",
+        "sha256": "cc4834a372b833e21b14d0c0206c49a66e94c0a3f97dec142ff863e93d1038db",
+        "size_bytes": 12921,
+        "source_kind": "evaluation"
+      },
+      {
+        "kind": "report_source",
+        "label": "Paired RT-DETR and YOLO26 replay",
+        "path": "/Users/hesam/Documents/CARLA PY/runs/replay-rtdetr-yolo26-pilot-v1/manifest.json",
+        "root": "/Users/hesam/Documents/CARLA PY/runs/replay-rtdetr-yolo26-pilot-v1",
+        "run_id": "replay-rtdetr-yolo26-pilot-v1",
+        "sha256": "82c554b2ca5fbc6eb186379339c21befe97ac9ea6a3811682d8835d9086c3289",
+        "size_bytes": 18458,
+        "source_kind": "paired_replay"
+      },
+      {
+        "kind": "report_source",
+        "label": "Standalone development reproduction bundle",
+        "path": "/Users/hesam/Documents/CARLA PY/bundles/bundle-framework-development-20260726-v001/manifest.json",
+        "root": "/Users/hesam/Documents/CARLA PY/bundles/bundle-framework-development-20260726-v001",
+        "run_id": "bundle-framework-development-20260726-v001",
+        "sha256": "a214953f5a75684d00464dcf98fba9e4039fd7f088cb134e7e7177bd4995f7d1",
+        "size_bytes": 20829,
+        "source_kind": "reproduction_bundle"
+      }
+    ],
+    "models": []
+  },
+  "reproducibility": {
+    "configuration": {
+      "canonicalization": "json-sort-keys-utf8-v1",
+      "identity_excluded_top_level_keys": [
+        "created_at",
+        "output_dir",
+        "output_path",
+        "run_id",
+        "runs_root",
+        "started_at"
+      ],
+      "identity_sha256": "3064fb87a68f5f83a9c05c6d6e98b1ed3668b6d080537b962f2b12bd4a80ef7e",
+      "identity_size_bytes": 3127,
+      "resolved_sha256": "3064fb87a68f5f83a9c05c6d6e98b1ed3668b6d080537b962f2b12bd4a80ef7e",
+      "resolved_size_bytes": 3127,
+      "sensitive_values_redacted_before_hashing": true
+    },
+    "dependency_locks": [
+      {
+        "relative_path": "uv.lock",
+        "sha256": "aff4b6db2e5686c6914488e1d15b03eb494df0f446b6febbd2cbbf72d70e77bc",
+        "size_bytes": 214690
+      }
+    ],
+    "hardware": {
+      "accelerators": {
+        "available": true,
+        "cuda": {
+          "available": false,
+          "device_count": 0,
+          "devices": [],
+          "runtime_version": null
+        },
+        "cudnn": {
+          "available": false,
+          "version": null
+        },
+        "determinism": {
+          "cudnn_benchmark": false,
+          "cudnn_deterministic": false,
+          "deterministic_algorithms": false
+        },
+        "mps": {
+          "available": true,
+          "built": true
+        },
+        "rocm_version": null,
+        "version": "2.13.0"
+      },
+      "container": {
+        "detected": false,
+        "image_digest": null
+      },
+      "cpu": {
+        "architecture": "arm64",
+        "logical_count": 8,
+        "model": "Apple M1"
+      },
+      "memory": {
+        "total_bytes": 8589934592
+      },
+      "tools": {
+        "git": "git version 2.50.1 (Apple Git-155)",
+        "python_compiler": "Clang 17.0.0 (clang-1700.0.13.3)",
+        "uv": "uv 0.11.2 (02036a8ba 2026-03-26 aarch64-apple-darwin)"
+      }
+    },
+    "schema_version": "1.0"
+  },
+  "run_id": "rpt-framework-validation-20260726-v002",
+  "schema_version": "1.0",
+  "status": "success",
+  "timestamps": {
+    "created_at": "2026-07-26T19:10:23.819815Z",
+    "finished_at": "2026-07-26T19:10:24.847788Z",
+    "started_at": "2026-07-26T19:10:24.580918Z",
+    "updated_at": "2026-07-26T19:10:24.847788Z"
+  }
+}

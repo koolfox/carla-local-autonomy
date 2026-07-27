@@ -1,0 +1,61 @@
+[project]
+name = "carla-vision-research"
+version = "0.9.0"
+description = "A model-neutral, artifact-first CARLA monocular-vision research framework."
+requires-python = ">=3.11,<3.14"
+dependencies = [
+  "matplotlib>=3.9",
+  "msgpack>=1.1",
+  "numpy>=1.26",
+  "opencv-python>=4.10",
+  "pycocotools>=2.0.10",
+  "torch>=2.4",
+  "ultralytics>=8.4",
+]
+
+[project.scripts]
+carla-vision = "carla_vision.runtime:main"
+carla-analyze-run = "carla_vision.analysis:main"
+carla-build-evidence-index = "carla_vision.evidence.builder:main"
+carla-collect-dataset = "carla_vision.dataset.collector:main"
+carla-audit-dataset = "carla_vision.dataset.qa:main"
+carla-plan-scenarios = "carla_vision.scenarios.planner:main"
+carla-native-preflight = "carla_vision.native.preflight:main"
+carla-native-collect = "carla_vision.native.worker:main"
+carla-build-native-kit = "carla_vision.native.host_kit:main"
+carla-verify-native-kit = "carla_vision.native.verified_host_kit:main"
+carla-train-detector = "carla_vision.training.runner:main"
+carla-evaluate-detector = "carla_vision.evaluation.runner:main"
+carla-replay-models = "carla_vision.replay.runner:main"
+carla-select-threshold = "carla_vision.thresholds.selector:main"
+carla-mine-failures = "carla_vision.failure_mining.miner:main"
+carla-finalize-failure-review = "carla_vision.failure_mining.review:main"
+carla-verify = "carla_vision.verification:main"
+carla-package-model = "carla_vision.model_release.package:main"
+carla-build-report = "carla_vision.reporting.builder:main"
+carla-build-reproduction = "carla_vision.reproduction.builder:main"
+carla-verify-reproduction = "carla_vision.reproduction.verified:main"
+carla-verify-shadow = "carla_vision.policy.verified:main"
+carla-shadow-matrix = "carla_vision.shadow.matrix:main"
+carla-verify-shadow-matrix = "carla_vision.shadow.verified:main"
+carla-operator-ui = "carla_vision.operator.server:main"
+
+[dependency-groups]
+dev = [
+  "pytest>=8.4",
+  "ruff>=0.12",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["carla_vision", "carla_yolo"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+# Pin the baseline so upgrades do not silently enable a different policy.
+select = ["E4", "E7", "E9", "F", "I", "B"]

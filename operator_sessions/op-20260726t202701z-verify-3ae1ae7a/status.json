@@ -1,0 +1,18 @@
+{
+  "created_at": "2026-07-26T20:27:02.697Z",
+  "destructive": false,
+  "error": null,
+  "expected_output": null,
+  "expected_output_exists": false,
+  "finished_at": "2026-07-26T20:27:04.137Z",
+  "job_id": "op-20260726t202701z-verify-3ae1ae7a",
+  "kind": "verify",
+  "motion_authorized": false,
+  "note": "Verification is read-only and checks registered hashes and semantic contracts.",
+  "returncode": 0,
+  "session_path": "/Users/hesam/Documents/CARLA PY/operator_sessions/op-20260726t202701z-verify-3ae1ae7a",
+  "started_at": "2026-07-26T20:27:02.700Z",
+  "status": "success",
+  "stop_requested": false,
+  "title": "Verify 1 research object(s)"
+}

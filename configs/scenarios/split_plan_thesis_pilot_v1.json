@@ -1,0 +1,17 @@
+{
+  "plan_id": "split-thesis-pilot-v1",
+  "schema_version": "1.0",
+  "validation_map_families": [
+    "Town02"
+  ],
+  "test_map_families": [
+    "Town04",
+    "Town07"
+  ],
+  "validation_weather_ids": [
+    "soft-rain-sunset"
+  ],
+  "test_weather_ids": [
+    "fog-night"
+  ]
+}

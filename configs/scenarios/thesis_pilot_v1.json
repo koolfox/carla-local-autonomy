@@ -1,0 +1,556 @@
+{
+  "suite_id": "suite-thesis-pilot-v1",
+  "schema_version": "1.0",
+  "carla_version": "0.9.16",
+  "master_seed": 20260726,
+  "traffic_manager_port": 8000,
+  "recipes": [
+    {
+      "recipe_id": "town10-clear-day-ordinary",
+      "map_name": "Town10HD_Opt",
+      "route_region_id": "spawn-000-autopilot",
+      "ego_blueprint": "vehicle.tesla.model3",
+      "ego_spawn_index": 0,
+      "fixed_delta_seconds": 0.05,
+      "repetitions": 9,
+      "weather": {
+        "weather_id": "clear-day",
+        "light": "day",
+        "cloudiness": 5.0,
+        "precipitation": 0.0,
+        "precipitation_deposits": 0.0,
+        "wind_intensity": 5.0,
+        "sun_azimuth_angle": 35.0,
+        "sun_altitude_angle": 55.0,
+        "fog_density": 0.0,
+        "fog_distance": 0.0,
+        "wetness": 0.0,
+        "fog_falloff": 0.2,
+        "scattering_intensity": 1.0,
+        "mie_scattering_scale": 0.03,
+        "rayleigh_scattering_scale": 0.0331,
+        "dust_storm": 0.0
+      },
+      "traffic": {
+        "vehicle_count": 35,
+        "walker_count": 30,
+        "pedestrian_crossing_factor": 0.1,
+        "vehicle_filter": "vehicle.*",
+        "walker_filter": "walker.pedestrian.*",
+        "vehicle_generation": "All",
+        "walker_generation": "2",
+        "global_speed_difference_percent": 20.0,
+        "global_distance_to_leading_vehicle": 2.5,
+        "automatic_vehicle_lights": true
+      },
+      "camera": {
+        "width": 1280,
+        "height": 720,
+        "fov_degrees": 90.0,
+        "sensor_tick_seconds": 0.1,
+        "gamma": 2.2,
+        "enable_postprocess_effects": true,
+        "mount": {
+          "x": 1.5,
+          "y": 0.0,
+          "z": 1.7,
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        }
+      },
+      "capture": {
+        "warmup_ticks": 100,
+        "duration_ticks": 600,
+        "capture_every_ticks": 4,
+        "minimum_visible_pixels": 16,
+        "minimum_box_width": 2,
+        "minimum_box_height": 2
+      },
+      "props": []
+    },
+    {
+      "recipe_id": "town10-clear-day-construction",
+      "map_name": "Town10HD_Opt",
+      "route_region_id": "spawn-000-construction",
+      "ego_blueprint": "vehicle.tesla.model3",
+      "ego_spawn_index": 0,
+      "fixed_delta_seconds": 0.05,
+      "repetitions": 4,
+      "weather": {
+        "weather_id": "clear-day",
+        "light": "day",
+        "cloudiness": 10.0,
+        "precipitation": 0.0,
+        "precipitation_deposits": 0.0,
+        "wind_intensity": 8.0,
+        "sun_azimuth_angle": 60.0,
+        "sun_altitude_angle": 48.0,
+        "fog_density": 0.0,
+        "fog_distance": 0.0,
+        "wetness": 0.0,
+        "fog_falloff": 0.2,
+        "scattering_intensity": 1.0,
+        "mie_scattering_scale": 0.03,
+        "rayleigh_scattering_scale": 0.0331,
+        "dust_storm": 0.0
+      },
+      "traffic": {
+        "vehicle_count": 20,
+        "walker_count": 15,
+        "pedestrian_crossing_factor": 0.05,
+        "vehicle_filter": "vehicle.*",
+        "walker_filter": "walker.pedestrian.*",
+        "vehicle_generation": "All",
+        "walker_generation": "2",
+        "global_speed_difference_percent": 30.0,
+        "global_distance_to_leading_vehicle": 3.0,
+        "automatic_vehicle_lights": true
+      },
+      "camera": {
+        "width": 1280,
+        "height": 720,
+        "fov_degrees": 90.0,
+        "sensor_tick_seconds": 0.1,
+        "gamma": 2.2,
+        "enable_postprocess_effects": true,
+        "mount": {
+          "x": 1.5,
+          "y": 0.0,
+          "z": 1.7,
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        }
+      },
+      "capture": {
+        "warmup_ticks": 100,
+        "duration_ticks": 600,
+        "capture_every_ticks": 4,
+        "minimum_visible_pixels": 16,
+        "minimum_box_width": 2,
+        "minimum_box_height": 2
+      },
+      "props": [
+        {
+          "blueprint_id": "static.prop.warningconstruction",
+          "relative_to": "ego_start",
+          "transform": {
+            "x": 28.0,
+            "y": 3.5,
+            "z": 0.0,
+            "pitch": 0.0,
+            "yaw": 0.0,
+            "roll": 0.0
+          }
+        },
+        {
+          "blueprint_id": "static.prop.streetbarrier",
+          "relative_to": "ego_start",
+          "transform": {
+            "x": 34.0,
+            "y": 2.8,
+            "z": 0.0,
+            "pitch": 0.0,
+            "yaw": 0.0,
+            "roll": 0.0
+          }
+        },
+        {
+          "blueprint_id": "static.prop.trafficcone01",
+          "relative_to": "ego_start",
+          "transform": {
+            "x": 25.0,
+            "y": 1.8,
+            "z": 0.0,
+            "pitch": 0.0,
+            "yaw": 0.0,
+            "roll": 0.0
+          }
+        },
+        {
+          "blueprint_id": "static.prop.trafficcone02",
+          "relative_to": "ego_start",
+          "transform": {
+            "x": 30.0,
+            "y": 1.8,
+            "z": 0.0,
+            "pitch": 0.0,
+            "yaw": 0.0,
+            "roll": 0.0
+          }
+        }
+      ]
+    },
+    {
+      "recipe_id": "town03-soft-rain-sunset",
+      "map_name": "Town03_Opt",
+      "route_region_id": "spawn-000-autopilot",
+      "ego_blueprint": "vehicle.tesla.model3",
+      "ego_spawn_index": 0,
+      "fixed_delta_seconds": 0.05,
+      "repetitions": 2,
+      "weather": {
+        "weather_id": "soft-rain-sunset",
+        "light": "sunset",
+        "cloudiness": 70.0,
+        "precipitation": 20.0,
+        "precipitation_deposits": 25.0,
+        "wind_intensity": 35.0,
+        "sun_azimuth_angle": 250.0,
+        "sun_altitude_angle": 8.0,
+        "fog_density": 4.0,
+        "fog_distance": 40.0,
+        "wetness": 55.0,
+        "fog_falloff": 0.5,
+        "scattering_intensity": 1.0,
+        "mie_scattering_scale": 0.08,
+        "rayleigh_scattering_scale": 0.0331,
+        "dust_storm": 0.0
+      },
+      "traffic": {
+        "vehicle_count": 28,
+        "walker_count": 22,
+        "pedestrian_crossing_factor": 0.15,
+        "vehicle_filter": "vehicle.*",
+        "walker_filter": "walker.pedestrian.*",
+        "vehicle_generation": "All",
+        "walker_generation": "2",
+        "global_speed_difference_percent": 25.0,
+        "global_distance_to_leading_vehicle": 3.0,
+        "automatic_vehicle_lights": true
+      },
+      "camera": {
+        "width": 1280,
+        "height": 720,
+        "fov_degrees": 90.0,
+        "sensor_tick_seconds": 0.1,
+        "gamma": 2.2,
+        "enable_postprocess_effects": true,
+        "mount": {
+          "x": 1.5,
+          "y": 0.0,
+          "z": 1.7,
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        }
+      },
+      "capture": {
+        "warmup_ticks": 100,
+        "duration_ticks": 600,
+        "capture_every_ticks": 4,
+        "minimum_visible_pixels": 16,
+        "minimum_box_width": 2,
+        "minimum_box_height": 2
+      },
+      "props": []
+    },
+    {
+      "recipe_id": "town05-fog-night",
+      "map_name": "Town05_Opt",
+      "route_region_id": "spawn-000-autopilot",
+      "ego_blueprint": "vehicle.tesla.model3",
+      "ego_spawn_index": 0,
+      "fixed_delta_seconds": 0.05,
+      "repetitions": 2,
+      "weather": {
+        "weather_id": "fog-night",
+        "light": "night",
+        "cloudiness": 65.0,
+        "precipitation": 0.0,
+        "precipitation_deposits": 10.0,
+        "wind_intensity": 8.0,
+        "sun_azimuth_angle": 315.0,
+        "sun_altitude_angle": -35.0,
+        "fog_density": 45.0,
+        "fog_distance": 12.0,
+        "wetness": 20.0,
+        "fog_falloff": 0.7,
+        "scattering_intensity": 1.5,
+        "mie_scattering_scale": 0.2,
+        "rayleigh_scattering_scale": 0.0331,
+        "dust_storm": 0.0
+      },
+      "traffic": {
+        "vehicle_count": 18,
+        "walker_count": 8,
+        "pedestrian_crossing_factor": 0.05,
+        "vehicle_filter": "vehicle.*",
+        "walker_filter": "walker.pedestrian.*",
+        "vehicle_generation": "All",
+        "walker_generation": "2",
+        "global_speed_difference_percent": 40.0,
+        "global_distance_to_leading_vehicle": 4.0,
+        "automatic_vehicle_lights": true
+      },
+      "camera": {
+        "width": 1280,
+        "height": 720,
+        "fov_degrees": 90.0,
+        "sensor_tick_seconds": 0.1,
+        "gamma": 2.2,
+        "enable_postprocess_effects": true,
+        "mount": {
+          "x": 1.5,
+          "y": 0.0,
+          "z": 1.7,
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        }
+      },
+      "capture": {
+        "warmup_ticks": 100,
+        "duration_ticks": 600,
+        "capture_every_ticks": 4,
+        "minimum_visible_pixels": 16,
+        "minimum_box_width": 2,
+        "minimum_box_height": 2
+      },
+      "props": [
+        {
+          "blueprint_id": "static.prop.warningaccident",
+          "relative_to": "ego_start",
+          "transform": {
+            "x": 30.0,
+            "y": 3.0,
+            "z": 0.0,
+            "pitch": 0.0,
+            "yaw": 0.0,
+            "roll": 0.0
+          }
+        },
+        {
+          "blueprint_id": "static.prop.dirtdebris01",
+          "relative_to": "ego_start",
+          "transform": {
+            "x": 36.0,
+            "y": 1.5,
+            "z": 0.0,
+            "pitch": 0.0,
+            "yaw": 0.0,
+            "roll": 0.0
+          }
+        }
+      ]
+    },
+    {
+      "recipe_id": "town02-cloudy-day-map-ood-val",
+      "map_name": "Town02_Opt",
+      "route_region_id": "spawn-000-autopilot",
+      "ego_blueprint": "vehicle.tesla.model3",
+      "ego_spawn_index": 0,
+      "fixed_delta_seconds": 0.05,
+      "repetitions": 2,
+      "weather": {
+        "weather_id": "cloudy-day",
+        "light": "day",
+        "cloudiness": 75.0,
+        "precipitation": 0.0,
+        "precipitation_deposits": 0.0,
+        "wind_intensity": 20.0,
+        "sun_azimuth_angle": 120.0,
+        "sun_altitude_angle": 40.0,
+        "fog_density": 2.0,
+        "fog_distance": 80.0,
+        "wetness": 0.0,
+        "fog_falloff": 0.2,
+        "scattering_intensity": 1.0,
+        "mie_scattering_scale": 0.05,
+        "rayleigh_scattering_scale": 0.0331,
+        "dust_storm": 0.0
+      },
+      "traffic": {
+        "vehicle_count": 16,
+        "walker_count": 18,
+        "pedestrian_crossing_factor": 0.2,
+        "vehicle_filter": "vehicle.*",
+        "walker_filter": "walker.pedestrian.*",
+        "vehicle_generation": "All",
+        "walker_generation": "2",
+        "global_speed_difference_percent": 20.0,
+        "global_distance_to_leading_vehicle": 2.5,
+        "automatic_vehicle_lights": true
+      },
+      "camera": {
+        "width": 1280,
+        "height": 720,
+        "fov_degrees": 90.0,
+        "sensor_tick_seconds": 0.1,
+        "gamma": 2.2,
+        "enable_postprocess_effects": true,
+        "mount": {
+          "x": 1.5,
+          "y": 0.0,
+          "z": 1.7,
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        }
+      },
+      "capture": {
+        "warmup_ticks": 100,
+        "duration_ticks": 600,
+        "capture_every_ticks": 4,
+        "minimum_visible_pixels": 16,
+        "minimum_box_width": 2,
+        "minimum_box_height": 2
+      },
+      "props": []
+    },
+    {
+      "recipe_id": "town04-wet-day-map-ood-test",
+      "map_name": "Town04_Opt",
+      "route_region_id": "spawn-000-autopilot",
+      "ego_blueprint": "vehicle.tesla.model3",
+      "ego_spawn_index": 0,
+      "fixed_delta_seconds": 0.05,
+      "repetitions": 2,
+      "weather": {
+        "weather_id": "wet-day",
+        "light": "day",
+        "cloudiness": 45.0,
+        "precipitation": 0.0,
+        "precipitation_deposits": 45.0,
+        "wind_intensity": 15.0,
+        "sun_azimuth_angle": 160.0,
+        "sun_altitude_angle": 35.0,
+        "fog_density": 3.0,
+        "fog_distance": 60.0,
+        "wetness": 80.0,
+        "fog_falloff": 0.3,
+        "scattering_intensity": 1.0,
+        "mie_scattering_scale": 0.05,
+        "rayleigh_scattering_scale": 0.0331,
+        "dust_storm": 0.0
+      },
+      "traffic": {
+        "vehicle_count": 36,
+        "walker_count": 12,
+        "pedestrian_crossing_factor": 0.05,
+        "vehicle_filter": "vehicle.*",
+        "walker_filter": "walker.pedestrian.*",
+        "vehicle_generation": "All",
+        "walker_generation": "2",
+        "global_speed_difference_percent": 25.0,
+        "global_distance_to_leading_vehicle": 3.0,
+        "automatic_vehicle_lights": true
+      },
+      "camera": {
+        "width": 1280,
+        "height": 720,
+        "fov_degrees": 90.0,
+        "sensor_tick_seconds": 0.1,
+        "gamma": 2.2,
+        "enable_postprocess_effects": true,
+        "mount": {
+          "x": 1.5,
+          "y": 0.0,
+          "z": 1.7,
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        }
+      },
+      "capture": {
+        "warmup_ticks": 100,
+        "duration_ticks": 600,
+        "capture_every_ticks": 4,
+        "minimum_visible_pixels": 16,
+        "minimum_box_width": 2,
+        "minimum_box_height": 2
+      },
+      "props": []
+    },
+    {
+      "recipe_id": "town07-clear-dawn-map-ood-test",
+      "map_name": "Town07_Opt",
+      "route_region_id": "spawn-000-autopilot",
+      "ego_blueprint": "vehicle.tesla.model3",
+      "ego_spawn_index": 0,
+      "fixed_delta_seconds": 0.05,
+      "repetitions": 2,
+      "weather": {
+        "weather_id": "clear-dawn",
+        "light": "dawn",
+        "cloudiness": 8.0,
+        "precipitation": 0.0,
+        "precipitation_deposits": 0.0,
+        "wind_intensity": 5.0,
+        "sun_azimuth_angle": 75.0,
+        "sun_altitude_angle": 4.0,
+        "fog_density": 8.0,
+        "fog_distance": 35.0,
+        "wetness": 5.0,
+        "fog_falloff": 0.4,
+        "scattering_intensity": 1.0,
+        "mie_scattering_scale": 0.08,
+        "rayleigh_scattering_scale": 0.0331,
+        "dust_storm": 0.0
+      },
+      "traffic": {
+        "vehicle_count": 14,
+        "walker_count": 24,
+        "pedestrian_crossing_factor": 0.3,
+        "vehicle_filter": "vehicle.*",
+        "walker_filter": "walker.pedestrian.*",
+        "vehicle_generation": "All",
+        "walker_generation": "2",
+        "global_speed_difference_percent": 20.0,
+        "global_distance_to_leading_vehicle": 2.5,
+        "automatic_vehicle_lights": true
+      },
+      "camera": {
+        "width": 1280,
+        "height": 720,
+        "fov_degrees": 90.0,
+        "sensor_tick_seconds": 0.1,
+        "gamma": 2.2,
+        "enable_postprocess_effects": true,
+        "mount": {
+          "x": 1.5,
+          "y": 0.0,
+          "z": 1.7,
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        }
+      },
+      "capture": {
+        "warmup_ticks": 100,
+        "duration_ticks": 600,
+        "capture_every_ticks": 4,
+        "minimum_visible_pixels": 16,
+        "minimum_box_width": 2,
+        "minimum_box_height": 2
+      },
+      "props": [
+        {
+          "blueprint_id": "static.prop.bin",
+          "relative_to": "ego_start",
+          "transform": {
+            "x": 24.0,
+            "y": 4.0,
+            "z": 0.0,
+            "pitch": 0.0,
+            "yaw": 0.0,
+            "roll": 0.0
+          }
+        },
+        {
+          "blueprint_id": "static.prop.box01",
+          "relative_to": "ego_start",
+          "transform": {
+            "x": 31.0,
+            "y": 3.8,
+            "z": 0.0,
+            "pitch": 0.0,
+            "yaw": 0.0,
+            "roll": 0.0
+          }
+        }
+      ]
+    }
+  ]
+}

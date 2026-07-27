@@ -1,0 +1,19 @@
+{
+  "carla_version": "0.9.16",
+  "dataset_id": "ds-carla0916-native-pilot-v001",
+  "host": "172.20.10.7",
+  "kit_id": "native-host-kit-pilot-20260727-v002",
+  "max_episodes": 1,
+  "partitions": [
+    "train"
+  ],
+  "port": 2000,
+  "python_version": "3.12",
+  "requirements": {
+    "linux": "requirements-linux-py312.txt",
+    "windows": "requirements-windows-py312.txt"
+  },
+  "scenario_plan": "../../runs/scenario-plan-native-integration-pilot-v1",
+  "schema_version": "1.0",
+  "title": "CARLA 0.9.16 native 50-frame integration pilot host kit"
+}

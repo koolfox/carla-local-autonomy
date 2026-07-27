@@ -1,0 +1,10 @@
+{
+  "kind": "verify",
+  "parameters": {
+    "allow_non_success": false,
+    "paths": [
+      "reports/rpt-framework-validation-20260726-v003"
+    ]
+  },
+  "schema_version": "1.0"
+}

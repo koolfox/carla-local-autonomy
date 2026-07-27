@@ -1,0 +1,641 @@
+{
+  "artifacts": [
+    {
+      "metadata": {
+        "bundle_id": "bundle-framework-development-20260726-v002",
+        "purpose": "development"
+      },
+      "mime_type": "text/markdown",
+      "path": "README.md",
+      "registered_at": "2026-07-26T19:14:46.103274Z",
+      "role": "reproduction_readme",
+      "sha256": "96f9b124ed898053c86d117df8c48a1d49d219bbcc7ad81756ffa9e7091337f4",
+      "size_bytes": 1827
+    },
+    {
+      "metadata": {
+        "bundle_id": "bundle-framework-development-20260726-v002",
+        "purpose": "development"
+      },
+      "mime_type": "application/json",
+      "path": "bundle.json",
+      "registered_at": "2026-07-26T19:14:46.096544Z",
+      "role": "reproduction_bundle_release_manifest",
+      "sha256": "df31922384470efe2f85cc9771c7dac4fff161a71b5beff44086db7a6301cad2",
+      "size_bytes": 3237
+    },
+    {
+      "metadata": {
+        "bundle_id": "bundle-framework-development-20260726-v002",
+        "purpose": "development"
+      },
+      "mime_type": "application/json",
+      "path": "bundle_config.json",
+      "registered_at": "2026-07-26T19:14:46.095711Z",
+      "role": "reproduction_bundle_configuration",
+      "sha256": "c251e0f294dec35c16261b06604db295a30460cd71be71ff84f6059a7de5469a",
+      "size_bytes": 4563
+    },
+    {
+      "metadata": {
+        "bundle_id": "bundle-framework-development-20260726-v002",
+        "purpose": "development"
+      },
+      "mime_type": "application/octet-stream",
+      "path": "checksums.sha256",
+      "registered_at": "2026-07-26T19:14:46.104010Z",
+      "role": "reproduction_checksum_index",
+      "sha256": "65ed56bb7b6dd69641ab6a04182f26ef63ea10aaddf65c2e3154c340d0ec8275",
+      "size_bytes": 2307
+    },
+    {
+      "metadata": {
+        "bundle_id": "bundle-framework-development-20260726-v002",
+        "purpose": "development"
+      },
+      "mime_type": "application/json",
+      "path": "commands.json",
+      "registered_at": "2026-07-26T19:14:46.101758Z",
+      "role": "reproduction_commands",
+      "sha256": "bc72e82ffff7c174647ee3d652b39d60c7ad630f3122f0658bd822567e7d0f7a",
+      "size_bytes": 670
+    },
+    {
+      "metadata": {
+        "bundle_id": "bundle-framework-development-20260726-v002",
+        "purpose": "development"
+      },
+      "mime_type": "application/json",
+      "path": "environment/environment.json",
+      "registered_at": "2026-07-26T19:14:46.100954Z",
+      "role": "reproduction_environment_snapshot",
+      "sha256": "c5722aff8137c90a22989e4cf90844801fff3a474e0c67caa0841b15b03babb8",
+      "size_bytes": 1786
+    },
+    {
+      "metadata": {
+        "bundle_id": "bundle-framework-development-20260726-v002",
+        "purpose": "development"
+      },
+      "mime_type": "application/octet-stream",
+      "path": "environment/lockfiles/uv.lock",
+      "registered_at": "2026-07-26T19:14:46.115561Z",
+      "role": "dependency_lockfile_snapshot",
+      "sha256": "aff4b6db2e5686c6914488e1d15b03eb494df0f446b6febbd2cbbf72d70e77bc",
+      "size_bytes": 214690
+    },
+    {
+      "metadata": {
+        "bundle_id": "bundle-framework-development-20260726-v002",
+        "purpose": "development"
+      },
+      "mime_type": "application/x-sh",
+      "path": "reproduce.sh",
+      "registered_at": "2026-07-26T19:14:46.102549Z",
+      "role": "reproduction_script",
+      "sha256": "bfca6ae6acb26bf87b74731c78208eba9ad2f60e50f80f03ed8b59b7549f92b3",
+      "size_bytes": 539
+    },
+    {
+      "metadata": {
+        "bundle_id": "bundle-framework-development-20260726-v002",
+        "purpose": "development"
+      },
+      "mime_type": "text/csv",
+      "path": "source/inventory.csv",
+      "registered_at": "2026-07-26T19:14:46.099485Z",
+      "role": "reproduction_source_inventory_csv",
+      "sha256": "97e6fef820be86d260327d4b3850f03cc61ad43899f2defb45b398c13d2fb54d",
+      "size_bytes": 15573
+    },
+    {
+      "metadata": {
+        "bundle_id": "bundle-framework-development-20260726-v002",
+        "purpose": "development"
+      },
+      "mime_type": "application/json",
+      "path": "source/inventory.json",
+      "registered_at": "2026-07-26T19:14:46.098776Z",
+      "role": "reproduction_source_inventory_json",
+      "sha256": "db78393a2559a2800b67c636f3af1ff414f3d294b3b204ef34f20e1e9ae84ca4",
+      "size_bytes": 29449
+    },
+    {
+      "metadata": {
+        "bundle_id": "bundle-framework-development-20260726-v002",
+        "purpose": "development"
+      },
+      "mime_type": "application/zip",
+      "path": "source/source.zip",
+      "registered_at": "2026-07-26T19:14:46.098002Z",
+      "role": "reproduction_source_archive",
+      "sha256": "fd8ea1fe67496e50404cf2e9f7c946f9bd65bfabab2e150ebe0911f79fb54868",
+      "size_bytes": 1526331
+    },
+    {
+      "metadata": {
+        "bundle_id": "bundle-framework-development-20260726-v002",
+        "purpose": "development"
+      },
+      "mime_type": "application/json",
+      "path": "sources/bundle-framework-development-20260726-v001/manifest.json",
+      "registered_at": "2026-07-26T19:14:46.114554Z",
+      "role": "reproduction_source_manifest",
+      "sha256": "a214953f5a75684d00464dcf98fba9e4039fd7f088cb134e7e7177bd4995f7d1",
+      "size_bytes": 20829
+    },
+    {
+      "metadata": {
+        "bundle_id": "bundle-framework-development-20260726-v002",
+        "purpose": "development"
+      },
+      "mime_type": "application/json",
+      "path": "sources/ds-carla0916-town10-pilot-v001-qa/manifest.json",
+      "registered_at": "2026-07-26T19:14:46.105604Z",
+      "role": "reproduction_source_manifest",
+      "sha256": "de09c8e83b46054bcd4ecec1004281cc64078830cd36ed5b9dde7cb386111afd",
+      "size_bytes": 5994
+    },
+    {
+      "metadata": {
+        "bundle_id": "bundle-framework-development-20260726-v002",
+        "purpose": "development"
+      },
+      "mime_type": "application/json",
+      "path": "sources/ds-carla0916-town10-pilot-v001/manifest.json",
+      "registered_at": "2026-07-26T19:14:46.104813Z",
+      "role": "reproduction_source_manifest",
+      "sha256": "0b744356ab2b2d10f4efcb5cc7c60d8e460dec5998d501b6427ca076782409db",
+      "size_bytes": 4909
+    },
+    {
+      "metadata": {
+        "bundle_id": "bundle-framework-development-20260726-v002",
+        "purpose": "development"
+      },
+      "mime_type": "application/json",
+      "path": "sources/eval-rtdetr-pretrained-pilot-v1/manifest.json",
+      "registered_at": "2026-07-26T19:14:46.108041Z",
+      "role": "reproduction_source_manifest",
+      "sha256": "cc4834a372b833e21b14d0c0206c49a66e94c0a3f97dec142ff863e93d1038db",
+      "size_bytes": 12921
+    },
+    {
+      "metadata": {
+        "bundle_id": "bundle-framework-development-20260726-v002",
+        "purpose": "development"
+      },
+      "mime_type": "application/json",
+      "path": "sources/framework-v0-rtdetr-live-drive-analysis/manifest.json",
+      "registered_at": "2026-07-26T19:14:46.112608Z",
+      "role": "reproduction_source_manifest",
+      "sha256": "8828604185d9374237b0727118af57584ef2b8ef37ddcc30219ff07fcfb607e6",
+      "size_bytes": 5882
+    },
+    {
+      "metadata": {
+        "bundle_id": "bundle-framework-development-20260726-v002",
+        "purpose": "development"
+      },
+      "mime_type": "application/json",
+      "path": "sources/framework-v0-rtdetr-live-drive/manifest.json",
+      "registered_at": "2026-07-26T19:14:46.111743Z",
+      "role": "reproduction_source_manifest",
+      "sha256": "eb49e06740dcfa68436538a195552bb304079a32a8a7021959a37f37d356e749",
+      "size_bytes": 3988
+    },
+    {
+      "metadata": {
+        "bundle_id": "bundle-framework-development-20260726-v002",
+        "purpose": "development"
+      },
+      "mime_type": "application/json",
+      "path": "sources/replay-rtdetr-yolo26-pilot-v1--rtdetr-l-coco/manifest.json",
+      "registered_at": "2026-07-26T19:14:46.109114Z",
+      "role": "reproduction_source_manifest",
+      "sha256": "8b93ec2fe5ba8c824bbe12304f4681eca4c46baf697f9d212653ae34d349c8b6",
+      "size_bytes": 13768
+    },
+    {
+      "metadata": {
+        "bundle_id": "bundle-framework-development-20260726-v002",
+        "purpose": "development"
+      },
+      "mime_type": "application/json",
+      "path": "sources/replay-rtdetr-yolo26-pilot-v1--yolo26n-coco/manifest.json",
+      "registered_at": "2026-07-26T19:14:46.109960Z",
+      "role": "reproduction_source_manifest",
+      "sha256": "b981b5d6928b2bea3a342257588da0512b74aeaded5777354feff0412069c37b",
+      "size_bytes": 13741
+    },
+    {
+      "metadata": {
+        "bundle_id": "bundle-framework-development-20260726-v002",
+        "purpose": "development"
+      },
+      "mime_type": "application/json",
+      "path": "sources/replay-rtdetr-yolo26-pilot-v1/manifest.json",
+      "registered_at": "2026-07-26T19:14:46.110819Z",
+      "role": "reproduction_source_manifest",
+      "sha256": "82c554b2ca5fbc6eb186379339c21befe97ac9ea6a3811682d8835d9086c3289",
+      "size_bytes": 18458
+    },
+    {
+      "metadata": {
+        "bundle_id": "bundle-framework-development-20260726-v002",
+        "purpose": "development"
+      },
+      "mime_type": "application/json",
+      "path": "sources/rpt-framework-validation-20260726-v002/manifest.json",
+      "registered_at": "2026-07-26T19:14:46.113592Z",
+      "role": "reproduction_source_manifest",
+      "sha256": "e1ca8f4de8d8fd319a6c0602917bde14636fe6caa63a4ffe4bbf6081f2b68a94",
+      "size_bytes": 14986
+    },
+    {
+      "metadata": {
+        "bundle_id": "bundle-framework-development-20260726-v002",
+        "purpose": "development"
+      },
+      "mime_type": "application/json",
+      "path": "sources/scenario-plan-thesis-pilot-v1/manifest.json",
+      "registered_at": "2026-07-26T19:14:46.106433Z",
+      "role": "reproduction_source_manifest",
+      "sha256": "e78c5f6fc84e7675b0ba5d82aafee196e2c449bd7e84f4f88f507d0898cf73f2",
+      "size_bytes": 3609
+    },
+    {
+      "metadata": {
+        "bundle_id": "bundle-framework-development-20260726-v002",
+        "purpose": "development"
+      },
+      "mime_type": "application/json",
+      "path": "sources/source_graph.json",
+      "registered_at": "2026-07-26T19:14:46.100232Z",
+      "role": "reproduction_source_graph",
+      "sha256": "edde09df1a075bbe639b10bff93860407edc3c74b003a3439e18df9c6464f759",
+      "size_bytes": 16757
+    }
+  ],
+  "carla": {
+    "endpoint": null,
+    "map": null,
+    "version": null
+  },
+  "environment": {
+    "packages": {
+      "carla": null,
+      "numpy": "2.5.1",
+      "opencv-python": "5.0.0.93",
+      "torch": "2.13.0",
+      "torchvision": "0.28.0",
+      "ultralytics": "8.4.106"
+    },
+    "platform": {
+      "machine": "arm64",
+      "release": "25.5.0",
+      "system": "Darwin"
+    },
+    "python": {
+      "implementation": "CPython",
+      "version": "3.12.11"
+    }
+  },
+  "experiment": null,
+  "failure": null,
+  "git": {
+    "available": true,
+    "commit": null,
+    "dirty": true
+  },
+  "invocation": {
+    "cli_args": {
+      "bundles_root": "bundles",
+      "config": "configs/reproduction/framework_development_bundle_v2.json"
+    },
+    "config": {
+      "bundle": {
+        "authors": [
+          "Hesam"
+        ],
+        "bundle_id": "bundle-framework-development-20260726-v002",
+        "commands": [
+          [
+            "uv",
+            "sync",
+            "--frozen"
+          ],
+          [
+            "uv",
+            "run",
+            "python",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tests",
+            "-p",
+            "test_*.py"
+          ],
+          [
+            "uv",
+            "run",
+            "ruff",
+            "format",
+            "--check",
+            "carla_vision",
+            "carla_yolo",
+            "tests"
+          ],
+          [
+            "uv",
+            "run",
+            "ruff",
+            "check",
+            "."
+          ],
+          [
+            "uv",
+            "run",
+            "python",
+            "-m",
+            "compileall",
+            "-q",
+            "carla_vision",
+            "carla_yolo"
+          ]
+        ],
+        "limitations": [
+          "This is a development bundle from an uncommitted dirty worktree and is not confirmatory thesis evidence.",
+          "CARLA server binaries, Unreal assets, pretrained model weights, datasets, and videos are fingerprinted by their source manifests but are not embedded in the source archive.",
+          "The live simulator endpoint and its transient actor state cannot be reconstructed from this bundle alone.",
+          "The retained pilot dataset has only three unassigned frames, so no validation-only threshold selection or generalization claim is possible.",
+          "The included v0.4 report and prior bundle are development evidence and inherit their recorded limitations."
+        ],
+        "purpose": "development",
+        "repository_root": "../..",
+        "schema_version": "1.0",
+        "source_paths": [
+          ".gitignore",
+          "README.md",
+          "analyze_run.py",
+          "audit_dataset.py",
+          "build_report.py",
+          "build_reproduction_bundle.py",
+          "carla_vision",
+          "carla_yolo",
+          "collect_dataset.py",
+          "configs",
+          "demo.py",
+          "docs",
+          "evaluate_detector.py",
+          "finalize_failure_review.py",
+          "mine_failures.py",
+          "native_collect.py",
+          "package_model.py",
+          "plan_scenarios.py",
+          "pyproject.toml",
+          "replay_models.py",
+          "select_threshold.py",
+          "tests",
+          "train_detector.py",
+          "uv.lock",
+          "verify_artifacts.py",
+          "verify_reproduction_bundle.py"
+        ],
+        "sources": [
+          {
+            "label": "Exact RGB and instance-mask pilot dataset",
+            "path": "../../datasets/ds-carla0916-town10-pilot-v001",
+            "role": "dataset",
+            "source_id": "ds-carla0916-town10-pilot-v001"
+          },
+          {
+            "label": "Pilot dataset semantic QA",
+            "path": "../../runs/ds-carla0916-town10-pilot-v001-qa",
+            "role": "dataset-qa",
+            "source_id": "ds-carla0916-town10-pilot-v001-qa"
+          },
+          {
+            "label": "Deterministic thesis scenario plan",
+            "path": "../../runs/scenario-plan-thesis-pilot-v1",
+            "role": "scenario-plan",
+            "source_id": "scenario-plan-thesis-pilot-v1"
+          },
+          {
+            "label": "Pretrained RT-DETR pilot evaluation",
+            "path": "../../runs/eval-rtdetr-pretrained-pilot-v1",
+            "role": "evaluation",
+            "source_id": "eval-rtdetr-pretrained-pilot-v1"
+          },
+          {
+            "label": "RT-DETR paired-replay child evaluation",
+            "path": "../../runs/replay-rtdetr-yolo26-pilot-v1--rtdetr-l-coco",
+            "role": "evaluation",
+            "source_id": "replay-rtdetr-yolo26-pilot-v1--rtdetr-l-coco"
+          },
+          {
+            "label": "YOLO26 paired-replay child evaluation",
+            "path": "../../runs/replay-rtdetr-yolo26-pilot-v1--yolo26n-coco",
+            "role": "evaluation",
+            "source_id": "replay-rtdetr-yolo26-pilot-v1--yolo26n-coco"
+          },
+          {
+            "label": "Paired RT-DETR and YOLO26 replay",
+            "path": "../../runs/replay-rtdetr-yolo26-pilot-v1",
+            "role": "replay",
+            "source_id": "replay-rtdetr-yolo26-pilot-v1"
+          },
+          {
+            "label": "Live RT-DETR vision-only drive evidence",
+            "path": "../../runs/framework-v0-rtdetr-live-drive",
+            "role": "other",
+            "source_id": "framework-v0-rtdetr-live-drive"
+          },
+          {
+            "label": "Live RT-DETR drive analysis",
+            "path": "../../runs/framework-v0-rtdetr-live-drive-analysis",
+            "role": "runtime-analysis",
+            "source_id": "framework-v0-rtdetr-live-drive-analysis"
+          },
+          {
+            "label": "Framework validation report release v0.4",
+            "path": "../../reports/rpt-framework-validation-20260726-v002",
+            "role": "report",
+            "source_id": "rpt-framework-validation-20260726-v002"
+          },
+          {
+            "label": "Prior standalone development bundle",
+            "path": "../../bundles/bundle-framework-development-20260726-v001",
+            "role": "other",
+            "source_id": "bundle-framework-development-20260726-v001"
+          }
+        ],
+        "title": "CARLA monocular-vision framework development reproduction bundle v0.4"
+      },
+      "object_type": "reproduction_bundle",
+      "schema_version": "1.0"
+    }
+  },
+  "references": {
+    "datasets": [],
+    "inputs": [
+      {
+        "kind": "archived_reproduction_source",
+        "manifest_sha256": "0b744356ab2b2d10f4efcb5cc7c60d8e460dec5998d501b6427ca076782409db",
+        "manifest_size_bytes": 4909,
+        "source_id": "ds-carla0916-town10-pilot-v001",
+        "source_role": "dataset"
+      },
+      {
+        "kind": "archived_reproduction_source",
+        "manifest_sha256": "de09c8e83b46054bcd4ecec1004281cc64078830cd36ed5b9dde7cb386111afd",
+        "manifest_size_bytes": 5994,
+        "source_id": "ds-carla0916-town10-pilot-v001-qa",
+        "source_role": "dataset-qa"
+      },
+      {
+        "kind": "archived_reproduction_source",
+        "manifest_sha256": "e78c5f6fc84e7675b0ba5d82aafee196e2c449bd7e84f4f88f507d0898cf73f2",
+        "manifest_size_bytes": 3609,
+        "source_id": "scenario-plan-thesis-pilot-v1",
+        "source_role": "scenario-plan"
+      },
+      {
+        "kind": "archived_reproduction_source",
+        "manifest_sha256": "cc4834a372b833e21b14d0c0206c49a66e94c0a3f97dec142ff863e93d1038db",
+        "manifest_size_bytes": 12921,
+        "source_id": "eval-rtdetr-pretrained-pilot-v1",
+        "source_role": "evaluation"
+      },
+      {
+        "kind": "archived_reproduction_source",
+        "manifest_sha256": "8b93ec2fe5ba8c824bbe12304f4681eca4c46baf697f9d212653ae34d349c8b6",
+        "manifest_size_bytes": 13768,
+        "source_id": "replay-rtdetr-yolo26-pilot-v1--rtdetr-l-coco",
+        "source_role": "evaluation"
+      },
+      {
+        "kind": "archived_reproduction_source",
+        "manifest_sha256": "b981b5d6928b2bea3a342257588da0512b74aeaded5777354feff0412069c37b",
+        "manifest_size_bytes": 13741,
+        "source_id": "replay-rtdetr-yolo26-pilot-v1--yolo26n-coco",
+        "source_role": "evaluation"
+      },
+      {
+        "kind": "archived_reproduction_source",
+        "manifest_sha256": "82c554b2ca5fbc6eb186379339c21befe97ac9ea6a3811682d8835d9086c3289",
+        "manifest_size_bytes": 18458,
+        "source_id": "replay-rtdetr-yolo26-pilot-v1",
+        "source_role": "replay"
+      },
+      {
+        "kind": "archived_reproduction_source",
+        "manifest_sha256": "eb49e06740dcfa68436538a195552bb304079a32a8a7021959a37f37d356e749",
+        "manifest_size_bytes": 3988,
+        "source_id": "framework-v0-rtdetr-live-drive",
+        "source_role": "other"
+      },
+      {
+        "kind": "archived_reproduction_source",
+        "manifest_sha256": "8828604185d9374237b0727118af57584ef2b8ef37ddcc30219ff07fcfb607e6",
+        "manifest_size_bytes": 5882,
+        "source_id": "framework-v0-rtdetr-live-drive-analysis",
+        "source_role": "runtime-analysis"
+      },
+      {
+        "kind": "archived_reproduction_source",
+        "manifest_sha256": "e1ca8f4de8d8fd319a6c0602917bde14636fe6caa63a4ffe4bbf6081f2b68a94",
+        "manifest_size_bytes": 14986,
+        "source_id": "rpt-framework-validation-20260726-v002",
+        "source_role": "report"
+      },
+      {
+        "kind": "archived_reproduction_source",
+        "manifest_sha256": "a214953f5a75684d00464dcf98fba9e4039fd7f088cb134e7e7177bd4995f7d1",
+        "manifest_size_bytes": 20829,
+        "source_id": "bundle-framework-development-20260726-v001",
+        "source_role": "other"
+      }
+    ],
+    "models": []
+  },
+  "reproducibility": {
+    "configuration": {
+      "canonicalization": "json-sort-keys-utf8-v1",
+      "identity_excluded_top_level_keys": [
+        "created_at",
+        "output_dir",
+        "output_path",
+        "run_id",
+        "runs_root",
+        "started_at"
+      ],
+      "identity_sha256": "b6cfde1dce8505b2fc9a1fa9d64baad92ebf720076c26cbab5d36f6b08dfd6f7",
+      "identity_size_bytes": 3666,
+      "resolved_sha256": "b6cfde1dce8505b2fc9a1fa9d64baad92ebf720076c26cbab5d36f6b08dfd6f7",
+      "resolved_size_bytes": 3666,
+      "sensitive_values_redacted_before_hashing": true
+    },
+    "dependency_locks": [
+      {
+        "relative_path": "uv.lock",
+        "sha256": "aff4b6db2e5686c6914488e1d15b03eb494df0f446b6febbd2cbbf72d70e77bc",
+        "size_bytes": 214690
+      }
+    ],
+    "hardware": {
+      "accelerators": {
+        "available": true,
+        "cuda": {
+          "available": false,
+          "device_count": 0,
+          "devices": [],
+          "runtime_version": null
+        },
+        "cudnn": {
+          "available": false,
+          "version": null
+        },
+        "determinism": {
+          "cudnn_benchmark": false,
+          "cudnn_deterministic": false,
+          "deterministic_algorithms": false
+        },
+        "mps": {
+          "available": true,
+          "built": true
+        },
+        "rocm_version": null,
+        "version": "2.13.0"
+      },
+      "container": {
+        "detected": false,
+        "image_digest": null
+      },
+      "cpu": {
+        "architecture": "arm64",
+        "logical_count": 8,
+        "model": "Apple M1"
+      },
+      "memory": {
+        "total_bytes": 8589934592
+      },
+      "tools": {
+        "git": "git version 2.50.1 (Apple Git-155)",
+        "python_compiler": "Clang 17.0.0 (clang-1700.0.13.3)",
+        "uv": "uv 0.11.2 (02036a8ba 2026-03-26 aarch64-apple-darwin)"
+      }
+    },
+    "schema_version": "1.0"
+  },
+  "run_id": "bundle-framework-development-20260726-v002",
+  "schema_version": "1.0",
+  "status": "success",
+  "timestamps": {
+    "created_at": "2026-07-26T19:14:45.289697Z",
+    "finished_at": "2026-07-26T19:14:46.116295Z",
+    "started_at": "2026-07-26T19:14:46.065387Z",
+    "updated_at": "2026-07-26T19:14:46.116295Z"
+  }
+}

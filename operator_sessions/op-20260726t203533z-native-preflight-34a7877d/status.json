@@ -1,0 +1,18 @@
+{
+  "created_at": "2026-07-26T20:35:34.599Z",
+  "destructive": false,
+  "error": null,
+  "expected_output": "/Users/hesam/Documents/CARLA PY/runs/native-preflight-ui-20260726-v1",
+  "expected_output_exists": true,
+  "finished_at": "2026-07-26T20:35:36.251Z",
+  "job_id": "op-20260726t203533z-native-preflight-34a7877d",
+  "kind": "native_preflight",
+  "motion_authorized": false,
+  "note": "Read-only readiness assessment: verifies the plan, endpoint, versions, PythonAPI, output ID, and manual gates.",
+  "returncode": 0,
+  "session_path": "/Users/hesam/Documents/CARLA PY/operator_sessions/op-20260726t203533z-native-preflight-34a7877d",
+  "started_at": "2026-07-26T20:35:34.602Z",
+  "status": "success",
+  "stop_requested": false,
+  "title": "Native readiness native-preflight-ui-20260726-v1"
+}

@@ -1,0 +1,7 @@
+# Runtime-only dependencies for the portable CARLA 0.9.16 native host kit.
+# The platform-specific, hash-pinned lock files are generated from this input.
+carla==0.9.16
+matplotlib==3.11.1
+msgpack==1.2.1
+numpy==2.5.1
+opencv-python==5.0.0.93

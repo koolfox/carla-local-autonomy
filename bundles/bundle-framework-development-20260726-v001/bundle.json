@@ -1,0 +1,85 @@
+{
+  "authors": [
+    "Hesam"
+  ],
+  "bundle_id": "bundle-framework-development-20260726-v001",
+  "command_count": 4,
+  "commands": {
+    "path": "commands.json",
+    "sha256": "11f3eb85396c38e664f4cced42202c656194836adcb3296b44293cbbd423fd32",
+    "size_bytes": 529
+  },
+  "configuration": {
+    "path": "bundle_config.json",
+    "sha256": "1059c458ff060cc459187e07468cca9cf8b952fa0c3f700d3503452c11f67426",
+    "size_bytes": 4070
+  },
+  "dependency_lock_count": 1,
+  "dependency_locks": [
+    {
+      "archived": {
+        "path": "environment/lockfiles/uv.lock",
+        "sha256": "aff4b6db2e5686c6914488e1d15b03eb494df0f446b6febbd2cbbf72d70e77bc",
+        "size_bytes": 214690
+      },
+      "repository_relative_path": "uv.lock"
+    }
+  ],
+  "environment": {
+    "path": "environment/environment.json",
+    "sha256": "c5722aff8137c90a22989e4cf90844801fff3a474e0c67caa0841b15b03babb8",
+    "size_bytes": 1786
+  },
+  "generation": {
+    "confirmatory_clean_git_gate": false,
+    "external_sources_required_for_bundle_verification": false,
+    "secrets_from_environment_captured": false,
+    "source_archive_format": "zip-stored-fixed-metadata-v1",
+    "source_archive_timestamp": "1980-01-01T00:00:00Z",
+    "source_symlinks_allowed": false
+  },
+  "limitations": [
+    "This is a development bundle from an uncommitted dirty worktree and is not confirmatory thesis evidence.",
+    "CARLA server binaries, Unreal assets, pretrained model weights, datasets, and videos are fingerprinted by their source manifests but are not embedded in the source archive.",
+    "The live simulator endpoint and its transient actor state cannot be reconstructed from this bundle alone.",
+    "The retained pilot dataset has only three unassigned frames, so no validation-only threshold selection or generalization claim is possible."
+  ],
+  "object_type": "reproduction_bundle_release",
+  "purpose": "development",
+  "readme": {
+    "path": "README.md",
+    "sha256": "0f0a1ed7a20e474cdeccf8ae07e4219bafcf1a6b27a5a4bbd6fa01525ee5fd90",
+    "size_bytes": 1651
+  },
+  "reproduction_script": {
+    "path": "reproduce.sh",
+    "sha256": "5f4a4431de89ac63b80827098c12cbaec1e7e9b4fd5f8722f2288146f1307c23",
+    "size_bytes": 482
+  },
+  "schema_version": "1.0",
+  "source_archive": {
+    "path": "source/source.zip",
+    "sha256": "13ab83a1f3e4d6a0f297fa8c6bea7d3d1db0b989ce154efd5b434ee8138bb97d",
+    "size_bytes": 1496470
+  },
+  "source_count": 10,
+  "source_file_count": 143,
+  "source_graph": {
+    "path": "sources/source_graph.json",
+    "sha256": "1d289c674db64b683e8702efe9bc75a713c87255d07083534482a17eb152c3e9",
+    "size_bytes": 14883
+  },
+  "source_inventory_csv": {
+    "path": "source/inventory.csv",
+    "sha256": "facaadb3930b06a4a0718451cbc24e7585b7f18e08f7c6d98a617d9b1cb78d7a",
+    "size_bytes": 15114
+  },
+  "source_inventory_json": {
+    "path": "source/inventory.json",
+    "sha256": "aaf3062f999535bb28c0a2b55f3eaf1393090729bbaba611c0661de79c8e9f19",
+    "size_bytes": 28614
+  },
+  "source_total_bytes": 1477172,
+  "status": "complete",
+  "title": "CARLA monocular-vision framework development reproduction bundle"
+}

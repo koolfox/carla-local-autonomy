@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "selection_id": "threshold-rtdetr-validation-f1-v1",
+  "title": "RT-DETR validation operating-threshold selection",
+  "purpose": "development",
+  "master_seed": 20260726,
+  "objective": "maximize_f1",
+  "target_recall": null,
+  "target_precision": null,
+  "false_positive_cost": 1.0,
+  "false_negative_cost": 4.0,
+  "tie_breaker": "highest_threshold",
+  "grid": {
+    "minimum": 0.001,
+    "maximum": 0.95,
+    "steps": 200,
+    "scale": "log"
+  },
+  "bootstrap_replicates": 10000,
+  "bootstrap_confidence": 0.95
+}

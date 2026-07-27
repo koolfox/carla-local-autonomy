@@ -1,0 +1,767 @@
+{
+  "artifacts": [
+    {
+      "metadata": {
+        "registry_id": "evidence-index-workspace-20260727-v001",
+        "source_count": 47
+      },
+      "mime_type": "application/octet-stream",
+      "path": "checksums.sha256",
+      "registered_at": "2026-07-26T21:55:19.118049Z",
+      "role": "evidence_registry_checksum_index",
+      "sha256": "e61e8dbd26199bdcd4b57b9f252fa5159a4f5829ee65c26f0a06d31dab76ea92",
+      "size_bytes": 964
+    },
+    {
+      "metadata": {
+        "registry_id": "evidence-index-workspace-20260727-v001",
+        "source_count": 47
+      },
+      "mime_type": "image/png",
+      "path": "plots/root_inventory.png",
+      "registered_at": "2026-07-26T21:55:19.119382Z",
+      "role": "evidence_registry_plot",
+      "sha256": "1a8f1a5b344c7a9c9778791537dfc1ea83d7e6dd8b8ad92c5ac018ee95bbc254",
+      "size_bytes": 36197
+    },
+    {
+      "metadata": {
+        "registry_id": "evidence-index-workspace-20260727-v001",
+        "source_count": 47
+      },
+      "mime_type": "image/svg+xml",
+      "path": "plots/root_inventory.svg",
+      "registered_at": "2026-07-26T21:55:19.120690Z",
+      "role": "evidence_registry_plot",
+      "sha256": "e2130afc2ef27397e7ad388aa0bc9e13ef8ef52aaa98acf1a8744a5ba63f5472",
+      "size_bytes": 13026
+    },
+    {
+      "metadata": {
+        "registry_id": "evidence-index-workspace-20260727-v001",
+        "source_count": 47
+      },
+      "mime_type": "image/png",
+      "path": "plots/verification_status.png",
+      "registered_at": "2026-07-26T21:55:19.121929Z",
+      "role": "evidence_registry_plot",
+      "sha256": "99db1292602df264064899f8f8de964ef9cf870a5eb65b944780d64bb68f959b",
+      "size_bytes": 37306
+    },
+    {
+      "metadata": {
+        "registry_id": "evidence-index-workspace-20260727-v001",
+        "source_count": 47
+      },
+      "mime_type": "image/svg+xml",
+      "path": "plots/verification_status.svg",
+      "registered_at": "2026-07-26T21:55:19.123207Z",
+      "role": "evidence_registry_plot",
+      "sha256": "0877b8c1950725028713b0a65e973aa88e0697abe9dbff76e7e8c481a4ba46a7",
+      "size_bytes": 9747
+    },
+    {
+      "metadata": {
+        "registry_id": "evidence-index-workspace-20260727-v001",
+        "source_count": 47
+      },
+      "mime_type": "application/json",
+      "path": "registry.json",
+      "registered_at": "2026-07-26T21:55:19.124657Z",
+      "role": "evidence_registry_release_manifest",
+      "sha256": "d2dff55dc3671717c1449f04dbe653ce61924dbbeb6b0705cd8d8f7dd9da51cd",
+      "size_bytes": 33650
+    },
+    {
+      "metadata": {
+        "registry_id": "evidence-index-workspace-20260727-v001",
+        "source_count": 47
+      },
+      "mime_type": "application/json",
+      "path": "registry_config.json",
+      "registered_at": "2026-07-26T21:55:19.126191Z",
+      "role": "evidence_registry_configuration",
+      "sha256": "2cd44490d4c8f3ffb17e61ce764693f02e20764e226bd3b1142cb486d9dd8c56",
+      "size_bytes": 2927
+    },
+    {
+      "metadata": {
+        "registry_id": "evidence-index-workspace-20260727-v001",
+        "source_count": 47
+      },
+      "mime_type": "text/markdown",
+      "path": "report.md",
+      "registered_at": "2026-07-26T21:55:19.127553Z",
+      "role": "evidence_registry_report",
+      "sha256": "e842598cf75d5cff753df3821a0d73b9a1b84939cd34551b0dcf03aa9597af18",
+      "size_bytes": 6754
+    },
+    {
+      "metadata": {
+        "registry_id": "evidence-index-workspace-20260727-v001",
+        "source_count": 47
+      },
+      "mime_type": "application/json",
+      "path": "summary.json",
+      "registered_at": "2026-07-26T21:55:19.129040Z",
+      "role": "evidence_registry_summary",
+      "sha256": "72c1629425dfffe67a0d74f60d47011166b01c95025866ff89a61c6d98ea011e",
+      "size_bytes": 53389
+    },
+    {
+      "metadata": {
+        "registry_id": "evidence-index-workspace-20260727-v001",
+        "source_count": 47
+      },
+      "mime_type": "text/csv",
+      "path": "tables/artifacts.csv",
+      "registered_at": "2026-07-26T21:55:19.130781Z",
+      "role": "evidence_registry_artifact_table",
+      "sha256": "66620aa121e03e8aa1672506a15f64524c5c5147b5a2a2a3aa73eeffd4b7bb14",
+      "size_bytes": 263861
+    },
+    {
+      "metadata": {
+        "registry_id": "evidence-index-workspace-20260727-v001",
+        "source_count": 47
+      },
+      "mime_type": "text/csv",
+      "path": "tables/failed_source_tree.csv",
+      "registered_at": "2026-07-26T21:55:19.132238Z",
+      "role": "evidence_registry_failed_source_tree",
+      "sha256": "406bcf9e91fa57410d63e241d06323b3ff5cfe8fa3a7e3f4b8586a8bab6ff386",
+      "size_bytes": 1564
+    },
+    {
+      "metadata": {
+        "registry_id": "evidence-index-workspace-20260727-v001",
+        "source_count": 47
+      },
+      "mime_type": "text/csv",
+      "path": "tables/objects.csv",
+      "registered_at": "2026-07-26T21:55:19.133540Z",
+      "role": "evidence_registry_object_table",
+      "sha256": "183b2b6ac0dea2679d0023d8dac30e41f1fa0545f0333bd7df3b5575ef8c2447",
+      "size_bytes": 12372
+    }
+  ],
+  "carla": {
+    "endpoint": null,
+    "map": null,
+    "version": null
+  },
+  "environment": {
+    "packages": {
+      "carla": null,
+      "numpy": "2.5.1",
+      "opencv-python": "5.0.0.93",
+      "torch": "2.13.0",
+      "torchvision": "0.28.0",
+      "ultralytics": "8.4.106"
+    },
+    "platform": {
+      "machine": "arm64",
+      "release": "25.5.0",
+      "system": "Darwin"
+    },
+    "python": {
+      "implementation": "CPython",
+      "version": "3.12.11"
+    }
+  },
+  "experiment": null,
+  "failure": null,
+  "git": {
+    "available": true,
+    "commit": null,
+    "dirty": true
+  },
+  "invocation": {
+    "cli_args": {
+      "registry_id": "evidence-index-workspace-20260727-v001",
+      "workspace": "."
+    },
+    "config": {
+      "generation": {
+        "carla_contacted": false,
+        "simulator_mutated": false,
+        "source_objects_modified": false
+      },
+      "object_type": "evidence_registry",
+      "registry": {
+        "canonical_roots": [
+          "datasets",
+          "runs",
+          "models",
+          "reports",
+          "bundles",
+          "native_kits",
+          "operator_sessions"
+        ],
+        "exclude_registry_objects": true,
+        "excluded_registry_paths": [],
+        "object_type": "evidence_registry",
+        "registry_id": "evidence-index-workspace-20260727-v001",
+        "schema_version": "1.0",
+        "source_paths": [
+          "bundles/bundle-framework-development-20260726-v001",
+          "bundles/bundle-framework-development-20260726-v002",
+          "bundles/bundle-framework-development-20260726-v003",
+          "bundles/bundle-framework-development-20260726-v004",
+          "bundles/bundle-framework-development-20260726-v005",
+          "bundles/bundle-framework-development-20260727-v006",
+          "bundles/bundle-framework-development-20260727-v007",
+          "datasets/ds-carla0916-town10-pilot-v001",
+          "native_kits/native-host-kit-pilot-20260727-v001",
+          "native_kits/native-host-kit-pilot-20260727-v002",
+          "native_kits/native-host-kit-pilot-20260727-v003",
+          "operator_sessions/op-20260726T194828Z-verify-d785b0f1",
+          "operator_sessions/op-20260726T194948Z-verify-e6436e1d",
+          "operator_sessions/op-20260726T195126Z-scenario_plan-e715b442",
+          "operator_sessions/op-20260726t202701z-verify-3ae1ae7a",
+          "operator_sessions/op-20260726t203533z-native-preflight-34a7877d",
+          "reports/rpt-framework-validation-20260726-v001",
+          "reports/rpt-framework-validation-20260726-v002",
+          "reports/rpt-framework-validation-20260726-v003",
+          "reports/rpt-framework-validation-20260726-v004",
+          "reports/rpt-framework-validation-20260726-v005",
+          "reports/rpt-framework-validation-20260727-v006",
+          "reports/rpt-framework-validation-20260727-v007",
+          "runs/ds-carla0916-town10-pilot-v001-qa",
+          "runs/eval-rtdetr-pretrained-pilot-v1",
+          "runs/framework-v0-live-view-smoke",
+          "runs/framework-v0-rtdetr-live-drive",
+          "runs/framework-v0-rtdetr-live-drive-analysis",
+          "runs/framework-v0-rtdetr-smoke",
+          "runs/framework-v0-yolo-smoke",
+          "runs/framework-v0.2-rtdetr-smoke",
+          "runs/framework-v0.2-rtdetr-smoke-analysis",
+          "runs/native-preflight-local-20260726-v1",
+          "runs/native-preflight-pilot-20260726-v1",
+          "runs/native-preflight-ui-20260726-v1",
+          "runs/replay-rtdetr-yolo26-pilot-v1",
+          "runs/replay-rtdetr-yolo26-pilot-v1--rtdetr-l-coco",
+          "runs/replay-rtdetr-yolo26-pilot-v1--yolo26n-coco",
+          "runs/scenario-plan-native-integration-pilot-v1",
+          "runs/scenario-plan-operator-poc-v1",
+          "runs/scenario-plan-thesis-pilot-v1",
+          "runs/shadow-rtdetr-yolo26-live-v1",
+          "runs/shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00",
+          "runs/shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00-analysis",
+          "runs/shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00",
+          "runs/shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00-analysis",
+          "runs/shadow-rtdetr-yolo26-live-v1-plan"
+        ],
+        "workspace_root": "/Users/hesam/Documents/CARLA PY"
+      },
+      "schema_version": "1.0"
+    }
+  },
+  "references": {
+    "datasets": [],
+    "inputs": [
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/bundles/bundle-framework-development-20260726-v001/manifest.json",
+        "root_kind": "bundles",
+        "sha256": "a214953f5a75684d00464dcf98fba9e4039fd7f088cb134e7e7177bd4995f7d1",
+        "size_bytes": 20829,
+        "source_id": "bundle-framework-development-20260726-v001",
+        "source_relative_path": "bundles/bundle-framework-development-20260726-v001"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/bundles/bundle-framework-development-20260726-v002/manifest.json",
+        "root_kind": "bundles",
+        "sha256": "e8864662f3df0a4893dfcf58d6d0b78b3a3e8e88221469f513f2f170e9302f24",
+        "size_bytes": 22193,
+        "source_id": "bundle-framework-development-20260726-v002",
+        "source_relative_path": "bundles/bundle-framework-development-20260726-v002"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/bundles/bundle-framework-development-20260726-v003/manifest.json",
+        "root_kind": "bundles",
+        "sha256": "c269cb7be347f443d550b472ddac487b5b4a9d255c1f9bed116188c7095a7de6",
+        "size_bytes": 18653,
+        "source_id": "bundle-framework-development-20260726-v003",
+        "source_relative_path": "bundles/bundle-framework-development-20260726-v003"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/bundles/bundle-framework-development-20260726-v004/manifest.json",
+        "root_kind": "bundles",
+        "sha256": "4adf0bcbadcaf4d3a6e55f834b03b6d97c0e3218152464c15b3424e17e4ad3cd",
+        "size_bytes": 14711,
+        "source_id": "bundle-framework-development-20260726-v004",
+        "source_relative_path": "bundles/bundle-framework-development-20260726-v004"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/bundles/bundle-framework-development-20260726-v005/manifest.json",
+        "root_kind": "bundles",
+        "sha256": "a40b44dd2076cc08dd3858ac5c526fb871d36195a1742863078c812ceb9d5581",
+        "size_bytes": 18181,
+        "source_id": "bundle-framework-development-20260726-v005",
+        "source_relative_path": "bundles/bundle-framework-development-20260726-v005"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/bundles/bundle-framework-development-20260727-v006/manifest.json",
+        "root_kind": "bundles",
+        "sha256": "d931583de4691c64f141e3f0f49f9d9f378c567c82c27b684f394c13d81d0ddc",
+        "size_bytes": 17856,
+        "source_id": "bundle-framework-development-20260727-v006",
+        "source_relative_path": "bundles/bundle-framework-development-20260727-v006"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/bundles/bundle-framework-development-20260727-v007/manifest.json",
+        "root_kind": "bundles",
+        "sha256": "b6de8f460da1c4dab4020a48c5beed086ea58d2062c42216e387c46837a34cb0",
+        "size_bytes": 17878,
+        "source_id": "bundle-framework-development-20260727-v007",
+        "source_relative_path": "bundles/bundle-framework-development-20260727-v007"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/datasets/ds-carla0916-town10-pilot-v001/manifest.json",
+        "root_kind": "datasets",
+        "sha256": "0b744356ab2b2d10f4efcb5cc7c60d8e460dec5998d501b6427ca076782409db",
+        "size_bytes": 4909,
+        "source_id": "ds-carla0916-town10-pilot-v001",
+        "source_relative_path": "datasets/ds-carla0916-town10-pilot-v001"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/native_kits/native-host-kit-pilot-20260727-v001/manifest.json",
+        "root_kind": "native_kits",
+        "sha256": "02f1f689930833d292023eb8e63b18c10ca32219e4c2b37ba59e4ba5db7c79bd",
+        "size_bytes": 7785,
+        "source_id": "native-host-kit-pilot-20260727-v001",
+        "source_relative_path": "native_kits/native-host-kit-pilot-20260727-v001"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/native_kits/native-host-kit-pilot-20260727-v002/manifest.json",
+        "root_kind": "native_kits",
+        "sha256": "22ba3a207146dc6eb0c90a14d6796b1fa692341e53248e0f90c20b0d5bacd882",
+        "size_bytes": 7785,
+        "source_id": "native-host-kit-pilot-20260727-v002",
+        "source_relative_path": "native_kits/native-host-kit-pilot-20260727-v002"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/native_kits/native-host-kit-pilot-20260727-v003/manifest.json",
+        "root_kind": "native_kits",
+        "sha256": "ec0b81358d93aa2edf71e58c6b272d7f3fcb696121356bb1ba8526c01e939165",
+        "size_bytes": 7785,
+        "source_id": "native-host-kit-pilot-20260727-v003",
+        "source_relative_path": "native_kits/native-host-kit-pilot-20260727-v003"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/operator_sessions/op-20260726T194828Z-verify-d785b0f1/manifest.json",
+        "root_kind": "operator_sessions",
+        "sha256": "7d4957e1643496f71eb764c9de416b665fc3598525bef56efe211dd2b3c6a6c0",
+        "size_bytes": 5871,
+        "source_id": "op-20260726T194828Z-verify-d785b0f1",
+        "source_relative_path": "operator_sessions/op-20260726T194828Z-verify-d785b0f1"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/operator_sessions/op-20260726T194948Z-verify-e6436e1d/manifest.json",
+        "root_kind": "operator_sessions",
+        "sha256": "1fa82f797a7aabf84463402d02e87c4f871cbeaeff027f410c672f5f5739d69d",
+        "size_bytes": 5917,
+        "source_id": "op-20260726T194948Z-verify-e6436e1d",
+        "source_relative_path": "operator_sessions/op-20260726T194948Z-verify-e6436e1d"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/operator_sessions/op-20260726T195126Z-scenario_plan-e715b442/manifest.json",
+        "root_kind": "operator_sessions",
+        "sha256": "b452f6357714917e9c64909b1ec6baa90390c5f1dd8ee3b70f5d5610c729f8e3",
+        "size_bytes": 6773,
+        "source_id": "op-20260726T195126Z-scenario_plan-e715b442",
+        "source_relative_path": "operator_sessions/op-20260726T195126Z-scenario_plan-e715b442"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/operator_sessions/op-20260726t202701z-verify-3ae1ae7a/manifest.json",
+        "root_kind": "operator_sessions",
+        "sha256": "30245d439cd3f451a06cae56473a23bb8698579f32d4d2d0ba530704c34a19e2",
+        "size_bytes": 5917,
+        "source_id": "op-20260726t202701z-verify-3ae1ae7a",
+        "source_relative_path": "operator_sessions/op-20260726t202701z-verify-3ae1ae7a"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/operator_sessions/op-20260726t203533z-native-preflight-34a7877d/manifest.json",
+        "root_kind": "operator_sessions",
+        "sha256": "6be2eef2ab87aa278d2e20b972d5211b8fe48f250b924d784cdc2254d905a217",
+        "size_bytes": 7353,
+        "source_id": "op-20260726t203533z-native-preflight-34a7877d",
+        "source_relative_path": "operator_sessions/op-20260726t203533z-native-preflight-34a7877d"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v001/manifest.json",
+        "root_kind": "reports",
+        "sha256": "3406b31b258905131132ae780b3f2d1b6f9272c665b9d5696cb107e35bc6e548",
+        "size_bytes": 10869,
+        "source_id": "rpt-framework-validation-20260726-v001",
+        "source_relative_path": "reports/rpt-framework-validation-20260726-v001"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v002/manifest.json",
+        "root_kind": "reports",
+        "sha256": "e1ca8f4de8d8fd319a6c0602917bde14636fe6caa63a4ffe4bbf6081f2b68a94",
+        "size_bytes": 14986,
+        "source_id": "rpt-framework-validation-20260726-v002",
+        "source_relative_path": "reports/rpt-framework-validation-20260726-v002"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v003/manifest.json",
+        "root_kind": "reports",
+        "sha256": "40fcb6fdf902009ab6780c865ee2f966dabdc698b241eaf7e301f2e6c5b95879",
+        "size_bytes": 15945,
+        "source_id": "rpt-framework-validation-20260726-v003",
+        "source_relative_path": "reports/rpt-framework-validation-20260726-v003"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v004/manifest.json",
+        "root_kind": "reports",
+        "sha256": "ce149284941dd190175001f0f7d48679edde384821f140bd869b144867dd373b",
+        "size_bytes": 13598,
+        "source_id": "rpt-framework-validation-20260726-v004",
+        "source_relative_path": "reports/rpt-framework-validation-20260726-v004"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v005/manifest.json",
+        "root_kind": "reports",
+        "sha256": "d6e3366bdfdc5f35fedc4c18f1ca6362025a210e6fe69d7f55948002dee314ee",
+        "size_bytes": 14638,
+        "source_id": "rpt-framework-validation-20260726-v005",
+        "source_relative_path": "reports/rpt-framework-validation-20260726-v005"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260727-v006/manifest.json",
+        "root_kind": "reports",
+        "sha256": "00d177cc0dc964254c44051c9472d831b85eda8ba32cf5bb2e19bfce91df116e",
+        "size_bytes": 13309,
+        "source_id": "rpt-framework-validation-20260727-v006",
+        "source_relative_path": "reports/rpt-framework-validation-20260727-v006"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260727-v007/manifest.json",
+        "root_kind": "reports",
+        "sha256": "01bef3ae1389f673f432dc55838e453657e31c655b4d8c26690ae6140a6f9c09",
+        "size_bytes": 13527,
+        "source_id": "rpt-framework-validation-20260727-v007",
+        "source_relative_path": "reports/rpt-framework-validation-20260727-v007"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/runs/ds-carla0916-town10-pilot-v001-qa/manifest.json",
+        "root_kind": "runs",
+        "sha256": "de09c8e83b46054bcd4ecec1004281cc64078830cd36ed5b9dde7cb386111afd",
+        "size_bytes": 5994,
+        "source_id": "ds-carla0916-town10-pilot-v001-qa",
+        "source_relative_path": "runs/ds-carla0916-town10-pilot-v001-qa"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/runs/eval-rtdetr-pretrained-pilot-v1/manifest.json",
+        "root_kind": "runs",
+        "sha256": "cc4834a372b833e21b14d0c0206c49a66e94c0a3f97dec142ff863e93d1038db",
+        "size_bytes": 12921,
+        "source_id": "eval-rtdetr-pretrained-pilot-v1",
+        "source_relative_path": "runs/eval-rtdetr-pretrained-pilot-v1"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/runs/framework-v0-live-view-smoke/manifest.json",
+        "root_kind": "runs",
+        "sha256": "eebbdcd3e7deef8b7a443df100d23e101887236babb2c31575e723384b6b8120",
+        "size_bytes": 3871,
+        "source_id": "framework-v0-live-view-smoke",
+        "source_relative_path": "runs/framework-v0-live-view-smoke"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/runs/framework-v0-rtdetr-live-drive/manifest.json",
+        "root_kind": "runs",
+        "sha256": "eb49e06740dcfa68436538a195552bb304079a32a8a7021959a37f37d356e749",
+        "size_bytes": 3988,
+        "source_id": "framework-v0-rtdetr-live-drive",
+        "source_relative_path": "runs/framework-v0-rtdetr-live-drive"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/runs/framework-v0-rtdetr-live-drive-analysis/manifest.json",
+        "root_kind": "runs",
+        "sha256": "8828604185d9374237b0727118af57584ef2b8ef37ddcc30219ff07fcfb607e6",
+        "size_bytes": 5882,
+        "source_id": "framework-v0-rtdetr-live-drive-analysis",
+        "source_relative_path": "runs/framework-v0-rtdetr-live-drive-analysis"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/runs/framework-v0-rtdetr-smoke/manifest.json",
+        "root_kind": "runs",
+        "sha256": "49bdb4a12b88390ba0fe0d2332b62114a64126f5b66ff31fe43007ce59b14474",
+        "size_bytes": 3919,
+        "source_id": "framework-v0-rtdetr-smoke",
+        "source_relative_path": "runs/framework-v0-rtdetr-smoke"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/runs/framework-v0-yolo-smoke/manifest.json",
+        "root_kind": "runs",
+        "sha256": "ba675192a5b9d1e8bf17681fd4f9637ab6d081401069d66de27066fbe1ec171c",
+        "size_bytes": 3785,
+        "source_id": "framework-v0-yolo-smoke",
+        "source_relative_path": "runs/framework-v0-yolo-smoke"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/runs/framework-v0.2-rtdetr-smoke/manifest.json",
+        "root_kind": "runs",
+        "sha256": "f5c473962eec7dab00887544bd50f05f0f79df0a319bae98644496912c3928b9",
+        "size_bytes": 4545,
+        "source_id": "framework-v0.2-rtdetr-smoke",
+        "source_relative_path": "runs/framework-v0.2-rtdetr-smoke"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/runs/framework-v0.2-rtdetr-smoke-analysis/manifest.json",
+        "root_kind": "runs",
+        "sha256": "af4dc7a8bcf7be9ceb3be3edad37ec32ebea05dee0415df88ca42387e2b4f745",
+        "size_bytes": 5839,
+        "source_id": "framework-v0.2-rtdetr-smoke-analysis",
+        "source_relative_path": "runs/framework-v0.2-rtdetr-smoke-analysis"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/runs/native-preflight-local-20260726-v1/manifest.json",
+        "root_kind": "runs",
+        "sha256": "e953858c94c1a843eca2122cf9f39243c1178682e12f8b5fcf4491bcf2fe591b",
+        "size_bytes": 6706,
+        "source_id": "native-preflight-local-20260726-v1",
+        "source_relative_path": "runs/native-preflight-local-20260726-v1"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/runs/native-preflight-pilot-20260726-v1/manifest.json",
+        "root_kind": "runs",
+        "sha256": "2bf0ad29ba006760b3fbaced137a9df2e35f9cf140d6fc497c10573d789b9bdf",
+        "size_bytes": 6737,
+        "source_id": "native-preflight-pilot-20260726-v1",
+        "source_relative_path": "runs/native-preflight-pilot-20260726-v1"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/runs/native-preflight-ui-20260726-v1/manifest.json",
+        "root_kind": "runs",
+        "sha256": "3b4202f87d229069a5b7256c4cf686553d53d2a52085638636edb5e02a321123",
+        "size_bytes": 6796,
+        "source_id": "native-preflight-ui-20260726-v1",
+        "source_relative_path": "runs/native-preflight-ui-20260726-v1"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/runs/replay-rtdetr-yolo26-pilot-v1/manifest.json",
+        "root_kind": "runs",
+        "sha256": "82c554b2ca5fbc6eb186379339c21befe97ac9ea6a3811682d8835d9086c3289",
+        "size_bytes": 18458,
+        "source_id": "replay-rtdetr-yolo26-pilot-v1",
+        "source_relative_path": "runs/replay-rtdetr-yolo26-pilot-v1"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/runs/replay-rtdetr-yolo26-pilot-v1--rtdetr-l-coco/manifest.json",
+        "root_kind": "runs",
+        "sha256": "8b93ec2fe5ba8c824bbe12304f4681eca4c46baf697f9d212653ae34d349c8b6",
+        "size_bytes": 13768,
+        "source_id": "replay-rtdetr-yolo26-pilot-v1--rtdetr-l-coco",
+        "source_relative_path": "runs/replay-rtdetr-yolo26-pilot-v1--rtdetr-l-coco"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/runs/replay-rtdetr-yolo26-pilot-v1--yolo26n-coco/manifest.json",
+        "root_kind": "runs",
+        "sha256": "b981b5d6928b2bea3a342257588da0512b74aeaded5777354feff0412069c37b",
+        "size_bytes": 13741,
+        "source_id": "replay-rtdetr-yolo26-pilot-v1--yolo26n-coco",
+        "source_relative_path": "runs/replay-rtdetr-yolo26-pilot-v1--yolo26n-coco"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/runs/scenario-plan-native-integration-pilot-v1/manifest.json",
+        "root_kind": "runs",
+        "sha256": "4b1b7414f8083c53f48261bab2d14b5fff97cd602d83c09c826ec22a21712d5e",
+        "size_bytes": 5720,
+        "source_id": "scenario-plan-native-integration-pilot-v1",
+        "source_relative_path": "runs/scenario-plan-native-integration-pilot-v1"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/runs/scenario-plan-operator-poc-v1/manifest.json",
+        "root_kind": "runs",
+        "sha256": "2db2f2d382100e8ae743e7a9fa7b1ad6006deab2bf4c60ef0692109819699f0c",
+        "size_bytes": 5770,
+        "source_id": "scenario-plan-operator-poc-v1",
+        "source_relative_path": "runs/scenario-plan-operator-poc-v1"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/runs/scenario-plan-thesis-pilot-v1/manifest.json",
+        "root_kind": "runs",
+        "sha256": "e78c5f6fc84e7675b0ba5d82aafee196e2c449bd7e84f4f88f507d0898cf73f2",
+        "size_bytes": 3609,
+        "source_id": "scenario-plan-thesis-pilot-v1",
+        "source_relative_path": "runs/scenario-plan-thesis-pilot-v1"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/runs/shadow-rtdetr-yolo26-live-v1/manifest.json",
+        "root_kind": "runs",
+        "sha256": "e0f1351856ea7c1d3b735de2e4c413718977cf17e882d1cc86f522cfb4816f73",
+        "size_bytes": 12405,
+        "source_id": "shadow-rtdetr-yolo26-live-v1",
+        "source_relative_path": "runs/shadow-rtdetr-yolo26-live-v1"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/runs/shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00/manifest.json",
+        "root_kind": "runs",
+        "sha256": "1d30b86aa4b27f207ecd9273e0346352047ac854bd06402f3e58d6aabc4b91b3",
+        "size_bytes": 9113,
+        "source_id": "shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00",
+        "source_relative_path": "runs/shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/runs/shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00-analysis/manifest.json",
+        "root_kind": "runs",
+        "sha256": "745c207f2f229620e628e3d85b3b2817f6602cccefe53defa2c754473d536a2e",
+        "size_bytes": 8145,
+        "source_id": "shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00-analysis",
+        "source_relative_path": "runs/shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00-analysis"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/runs/shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00/manifest.json",
+        "root_kind": "runs",
+        "sha256": "db70ebf8b919380eeb352fbaf9582cf5f7d037313ea3c7d8b9ec8e393a4e292e",
+        "size_bytes": 9100,
+        "source_id": "shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00",
+        "source_relative_path": "runs/shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/runs/shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00-analysis/manifest.json",
+        "root_kind": "runs",
+        "sha256": "f423b915d7d0ea4be4eece0c3cbb62323c7f4ba88907f4b5fc9f02d1a97b7135",
+        "size_bytes": 8133,
+        "source_id": "shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00-analysis",
+        "source_relative_path": "runs/shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00-analysis"
+      },
+      {
+        "kind": "evidence_registry_source_manifest",
+        "path": "/Users/hesam/Documents/CARLA PY/runs/shadow-rtdetr-yolo26-live-v1-plan/manifest.json",
+        "root_kind": "runs",
+        "sha256": "1136dbc532780c9d2566e6e2d805abd2e4aa6883a111eeac16713a6f3f03dc55",
+        "size_bytes": 9755,
+        "source_id": "shadow-rtdetr-yolo26-live-v1-plan",
+        "source_relative_path": "runs/shadow-rtdetr-yolo26-live-v1-plan"
+      }
+    ],
+    "models": []
+  },
+  "reproducibility": {
+    "configuration": {
+      "canonicalization": "json-sort-keys-utf8-v1",
+      "identity_excluded_top_level_keys": [
+        "created_at",
+        "output_dir",
+        "output_path",
+        "run_id",
+        "runs_root",
+        "started_at"
+      ],
+      "identity_sha256": "cf06e98fe0d15e41e4cb4eba9c0118150bf2f4dbb18acae6dccc45974877ca81",
+      "identity_size_bytes": 2784,
+      "resolved_sha256": "cf06e98fe0d15e41e4cb4eba9c0118150bf2f4dbb18acae6dccc45974877ca81",
+      "resolved_size_bytes": 2784,
+      "sensitive_values_redacted_before_hashing": true
+    },
+    "dependency_locks": [
+      {
+        "relative_path": "uv.lock",
+        "sha256": "e9d1cf31140b82558e1e47a9caca8b0a1e5448ddbe5a7aafff59b68dc182e5cb",
+        "size_bytes": 218427
+      }
+    ],
+    "hardware": {
+      "accelerators": {
+        "available": true,
+        "cuda": {
+          "available": false,
+          "device_count": 0,
+          "devices": [],
+          "runtime_version": null
+        },
+        "cudnn": {
+          "available": false,
+          "version": null
+        },
+        "determinism": {
+          "cudnn_benchmark": false,
+          "cudnn_deterministic": false,
+          "deterministic_algorithms": false
+        },
+        "mps": {
+          "available": true,
+          "built": true
+        },
+        "rocm_version": null,
+        "version": "2.13.0"
+      },
+      "container": {
+        "detected": false,
+        "image_digest": null
+      },
+      "cpu": {
+        "architecture": "arm64",
+        "logical_count": 8,
+        "model": "Apple M1"
+      },
+      "memory": {
+        "total_bytes": 8589934592
+      },
+      "tools": {
+        "git": "git version 2.50.1 (Apple Git-155)",
+        "python_compiler": "Clang 17.0.0 (clang-1700.0.13.3)",
+        "uv": "uv 0.11.2 (02036a8ba 2026-03-26 aarch64-apple-darwin)"
+      }
+    },
+    "schema_version": "1.0"
+  },
+  "run_id": "evidence-index-workspace-20260727-v001",
+  "schema_version": "1.0",
+  "status": "success",
+  "timestamps": {
+    "created_at": "2026-07-26T21:55:18.040556Z",
+    "finished_at": "2026-07-26T21:55:19.134393Z",
+    "started_at": "2026-07-26T21:55:19.115062Z",
+    "updated_at": "2026-07-26T21:55:19.134393Z"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "kind": "native_preflight",
+  "parameters": {
+    "carla_python_api": "",
+    "confirm_exclusive_tick_owner": false,
+    "confirm_world_reload": false,
+    "dataset_id": "ds-carla0916-native-integration-v001",
+    "host": "172.20.10.7",
+    "max_episodes": 1,
+    "partition": "train",
+    "port": 2000,
+    "run_id": "native-preflight-ui-20260726-v1",
+    "scenario_plan": "runs/scenario-plan-thesis-pilot-v1",
+    "timeout": 3
+  },
+  "schema_version": "1.0"
+}

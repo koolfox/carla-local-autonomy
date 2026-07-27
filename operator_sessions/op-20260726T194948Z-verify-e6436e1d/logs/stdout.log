@@ -1,0 +1,39 @@
+{
+  "artifact_bytes": 400154,
+  "artifact_count": 11,
+  "checksum_index_count": 1,
+  "checksum_index_entries": 10,
+  "deep_verification": {
+    "kind": "report",
+    "metric_row_count": 54,
+    "purpose": "development",
+    "report_id": "rpt-framework-validation-20260726-v003",
+    "source_count": 7
+  },
+  "external_reference_count": 7,
+  "git": {
+    "available": true,
+    "commit": null,
+    "dirty": true
+  },
+  "manifest": {
+    "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v003/manifest.json",
+    "sha256": "40fcb6fdf902009ab6780c865ee2f966dabdc698b241eaf7e301f2e6c5b95879",
+    "size_bytes": 15945
+  },
+  "role_counts": {
+    "report_checksum_index": 1,
+    "report_configuration": 1,
+    "report_document": 1,
+    "report_metric_table": 1,
+    "report_plot": 4,
+    "report_release_manifest": 1,
+    "report_source_artifact_table": 1,
+    "report_source_inventory": 1
+  },
+  "root": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v003",
+  "run_id": "rpt-framework-validation-20260726-v003",
+  "schema_version": "1.0",
+  "status": "success",
+  "unregistered_file_count": 0
+}

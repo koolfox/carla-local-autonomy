@@ -1,0 +1,159 @@
+{
+  "authors": [
+    "Hesam"
+  ],
+  "bundle_id": "bundle-framework-development-20260726-v002",
+  "commands": [
+    [
+      "uv",
+      "sync",
+      "--frozen"
+    ],
+    [
+      "uv",
+      "run",
+      "python",
+      "-m",
+      "unittest",
+      "discover",
+      "-s",
+      "tests",
+      "-p",
+      "test_*.py"
+    ],
+    [
+      "uv",
+      "run",
+      "ruff",
+      "format",
+      "--check",
+      "carla_vision",
+      "carla_yolo",
+      "tests"
+    ],
+    [
+      "uv",
+      "run",
+      "ruff",
+      "check",
+      "."
+    ],
+    [
+      "uv",
+      "run",
+      "python",
+      "-m",
+      "compileall",
+      "-q",
+      "carla_vision",
+      "carla_yolo"
+    ]
+  ],
+  "limitations": [
+    "This is a development bundle from an uncommitted dirty worktree and is not confirmatory thesis evidence.",
+    "CARLA server binaries, Unreal assets, pretrained model weights, datasets, and videos are fingerprinted by their source manifests but are not embedded in the source archive.",
+    "The live simulator endpoint and its transient actor state cannot be reconstructed from this bundle alone.",
+    "The retained pilot dataset has only three unassigned frames, so no validation-only threshold selection or generalization claim is possible.",
+    "The included v0.4 report and prior bundle are development evidence and inherit their recorded limitations."
+  ],
+  "purpose": "development",
+  "repository_root": "../..",
+  "schema_version": "1.0",
+  "source_paths": [
+    ".gitignore",
+    "README.md",
+    "analyze_run.py",
+    "audit_dataset.py",
+    "build_report.py",
+    "build_reproduction_bundle.py",
+    "carla_vision",
+    "carla_yolo",
+    "collect_dataset.py",
+    "configs",
+    "demo.py",
+    "docs",
+    "evaluate_detector.py",
+    "finalize_failure_review.py",
+    "mine_failures.py",
+    "native_collect.py",
+    "package_model.py",
+    "plan_scenarios.py",
+    "pyproject.toml",
+    "replay_models.py",
+    "select_threshold.py",
+    "tests",
+    "train_detector.py",
+    "uv.lock",
+    "verify_artifacts.py",
+    "verify_reproduction_bundle.py"
+  ],
+  "sources": [
+    {
+      "label": "Exact RGB and instance-mask pilot dataset",
+      "path": "../../datasets/ds-carla0916-town10-pilot-v001",
+      "role": "dataset",
+      "source_id": "ds-carla0916-town10-pilot-v001"
+    },
+    {
+      "label": "Pilot dataset semantic QA",
+      "path": "../../runs/ds-carla0916-town10-pilot-v001-qa",
+      "role": "dataset-qa",
+      "source_id": "ds-carla0916-town10-pilot-v001-qa"
+    },
+    {
+      "label": "Deterministic thesis scenario plan",
+      "path": "../../runs/scenario-plan-thesis-pilot-v1",
+      "role": "scenario-plan",
+      "source_id": "scenario-plan-thesis-pilot-v1"
+    },
+    {
+      "label": "Pretrained RT-DETR pilot evaluation",
+      "path": "../../runs/eval-rtdetr-pretrained-pilot-v1",
+      "role": "evaluation",
+      "source_id": "eval-rtdetr-pretrained-pilot-v1"
+    },
+    {
+      "label": "RT-DETR paired-replay child evaluation",
+      "path": "../../runs/replay-rtdetr-yolo26-pilot-v1--rtdetr-l-coco",
+      "role": "evaluation",
+      "source_id": "replay-rtdetr-yolo26-pilot-v1--rtdetr-l-coco"
+    },
+    {
+      "label": "YOLO26 paired-replay child evaluation",
+      "path": "../../runs/replay-rtdetr-yolo26-pilot-v1--yolo26n-coco",
+      "role": "evaluation",
+      "source_id": "replay-rtdetr-yolo26-pilot-v1--yolo26n-coco"
+    },
+    {
+      "label": "Paired RT-DETR and YOLO26 replay",
+      "path": "../../runs/replay-rtdetr-yolo26-pilot-v1",
+      "role": "replay",
+      "source_id": "replay-rtdetr-yolo26-pilot-v1"
+    },
+    {
+      "label": "Live RT-DETR vision-only drive evidence",
+      "path": "../../runs/framework-v0-rtdetr-live-drive",
+      "role": "other",
+      "source_id": "framework-v0-rtdetr-live-drive"
+    },
+    {
+      "label": "Live RT-DETR drive analysis",
+      "path": "../../runs/framework-v0-rtdetr-live-drive-analysis",
+      "role": "runtime-analysis",
+      "source_id": "framework-v0-rtdetr-live-drive-analysis"
+    },
+    {
+      "label": "Framework validation report release v0.4",
+      "path": "../../reports/rpt-framework-validation-20260726-v002",
+      "role": "report",
+      "source_id": "rpt-framework-validation-20260726-v002"
+    },
+    {
+      "label": "Prior standalone development bundle",
+      "path": "../../bundles/bundle-framework-development-20260726-v001",
+      "role": "other",
+      "source_id": "bundle-framework-development-20260726-v001"
+    }
+  ],
+  "title": "CARLA monocular-vision framework development reproduction bundle v0.4"
+}

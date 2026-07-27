@@ -1,0 +1,336 @@
+{
+  "artifacts": [
+    {
+      "metadata": {
+        "frame_source": "detector_synchronized"
+      },
+      "mime_type": "image/png",
+      "path": "images/latest_overlay.png",
+      "registered_at": "2026-07-26T19:27:51.122008Z",
+      "role": "latest_overlay",
+      "sha256": "b241910c458ae5d0040d84948fe632b9b30ef1aab2db02f471af10b4d82ff234",
+      "size_bytes": 400091
+    },
+    {
+      "metadata": {
+        "schema_version": "1.0"
+      },
+      "mime_type": "application/octet-stream",
+      "path": "logs/detections.jsonl",
+      "registered_at": "2026-07-26T19:27:51.123266Z",
+      "role": "detections_jsonl",
+      "sha256": "e63485b2fc92d07a5069c9cfaaf97be0da77b87832eee3a23eb5bdd08bef02d0",
+      "size_bytes": 252745
+    },
+    {
+      "metadata": {
+        "actuation_applied": false,
+        "schema_version": "1.0"
+      },
+      "mime_type": "application/octet-stream",
+      "path": "logs/policy_shadow.jsonl",
+      "registered_at": "2026-07-26T19:27:51.124366Z",
+      "role": "vision_shadow_proposals",
+      "sha256": "c7d0e5eabadb44e4e018bcb45fa65e082583062a954d65f29ac740210632406d",
+      "size_bytes": 72976
+    },
+    {
+      "metadata": {
+        "schema_version": "1.0",
+        "status": "pass"
+      },
+      "mime_type": "application/json",
+      "path": "policy_input_audit.json",
+      "registered_at": "2026-07-26T19:27:51.125278Z",
+      "role": "vision_policy_input_audit",
+      "sha256": "13ea679ddca578742848823dc931d8ea625b660ab19d34492a26f348199aa8f6",
+      "size_bytes": 1232
+    },
+    {
+      "metadata": {
+        "status": "success"
+      },
+      "mime_type": "application/json",
+      "path": "summary.json",
+      "registered_at": "2026-07-26T19:27:51.126403Z",
+      "role": "run_summary",
+      "sha256": "ad86ddb3b08360e2e2d818850e8f204ab21a8313dd55be7d6d9eda7bfec54cdd",
+      "size_bytes": 4533
+    },
+    {
+      "metadata": {
+        "dropped": 0,
+        "first_sequence": 26,
+        "last_sequence": 104,
+        "submitted": 73,
+        "written": 73
+      },
+      "mime_type": "video/mp4",
+      "path": "video/overlay.mp4",
+      "registered_at": "2026-07-26T19:27:51.120423Z",
+      "role": "annotated_video",
+      "sha256": "f26ac70e45afa550492341ae58d0b99b4629e8e1db05021456b708b84d47588a",
+      "size_bytes": 2163714
+    }
+  ],
+  "carla": {
+    "endpoint": {
+      "host": "172.20.10.7",
+      "port": 2000
+    },
+    "map": "Carla/Maps/Town10HD_Opt",
+    "version": "0.9.16"
+  },
+  "environment": {
+    "packages": {
+      "carla": null,
+      "numpy": "2.5.1",
+      "opencv-python": "5.0.0.93",
+      "torch": "2.13.0",
+      "torchvision": "0.28.0",
+      "ultralytics": "8.4.106"
+    },
+    "platform": {
+      "machine": "arm64",
+      "release": "25.5.0",
+      "system": "Darwin"
+    },
+    "python": {
+      "implementation": "CPython",
+      "version": "3.12.11"
+    }
+  },
+  "experiment": null,
+  "failure": null,
+  "git": {
+    "available": true,
+    "commit": null,
+    "dirty": true
+  },
+  "invocation": {
+    "cli_args": [
+      "--host",
+      "172.20.10.7",
+      "--port",
+      "2000",
+      "--vehicle-id",
+      "24",
+      "--camera-id",
+      "25",
+      "--resolution",
+      "640x384",
+      "--camera-fps",
+      "10.0",
+      "--camera-fov",
+      "90.0",
+      "--duration",
+      "12.0",
+      "--max-stale-seconds",
+      "0.75",
+      "--control",
+      "teacher",
+      "--view",
+      "split",
+      "--runs-root",
+      "/Users/hesam/Documents/CARLA PY/runs",
+      "--run-id",
+      "shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00",
+      "--device",
+      "mps",
+      "--confidence",
+      "0.2",
+      "--shadow-policy",
+      "hazard-stop",
+      "--policy-device",
+      "cpu",
+      "--policy-options",
+      "{\"close_bottom\":0.72,\"confidence\":0.35,\"corridor_left\":0.3,\"corridor_right\":0.7,\"cruise_throttle\":0.15}",
+      "--expected-map",
+      "Town10HD_Opt",
+      "--detector",
+      "rtdetr",
+      "--image-size",
+      "640",
+      "--weights",
+      "/Users/hesam/Documents/CARLA PY/rtdetr-l.pt"
+    ],
+    "config": {
+      "camera_fov": 90.0,
+      "camera_fps": 10.0,
+      "camera_id": 25,
+      "confidence": 0.2,
+      "control": "teacher",
+      "control_mode": "teacher",
+      "cruise_speed": 2.5,
+      "detector": "rtdetr",
+      "detector_config": {
+        "backend": "rtdetr",
+        "confidence": 0.2,
+        "device": "mps",
+        "factory": null,
+        "image_size": 640,
+        "options": {},
+        "weights": "/Users/hesam/Documents/CARLA PY/rtdetr-l.pt"
+      },
+      "detector_factory": null,
+      "device": "mps",
+      "drive": false,
+      "duration": 12.0,
+      "expected_map": "Town10HD_Opt",
+      "host": "172.20.10.7",
+      "image_size": 640,
+      "max_stale_seconds": 0.75,
+      "model_package": null,
+      "no_video": false,
+      "policy_checkpoint": null,
+      "policy_device": "cpu",
+      "policy_factory": null,
+      "policy_options": {
+        "close_bottom": 0.72,
+        "confidence": 0.35,
+        "corridor_left": 0.3,
+        "corridor_right": 0.7,
+        "cruise_throttle": 0.15
+      },
+      "port": 2000,
+      "resolution": [
+        640,
+        384
+      ],
+      "run_id": "shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00",
+      "runs_root": "/Users/hesam/Documents/CARLA PY/runs",
+      "runtime_sensor_contract": "front_monocular_rgb_only",
+      "shadow_policy": {
+        "backend": "hazard-stop",
+        "checkpoint": null,
+        "device": "cpu",
+        "factory": null,
+        "options": {
+          "close_bottom": 0.72,
+          "confidence": 0.35,
+          "corridor_left": 0.3,
+          "corridor_right": 0.7,
+          "cruise_throttle": 0.15
+        }
+      },
+      "vehicle_id": 24,
+      "video_fps": null,
+      "view": "split",
+      "weights": "/Users/hesam/Documents/CARLA PY/rtdetr-l.pt"
+    }
+  },
+  "references": {
+    "datasets": [],
+    "inputs": [],
+    "models": [
+      {
+        "backend": "rtdetr",
+        "factory": null,
+        "weights": "/Users/hesam/Documents/CARLA PY/rtdetr-l.pt"
+      },
+      {
+        "actuation_authorized": false,
+        "configuration": {
+          "backend": "hazard-stop",
+          "checkpoint": null,
+          "device": "cpu",
+          "factory": null,
+          "options": {
+            "close_bottom": 0.72,
+            "confidence": 0.35,
+            "corridor_left": 0.3,
+            "corridor_right": 0.7,
+            "cruise_throttle": 0.15
+          }
+        },
+        "kind": "vision_shadow_policy",
+        "runtime_sensor_contract": "front_monocular_rgb_only"
+      },
+      {
+        "backend": "ultralytics-rtdetr",
+        "kind": "resolved_weights",
+        "path": "/Users/hesam/Documents/CARLA PY/rtdetr-l.pt",
+        "sha256": "6de60b10d4bc566f00cda0f5b4d64afe4b66d48dc9695d2171effb7859d8e73f",
+        "size_bytes": 66511432
+      }
+    ]
+  },
+  "reproducibility": {
+    "configuration": {
+      "canonicalization": "json-sort-keys-utf8-v1",
+      "identity_excluded_top_level_keys": [
+        "created_at",
+        "output_dir",
+        "output_path",
+        "run_id",
+        "runs_root",
+        "started_at"
+      ],
+      "identity_sha256": "afa9e3262d039f8435532de2f354cbb7679a5083479d190dc7edb0bef9914d54",
+      "identity_size_bytes": 1111,
+      "resolved_sha256": "2b322b8d347b0f5e1eb470f4261ea4f19f5fa4ec1ed1e72c01371068870004e8",
+      "resolved_size_bytes": 1228,
+      "sensitive_values_redacted_before_hashing": true
+    },
+    "dependency_locks": [
+      {
+        "relative_path": "uv.lock",
+        "sha256": "a2377ea1eb77f0d310237bb3c7e9aa757cd23fae6fa1bd059d5646fc3d306f61",
+        "size_bytes": 218427
+      }
+    ],
+    "hardware": {
+      "accelerators": {
+        "available": true,
+        "cuda": {
+          "available": false,
+          "device_count": 0,
+          "devices": [],
+          "runtime_version": null
+        },
+        "cudnn": {
+          "available": false,
+          "version": null
+        },
+        "determinism": {
+          "cudnn_benchmark": false,
+          "cudnn_deterministic": false,
+          "deterministic_algorithms": false
+        },
+        "mps": {
+          "available": true,
+          "built": true
+        },
+        "rocm_version": null,
+        "version": "2.13.0"
+      },
+      "container": {
+        "detected": false,
+        "image_digest": null
+      },
+      "cpu": {
+        "architecture": "arm64",
+        "logical_count": 8,
+        "model": "Apple M1"
+      },
+      "memory": {
+        "total_bytes": 8589934592
+      },
+      "tools": {
+        "git": "git version 2.50.1 (Apple Git-155)",
+        "python_compiler": "Clang 17.0.0 (clang-1700.0.13.3)",
+        "uv": "uv 0.11.2 (02036a8ba 2026-03-26 aarch64-apple-darwin)"
+      }
+    },
+    "schema_version": "1.0"
+  },
+  "run_id": "shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00",
+  "schema_version": "1.0",
+  "status": "success",
+  "timestamps": {
+    "created_at": "2026-07-26T19:27:32.382063Z",
+    "finished_at": "2026-07-26T19:27:51.127048Z",
+    "started_at": "2026-07-26T19:27:33.060495Z",
+    "updated_at": "2026-07-26T19:27:51.127048Z"
+  }
+}

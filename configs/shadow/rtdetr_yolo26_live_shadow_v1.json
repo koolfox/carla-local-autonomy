@@ -1,0 +1,79 @@
+{
+  "camera_fov": 90.0,
+  "camera_fps": 10.0,
+  "camera_id": 25,
+  "cells": [
+    {
+      "cell_id": "rtdetr-l-hazard-stop",
+      "detector": {
+        "backend": "rtdetr",
+        "confidence": 0.2,
+        "device": "mps",
+        "factory": null,
+        "image_size": 640,
+        "model_package": null,
+        "weights": "../../rtdetr-l.pt"
+      },
+      "label": "RT-DETR-L with RGB hazard-stop shadow",
+      "policy": {
+        "backend": "hazard-stop",
+        "checkpoint": null,
+        "device": "cpu",
+        "factory": null,
+        "options": {
+          "close_bottom": 0.72,
+          "confidence": 0.35,
+          "corridor_left": 0.3,
+          "corridor_right": 0.7,
+          "cruise_throttle": 0.15
+        }
+      },
+      "repetitions": 1
+    },
+    {
+      "cell_id": "yolo26n-hazard-stop",
+      "detector": {
+        "backend": "yolo",
+        "confidence": 0.05,
+        "device": "mps",
+        "factory": null,
+        "image_size": 640,
+        "model_package": null,
+        "weights": "../../yolo26n.pt"
+      },
+      "label": "YOLO26n with RGB hazard-stop shadow",
+      "policy": {
+        "backend": "hazard-stop",
+        "checkpoint": null,
+        "device": "cpu",
+        "factory": null,
+        "options": {
+          "close_bottom": 0.72,
+          "confidence": 0.35,
+          "corridor_left": 0.3,
+          "corridor_right": 0.7,
+          "cruise_throttle": 0.15
+        }
+      },
+      "repetitions": 1
+    }
+  ],
+  "continue_on_failure": true,
+  "control": "teacher",
+  "duration_seconds": 12.0,
+  "expected_map": "Town10HD_Opt",
+  "host": "172.20.10.7",
+  "matrix_id": "shadow-rtdetr-yolo26-live-v1",
+  "max_stale_seconds": 0.75,
+  "port": 2000,
+  "purpose": "development",
+  "record_video": true,
+  "resolution": [
+    640,
+    384
+  ],
+  "schema_version": "1.0",
+  "title": "RT-DETR and YOLO26 live RGB-only policy shadow matrix",
+  "vehicle_id": 24,
+  "view": "split"
+}

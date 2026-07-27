@@ -1,0 +1,210 @@
+{
+  "artifacts": [
+    {
+      "metadata": {
+        "job_id": "op-20260726T194828Z-verify-d785b0f1",
+        "job_kind": "verify"
+      },
+      "mime_type": "application/json",
+      "path": "command.json",
+      "registered_at": "2026-07-26T19:48:30.178593Z",
+      "role": "operator_command_plan",
+      "sha256": "573e1a79e479221cacfc471a393e2268cd9dcd5fcdad8b8430cd91baf4cc7a44",
+      "size_bytes": 472
+    },
+    {
+      "metadata": {
+        "job_id": "op-20260726T194828Z-verify-d785b0f1",
+        "job_kind": "verify"
+      },
+      "mime_type": "text/plain",
+      "path": "logs/stderr.log",
+      "registered_at": "2026-07-26T19:48:30.180793Z",
+      "role": "operator_stderr_log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size_bytes": 0
+    },
+    {
+      "metadata": {
+        "job_id": "op-20260726T194828Z-verify-d785b0f1",
+        "job_kind": "verify"
+      },
+      "mime_type": "text/plain",
+      "path": "logs/stdout.log",
+      "registered_at": "2026-07-26T19:48:30.179871Z",
+      "role": "operator_stdout_log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size_bytes": 0
+    },
+    {
+      "metadata": {
+        "job_id": "op-20260726T194828Z-verify-d785b0f1",
+        "job_kind": "verify"
+      },
+      "mime_type": "application/json",
+      "path": "request.json",
+      "registered_at": "2026-07-26T19:48:30.177506Z",
+      "role": "operator_job_request",
+      "sha256": "3503a7e4b3f7c32bee3ca5495119404b759017fe241297492c73e213e4051e38",
+      "size_bytes": 181
+    },
+    {
+      "metadata": {
+        "job_id": "op-20260726T194828Z-verify-d785b0f1",
+        "job_kind": "verify"
+      },
+      "mime_type": "application/json",
+      "path": "status.json",
+      "registered_at": "2026-07-26T19:48:30.179243Z",
+      "role": "operator_job_status",
+      "sha256": "25119e1d868ccef33ef003a1def2948a8f1707961db14c680749551ae37085f1",
+      "size_bytes": 650
+    }
+  ],
+  "carla": {
+    "endpoint": null,
+    "map": null,
+    "version": null
+  },
+  "environment": {
+    "packages": {
+      "carla": null,
+      "numpy": "2.5.1",
+      "opencv-python": "5.0.0.93",
+      "torch": "2.13.0",
+      "torchvision": "0.28.0",
+      "ultralytics": "8.4.106"
+    },
+    "platform": {
+      "machine": "arm64",
+      "release": "25.5.0",
+      "system": "Darwin"
+    },
+    "python": {
+      "implementation": "CPython",
+      "version": "3.12.11"
+    }
+  },
+  "experiment": null,
+  "failure": null,
+  "git": {
+    "available": true,
+    "commit": null,
+    "dirty": true
+  },
+  "invocation": {
+    "cli_args": [],
+    "config": {
+      "command_plan": {
+        "command": [
+          "/Users/hesam/Documents/CARLA PY/.venv/bin/python3",
+          "-m",
+          "carla_vision.verification",
+          "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v003",
+          "--reject-unregistered"
+        ],
+        "destructive": false,
+        "expected_output": null,
+        "kind": "verify",
+        "motion_authorized": false,
+        "note": "Verification is read-only and checks registered hashes and semantic contracts.",
+        "title": "Verify 1 research object(s)"
+      },
+      "object_type": "operator_session",
+      "request": {
+        "kind": "verify",
+        "parameters": {
+          "allow_non_success": false,
+          "paths": [
+            "reports/rpt-framework-validation-20260726-v003"
+          ]
+        },
+        "schema_version": "1.0"
+      },
+      "schema_version": "1.0"
+    }
+  },
+  "references": {
+    "datasets": [],
+    "inputs": [],
+    "models": []
+  },
+  "reproducibility": {
+    "configuration": {
+      "canonicalization": "json-sort-keys-utf8-v1",
+      "identity_excluded_top_level_keys": [
+        "created_at",
+        "output_dir",
+        "output_path",
+        "run_id",
+        "runs_root",
+        "started_at"
+      ],
+      "identity_sha256": "79dc07fbd35de747f1e5ba67556c8cc9080ac8b931ccbaff3380988c889eac6d",
+      "identity_size_bytes": 638,
+      "resolved_sha256": "79dc07fbd35de747f1e5ba67556c8cc9080ac8b931ccbaff3380988c889eac6d",
+      "resolved_size_bytes": 638,
+      "sensitive_values_redacted_before_hashing": true
+    },
+    "dependency_locks": [
+      {
+        "relative_path": "uv.lock",
+        "sha256": "cb1237c7e3f6e04d7b98f435c139bfd9e69a17284e4280cd959ca836880eb76e",
+        "size_bytes": 218427
+      }
+    ],
+    "hardware": {
+      "accelerators": {
+        "available": true,
+        "cuda": {
+          "available": false,
+          "device_count": 0,
+          "devices": [],
+          "runtime_version": null
+        },
+        "cudnn": {
+          "available": false,
+          "version": null
+        },
+        "determinism": {
+          "cudnn_benchmark": false,
+          "cudnn_deterministic": false,
+          "deterministic_algorithms": false
+        },
+        "mps": {
+          "available": true,
+          "built": true
+        },
+        "rocm_version": null,
+        "version": "2.13.0"
+      },
+      "container": {
+        "detected": false,
+        "image_digest": null
+      },
+      "cpu": {
+        "architecture": "arm64",
+        "logical_count": 8,
+        "model": "Apple M1"
+      },
+      "memory": {
+        "total_bytes": 8589934592
+      },
+      "tools": {
+        "git": "git version 2.50.1 (Apple Git-155)",
+        "python_compiler": "Clang 17.0.0 (clang-1700.0.13.3)",
+        "uv": "uv 0.11.2 (02036a8ba 2026-03-26 aarch64-apple-darwin)"
+      }
+    },
+    "schema_version": "1.0"
+  },
+  "run_id": "op-20260726T194828Z-verify-d785b0f1",
+  "schema_version": "1.0",
+  "status": "success",
+  "timestamps": {
+    "created_at": "2026-07-26T19:48:28.765115Z",
+    "finished_at": "2026-07-26T19:48:30.181376Z",
+    "started_at": "2026-07-26T19:48:29.757976Z",
+    "updated_at": "2026-07-26T19:48:30.181376Z"
+  }
+}

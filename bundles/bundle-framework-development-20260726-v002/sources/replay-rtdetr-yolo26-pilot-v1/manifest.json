@@ -1,0 +1,549 @@
+{
+  "artifacts": [
+    {
+      "metadata": {
+        "model_count": 2,
+        "replay_id": "replay-rtdetr-yolo26-pilot-v1",
+        "sample_count": 3
+      },
+      "mime_type": "application/octet-stream",
+      "path": "checksums.sha256",
+      "registered_at": "2026-07-26T18:40:35.529011Z",
+      "role": "replay_checksum_index",
+      "sha256": "56dfd8f701f061733e140b4651fb103c11f15ce8a1e4c7e53f7b1f682be2b0a0",
+      "size_bytes": 1740
+    },
+    {
+      "metadata": {
+        "model_count": 2,
+        "replay_id": "replay-rtdetr-yolo26-pilot-v1",
+        "sample_count": 3
+      },
+      "mime_type": "application/json",
+      "path": "child_runs.json",
+      "registered_at": "2026-07-26T18:40:35.520409Z",
+      "role": "replay_child_evaluations",
+      "sha256": "61265fa34b3baaaae4195cf55bf9e6e53928b95827a4c03d67484fb007d5b074",
+      "size_bytes": 1215
+    },
+    {
+      "metadata": {
+        "model_count": 2,
+        "replay_id": "replay-rtdetr-yolo26-pilot-v1",
+        "sample_count": 3
+      },
+      "mime_type": "application/json",
+      "path": "paired_bootstrap.json",
+      "registered_at": "2026-07-26T18:40:35.524522Z",
+      "role": "replay_paired_bootstrap",
+      "sha256": "82ffac4e7cf649022f5a0bf88aa0b0894e68de509f28ee0f11c1915700098e43",
+      "size_bytes": 2743
+    },
+    {
+      "metadata": {
+        "model_count": 2,
+        "replay_id": "replay-rtdetr-yolo26-pilot-v1",
+        "sample_count": 3
+      },
+      "mime_type": "image/png",
+      "path": "plots/accuracy_comparison.png",
+      "registered_at": "2026-07-26T18:40:35.529818Z",
+      "role": "replay_plot",
+      "sha256": "2e67fbf070e754f257a7e167db99d9f17ea0286c2f0bbfd85e6c5ef080dcfbc7",
+      "size_bytes": 43734
+    },
+    {
+      "metadata": {
+        "model_count": 2,
+        "replay_id": "replay-rtdetr-yolo26-pilot-v1",
+        "sample_count": 3
+      },
+      "mime_type": "image/svg+xml",
+      "path": "plots/accuracy_comparison.svg",
+      "registered_at": "2026-07-26T18:40:35.530597Z",
+      "role": "replay_plot",
+      "sha256": "afc8499b793cab5e0136ee91d1f452a14e3218e135e41f115134f257485fee63",
+      "size_bytes": 32169
+    },
+    {
+      "metadata": {
+        "model_count": 2,
+        "replay_id": "replay-rtdetr-yolo26-pilot-v1",
+        "sample_count": 3
+      },
+      "mime_type": "image/png",
+      "path": "plots/error_heatmap.png",
+      "registered_at": "2026-07-26T18:40:35.535133Z",
+      "role": "replay_plot",
+      "sha256": "33a4e0732e7f7b27d9438eeb18aa3d43711ad8c1d30b8d03f09ac693773a3049",
+      "size_bytes": 35909
+    },
+    {
+      "metadata": {
+        "model_count": 2,
+        "replay_id": "replay-rtdetr-yolo26-pilot-v1",
+        "sample_count": 3
+      },
+      "mime_type": "image/svg+xml",
+      "path": "plots/error_heatmap.svg",
+      "registered_at": "2026-07-26T18:40:35.536043Z",
+      "role": "replay_plot",
+      "sha256": "8b009aa07f8bf4fbf8687010ff6f0070c2917bd52fb4bc30e40fd397cd97301f",
+      "size_bytes": 31896
+    },
+    {
+      "metadata": {
+        "model_count": 2,
+        "replay_id": "replay-rtdetr-yolo26-pilot-v1",
+        "sample_count": 3
+      },
+      "mime_type": "image/png",
+      "path": "plots/latency_comparison.png",
+      "registered_at": "2026-07-26T18:40:35.531521Z",
+      "role": "replay_plot",
+      "sha256": "fc88479ff246460b5bd0cf225767cf176ccc1810252dde14ab75729a36be8308",
+      "size_bytes": 37608
+    },
+    {
+      "metadata": {
+        "model_count": 2,
+        "replay_id": "replay-rtdetr-yolo26-pilot-v1",
+        "sample_count": 3
+      },
+      "mime_type": "image/svg+xml",
+      "path": "plots/latency_comparison.svg",
+      "registered_at": "2026-07-26T18:40:35.532409Z",
+      "role": "replay_plot",
+      "sha256": "9bef13fa565351c88f4e32b8c84e5865525a8b7a64fa305b3cacb22fe8ee7bf7",
+      "size_bytes": 30692
+    },
+    {
+      "metadata": {
+        "model_count": 2,
+        "replay_id": "replay-rtdetr-yolo26-pilot-v1",
+        "sample_count": 3
+      },
+      "mime_type": "image/png",
+      "path": "plots/operating_outcomes.png",
+      "registered_at": "2026-07-26T18:40:35.533243Z",
+      "role": "replay_plot",
+      "sha256": "d1980185619f12dfa78b0b1f3f40787aae7e436b7479dc962758ffcad088514c",
+      "size_bytes": 36923
+    },
+    {
+      "metadata": {
+        "model_count": 2,
+        "replay_id": "replay-rtdetr-yolo26-pilot-v1",
+        "sample_count": 3
+      },
+      "mime_type": "image/svg+xml",
+      "path": "plots/operating_outcomes.svg",
+      "registered_at": "2026-07-26T18:40:35.534189Z",
+      "role": "replay_plot",
+      "sha256": "0fa5b3fa45e6683a8804501a670d29f0874d10fa8e47d42a1e24e0fe15c869e8",
+      "size_bytes": 26600
+    },
+    {
+      "metadata": {
+        "model_count": 2,
+        "replay_id": "replay-rtdetr-yolo26-pilot-v1",
+        "sample_count": 3
+      },
+      "mime_type": "image/png",
+      "path": "qualitative/paired_disagreements.png",
+      "registered_at": "2026-07-26T18:40:35.528188Z",
+      "role": "replay_qualitative_panel",
+      "sha256": "fc5a5afff8923aa9b33a2daa4c5d8760b1b94f3242f77e600e966500bd995862",
+      "size_bytes": 2333448
+    },
+    {
+      "metadata": {
+        "model_count": 2,
+        "replay_id": "replay-rtdetr-yolo26-pilot-v1",
+        "sample_count": 3
+      },
+      "mime_type": "application/json",
+      "path": "replay.json",
+      "registered_at": "2026-07-26T18:40:35.525294Z",
+      "role": "replay_release_manifest",
+      "sha256": "0abe986fb9d1d284a7fa42b9fe2f43af46728ab0a05d8e1bde3b52fc1d3797ef",
+      "size_bytes": 7063
+    },
+    {
+      "metadata": {
+        "model_count": 2,
+        "replay_id": "replay-rtdetr-yolo26-pilot-v1",
+        "sample_count": 3
+      },
+      "mime_type": "text/markdown",
+      "path": "replay.md",
+      "registered_at": "2026-07-26T18:40:35.526048Z",
+      "role": "replay_report",
+      "sha256": "fd34afaa26d346477310edf1188e9b82963d495e780726d0558d38c25eef019b",
+      "size_bytes": 1742
+    },
+    {
+      "metadata": {
+        "model_count": 2,
+        "replay_id": "replay-rtdetr-yolo26-pilot-v1",
+        "sample_count": 3
+      },
+      "mime_type": "application/json",
+      "path": "resolved_replay_config.json",
+      "registered_at": "2026-07-26T18:40:35.518812Z",
+      "role": "resolved_replay_configuration",
+      "sha256": "2f6f9b63a539a82079b2a1054d78602eaa5752f0e5d824e9f3e79b16535f7a0c",
+      "size_bytes": 4349
+    },
+    {
+      "metadata": {
+        "model_count": 2,
+        "replay_id": "replay-rtdetr-yolo26-pilot-v1",
+        "sample_count": 3
+      },
+      "mime_type": "text/csv",
+      "path": "tables/aggregate_metrics.csv",
+      "registered_at": "2026-07-26T18:40:35.521132Z",
+      "role": "replay_aggregate_metrics",
+      "sha256": "c60705b860100f2a8682cf252a1d11c62c5af0570f663003f568d49585e0001f",
+      "size_bytes": 909
+    },
+    {
+      "metadata": {
+        "model_count": 2,
+        "replay_id": "replay-rtdetr-yolo26-pilot-v1",
+        "sample_count": 3
+      },
+      "mime_type": "text/csv",
+      "path": "tables/disagreements.csv",
+      "registered_at": "2026-07-26T18:40:35.523714Z",
+      "role": "replay_disagreements",
+      "sha256": "0932b70244e91662027186a3d63e94c1185bd659822cd5f882c5a0904a918247",
+      "size_bytes": 659
+    },
+    {
+      "metadata": {
+        "model_count": 2,
+        "replay_id": "replay-rtdetr-yolo26-pilot-v1",
+        "sample_count": 3
+      },
+      "mime_type": "text/csv",
+      "path": "tables/paired_differences.csv",
+      "registered_at": "2026-07-26T18:40:35.522866Z",
+      "role": "replay_paired_differences",
+      "sha256": "9cf00e852b5d5164f78826da4fda748b3d60c9b2168aea5178c8e948a2dfd366",
+      "size_bytes": 1130
+    },
+    {
+      "metadata": {
+        "model_count": 2,
+        "replay_id": "replay-rtdetr-yolo26-pilot-v1",
+        "sample_count": 3
+      },
+      "mime_type": "text/csv",
+      "path": "tables/per_image_metrics.csv",
+      "registered_at": "2026-07-26T18:40:35.522004Z",
+      "role": "replay_per_image_metrics",
+      "sha256": "95d852884d4b5d1720396f5f664563a3334a75dc842a77af14700c459760dc4c",
+      "size_bytes": 1821
+    },
+    {
+      "metadata": {
+        "model_count": 2,
+        "replay_id": "replay-rtdetr-yolo26-pilot-v1",
+        "sample_count": 3
+      },
+      "mime_type": "text/csv",
+      "path": "tables/sample_order.csv",
+      "registered_at": "2026-07-26T18:40:35.519578Z",
+      "role": "replay_sample_order",
+      "sha256": "97041a754befb0d6b87a9efd08009764cc4cfadcfaf6db96574a6c8b9632af7c",
+      "size_bytes": 493
+    }
+  ],
+  "carla": {
+    "endpoint": null,
+    "map": null,
+    "version": null
+  },
+  "environment": {
+    "packages": {
+      "carla": null,
+      "numpy": "2.5.1",
+      "opencv-python": "5.0.0.93",
+      "torch": "2.13.0",
+      "torchvision": "0.28.0",
+      "ultralytics": "8.4.106"
+    },
+    "platform": {
+      "machine": "arm64",
+      "release": "25.5.0",
+      "system": "Darwin"
+    },
+    "python": {
+      "implementation": "CPython",
+      "version": "3.12.11"
+    }
+  },
+  "failure": null,
+  "git": {
+    "available": true,
+    "commit": null,
+    "dirty": true
+  },
+  "invocation": {
+    "cli_args": {
+      "acknowledge_locked_test": false,
+      "config": "configs/replay/rtdetr_yolo26_development_v1.json",
+      "dataset": "datasets/ds-carla0916-town10-pilot-v001",
+      "evaluation_config": "configs/evaluation/model_comparison_development_v1.json",
+      "runs_root": "runs"
+    },
+    "config": {
+      "dataset": {
+        "annotation_count": 27,
+        "dataset_id": "ds-carla0916-town10-pilot-v001",
+        "dataset_manifest": {
+          "path": "/Users/hesam/Documents/CARLA PY/datasets/ds-carla0916-town10-pilot-v001/dataset.json",
+          "sha256": "af2b814ba39e7c02bf066a579ebac6fb2a42d1fe725ff453177fccb66a073a4b",
+          "size_bytes": 4382
+        },
+        "kind": "verified_dataset_release",
+        "manifest": {
+          "path": "/Users/hesam/Documents/CARLA PY/datasets/ds-carla0916-town10-pilot-v001/manifest.json",
+          "sha256": "0b744356ab2b2d10f4efcb5cc7c60d8e460dec5998d501b6427ca076782409db",
+          "size_bytes": 4909
+        },
+        "partitions": {
+          "unassigned": 3
+        },
+        "sample_count": 3
+      },
+      "evaluation": {
+        "config": {
+          "bootstrap_confidence": 0.95,
+          "bootstrap_replicates": 1000,
+          "calibration_bins": 10,
+          "class_aliases": {
+            "person": "pedestrian",
+            "stop sign": "traffic_sign",
+            "traffic light": "traffic_light"
+          },
+          "evaluation_id": "eval-model-comparison-development-v1",
+          "master_seed": 20260726,
+          "matching_iou": 0.5,
+          "minimum_prediction_confidence": 0.05,
+          "montage_count": 3,
+          "operating_confidence": 0.25,
+          "partitions": [
+            "unassigned"
+          ],
+          "purpose": "development",
+          "schema_version": "1.0"
+        },
+        "source": {
+          "path": "/Users/hesam/Documents/CARLA PY/configs/evaluation/model_comparison_development_v1.json",
+          "sha256": "ef07ad5dc49c18dc4fed3b088a8be02675ecc345dd797d896143f90a3cdd03f3",
+          "size_bytes": 516
+        }
+      },
+      "models": [
+        {
+          "device": "cpu",
+          "kind": "paired_replay_model",
+          "label": "RT-DETR-L COCO",
+          "replay_model_id": "rtdetr-l-coco",
+          "source": {
+            "backend": "rtdetr",
+            "factory": null,
+            "image_size": 640,
+            "kind": "development_detector_specification",
+            "options": {},
+            "weights": {
+              "path": "/Users/hesam/Documents/CARLA PY/rtdetr-l.pt",
+              "sha256": "6de60b10d4bc566f00cda0f5b4d64afe4b66d48dc9695d2171effb7859d8e73f",
+              "size_bytes": 66511432
+            }
+          }
+        },
+        {
+          "device": "cpu",
+          "kind": "paired_replay_model",
+          "label": "YOLO26n COCO",
+          "replay_model_id": "yolo26n-coco",
+          "source": {
+            "backend": "yolo",
+            "factory": null,
+            "image_size": 640,
+            "kind": "development_detector_specification",
+            "options": {},
+            "weights": {
+              "path": "/Users/hesam/Documents/CARLA PY/yolo26n.pt",
+              "sha256": "9b09cc8bf347f0fc8a5f7657480587f25db09b34bf33b0652110fb03a8ad4fef",
+              "size_bytes": 5544453
+            }
+          }
+        }
+      ],
+      "object_type": "paired_detector_replay",
+      "privileged_metadata_use": "ground_truth_scoring_and_stratification_only",
+      "replay": {
+        "bootstrap_confidence": 0.95,
+        "bootstrap_replicates": 1000,
+        "latency_exclude_first_images": 1,
+        "master_seed": 20260726,
+        "models": [
+          {
+            "detector": {
+              "backend": "rtdetr",
+              "factory": null,
+              "image_size": 640,
+              "options": {},
+              "weights": "/Users/hesam/Documents/CARLA PY/rtdetr-l.pt"
+            },
+            "device": "cpu",
+            "label": "RT-DETR-L COCO",
+            "model_id": "rtdetr-l-coco",
+            "model_package": null
+          },
+          {
+            "detector": {
+              "backend": "yolo",
+              "factory": null,
+              "image_size": 640,
+              "options": {},
+              "weights": "/Users/hesam/Documents/CARLA PY/yolo26n.pt"
+            },
+            "device": "cpu",
+            "label": "YOLO26n COCO",
+            "model_id": "yolo26n-coco",
+            "model_package": null
+          }
+        ],
+        "montage_count": 3,
+        "purpose": "development",
+        "reference_model_id": "rtdetr-l-coco",
+        "replay_id": "replay-rtdetr-yolo26-pilot-v1",
+        "schema_version": "1.0",
+        "title": "RT-DETR-L versus YOLO26n paired RGB pilot replay"
+      },
+      "runtime_sensor_contract": "front_monocular_rgb_only",
+      "sample_order_sha256": "92ad61e34ee6199ab17435b4fe7ac4f10f7dcc0d812c7dd2acc5a66a0ddb80f6",
+      "schema_version": "1.0",
+      "selected_sample_count": 3,
+      "source_config": {
+        "path": "/Users/hesam/Documents/CARLA PY/configs/replay/rtdetr_yolo26_development_v1.json",
+        "sha256": "c0a717a620c288cb127de93b6949059382808d43906780545f37646425f03727",
+        "size_bytes": 980
+      }
+    }
+  },
+  "references": {
+    "datasets": [
+      {
+        "annotation_count": 27,
+        "dataset_id": "ds-carla0916-town10-pilot-v001",
+        "dataset_manifest": {
+          "path": "/Users/hesam/Documents/CARLA PY/datasets/ds-carla0916-town10-pilot-v001/dataset.json",
+          "sha256": "af2b814ba39e7c02bf066a579ebac6fb2a42d1fe725ff453177fccb66a073a4b",
+          "size_bytes": 4382
+        },
+        "kind": "verified_dataset_release",
+        "manifest": {
+          "path": "/Users/hesam/Documents/CARLA PY/datasets/ds-carla0916-town10-pilot-v001/manifest.json",
+          "sha256": "0b744356ab2b2d10f4efcb5cc7c60d8e460dec5998d501b6427ca076782409db",
+          "size_bytes": 4909
+        },
+        "partitions": {
+          "unassigned": 3
+        },
+        "sample_count": 3
+      }
+    ],
+    "inputs": [
+      {
+        "kind": "replay_preregistration",
+        "path": "/Users/hesam/Documents/CARLA PY/configs/replay/rtdetr_yolo26_development_v1.json",
+        "sha256": "c0a717a620c288cb127de93b6949059382808d43906780545f37646425f03727",
+        "size_bytes": 980
+      },
+      {
+        "kind": "evaluation_preregistration",
+        "path": "/Users/hesam/Documents/CARLA PY/configs/evaluation/model_comparison_development_v1.json",
+        "sha256": "ef07ad5dc49c18dc4fed3b088a8be02675ecc345dd797d896143f90a3cdd03f3",
+        "size_bytes": 516
+      },
+      {
+        "kind": "paired_child_evaluation",
+        "manifest": {
+          "path": "/Users/hesam/Documents/CARLA PY/runs/replay-rtdetr-yolo26-pilot-v1--rtdetr-l-coco/manifest.json",
+          "sha256": "8b93ec2fe5ba8c824bbe12304f4681eca4c46baf697f9d212653ae34d349c8b6",
+          "size_bytes": 13768
+        },
+        "model_id": "rtdetr-l-coco",
+        "root": "/Users/hesam/Documents/CARLA PY/runs/replay-rtdetr-yolo26-pilot-v1--rtdetr-l-coco",
+        "run_id": "replay-rtdetr-yolo26-pilot-v1--rtdetr-l-coco",
+        "sample_order_sha256": "92ad61e34ee6199ab17435b4fe7ac4f10f7dcc0d812c7dd2acc5a66a0ddb80f6"
+      },
+      {
+        "kind": "paired_child_evaluation",
+        "manifest": {
+          "path": "/Users/hesam/Documents/CARLA PY/runs/replay-rtdetr-yolo26-pilot-v1--yolo26n-coco/manifest.json",
+          "sha256": "b981b5d6928b2bea3a342257588da0512b74aeaded5777354feff0412069c37b",
+          "size_bytes": 13741
+        },
+        "model_id": "yolo26n-coco",
+        "root": "/Users/hesam/Documents/CARLA PY/runs/replay-rtdetr-yolo26-pilot-v1--yolo26n-coco",
+        "run_id": "replay-rtdetr-yolo26-pilot-v1--yolo26n-coco",
+        "sample_order_sha256": "92ad61e34ee6199ab17435b4fe7ac4f10f7dcc0d812c7dd2acc5a66a0ddb80f6"
+      }
+    ],
+    "models": [
+      {
+        "device": "cpu",
+        "kind": "paired_replay_model",
+        "label": "RT-DETR-L COCO",
+        "replay_model_id": "rtdetr-l-coco",
+        "source": {
+          "backend": "rtdetr",
+          "factory": null,
+          "image_size": 640,
+          "kind": "development_detector_specification",
+          "options": {},
+          "weights": {
+            "path": "/Users/hesam/Documents/CARLA PY/rtdetr-l.pt",
+            "sha256": "6de60b10d4bc566f00cda0f5b4d64afe4b66d48dc9695d2171effb7859d8e73f",
+            "size_bytes": 66511432
+          }
+        }
+      },
+      {
+        "device": "cpu",
+        "kind": "paired_replay_model",
+        "label": "YOLO26n COCO",
+        "replay_model_id": "yolo26n-coco",
+        "source": {
+          "backend": "yolo",
+          "factory": null,
+          "image_size": 640,
+          "kind": "development_detector_specification",
+          "options": {},
+          "weights": {
+            "path": "/Users/hesam/Documents/CARLA PY/yolo26n.pt",
+            "sha256": "9b09cc8bf347f0fc8a5f7657480587f25db09b34bf33b0652110fb03a8ad4fef",
+            "size_bytes": 5544453
+          }
+        }
+      }
+    ]
+  },
+  "run_id": "replay-rtdetr-yolo26-pilot-v1",
+  "schema_version": "1.0",
+  "status": "success",
+  "timestamps": {
+    "created_at": "2026-07-26T18:40:29.442690Z",
+    "finished_at": "2026-07-26T18:40:35.536767Z",
+    "started_at": "2026-07-26T18:40:29.502195Z",
+    "updated_at": "2026-07-26T18:40:35.536767Z"
+  }
+}

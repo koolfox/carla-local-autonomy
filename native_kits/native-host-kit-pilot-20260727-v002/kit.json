@@ -1,0 +1,108 @@
+{
+  "configuration": {
+    "path": "kit_config.json",
+    "sha256": "ac6696527df2d286d605f78bd9bb2d03375f12ef7fbfb1b2c8cf416fd2301c31",
+    "size_bytes": 548
+  },
+  "dataset": {
+    "dataset_id": "ds-carla0916-native-pilot-v001",
+    "output_directory": "datasets/ds-carla0916-native-pilot-v001"
+  },
+  "endpoint": {
+    "host": "172.20.10.7",
+    "port": 2000
+  },
+  "generation": {
+    "archive_format": "zip-stored-fixed-metadata-v1",
+    "archive_timestamp": "1980-01-01T00:00:00Z",
+    "payload_symlinks_allowed": false,
+    "secrets_captured": false,
+    "simulator_contacted": false,
+    "simulator_mutated": false
+  },
+  "kit_id": "native-host-kit-pilot-20260727-v002",
+  "object_type": "native_host_kit_release",
+  "payload_archive": {
+    "path": "payload/native-host-kit.zip",
+    "sha256": "0e6a2178839acd96d6953bfa58fd67f644810643c663c73b2db3166a649aa14a",
+    "size_bytes": 1339488
+  },
+  "payload_file_count": 114,
+  "payload_inventory_csv": {
+    "path": "payload/inventory.csv",
+    "sha256": "51b34521b4be1ff0beb4387b42f92ed334c01ef25a5757ad8d1845ffb0d8c284",
+    "size_bytes": 13124
+  },
+  "payload_inventory_json": {
+    "path": "payload/inventory.json",
+    "sha256": "5dbd6a0416a558cefe87f33c61d2786b0afbb99c362c1031a4cf957f10dd43cf",
+    "size_bytes": 23952
+  },
+  "payload_source_file_count": 95,
+  "payload_total_bytes": 1322010,
+  "readme": {
+    "path": "README.md",
+    "sha256": "0bfa21999de392eb8cafb9152e5bf480296cb74f83f83e7f4a3be91f66786f44",
+    "size_bytes": 2921
+  },
+  "requirements": {
+    "all_packages_hash_pinned": true,
+    "carla_wheel_hash_count": 6,
+    "linux": "requirements/linux-py312.txt",
+    "package_count": 14,
+    "windows": "requirements/windows-py312.txt"
+  },
+  "safety": {
+    "build_contacted_simulator": false,
+    "build_mutated_simulator": false,
+    "collection_requires_literal_confirmation_token": true,
+    "collection_requires_verified_ready_preflight": true,
+    "exclusive_world_tick_owner_required": true,
+    "full_thesis_plan_included": false,
+    "map_reload_destroys_existing_world_actors": true,
+    "preflight_is_read_only": true
+  },
+  "scenario_plan": {
+    "directory": "scenario-plan/scenario-plan-native-integration-pilot-v1",
+    "run_id": "scenario-plan-native-integration-pilot-v1",
+    "sha256": "4b1b7414f8083c53f48261bab2d14b5fff97cd602d83c09c826ec22a21712d5e",
+    "size_bytes": 5720,
+    "source_verification": {
+      "artifact_count": 4,
+      "deep_verification": {
+        "episode_count": 1,
+        "kind": "scenario_plan",
+        "planned_capture_count": 50,
+        "suite_id": "suite-native-integration-pilot-v1"
+      },
+      "status": "success",
+      "unregistered_file_count": 0
+    }
+  },
+  "schema_version": "1.0",
+  "selection": {
+    "episode_ids": [
+      "ep-town10-native-integration-clear-construction-r000"
+    ],
+    "map_families": [
+      "Town10HD"
+    ],
+    "partitions": [
+      "train"
+    ],
+    "planned_capture_count": 50,
+    "selected_episode_count": 1
+  },
+  "status": "complete",
+  "target": {
+    "carla_version": "0.9.16",
+    "machine": "x86_64",
+    "python_implementation": "CPython",
+    "python_version": "3.12",
+    "systems": [
+      "Windows",
+      "Linux"
+    ]
+  },
+  "title": "CARLA 0.9.16 native 50-frame integration pilot host kit"
+}

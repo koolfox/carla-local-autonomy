@@ -1,0 +1,121 @@
+{
+  "artifacts": [
+    {
+      "metadata": {
+        "episode_count": 23,
+        "split_plan_id": "split-thesis-pilot-v1",
+        "suite_id": "suite-thesis-pilot-v1"
+      },
+      "mime_type": "application/octet-stream",
+      "path": "episodes.jsonl",
+      "registered_at": "2026-07-26T17:49:17.065843Z",
+      "role": "planned_episodes_jsonl",
+      "sha256": "61c3037b0e763ef141e77998b1e3ac7d1a85987b99c0326d70037fc5507e21ed",
+      "size_bytes": 64920
+    },
+    {
+      "metadata": {
+        "episode_count": 23,
+        "split_plan_id": "split-thesis-pilot-v1",
+        "suite_id": "suite-thesis-pilot-v1"
+      },
+      "mime_type": "application/json",
+      "path": "resolved_split_plan.json",
+      "registered_at": "2026-07-26T17:49:17.065341Z",
+      "role": "resolved_split_plan",
+      "sha256": "d1c22255b95b2a6868a3e492918c9b090899f17ca3e068c0f159ef310831e941",
+      "size_bytes": 629
+    },
+    {
+      "metadata": {
+        "episode_count": 23,
+        "split_plan_id": "split-thesis-pilot-v1",
+        "suite_id": "suite-thesis-pilot-v1"
+      },
+      "mime_type": "application/json",
+      "path": "resolved_suite.json",
+      "registered_at": "2026-07-26T17:49:17.064654Z",
+      "role": "resolved_scenario_suite",
+      "sha256": "709616677c2023d23b6ceb91e4b8e8866cf42d66d011d5351d0d39399787786b",
+      "size_bytes": 15484
+    },
+    {
+      "metadata": {
+        "episode_count": 23,
+        "split_plan_id": "split-thesis-pilot-v1",
+        "suite_id": "suite-thesis-pilot-v1"
+      },
+      "mime_type": "application/json",
+      "path": "summary.json",
+      "registered_at": "2026-07-26T17:49:17.066399Z",
+      "role": "scenario_plan_summary",
+      "sha256": "a99418a9c61d8333a610ce85ad57f54b5b558e9746d942f3fe2e23505402678b",
+      "size_bytes": 1246
+    }
+  ],
+  "carla": {
+    "endpoint": null,
+    "map": null,
+    "version": "0.9.16"
+  },
+  "environment": {
+    "packages": {
+      "carla": null,
+      "numpy": "2.5.1",
+      "opencv-python": "5.0.0.93",
+      "torch": "2.13.0",
+      "torchvision": "0.28.0",
+      "ultralytics": "8.4.106"
+    },
+    "platform": {
+      "machine": "arm64",
+      "release": "25.5.0",
+      "system": "Darwin"
+    },
+    "python": {
+      "implementation": "CPython",
+      "version": "3.12.11"
+    }
+  },
+  "failure": null,
+  "git": {
+    "available": true,
+    "commit": null,
+    "dirty": true
+  },
+  "invocation": {
+    "cli_args": {
+      "run_id": "scenario-plan-thesis-pilot-v1",
+      "runs_root": "runs",
+      "split_plan": "configs/scenarios/split_plan_thesis_pilot_v1.json",
+      "suite": "configs/scenarios/thesis_pilot_v1.json"
+    },
+    "config": {
+      "object_type": "scenario_plan",
+      "runtime_sensor_contract": "front_monocular_rgb_only",
+      "scenario_suite": {
+        "path": "/Users/hesam/Documents/CARLA PY/configs/scenarios/thesis_pilot_v1.json",
+        "sha256": "b8a2dd4ee170d2026358004b2b4a82e0f2cb5c15cfc1b0cf9cd3e02ed10d992f",
+        "size_bytes": 15484
+      },
+      "split_plan": {
+        "path": "/Users/hesam/Documents/CARLA PY/configs/scenarios/split_plan_thesis_pilot_v1.json",
+        "sha256": "b397228511cf1a57cef5fd6a72fd4c3fb85ed11af54200bdd3c4e8c8e0d7fb4f",
+        "size_bytes": 277
+      }
+    }
+  },
+  "references": {
+    "datasets": [],
+    "models": []
+  },
+  "run_id": "scenario-plan-thesis-pilot-v1",
+  "schema_version": "1.0",
+  "status": "success",
+  "timestamps": {
+    "created_at": "2026-07-26T17:49:17.003199Z",
+    "finished_at": "2026-07-26T17:49:17.066717Z",
+    "started_at": "2026-07-26T17:49:17.059930Z",
+    "updated_at": "2026-07-26T17:49:17.066717Z"
+  }
+}

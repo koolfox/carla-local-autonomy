@@ -1,0 +1,389 @@
+{
+  "artifacts": [
+    {
+      "metadata": {
+        "matrix_id": "shadow-rtdetr-yolo26-live-v1",
+        "mode": "execute"
+      },
+      "mime_type": "application/octet-stream",
+      "path": "checksums.sha256",
+      "registered_at": "2026-07-26T19:28:08.361273Z",
+      "role": "shadow_matrix_checksum_index",
+      "sha256": "d528b40fed87c3a0d315736aed082d55def4883e49c827b6c8e9d71e27b3a7cd",
+      "size_bytes": 1082
+    },
+    {
+      "metadata": {
+        "matrix_id": "shadow-rtdetr-yolo26-live-v1",
+        "mode": "execute"
+      },
+      "mime_type": "text/plain",
+      "path": "children/shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00/stderr.log",
+      "registered_at": "2026-07-26T19:28:08.363464Z",
+      "role": "shadow_matrix_child_log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size_bytes": 0
+    },
+    {
+      "metadata": {
+        "matrix_id": "shadow-rtdetr-yolo26-live-v1",
+        "mode": "execute"
+      },
+      "mime_type": "text/plain",
+      "path": "children/shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00/stdout.log",
+      "registered_at": "2026-07-26T19:28:08.362631Z",
+      "role": "shadow_matrix_child_log",
+      "sha256": "6a314e6b3cb6885884c08f1a337ad3fac824cfcc3ab66ffeb623718af5f8c850",
+      "size_bytes": 15785
+    },
+    {
+      "metadata": {
+        "matrix_id": "shadow-rtdetr-yolo26-live-v1",
+        "mode": "execute"
+      },
+      "mime_type": "text/plain",
+      "path": "children/shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00/stderr.log",
+      "registered_at": "2026-07-26T19:28:08.364859Z",
+      "role": "shadow_matrix_child_log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size_bytes": 0
+    },
+    {
+      "metadata": {
+        "matrix_id": "shadow-rtdetr-yolo26-live-v1",
+        "mode": "execute"
+      },
+      "mime_type": "text/plain",
+      "path": "children/shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00/stdout.log",
+      "registered_at": "2026-07-26T19:28:08.364172Z",
+      "role": "shadow_matrix_child_log",
+      "sha256": "75a8ee9395e90da5dabcdb849df26cd0158627302e56875fe1059ba73abd8383",
+      "size_bytes": 12975
+    },
+    {
+      "metadata": {
+        "matrix_id": "shadow-rtdetr-yolo26-live-v1",
+        "mode": "execute"
+      },
+      "mime_type": "application/octet-stream",
+      "path": "execution_results.jsonl",
+      "registered_at": "2026-07-26T19:28:08.358822Z",
+      "role": "shadow_matrix_execution_results",
+      "sha256": "7bdb6809a32de52a55413c8dc454e22f943c916bca86f6a0dbaa6b1cc0c9cb1b",
+      "size_bytes": 854
+    },
+    {
+      "metadata": {
+        "matrix_id": "shadow-rtdetr-yolo26-live-v1",
+        "mode": "execute"
+      },
+      "mime_type": "text/csv",
+      "path": "planned_runs.csv",
+      "registered_at": "2026-07-26T19:28:08.357966Z",
+      "role": "shadow_matrix_plan_csv",
+      "sha256": "0ea3d4ba85d2e515f4bdcccc20b3f2535664981189e3dc9f2e6fa20f956fc7a3",
+      "size_bytes": 2360
+    },
+    {
+      "metadata": {
+        "matrix_id": "shadow-rtdetr-yolo26-live-v1",
+        "mode": "execute"
+      },
+      "mime_type": "application/octet-stream",
+      "path": "planned_runs.jsonl",
+      "registered_at": "2026-07-26T19:28:08.356858Z",
+      "role": "shadow_matrix_plan_jsonl",
+      "sha256": "7d5f32d893197d061f8180b41508dca889ab7e2475134532380c28919d444a6f",
+      "size_bytes": 3277
+    },
+    {
+      "metadata": {
+        "matrix_id": "shadow-rtdetr-yolo26-live-v1",
+        "mode": "execute"
+      },
+      "mime_type": "application/json",
+      "path": "resolved_shadow_matrix.json",
+      "registered_at": "2026-07-26T19:28:08.355575Z",
+      "role": "resolved_shadow_matrix_configuration",
+      "sha256": "be21c6719c973f6fdd268e455e5ea39570deb2f1e3042428efbc6ce3f2a362d8",
+      "size_bytes": 2649
+    },
+    {
+      "metadata": {
+        "matrix_id": "shadow-rtdetr-yolo26-live-v1",
+        "mode": "execute"
+      },
+      "mime_type": "application/json",
+      "path": "shadow_matrix.json",
+      "registered_at": "2026-07-26T19:28:08.359609Z",
+      "role": "shadow_matrix_release_manifest",
+      "sha256": "97a2ab5be479057eb2fd900b2dd9d41a92f98d080acc88863b1ac052489be293",
+      "size_bytes": 888
+    },
+    {
+      "metadata": {
+        "matrix_id": "shadow-rtdetr-yolo26-live-v1",
+        "mode": "execute"
+      },
+      "mime_type": "text/markdown",
+      "path": "shadow_matrix.md",
+      "registered_at": "2026-07-26T19:28:08.360556Z",
+      "role": "shadow_matrix_report",
+      "sha256": "88dded66327321270e766546c31c09d6895421c0334a4cb9b604d47ba66de04e",
+      "size_bytes": 2122
+    }
+  ],
+  "carla": {
+    "endpoint": {
+      "host": "172.20.10.7",
+      "port": 2000
+    },
+    "map": "Town10HD_Opt",
+    "version": null
+  },
+  "environment": {
+    "packages": {
+      "carla": null,
+      "numpy": "2.5.1",
+      "opencv-python": "5.0.0.93",
+      "torch": "2.13.0",
+      "torchvision": "0.28.0",
+      "ultralytics": "8.4.106"
+    },
+    "platform": {
+      "machine": "arm64",
+      "release": "25.5.0",
+      "system": "Darwin"
+    },
+    "python": {
+      "implementation": "CPython",
+      "version": "3.12.11"
+    }
+  },
+  "experiment": null,
+  "failure": null,
+  "git": {
+    "available": true,
+    "commit": null,
+    "dirty": true
+  },
+  "invocation": {
+    "cli_args": {
+      "acknowledge_teacher_motion": true,
+      "config": "configs/shadow/rtdetr_yolo26_live_shadow_v1.json",
+      "execute": true,
+      "output_id": null,
+      "runs_root": "runs"
+    },
+    "config": {
+      "matrix": {
+        "camera_fov": 90.0,
+        "camera_fps": 10.0,
+        "camera_id": 25,
+        "cells": [
+          {
+            "cell_id": "rtdetr-l-hazard-stop",
+            "detector": {
+              "backend": "rtdetr",
+              "confidence": 0.2,
+              "device": "mps",
+              "factory": null,
+              "image_size": 640,
+              "model_package": null,
+              "weights": "/Users/hesam/Documents/CARLA PY/rtdetr-l.pt"
+            },
+            "label": "RT-DETR-L with RGB hazard-stop shadow",
+            "policy": {
+              "backend": "hazard-stop",
+              "checkpoint": null,
+              "device": "cpu",
+              "factory": null,
+              "options": {
+                "close_bottom": 0.72,
+                "confidence": 0.35,
+                "corridor_left": 0.3,
+                "corridor_right": 0.7,
+                "cruise_throttle": 0.15
+              }
+            },
+            "repetitions": 1
+          },
+          {
+            "cell_id": "yolo26n-hazard-stop",
+            "detector": {
+              "backend": "yolo",
+              "confidence": 0.05,
+              "device": "mps",
+              "factory": null,
+              "image_size": 640,
+              "model_package": null,
+              "weights": "/Users/hesam/Documents/CARLA PY/yolo26n.pt"
+            },
+            "label": "YOLO26n with RGB hazard-stop shadow",
+            "policy": {
+              "backend": "hazard-stop",
+              "checkpoint": null,
+              "device": "cpu",
+              "factory": null,
+              "options": {
+                "close_bottom": 0.72,
+                "confidence": 0.35,
+                "corridor_left": 0.3,
+                "corridor_right": 0.7,
+                "cruise_throttle": 0.15
+              }
+            },
+            "repetitions": 1
+          }
+        ],
+        "continue_on_failure": true,
+        "control": "teacher",
+        "duration_seconds": 12.0,
+        "expected_map": "Town10HD_Opt",
+        "host": "172.20.10.7",
+        "matrix_id": "shadow-rtdetr-yolo26-live-v1",
+        "max_stale_seconds": 0.75,
+        "port": 2000,
+        "purpose": "development",
+        "record_video": true,
+        "resolution": [
+          640,
+          384
+        ],
+        "schema_version": "1.0",
+        "title": "RT-DETR and YOLO26 live RGB-only policy shadow matrix",
+        "vehicle_id": 24,
+        "view": "split"
+      },
+      "mode": "execute",
+      "object_type": "vision_shadow_matrix",
+      "runs_root": "/Users/hesam/Documents/CARLA PY/runs",
+      "runtime_executable": "/Users/hesam/Documents/CARLA PY/.venv/bin/python3",
+      "schema_version": "1.0",
+      "vision_policy_actuation_authorized": false
+    }
+  },
+  "references": {
+    "datasets": [],
+    "inputs": [
+      {
+        "kind": "shadow_matrix_preregistration",
+        "path": "/Users/hesam/Documents/CARLA PY/configs/shadow/rtdetr_yolo26_live_shadow_v1.json",
+        "sha256": "9aa252d0279c14cf088903ad195bcc1de33f75c7af5d72377b2c51fbc3b223ec",
+        "size_bytes": 1930
+      },
+      {
+        "cell_id": "rtdetr-l-hazard-stop",
+        "kind": "vision_shadow_matrix_child",
+        "path": "/Users/hesam/Documents/CARLA PY/runs/shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00/manifest.json",
+        "run_id": "shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00",
+        "sha256": "1d30b86aa4b27f207ecd9273e0346352047ac854bd06402f3e58d6aabc4b91b3",
+        "size_bytes": 9113
+      },
+      {
+        "cell_id": "yolo26n-hazard-stop",
+        "kind": "vision_shadow_matrix_child",
+        "path": "/Users/hesam/Documents/CARLA PY/runs/shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00/manifest.json",
+        "run_id": "shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00",
+        "sha256": "db70ebf8b919380eeb352fbaf9582cf5f7d037313ea3c7d8b9ec8e393a4e292e",
+        "size_bytes": 9100
+      }
+    ],
+    "models": [
+      {
+        "backend": "rtdetr",
+        "cell_id": "rtdetr-l-hazard-stop",
+        "kind": "vision_shadow_development_weights",
+        "path": "/Users/hesam/Documents/CARLA PY/rtdetr-l.pt",
+        "sha256": "6de60b10d4bc566f00cda0f5b4d64afe4b66d48dc9695d2171effb7859d8e73f",
+        "size_bytes": 66511432
+      },
+      {
+        "backend": "yolo",
+        "cell_id": "yolo26n-hazard-stop",
+        "kind": "vision_shadow_development_weights",
+        "path": "/Users/hesam/Documents/CARLA PY/yolo26n.pt",
+        "sha256": "9b09cc8bf347f0fc8a5f7657480587f25db09b34bf33b0652110fb03a8ad4fef",
+        "size_bytes": 5544453
+      }
+    ]
+  },
+  "reproducibility": {
+    "configuration": {
+      "canonicalization": "json-sort-keys-utf8-v1",
+      "identity_excluded_top_level_keys": [
+        "created_at",
+        "output_dir",
+        "output_path",
+        "run_id",
+        "runs_root",
+        "started_at"
+      ],
+      "identity_sha256": "d8ccbfc21dafe6b50941a7c884da2d0acfc80314ee9584c8a4380e85bc300219",
+      "identity_size_bytes": 1586,
+      "resolved_sha256": "8f9d38a0639aad15b3465715d3b19f78000c484bde22f91271559801d57a4c5f",
+      "resolved_size_bytes": 1637,
+      "sensitive_values_redacted_before_hashing": true
+    },
+    "dependency_locks": [
+      {
+        "relative_path": "uv.lock",
+        "sha256": "a2377ea1eb77f0d310237bb3c7e9aa757cd23fae6fa1bd059d5646fc3d306f61",
+        "size_bytes": 218427
+      }
+    ],
+    "hardware": {
+      "accelerators": {
+        "available": true,
+        "cuda": {
+          "available": false,
+          "device_count": 0,
+          "devices": [],
+          "runtime_version": null
+        },
+        "cudnn": {
+          "available": false,
+          "version": null
+        },
+        "determinism": {
+          "cudnn_benchmark": false,
+          "cudnn_deterministic": false,
+          "deterministic_algorithms": false
+        },
+        "mps": {
+          "available": true,
+          "built": true
+        },
+        "rocm_version": null,
+        "version": "2.13.0"
+      },
+      "container": {
+        "detected": false,
+        "image_digest": null
+      },
+      "cpu": {
+        "architecture": "arm64",
+        "logical_count": 8,
+        "model": "Apple M1"
+      },
+      "memory": {
+        "total_bytes": 8589934592
+      },
+      "tools": {
+        "git": "git version 2.50.1 (Apple Git-155)",
+        "python_compiler": "Clang 17.0.0 (clang-1700.0.13.3)",
+        "uv": "uv 0.11.2 (02036a8ba 2026-03-26 aarch64-apple-darwin)"
+      }
+    },
+    "schema_version": "1.0"
+  },
+  "run_id": "shadow-rtdetr-yolo26-live-v1",
+  "schema_version": "1.0",
+  "status": "success",
+  "timestamps": {
+    "created_at": "2026-07-26T19:27:31.158620Z",
+    "finished_at": "2026-07-26T19:28:08.365482Z",
+    "started_at": "2026-07-26T19:27:31.932610Z",
+    "updated_at": "2026-07-26T19:28:08.365482Z"
+  }
+}

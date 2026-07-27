@@ -1,0 +1,21 @@
+{
+  "evaluation_id": "eval-rtdetr-development-v1",
+  "schema_version": "1.0",
+  "purpose": "development",
+  "master_seed": 20260726,
+  "partitions": [
+    "unassigned"
+  ],
+  "minimum_prediction_confidence": 0.05,
+  "operating_confidence": 0.25,
+  "matching_iou": 0.5,
+  "calibration_bins": 10,
+  "bootstrap_replicates": 1000,
+  "bootstrap_confidence": 0.95,
+  "montage_count": 12,
+  "class_aliases": {
+    "person": "pedestrian",
+    "traffic light": "traffic_light",
+    "stop sign": "traffic_sign"
+  }
+}

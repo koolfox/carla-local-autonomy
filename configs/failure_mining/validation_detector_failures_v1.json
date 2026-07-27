@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "mining_id": "failure-mining-validation-v1",
+  "title": "Validation detector failure review queue",
+  "purpose": "development",
+  "master_seed": 20260726,
+  "threshold_source": "selection_artifact",
+  "failure_types": [
+    "false_negative",
+    "false_positive",
+    "misclassification",
+    "localization"
+  ],
+  "localization_iou_minimum": 0.1,
+  "max_candidates": 250,
+  "per_image_limit": 3,
+  "per_episode_limit": 20,
+  "montage_count": 24,
+  "severity_weights": {
+    "false_negative": 4.0,
+    "false_positive": 1.0,
+    "misclassification": 3.0,
+    "localization": 2.0
+  },
+  "critical_categories": [
+    "pedestrian",
+    "rider",
+    "bicycle",
+    "motorcycle",
+    "traffic_light",
+    "traffic_sign"
+  ],
+  "critical_multiplier": 2.0,
+  "rarity_weight": 0.5
+}

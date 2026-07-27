@@ -1,0 +1,692 @@
+{
+  "file_count": 114,
+  "files": [
+    {
+      "archive_mode": "0644",
+      "path": "README.md",
+      "sha256": "092a2eee8784c3fbf69afaf1074248b3807ecdd18d02eed95c183535fa0334a8",
+      "size_bytes": 2921
+    },
+    {
+      "archive_mode": "0644",
+      "path": "checksums.sha256",
+      "sha256": "84506cd741b17762fc989d4dec0bc55e9415e3ce46eacae6cf8340f483971c8e",
+      "size_bytes": 11951
+    },
+    {
+      "archive_mode": "0644",
+      "path": "kit-plan.json",
+      "sha256": "7c11631a46136c9a7375143ec41e82bdb8c2209719a73f370c1dd843316e486e",
+      "size_bytes": 1734
+    },
+    {
+      "archive_mode": "0644",
+      "path": "requirements/linux-py312.txt",
+      "sha256": "ceaef5c27bbaa0091cc8de17181eaf86600bba21da8ed60be0d2dbbf2d83be17",
+      "size_bytes": 43337
+    },
+    {
+      "archive_mode": "0644",
+      "path": "requirements/windows-py312.txt",
+      "sha256": "ceaef5c27bbaa0091cc8de17181eaf86600bba21da8ed60be0d2dbbf2d83be17",
+      "size_bytes": 43337
+    },
+    {
+      "archive_mode": "0644",
+      "path": "scenario-plan/scenario-plan-native-integration-pilot-v1/episodes.jsonl",
+      "sha256": "e803e03c6c92044b1059ec71f552993d3d1ad74fb124f9afed0e02c4980ec1ac",
+      "size_bytes": 3132
+    },
+    {
+      "archive_mode": "0644",
+      "path": "scenario-plan/scenario-plan-native-integration-pilot-v1/manifest.json",
+      "sha256": "4b1b7414f8083c53f48261bab2d14b5fff97cd602d83c09c826ec22a21712d5e",
+      "size_bytes": 5720
+    },
+    {
+      "archive_mode": "0644",
+      "path": "scenario-plan/scenario-plan-native-integration-pilot-v1/resolved_split_plan.json",
+      "sha256": "a9103a73a761da9139c7dcfe26a84bb49d097c303f71e92f12d4eb04a033e0ad",
+      "size_bytes": 550
+    },
+    {
+      "archive_mode": "0644",
+      "path": "scenario-plan/scenario-plan-native-integration-pilot-v1/resolved_suite.json",
+      "sha256": "c66ebb931b420faa83d28f682e0c5c417d441764fec92f2433884d156e5d1464",
+      "size_bytes": 2677
+    },
+    {
+      "archive_mode": "0644",
+      "path": "scenario-plan/scenario-plan-native-integration-pilot-v1/summary.json",
+      "sha256": "db7568de8653b1f9dfa122bf34898eca4b29e2d21bd883b23b5d2078fc5d90de",
+      "size_bytes": 954
+    },
+    {
+      "archive_mode": "0644",
+      "path": "scripts/bootstrap.ps1",
+      "sha256": "f202d1efb1d1600cdaf7ee191a3231c07cc3b88525969e2090d724f5657c61a1",
+      "size_bytes": 1179
+    },
+    {
+      "archive_mode": "0755",
+      "path": "scripts/bootstrap.sh",
+      "sha256": "09066ed9bbec5ba63f85e71014e702ffa85ae0d4db6bcc826012b2d827b2450c",
+      "size_bytes": 1049
+    },
+    {
+      "archive_mode": "0644",
+      "path": "scripts/collect.ps1",
+      "sha256": "ff0519464301a6d7608a890a4b17b95b56cabfdb521ab3c97378c4a3634d5487",
+      "size_bytes": 1149
+    },
+    {
+      "archive_mode": "0755",
+      "path": "scripts/collect.sh",
+      "sha256": "0a7db144500b8ede2861426f1e95c40afa4a4726c31c58ca29d8480806e304be",
+      "size_bytes": 1052
+    },
+    {
+      "archive_mode": "0644",
+      "path": "scripts/postrun.ps1",
+      "sha256": "382980071370a363bad8ae75b34ce719bcf7cfb3b93bfc95e31549d2ae540706",
+      "size_bytes": 868
+    },
+    {
+      "archive_mode": "0755",
+      "path": "scripts/postrun.sh",
+      "sha256": "1334a937fb5829ae12624701d5cd70c3aa5be9a4c531734c1ff1cb09ed367861",
+      "size_bytes": 659
+    },
+    {
+      "archive_mode": "0644",
+      "path": "scripts/preflight.ps1",
+      "sha256": "8dda1e76fe90c88e0cd9e456ac8559c80a42193151e7fa0f927bdc6c85f58672",
+      "size_bytes": 1027
+    },
+    {
+      "archive_mode": "0755",
+      "path": "scripts/preflight.sh",
+      "sha256": "efcfbf563edeba2889e0527577619a5de6fb7b25fe6f1e151876df055816d823",
+      "size_bytes": 669
+    },
+    {
+      "archive_mode": "0755",
+      "path": "scripts/verify_payload.py",
+      "sha256": "14d661efcd1e7df04c38764ec134789fd27c760980d800c77ca4a9d8d7f897e4",
+      "size_bytes": 1140
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/__init__.py",
+      "sha256": "1577c05050e1e439a8726df5de246c95a1c1b6bdeed84b0848d86a98512f5682",
+      "size_bytes": 1127
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/analysis.py",
+      "sha256": "06ae70800369eb936c0aaf2dba535d74a643e0e603395b7441a7662eb9d09fbf",
+      "size_bytes": 41006
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/artifacts.py",
+      "sha256": "77c5d0d081a264a91d628eacf0e7708fe5112a2d52846103dc4ea07d6f656324",
+      "size_bytes": 23634
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/bridge.py",
+      "sha256": "327b2ab13d956a2c5288881db8a991c4268b6564c6d649a68fea13c1668fbc49",
+      "size_bytes": 14712
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/contracts.py",
+      "sha256": "e9808d6666cb50a325b80a26d3c803782e663b57e7efdcf716ce4d82949ed441",
+      "size_bytes": 5344
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/controller.py",
+      "sha256": "61cdbe6ff4ca21d7b676805d5b2844316f6c7d34cde1fa4aaabacbd6dee45a32",
+      "size_bytes": 8846
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/dataset/__init__.py",
+      "sha256": "340d20f47486330b17623a883cc567f0619dd647547875e5831e4ac596c68521",
+      "size_bytes": 1176
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/dataset/collector.py",
+      "sha256": "124a17526cf810a0f82806b4c5602d9e3ca096fabe09affb0d8d7582b6ea0cd3",
+      "size_bytes": 14034
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/dataset/instance_labels.py",
+      "sha256": "6047b68e84ff4daa5db4caaefb3942e6c81485472b179cfbce60d44f011ed750",
+      "size_bytes": 6838
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/dataset/ontology.py",
+      "sha256": "7352245bb7b1104119479ba86d014c10640901c4a745dd151faabf57f07ff115",
+      "size_bytes": 2594
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/dataset/qa.py",
+      "sha256": "ec85189cde67806fffe4ef93e7c6afea0493c77389c34f728e94bc2ab395a30a",
+      "size_bytes": 23702
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/dataset/sync.py",
+      "sha256": "cd5229538b0fe040ebcc070afbd16d520c6fcbb2ce8925cb6567bb5f71203a28",
+      "size_bytes": 5802
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/dataset/verified.py",
+      "sha256": "dea5049d3dec3cd446c1311ddf9ce13e4345190973f74f743dd3cbc0793b9a83",
+      "size_bytes": 19046
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/dataset/writer.py",
+      "sha256": "2d4695a0127001e15414490085d1ff4281aea0d3b3be4f79f31fb279e2c3b720",
+      "size_bytes": 23173
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/detectors/__init__.py",
+      "sha256": "e26e43a19e4518e6f5b68f4fb4a2e6ee38d682f88ea3db6cce471817ff560858",
+      "size_bytes": 136
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/detectors/factory.py",
+      "sha256": "9a46b4f4ae665273a6657bd0ab7aaf26f8c65376a31e456f47ebd4fb0eae83f3",
+      "size_bytes": 1971
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/detectors/ultralytics.py",
+      "sha256": "0b2d52f22a54078e9d3633f05384b735e4ef44db1b1a7cc78593e2fba7a33345",
+      "size_bytes": 3015
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/display.py",
+      "sha256": "9b4d6f505a9a06175a65d583fbafd73214128b5f9479a59f727e8250c1186181",
+      "size_bytes": 15541
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/evaluation/__init__.py",
+      "sha256": "12aec42af8fac96fe4486c9f5f6d12c4c95cbf13c765d807a0e5ef94ae226d07",
+      "size_bytes": 457
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/evaluation/coco.py",
+      "sha256": "51417bcd7d63566825f66de7d903340b941b10fdbcdc940306e8e6f79040ec5d",
+      "size_bytes": 4157
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/evaluation/contracts.py",
+      "sha256": "19de099390136bbe3bdcba9469a62ffb089346c1e7e95ed60aec76589370fb41",
+      "size_bytes": 6152
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/evaluation/metrics.py",
+      "sha256": "b1018a6b492d9f2303b7677da487f89284b210c9a86bb215b4e88a6ad1c8e59b",
+      "size_bytes": 11868
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/evaluation/runner.py",
+      "sha256": "9758e097a141365eff19885ed30349ef3d8167b7720cc46759a2f9866ad149bf",
+      "size_bytes": 35477
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/evaluation/verified.py",
+      "sha256": "871e500707e66802b05bcb833952116fa9d13a6c367a0730d0f63e338b502719",
+      "size_bytes": 11804
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/failure_mining/__init__.py",
+      "sha256": "6a4fe5f7d87d83ada063a6be33e22fd059f0074e3fbc0eb6cc2a593a942d205f",
+      "size_bytes": 1171
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/failure_mining/contracts.py",
+      "sha256": "8782e9a40f0875df261649a9fdc1797f0343e2bb2bbab61c112df3c2c553219c",
+      "size_bytes": 7702
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/failure_mining/miner.py",
+      "sha256": "a5d69ab993c6b46b773f4ca7b50bf2150a2b4a3794945ba9d37eec8122eb04d5",
+      "size_bytes": 35744
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/failure_mining/review.py",
+      "sha256": "2897c4a895af074c2ee34e6e6576fb848c7c55491f235cb83d5036716483c616",
+      "size_bytes": 18622
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/failure_mining/review_contracts.py",
+      "sha256": "14cb78c32b4f6352daa3e58cf1e9cd62ebf481014353d2d1d700e6f71b7e5952",
+      "size_bytes": 3830
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/failure_mining/review_verified.py",
+      "sha256": "19c302cf2d99674c16fed6620cb30717bbb1f3348843fbb12ff4f035d5c39e3f",
+      "size_bytes": 12659
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/failure_mining/verified.py",
+      "sha256": "ccc5bedc9b4ce2d386fcea4fe543f2851f6596c917f70217b56beee748d975df",
+      "size_bytes": 15273
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/model_release/__init__.py",
+      "sha256": "318f87d6ada5fdbea482393d170599b474957933c0432553ec26e9c8144ce3ae",
+      "size_bytes": 595
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/model_release/contracts.py",
+      "sha256": "666f4f95f7db663dbebd70d4f09d42d539f873b526160db9906168d9e92c3322",
+      "size_bytes": 9714
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/model_release/package.py",
+      "sha256": "20268b0082c567566e1b2e30ba9c4a2d3ab6d697745c902b8afa5da0bcf839a6",
+      "size_bytes": 16720
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/model_release/verified.py",
+      "sha256": "77254122c008ab3cafb50a6d34cc461bfa79c70b02b29709a3c16068e48377f0",
+      "size_bytes": 5957
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/native/__init__.py",
+      "sha256": "bd542aff894f08629311ca3d4b54e53a48f09bb54d041732620fdc4693e6dbdc",
+      "size_bytes": 344
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/native/host_gate.py",
+      "sha256": "d8b59b3eda871484c54f6cb5bbf4b2e714f36e99f7a70aeadfd55d97a81999f1",
+      "size_bytes": 6852
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/native/host_kit.py",
+      "sha256": "58fcc683ab652949821114bcb37fac52c6cb49ee63f6d6acf8f0467972701e1d",
+      "size_bytes": 41839
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/native/preflight.py",
+      "sha256": "477ea7bad199754cc256893e0aa5f2ec199b1de25ed07f49a0a296e9f5a3fb73",
+      "size_bytes": 26645
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/native/synchronization.py",
+      "sha256": "639f0398b3980e301f16f0055e7b313c0cd34a58205b4739b8c15afdb8f3b36d",
+      "size_bytes": 5200
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/native/verified_host_kit.py",
+      "sha256": "cb2f8180ac171be7f850444144ca6e7c140cd89b3d0dc887f06d9301de88c350",
+      "size_bytes": 26318
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/native/verified_preflight.py",
+      "sha256": "437df03df778e5345d6529eb2de0c92b903226a074b88dae0f3dfd923f659b7e",
+      "size_bytes": 11123
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/native/worker.py",
+      "sha256": "b98d3e56a4b04774f7a64d7c674e0b996d0c80f285dad6caa5d651dab227d9bb",
+      "size_bytes": 48221
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/operator/__init__.py",
+      "sha256": "e2c4b6e3ce9660ad25d69915822915a75499593fd9dad8d1159076f5ce78c77d",
+      "size_bytes": 620
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/operator/catalog.py",
+      "sha256": "f91616afee9bd2e9fdb40970ea18eb32c887d29ff8037d1b0d3835494c30ce79",
+      "size_bytes": 4525
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/operator/commands.py",
+      "sha256": "3e908ca09d81ac879687c8edbfa7aeb662fa10946440ecb1b859f051a2063781",
+      "size_bytes": 29723
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/operator/contracts.py",
+      "sha256": "826c05117d758c0503473bdab2dbc1a043fd547b9c846ae75d8c3f22b8bcaa75",
+      "size_bytes": 2241
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/operator/jobs.py",
+      "sha256": "ec002b163db2afeb321b06797709cfd850d4ea59da906783b5744b1df5918c7e",
+      "size_bytes": 14531
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/operator/server.py",
+      "sha256": "7b2993186c8a31fb7770244b1a0a91e8c2103103d46c606cfc10f4d9cc9efa61",
+      "size_bytes": 13699
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/operator/situations.py",
+      "sha256": "677827eb90a6099bead8142dfc40352c1287ae99e2d1a56bf3f282183a2a003f",
+      "size_bytes": 15295
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/perception.py",
+      "sha256": "e329c40037d92905da0465940517090b37dcd3be0b79545304238cdad20f1089",
+      "size_bytes": 4427
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/policy/__init__.py",
+      "sha256": "34c0f0320378259e6bf1bb46300b9b582c6520865931c8c44f5ba2c9e0f580da",
+      "size_bytes": 981
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/policy/audit.py",
+      "sha256": "7c87171eebceb8e794884ff9e157d7e739222c8089478ed46f50dad0ae4e3b75",
+      "size_bytes": 3453
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/policy/builtin.py",
+      "sha256": "f21b2eccb661554776357e6dcc5848b20ef1245711a056eaff7c5b9110060338",
+      "size_bytes": 4891
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/policy/contracts.py",
+      "sha256": "d9566154375e438f38a2edcb380044e601860f4f5196805f790fdfb13498f109",
+      "size_bytes": 7282
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/policy/factory.py",
+      "sha256": "9a537d73c2af0b81a92131a339f98f30b354c6e45b2118153e4f5725108bafc6",
+      "size_bytes": 1916
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/policy/shadow.py",
+      "sha256": "6cdf168d4f07a77ca97eb73dc5efd20291d0837265bfdf668068ac2b65644f91",
+      "size_bytes": 4367
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/policy/verified.py",
+      "sha256": "83bd08910444b5e79f804b4bd194ac2d9449ea94261b9960df08353003412acc",
+      "size_bytes": 13932
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/recording.py",
+      "sha256": "91cc62a9ea3e1e0705b67324bc4892ecf922b94ee86405153158f1397a953e09",
+      "size_bytes": 6471
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/replay/__init__.py",
+      "sha256": "2a3a41213cf76c209b5cfdc7f68d5e3e4f2a004e66c30f81e7fc3f33c1059a2c",
+      "size_bytes": 571
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/replay/contracts.py",
+      "sha256": "41a920c20370ce220783e6acb2bed99f1e2b7e244ef326409d9698448570c18c",
+      "size_bytes": 11923
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/replay/runner.py",
+      "sha256": "e85e8e0b1007a7c78fe2d70e6b87df82446e4fb51759f6bc970e7eddc764f8b4",
+      "size_bytes": 58013
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/replay/verified.py",
+      "sha256": "d395ff6b91da7c2b9feb5d797e4c336c1555612b71dceac6bc975bf0f3f632b7",
+      "size_bytes": 19529
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/reporting/__init__.py",
+      "sha256": "02c82b7a5f72e0e7b4ae0c04187a5cd7dbaf46f4e4accb5cd7d74345c945c6e0",
+      "size_bytes": 532
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/reporting/builder.py",
+      "sha256": "620ae0a6584bd50922daf38757e34eff481083f8946772139b00dac6686a5832",
+      "size_bytes": 37517
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/reporting/contracts.py",
+      "sha256": "1beb4965afa73c95ced3019831678015e8772e97fed5aed6e01fbe03def1db98",
+      "size_bytes": 5703
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/reporting/verified.py",
+      "sha256": "957a0d173dea1742f49ab16456f55f786599aaa4b612e17e4764fa68e8392fd6",
+      "size_bytes": 5778
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/reproducibility.py",
+      "sha256": "50adced86e3770a0c2bdf7da64868941fe427045423b2e2bcb262a8f209a2d5c",
+      "size_bytes": 15645
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/reproduction/__init__.py",
+      "sha256": "3655fd9319874f628aaff7e4860b942920b0266a21817e1d3c751b11cd10d765",
+      "size_bytes": 729
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/reproduction/builder.py",
+      "sha256": "dfcff07012561a671a1a5dc58cad4f944ee8b04fccff900a5dd77860069ecdad",
+      "size_bytes": 25150
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/reproduction/contracts.py",
+      "sha256": "510d4914837615ea95147e4d212b627cfb3e5869d3d97a71146303efde481132",
+      "size_bytes": 8042
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/reproduction/verified.py",
+      "sha256": "5069b9dd9ac80a0fba28027d9b31fbe672889b1937ac5e4867c433f0ffe30334",
+      "size_bytes": 24979
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/risk.py",
+      "sha256": "0f6b1b5e43de750f2c7b2a66f49673330c371f4c3606186e2c32b584bf05796d",
+      "size_bytes": 3030
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/runtime.py",
+      "sha256": "c441e69c97eddcdbdc9acf5a0fa42d8642cd1dba6037b14ac780d7b10a0a8a5b",
+      "size_bytes": 49344
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/scenarios/__init__.py",
+      "sha256": "c03695996b120d536e7d7d701f036152b8a45d909f4181f6cd3424d70e89525f",
+      "size_bytes": 1335
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/scenarios/contracts.py",
+      "sha256": "a1950bd1dad27ee02edbce67e3092a4238f61cdbeac7ea85f4f675d109263b59",
+      "size_bytes": 21171
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/scenarios/planner.py",
+      "sha256": "e58615d93cf96033b0476079a3d0aedbb1611c964aa6d74b966737a3fcef9ad9",
+      "size_bytes": 9645
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/scenarios/seeds.py",
+      "sha256": "42ad338e3c574d4a3fead3db90049b1ebfafa393f9b25950198517a9f34d3f9d",
+      "size_bytes": 3225
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/scenarios/splits.py",
+      "sha256": "bcb5b9751487078f302671c6d10b26f860e7b1386776e37d25bea32bbf99bb01",
+      "size_bytes": 8451
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/scenarios/verified_plan.py",
+      "sha256": "d9917f0012695ff0859af3416859504ad888e9b21c8b500475d296b0fc379f9c",
+      "size_bytes": 6344
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/shadow/__init__.py",
+      "sha256": "cc9f1c8fcd5ae90cc1d3b18374d87957efa572c43af39f6af96e1b21a194744c",
+      "size_bytes": 572
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/shadow/contracts.py",
+      "sha256": "a074c4a4194459e571d12a5b7b0ef25c7d6fbce1c03b926ca3af52d9bf242f40",
+      "size_bytes": 14692
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/shadow/matrix.py",
+      "sha256": "afdffcb3348e90368f829292b41fbcd192170f82504de62639e9fcce9f598bdb",
+      "size_bytes": 22395
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/shadow/verified.py",
+      "sha256": "d907978572317a56f14cc923885f9e6394d924c477f44a6129fd97c342e54af4",
+      "size_bytes": 12288
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/thresholds/__init__.py",
+      "sha256": "689dd435727b81c2cf3f70a9adef363ae41fe1b516fca1a9202ece9fd4e19185",
+      "size_bytes": 686
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/thresholds/contracts.py",
+      "sha256": "91ad9422376aa03883bda1ae1d2306c238c49a601f889a4a4c1018cfcb1a9ec3",
+      "size_bytes": 7904
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/thresholds/selector.py",
+      "sha256": "0e5bbc4ecbb22f3deb22f838cc019593f4ef6d7ba824eae4a97f2920a2e6aee9",
+      "size_bytes": 24352
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/thresholds/verified.py",
+      "sha256": "5c301806f9b7988b9b0b188b96c9f22271ee1ecf8051d3c2b35cd12911660a80",
+      "size_bytes": 11989
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/training/__init__.py",
+      "sha256": "ba32eafba40beb78c4109844f2eae5cece34ad801d445130967f960223216ea7",
+      "size_bytes": 375
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/training/backends.py",
+      "sha256": "fb548236428bf4de4d080f8571522b7aba3bcf84e609ce782a5c11ecef35ba8e",
+      "size_bytes": 5304
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/training/contracts.py",
+      "sha256": "787e2320bfb546db6a0b32d1a6825e951b0ecde10118fc40e5e6a321c1547811",
+      "size_bytes": 9968
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/training/runner.py",
+      "sha256": "912796f77f44b7b5dfbc88377c4ef6dd92af184fabcae682237221223e5ed8cd",
+      "size_bytes": 17151
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/training/seeding.py",
+      "sha256": "7531ba4f77a6b20e02ac7a0db06b784244f0e341791ead6a4b9a4b9e2394b5e8",
+      "size_bytes": 1685
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/verification.py",
+      "sha256": "bb48d3e65fffbeb4eb873d2d9b53451f6ddc1132700d5f9004ebffea383f078d",
+      "size_bytes": 37805
+    },
+    {
+      "archive_mode": "0644",
+      "path": "source/carla_vision/watchdog.py",
+      "sha256": "f8a94de6a194ec1ac0bc283b06939a69769e6b1c70248ac3f34b0b3acf9a2ccb",
+      "size_bytes": 8664
+    }
+  ],
+  "object_type": "native_host_kit_payload_inventory",
+  "schema_version": "1.0",
+  "total_bytes": 1322086
+}

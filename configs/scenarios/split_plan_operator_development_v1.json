@@ -1,0 +1,8 @@
+{
+  "plan_id": "split-operator-development-v1",
+  "schema_version": "1.0",
+  "test_map_families": [],
+  "test_weather_ids": [],
+  "validation_map_families": [],
+  "validation_weather_ids": []
+}

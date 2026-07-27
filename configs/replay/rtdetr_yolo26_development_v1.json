@@ -1,0 +1,40 @@
+{
+  "schema_version": "1.0",
+  "replay_id": "replay-rtdetr-yolo26-pilot-v1",
+  "title": "RT-DETR-L versus YOLO26n paired RGB pilot replay",
+  "purpose": "development",
+  "master_seed": 20260726,
+  "reference_model_id": "rtdetr-l-coco",
+  "bootstrap_replicates": 1000,
+  "bootstrap_confidence": 0.95,
+  "latency_exclude_first_images": 1,
+  "montage_count": 3,
+  "models": [
+    {
+      "model_id": "rtdetr-l-coco",
+      "label": "RT-DETR-L COCO",
+      "device": "cpu",
+      "model_package": null,
+      "detector": {
+        "backend": "rtdetr",
+        "weights": "../../rtdetr-l.pt",
+        "image_size": 640,
+        "factory": null,
+        "options": {}
+      }
+    },
+    {
+      "model_id": "yolo26n-coco",
+      "label": "YOLO26n COCO",
+      "device": "cpu",
+      "model_package": null,
+      "detector": {
+        "backend": "yolo",
+        "weights": "../../yolo26n.pt",
+        "image_size": 640,
+        "factory": null,
+        "options": {}
+      }
+    }
+  ]
+}

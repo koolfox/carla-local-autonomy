@@ -1,0 +1,87 @@
+{
+  "authors": [
+    "Hesam"
+  ],
+  "bundle_id": "bundle-framework-development-20260726-v003",
+  "command_count": 5,
+  "commands": {
+    "path": "commands.json",
+    "sha256": "ea2bda443c3b19966f1097690463245845431ed68dc61ea77b291c1fd05ff003",
+    "size_bytes": 552
+  },
+  "configuration": {
+    "path": "bundle_config.json",
+    "sha256": "942cb6bc59a5a071d2f12bc454466f051b9844cf616d26eeb4fef1e6826c141a",
+    "size_bytes": 4015
+  },
+  "dependency_lock_count": 1,
+  "dependency_locks": [
+    {
+      "archived": {
+        "path": "environment/lockfiles/uv.lock",
+        "sha256": "cb1237c7e3f6e04d7b98f435c139bfd9e69a17284e4280cd959ca836880eb76e",
+        "size_bytes": 218427
+      },
+      "repository_relative_path": "uv.lock"
+    }
+  ],
+  "environment": {
+    "path": "environment/environment.json",
+    "sha256": "a327f947f8c835c2807d5bc2bf9d468cb098920271c024be43f421b3b892afcc",
+    "size_bytes": 1786
+  },
+  "generation": {
+    "confirmatory_clean_git_gate": false,
+    "external_sources_required_for_bundle_verification": false,
+    "secrets_from_environment_captured": false,
+    "source_archive_format": "zip-stored-fixed-metadata-v1",
+    "source_archive_timestamp": "1980-01-01T00:00:00Z",
+    "source_symlinks_allowed": false
+  },
+  "limitations": [
+    "This is a development bundle from an uncommitted dirty worktree and is not confirmatory thesis evidence.",
+    "CARLA server binaries, Unreal assets, pretrained model weights, datasets, and live videos are fingerprinted by source manifests but are not embedded in the source archive.",
+    "The live simulator endpoint, actor state, route position, and transient traffic cannot be reconstructed from this bundle alone.",
+    "The included live matrix used sequential, non-identical scenes and cannot support detector-accuracy ranking.",
+    "The hazard-stop policy is a non-learned, non-actuating systems baseline and does not establish safe autonomous driving.",
+    "Real native synchronous collection, CARLA-specific multi-seed training, and locked-test evaluation remain outside this development bundle."
+  ],
+  "object_type": "reproduction_bundle_release",
+  "purpose": "development",
+  "readme": {
+    "path": "README.md",
+    "sha256": "e5cd44d459b43845a5fe2040c4b4cc864b73680c1ff857b27cd49c2d9e472d95",
+    "size_bytes": 1913
+  },
+  "reproduction_script": {
+    "path": "reproduce.sh",
+    "sha256": "d9a473cb3dc98d5060cd9b4d5983857e85af9c8fae12064c9b343c9cf61d9341",
+    "size_bytes": 482
+  },
+  "schema_version": "1.0",
+  "source_archive": {
+    "path": "source/source.zip",
+    "sha256": "d5dd8cbf4e6015208b1d075e0634cfd62f5e1022c7cba7f2ee7aaf0e2a3b30ed",
+    "size_bytes": 1684924
+  },
+  "source_count": 7,
+  "source_file_count": 168,
+  "source_graph": {
+    "path": "sources/source_graph.json",
+    "sha256": "d9681b3dffce3a1512eb8d924ee247fc62753689a31154ccd2fa9a1c78bff39b",
+    "size_bytes": 10988
+  },
+  "source_inventory_csv": {
+    "path": "source/inventory.csv",
+    "sha256": "56ad7179f0538754a8197c214d644910ecaff66263258d589604eb2ffdfa3481",
+    "size_bytes": 17825
+  },
+  "source_inventory_json": {
+    "path": "source/inventory.json",
+    "sha256": "dd28cc9fc3242f7255ed0c64db0979bb13e1ccc9c586acab3527d8337a627757",
+    "size_bytes": 33675
+  },
+  "source_total_bytes": 1662106,
+  "status": "complete",
+  "title": "CARLA monocular-vision framework development reproduction bundle v0.5"
+}

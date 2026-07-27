@@ -1,0 +1,416 @@
+{
+  "artifacts": [
+    {
+      "metadata": {
+        "evaluation_id": "eval-model-comparison-development-v1",
+        "sample_count": 3
+      },
+      "mime_type": "application/json",
+      "path": "bootstrap.json",
+      "registered_at": "2026-07-26T18:40:34.148575Z",
+      "role": "episode_bootstrap_metrics",
+      "sha256": "ddb0185d8d865e7c319b7f08169d90edec64680b0880036aa60376a20499bcde",
+      "size_bytes": 455
+    },
+    {
+      "metadata": {
+        "evaluation_id": "eval-model-comparison-development-v1",
+        "sample_count": 3
+      },
+      "mime_type": "text/plain",
+      "path": "logs/coco_eval.log",
+      "registered_at": "2026-07-26T18:40:34.145468Z",
+      "role": "coco_evaluation_log",
+      "sha256": "33ee0c3485d1b5baf62e40fdc750e0e509626e119e273a040375a5ae84915867",
+      "size_bytes": 1259
+    },
+    {
+      "metadata": {
+        "evaluation_id": "eval-model-comparison-development-v1",
+        "sample_count": 3
+      },
+      "mime_type": "image/png",
+      "path": "plots/calibration.png",
+      "registered_at": "2026-07-26T18:40:34.153379Z",
+      "role": "evaluation_plot",
+      "sha256": "9e65c1ddee05fa234a2cc77cab27d23b4e101d2284d98f1ddbcb4abadc67403a",
+      "size_bytes": 69611
+    },
+    {
+      "metadata": {
+        "evaluation_id": "eval-model-comparison-development-v1",
+        "sample_count": 3
+      },
+      "mime_type": "image/svg+xml",
+      "path": "plots/calibration.svg",
+      "registered_at": "2026-07-26T18:40:34.154223Z",
+      "role": "evaluation_plot",
+      "sha256": "c7f1e01540c391e269a144a279e921393f8714c44a23f5fcfc4cbf700e72a77f",
+      "size_bytes": 34867
+    },
+    {
+      "metadata": {
+        "evaluation_id": "eval-model-comparison-development-v1",
+        "sample_count": 3
+      },
+      "mime_type": "image/png",
+      "path": "plots/confusion_matrix.png",
+      "registered_at": "2026-07-26T18:40:34.155088Z",
+      "role": "evaluation_plot",
+      "sha256": "6a19cdb794158dd66faca6efaab4cf7e1492bb45b801914fe5317e600e8c8b1f",
+      "size_bytes": 87482
+    },
+    {
+      "metadata": {
+        "evaluation_id": "eval-model-comparison-development-v1",
+        "sample_count": 3
+      },
+      "mime_type": "image/svg+xml",
+      "path": "plots/confusion_matrix.svg",
+      "registered_at": "2026-07-26T18:40:34.155874Z",
+      "role": "evaluation_plot",
+      "sha256": "87078aba7bd14897979a4874f9fd79eb2cc6d4a3a3ffef22a106c89a93d37b3d",
+      "size_bytes": 53567
+    },
+    {
+      "metadata": {
+        "evaluation_id": "eval-model-comparison-development-v1",
+        "sample_count": 3
+      },
+      "mime_type": "image/png",
+      "path": "plots/inference_latency.png",
+      "registered_at": "2026-07-26T18:40:34.156648Z",
+      "role": "evaluation_plot",
+      "sha256": "7807ae4da555bc62fefb54d7836d75feb7564bff5fbf83a98323c377f0fdb1f6",
+      "size_bytes": 44692
+    },
+    {
+      "metadata": {
+        "evaluation_id": "eval-model-comparison-development-v1",
+        "sample_count": 3
+      },
+      "mime_type": "image/svg+xml",
+      "path": "plots/inference_latency.svg",
+      "registered_at": "2026-07-26T18:40:34.157426Z",
+      "role": "evaluation_plot",
+      "sha256": "5e8fa9854c34f8138f2dfefe7a17054a75df994a4abc4823ef9d1b33b771fd56",
+      "size_bytes": 34367
+    },
+    {
+      "metadata": {
+        "evaluation_id": "eval-model-comparison-development-v1",
+        "sample_count": 3
+      },
+      "mime_type": "image/png",
+      "path": "plots/per_class.png",
+      "registered_at": "2026-07-26T18:40:34.150287Z",
+      "role": "evaluation_plot",
+      "sha256": "3e7c211d279d1c940613caaac1c4d9933f35a0c25d2b5d9442a4adcbcd8ca2d5",
+      "size_bytes": 52411
+    },
+    {
+      "metadata": {
+        "evaluation_id": "eval-model-comparison-development-v1",
+        "sample_count": 3
+      },
+      "mime_type": "image/svg+xml",
+      "path": "plots/per_class.svg",
+      "registered_at": "2026-07-26T18:40:34.151128Z",
+      "role": "evaluation_plot",
+      "sha256": "fb5f818f289de2d272e2c73f4a474d266ef45ab33131fc8950735fc452ec5e9b",
+      "size_bytes": 43152
+    },
+    {
+      "metadata": {
+        "evaluation_id": "eval-model-comparison-development-v1",
+        "sample_count": 3
+      },
+      "mime_type": "image/png",
+      "path": "plots/pr_iou50.png",
+      "registered_at": "2026-07-26T18:40:34.151913Z",
+      "role": "evaluation_plot",
+      "sha256": "524d58a67031d463eb07f839153033c76532df1e2fd49ac7af3a19bc62f37486",
+      "size_bytes": 45341
+    },
+    {
+      "metadata": {
+        "evaluation_id": "eval-model-comparison-development-v1",
+        "sample_count": 3
+      },
+      "mime_type": "image/svg+xml",
+      "path": "plots/pr_iou50.svg",
+      "registered_at": "2026-07-26T18:40:34.152582Z",
+      "role": "evaluation_plot",
+      "sha256": "86648341b6aa274fcb68a3e119834c3febbaf8c7019abd7582cac175b8fb1c02",
+      "size_bytes": 39818
+    },
+    {
+      "metadata": {
+        "evaluation_id": "eval-model-comparison-development-v1",
+        "sample_count": 3
+      },
+      "mime_type": "application/octet-stream",
+      "path": "predictions/frames.jsonl",
+      "registered_at": "2026-07-26T18:40:34.144812Z",
+      "role": "per_image_prediction_log",
+      "sha256": "ef08b4867b3d67860f9021b3e260fb4c30c808bff79adbf8ba3655a9f330867e",
+      "size_bytes": 366110
+    },
+    {
+      "metadata": {
+        "evaluation_id": "eval-model-comparison-development-v1",
+        "sample_count": 3
+      },
+      "mime_type": "application/json",
+      "path": "predictions/predictions.coco.json",
+      "registered_at": "2026-07-26T18:40:34.143890Z",
+      "role": "canonical_coco_predictions",
+      "sha256": "008e8f1611fa4daaa228c3dea45cc5d2d9cd59801e5b6fd87e0f976e3c365b5b",
+      "size_bytes": 95041
+    },
+    {
+      "metadata": {
+        "evaluation_id": "eval-model-comparison-development-v1",
+        "sample_count": 3
+      },
+      "mime_type": "image/png",
+      "path": "qualitative/failures_and_predictions.png",
+      "registered_at": "2026-07-26T18:40:34.149589Z",
+      "role": "qualitative_failure_panel",
+      "sha256": "776be9bea48cafd2fd357c3cc60beff1bf8b9cd30e9dd7335d9c76f2c984d314",
+      "size_bytes": 745993
+    },
+    {
+      "metadata": {
+        "evaluation_id": "eval-model-comparison-development-v1",
+        "sample_count": 3
+      },
+      "mime_type": "application/json",
+      "path": "resolved_evaluation_config.json",
+      "registered_at": "2026-07-26T18:40:34.143107Z",
+      "role": "resolved_evaluation_configuration",
+      "sha256": "a58c6a725577e751ca61e930633acc6d34cbff6cefc1958127c63f14eb810b6f",
+      "size_bytes": 2542
+    },
+    {
+      "metadata": {
+        "evaluation_id": "eval-model-comparison-development-v1",
+        "sample_count": 3
+      },
+      "mime_type": "application/json",
+      "path": "summary_metrics.json",
+      "registered_at": "2026-07-26T18:40:34.146064Z",
+      "role": "evaluation_summary",
+      "sha256": "1c9a660818922aa20101ae65ed8930123901a093c8d38eaddd998b8842423bb4",
+      "size_bytes": 5408
+    },
+    {
+      "metadata": {
+        "evaluation_id": "eval-model-comparison-development-v1",
+        "sample_count": 3
+      },
+      "mime_type": "text/csv",
+      "path": "tables/calibration.csv",
+      "registered_at": "2026-07-26T18:40:34.147959Z",
+      "role": "calibration_bins",
+      "sha256": "7e4fc517b6fdd478e6efb293c8a1a94a05a9664da72e332be9fdfadac83e5156",
+      "size_bytes": 321
+    },
+    {
+      "metadata": {
+        "evaluation_id": "eval-model-comparison-development-v1",
+        "sample_count": 3
+      },
+      "mime_type": "text/csv",
+      "path": "tables/per_class.csv",
+      "registered_at": "2026-07-26T18:40:34.146696Z",
+      "role": "per_class_metrics",
+      "sha256": "59582c7948808b4c2771dd298862d13bbe26e05f15d186d3edc9a239e6336abe",
+      "size_bytes": 565
+    },
+    {
+      "metadata": {
+        "evaluation_id": "eval-model-comparison-development-v1",
+        "sample_count": 3
+      },
+      "mime_type": "text/csv",
+      "path": "tables/strata.csv",
+      "registered_at": "2026-07-26T18:40:34.147300Z",
+      "role": "stratified_metrics",
+      "sha256": "09608ed01dc8f953cd81e251403e52de0668575393c0a9a9e3ac89f9e8d6be07",
+      "size_bytes": 673
+    }
+  ],
+  "carla": {
+    "endpoint": null,
+    "map": null,
+    "version": null
+  },
+  "environment": {
+    "packages": {
+      "carla": null,
+      "numpy": "2.5.1",
+      "opencv-python": "5.0.0.93",
+      "torch": "2.13.0",
+      "torchvision": "0.28.0",
+      "ultralytics": "8.4.106"
+    },
+    "platform": {
+      "machine": "arm64",
+      "release": "25.5.0",
+      "system": "Darwin"
+    },
+    "python": {
+      "implementation": "CPython",
+      "version": "3.12.11"
+    }
+  },
+  "failure": null,
+  "git": {
+    "available": true,
+    "commit": null,
+    "dirty": true
+  },
+  "invocation": {
+    "cli_args": {
+      "dataset": "/Users/hesam/Documents/CARLA PY/datasets/ds-carla0916-town10-pilot-v001",
+      "evaluation_config": "/Users/hesam/Documents/CARLA PY/configs/evaluation/model_comparison_development_v1.json",
+      "model_id": "rtdetr-l-coco",
+      "parent_replay_id": "replay-rtdetr-yolo26-pilot-v1"
+    },
+    "config": {
+      "dataset": {
+        "annotation_count": 27,
+        "dataset_id": "ds-carla0916-town10-pilot-v001",
+        "dataset_manifest": {
+          "path": "/Users/hesam/Documents/CARLA PY/datasets/ds-carla0916-town10-pilot-v001/dataset.json",
+          "sha256": "af2b814ba39e7c02bf066a579ebac6fb2a42d1fe725ff453177fccb66a073a4b",
+          "size_bytes": 4382
+        },
+        "kind": "verified_dataset_release",
+        "manifest": {
+          "path": "/Users/hesam/Documents/CARLA PY/datasets/ds-carla0916-town10-pilot-v001/manifest.json",
+          "sha256": "0b744356ab2b2d10f4efcb5cc7c60d8e460dec5998d501b6427ca076782409db",
+          "size_bytes": 4909
+        },
+        "partitions": {
+          "unassigned": 3
+        },
+        "sample_count": 3
+      },
+      "detector": {
+        "backend": "rtdetr",
+        "confidence": 0.05,
+        "device": "cpu",
+        "factory": null,
+        "image_size": 640,
+        "options": {},
+        "weights": "/Users/hesam/Documents/CARLA PY/rtdetr-l.pt"
+      },
+      "evaluation": {
+        "bootstrap_confidence": 0.95,
+        "bootstrap_replicates": 1000,
+        "calibration_bins": 10,
+        "class_aliases": {
+          "person": "pedestrian",
+          "stop sign": "traffic_sign",
+          "traffic light": "traffic_light"
+        },
+        "evaluation_id": "eval-model-comparison-development-v1",
+        "master_seed": 20260726,
+        "matching_iou": 0.5,
+        "minimum_prediction_confidence": 0.05,
+        "montage_count": 3,
+        "operating_confidence": 0.25,
+        "partitions": [
+          "unassigned"
+        ],
+        "purpose": "development",
+        "schema_version": "1.0"
+      },
+      "locked_test_acknowledged": false,
+      "model": {
+        "device": "cpu",
+        "kind": "paired_replay_model",
+        "label": "RT-DETR-L COCO",
+        "replay_model_id": "rtdetr-l-coco",
+        "source": {
+          "backend": "rtdetr",
+          "factory": null,
+          "image_size": 640,
+          "kind": "development_detector_specification",
+          "options": {},
+          "weights": {
+            "path": "/Users/hesam/Documents/CARLA PY/rtdetr-l.pt",
+            "sha256": "6de60b10d4bc566f00cda0f5b4d64afe4b66d48dc9695d2171effb7859d8e73f",
+            "size_bytes": 66511432
+          }
+        }
+      },
+      "object_type": "offline_detector_evaluation",
+      "privileged_metadata_use": "evaluation_stratification_only",
+      "runtime_sensor_contract": "front_monocular_rgb_only",
+      "schema_version": "1.0",
+      "selected_sample_count": 3,
+      "source_config": {
+        "kind": "evaluation_preregistration",
+        "path": "/Users/hesam/Documents/CARLA PY/configs/evaluation/model_comparison_development_v1.json",
+        "sha256": "ef07ad5dc49c18dc4fed3b088a8be02675ecc345dd797d896143f90a3cdd03f3",
+        "size_bytes": 516
+      }
+    }
+  },
+  "references": {
+    "datasets": [
+      {
+        "annotation_count": 27,
+        "dataset_id": "ds-carla0916-town10-pilot-v001",
+        "dataset_manifest": {
+          "path": "/Users/hesam/Documents/CARLA PY/datasets/ds-carla0916-town10-pilot-v001/dataset.json",
+          "sha256": "af2b814ba39e7c02bf066a579ebac6fb2a42d1fe725ff453177fccb66a073a4b",
+          "size_bytes": 4382
+        },
+        "kind": "verified_dataset_release",
+        "manifest": {
+          "path": "/Users/hesam/Documents/CARLA PY/datasets/ds-carla0916-town10-pilot-v001/manifest.json",
+          "sha256": "0b744356ab2b2d10f4efcb5cc7c60d8e460dec5998d501b6427ca076782409db",
+          "size_bytes": 4909
+        },
+        "partitions": {
+          "unassigned": 3
+        },
+        "sample_count": 3
+      }
+    ],
+    "inputs": [],
+    "models": [
+      {
+        "device": "cpu",
+        "kind": "paired_replay_model",
+        "label": "RT-DETR-L COCO",
+        "replay_model_id": "rtdetr-l-coco",
+        "source": {
+          "backend": "rtdetr",
+          "factory": null,
+          "image_size": 640,
+          "kind": "development_detector_specification",
+          "options": {},
+          "weights": {
+            "path": "/Users/hesam/Documents/CARLA PY/rtdetr-l.pt",
+            "sha256": "6de60b10d4bc566f00cda0f5b4d64afe4b66d48dc9695d2171effb7859d8e73f",
+            "size_bytes": 66511432
+          }
+        }
+      }
+    ]
+  },
+  "run_id": "replay-rtdetr-yolo26-pilot-v1--rtdetr-l-coco",
+  "schema_version": "1.0",
+  "status": "success",
+  "timestamps": {
+    "created_at": "2026-07-26T18:40:29.509305Z",
+    "finished_at": "2026-07-26T18:40:34.158072Z",
+    "started_at": "2026-07-26T18:40:29.558268Z",
+    "updated_at": "2026-07-26T18:40:34.158072Z"
+  }
+}

@@ -1,0 +1,16 @@
+.DS_Store
+.venv/
+__pycache__/
+*.py[cod]
+*.pt
+*.onnx
+*.engine
+*.safetensors
+*.egg-info/
+build/
+dist/
+datasets/
+models/
+output/
+reports/
+runs/

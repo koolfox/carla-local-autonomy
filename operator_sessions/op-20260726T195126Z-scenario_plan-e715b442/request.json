@@ -1,0 +1,9 @@
+{
+  "kind": "scenario_plan",
+  "parameters": {
+    "run_id": "scenario-plan-operator-poc-v1",
+    "split_plan": "configs/scenarios/split_plan_operator_development_v1.json",
+    "suite": "operator_configs/situations/town10-ui-poc-v1.json"
+  },
+  "schema_version": "1.0"
+}

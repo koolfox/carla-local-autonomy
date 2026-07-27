@@ -1,0 +1,18 @@
+{
+  "created_at": "2026-07-26T19:51:27.215Z",
+  "destructive": false,
+  "error": null,
+  "expected_output": "/Users/hesam/Documents/CARLA PY/runs/scenario-plan-operator-poc-v1",
+  "expected_output_exists": true,
+  "finished_at": "2026-07-26T19:51:28.655Z",
+  "job_id": "op-20260726T195126Z-scenario_plan-e715b442",
+  "kind": "scenario_plan",
+  "motion_authorized": false,
+  "note": "Planning is offline and does not contact or mutate CARLA.",
+  "returncode": 0,
+  "session_path": "/Users/hesam/Documents/CARLA PY/operator_sessions/op-20260726T195126Z-scenario_plan-e715b442",
+  "started_at": "2026-07-26T19:51:27.217Z",
+  "status": "success",
+  "stop_requested": false,
+  "title": "Plan situation scenario-plan-operator-poc-v1"
+}

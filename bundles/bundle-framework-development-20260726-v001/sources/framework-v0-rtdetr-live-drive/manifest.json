@@ -1,0 +1,163 @@
+{
+  "artifacts": [
+    {
+      "metadata": {
+        "frame_source": "detector_synchronized"
+      },
+      "mime_type": "image/png",
+      "path": "images/latest_overlay.png",
+      "registered_at": "2026-07-26T17:17:40.220408Z",
+      "role": "latest_overlay",
+      "sha256": "05514b3d5c99c82aba07652c351d9cddc2d6988c9e21bb2b99eb29aa94c2ebd1",
+      "size_bytes": 417509
+    },
+    {
+      "metadata": {
+        "schema_version": "1.0"
+      },
+      "mime_type": "application/octet-stream",
+      "path": "logs/detections.jsonl",
+      "registered_at": "2026-07-26T17:17:40.221777Z",
+      "role": "detections_jsonl",
+      "sha256": "fe86cff17ec55150b8e9d3b1c616329be0e7cccf99008016ae15a4dac33f9b34",
+      "size_bytes": 200369
+    },
+    {
+      "metadata": {
+        "status": "success"
+      },
+      "mime_type": "application/json",
+      "path": "summary.json",
+      "registered_at": "2026-07-26T17:17:40.222993Z",
+      "role": "run_summary",
+      "sha256": "87d365c56f66f32bc1b7fde662c119965549e09e9e954a3c526610f6b6190219",
+      "size_bytes": 1477
+    },
+    {
+      "metadata": {
+        "dropped": 0,
+        "first_sequence": 31,
+        "last_sequence": 149,
+        "submitted": 74,
+        "written": 74
+      },
+      "mime_type": "video/mp4",
+      "path": "video/overlay.mp4",
+      "registered_at": "2026-07-26T17:17:40.218333Z",
+      "role": "annotated_video",
+      "sha256": "2d4ef80b9570f2196c612881b84ea7675e30c9c38ef1db1f5265829c99db93a9",
+      "size_bytes": 2131834
+    }
+  ],
+  "carla": {
+    "endpoint": {
+      "host": "172.20.10.7",
+      "port": 2000
+    },
+    "map": "Carla/Maps/Town10HD_Opt",
+    "version": "0.9.16"
+  },
+  "environment": {
+    "packages": {
+      "carla": null,
+      "numpy": "2.5.1",
+      "opencv-python": "5.0.0.93",
+      "torch": "2.13.0",
+      "torchvision": "0.28.0",
+      "ultralytics": "8.4.106"
+    },
+    "platform": {
+      "machine": "arm64",
+      "release": "25.5.0",
+      "system": "Darwin"
+    },
+    "python": {
+      "implementation": "CPython",
+      "version": "3.12.11"
+    }
+  },
+  "failure": null,
+  "git": {
+    "available": true,
+    "commit": null,
+    "dirty": true
+  },
+  "invocation": {
+    "cli_args": [
+      "--detector",
+      "rtdetr",
+      "--weights",
+      "rtdetr-l.pt",
+      "--device",
+      "mps",
+      "--control",
+      "teacher",
+      "--view",
+      "split",
+      "--duration",
+      "12",
+      "--cruise-speed",
+      "2.0",
+      "--run-id",
+      "framework-v0-rtdetr-live-drive"
+    ],
+    "config": {
+      "camera_fov": 90.0,
+      "camera_fps": 10.0,
+      "camera_id": 25,
+      "confidence": 0.2,
+      "control": "teacher",
+      "control_mode": "teacher",
+      "cruise_speed": 2.0,
+      "detector": "rtdetr",
+      "detector_config": {
+        "backend": "rtdetr",
+        "confidence": 0.2,
+        "device": "mps",
+        "factory": null,
+        "image_size": 640,
+        "options": {},
+        "weights": "rtdetr-l.pt"
+      },
+      "detector_factory": null,
+      "device": "mps",
+      "drive": false,
+      "duration": 12.0,
+      "host": "172.20.10.7",
+      "image_size": 640,
+      "max_stale_seconds": 0.5,
+      "no_video": false,
+      "port": 2000,
+      "resolution": [
+        640,
+        384
+      ],
+      "run_id": "framework-v0-rtdetr-live-drive",
+      "runs_root": "runs",
+      "runtime_sensor_contract": "front_monocular_rgb_only",
+      "vehicle_id": 24,
+      "video_fps": null,
+      "view": "split",
+      "weights": "rtdetr-l.pt"
+    }
+  },
+  "references": {
+    "datasets": [],
+    "models": [
+      {
+        "backend": "rtdetr",
+        "factory": null,
+        "weights": "rtdetr-l.pt"
+      }
+    ]
+  },
+  "run_id": "framework-v0-rtdetr-live-drive",
+  "schema_version": "1.0",
+  "status": "success",
+  "timestamps": {
+    "created_at": "2026-07-26T17:17:22.972755Z",
+    "finished_at": "2026-07-26T17:17:40.223626Z",
+    "started_at": "2026-07-26T17:17:23.028908Z",
+    "updated_at": "2026-07-26T17:17:40.223626Z"
+  }
+}

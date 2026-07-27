@@ -1,0 +1,89 @@
+{
+  "authors": [
+    "Hesam"
+  ],
+  "bundle_id": "bundle-framework-development-20260726-v004",
+  "command_count": 6,
+  "commands": {
+    "path": "commands.json",
+    "sha256": "03b8ce5f2e910622f9f8ff488e73412a8b119225320601e374accd54048f5b97",
+    "size_bytes": 632
+  },
+  "configuration": {
+    "path": "bundle_config.json",
+    "sha256": "630b804584614cf9c420906302316991d0d5bd4870b0c6c2196be0fc39bb06e7",
+    "size_bytes": 3392
+  },
+  "dependency_lock_count": 1,
+  "dependency_locks": [
+    {
+      "archived": {
+        "path": "environment/lockfiles/uv.lock",
+        "sha256": "b0a7b28d9efc2d388f729420104386831abdb85d3cbf06b539c4b5e0cf8d7864",
+        "size_bytes": 218427
+      },
+      "repository_relative_path": "uv.lock"
+    }
+  ],
+  "environment": {
+    "path": "environment/environment.json",
+    "sha256": "671c76d944f406e20b846314a49564d8fe23f45063e336dbc28a8ef0f1405b41",
+    "size_bytes": 1786
+  },
+  "generation": {
+    "confirmatory_clean_git_gate": false,
+    "external_sources_required_for_bundle_verification": false,
+    "secrets_from_environment_captured": false,
+    "source_archive_format": "zip-stored-fixed-metadata-v1",
+    "source_archive_timestamp": "1980-01-01T00:00:00Z",
+    "source_symlinks_allowed": false
+  },
+  "limitations": [
+    "This is a development bundle from an uncommitted dirty worktree and is not confirmatory thesis evidence.",
+    "CARLA server binaries, Unreal assets, pretrained model weights, datasets, and live videos are fingerprinted by source manifests but are not embedded in the source archive.",
+    "The local operator panel launches host subprocesses and is intentionally loopback-only; it is not a remotely deployable multi-user application.",
+    "The crowded situation is an offline deterministic plan and has not been executed against the native CARLA PythonAPI.",
+    "The live simulator endpoint, actor state, route position, and transient traffic cannot be reconstructed from this bundle alone.",
+    "The included live matrix evidence was sequential and cannot support detector-accuracy ranking.",
+    "The hazard-stop policy is a non-learned, non-actuating systems baseline and does not establish safe autonomous driving.",
+    "Real native synchronous collection, CARLA-specific multi-seed training, locked-test evaluation, and vision-only closed-loop control remain outside this development bundle."
+  ],
+  "object_type": "reproduction_bundle_release",
+  "purpose": "development",
+  "readme": {
+    "path": "README.md",
+    "sha256": "fee295d81c0edcb771d343105bbfca74fb32dfa2faa8685d48ef0e768548ab21",
+    "size_bytes": 2234
+  },
+  "reproduction_script": {
+    "path": "reproduce.sh",
+    "sha256": "6f49da899186dc68e5432190dafbc69d211ee32225a04f05b8945c9143dd0ba5",
+    "size_bytes": 514
+  },
+  "schema_version": "1.0",
+  "source_archive": {
+    "path": "source/source.zip",
+    "sha256": "23850d5685419b28878a3cba5dac14ebce8d3965363a9c0aef741097e1475ff2",
+    "size_bytes": 1876233
+  },
+  "source_count": 3,
+  "source_file_count": 186,
+  "source_graph": {
+    "path": "sources/source_graph.json",
+    "sha256": "4261a978e4c9751e57ec56e92dec5594f38b03d8f87c20b45563c15468209583",
+    "size_bytes": 4861
+  },
+  "source_inventory_csv": {
+    "path": "source/inventory.csv",
+    "sha256": "76ee28ce3feeef5cf9214504db8807f15411dab36de5e3a4d54ef3577925076d",
+    "size_bytes": 19828
+  },
+  "source_inventory_json": {
+    "path": "source/inventory.json",
+    "sha256": "219f5504e2d2fb7ea3959cb85f289be6af1ae1712696c3f502788062801267ed",
+    "size_bytes": 37370
+  },
+  "source_total_bytes": 1850789,
+  "status": "complete",
+  "title": "CARLA monocular-vision framework development reproduction bundle v0.6"
+}

@@ -1,0 +1,233 @@
+{
+  "artifacts": [
+    {
+      "metadata": {
+        "planned_capture_count": 50,
+        "ready_for_native_execution": false,
+        "selected_episode_count": 1
+      },
+      "mime_type": "text/csv",
+      "path": "checks.csv",
+      "registered_at": "2026-07-26T20:36:29.259061Z",
+      "role": "native_preflight_check_table",
+      "sha256": "30447bd0bbfc75a39c7c0b598e4ee2bc369191fe157bda601a3644bcebed8a02",
+      "size_bytes": 3682
+    },
+    {
+      "metadata": {
+        "planned_capture_count": 50,
+        "ready_for_native_execution": false,
+        "selected_episode_count": 1
+      },
+      "mime_type": "application/json",
+      "path": "checks.json",
+      "registered_at": "2026-07-26T20:36:29.259862Z",
+      "role": "native_preflight_checks",
+      "sha256": "e76870186ffe726f68ef992b9c8cd750e2469a2f62564d6ac222a60d2eb7bd93",
+      "size_bytes": 6407
+    },
+    {
+      "metadata": {
+        "planned_capture_count": 50,
+        "ready_for_native_execution": false,
+        "selected_episode_count": 1
+      },
+      "mime_type": "text/markdown",
+      "path": "report.md",
+      "registered_at": "2026-07-26T20:36:29.260451Z",
+      "role": "native_preflight_report",
+      "sha256": "8a57eb3ab83e0ef5c35da546c0b53c19e849a7fddd9421182a8ceec259e40a02",
+      "size_bytes": 2728
+    },
+    {
+      "metadata": {
+        "planned_capture_count": 50,
+        "ready_for_native_execution": false,
+        "selected_episode_count": 1
+      },
+      "mime_type": "application/json",
+      "path": "selected_episodes.json",
+      "registered_at": "2026-07-26T20:36:29.261036Z",
+      "role": "native_preflight_selected_episodes",
+      "sha256": "1b5e50b27d5f371b589053d15a13866bb46aa3be60436e5404d6ad9cc8dd8265",
+      "size_bytes": 973
+    },
+    {
+      "metadata": {
+        "planned_capture_count": 50,
+        "ready_for_native_execution": false,
+        "selected_episode_count": 1
+      },
+      "mime_type": "application/json",
+      "path": "summary.json",
+      "registered_at": "2026-07-26T20:36:29.261719Z",
+      "role": "native_preflight_summary",
+      "sha256": "b001a62fcf19570db109642923f663328aec041cfb6e1a387154f2152f5b331e",
+      "size_bytes": 2460
+    }
+  ],
+  "carla": {
+    "endpoint": {
+      "host": "172.20.10.7",
+      "port": 2000
+    },
+    "map": "Carla/Maps/Town10HD_Opt",
+    "version": "0.9.16"
+  },
+  "environment": {
+    "packages": {
+      "carla": null,
+      "numpy": "2.5.1",
+      "opencv-python": "5.0.0.93",
+      "torch": "2.13.0",
+      "torchvision": "0.28.0",
+      "ultralytics": "8.4.106"
+    },
+    "platform": {
+      "machine": "arm64",
+      "release": "25.5.0",
+      "system": "Darwin"
+    },
+    "python": {
+      "implementation": "CPython",
+      "version": "3.12.11"
+    }
+  },
+  "experiment": null,
+  "failure": null,
+  "git": {
+    "available": true,
+    "commit": null,
+    "dirty": true
+  },
+  "invocation": {
+    "cli_args": {
+      "carla_python_api": null,
+      "confirm_exclusive_tick_owner": false,
+      "confirm_world_reload": false,
+      "dataset_id": "ds-carla0916-native-pilot-v001",
+      "datasets_root": "datasets",
+      "episode_id": [],
+      "host": "172.20.10.7",
+      "max_episodes": 1,
+      "partition": [
+        "train"
+      ],
+      "port": 2000,
+      "run_id": "native-preflight-pilot-20260726-v1",
+      "runs_root": "runs",
+      "scenario_plan": "runs/scenario-plan-native-integration-pilot-v1",
+      "timeout": 3.0
+    },
+    "config": {
+      "confirm_exclusive_tick_owner": false,
+      "confirm_world_reload": false,
+      "dataset_id": "ds-carla0916-native-pilot-v001",
+      "datasets_root": "/Users/hesam/Documents/CARLA PY/datasets",
+      "episode_ids": [],
+      "host": "172.20.10.7",
+      "max_episodes": 1,
+      "object_type": "native_collection_preflight",
+      "partitions": [
+        "train"
+      ],
+      "port": 2000,
+      "python_api_path": null,
+      "read_only": true,
+      "scenario_plan": "/Users/hesam/Documents/CARLA PY/runs/scenario-plan-native-integration-pilot-v1",
+      "schema_version": "1.0",
+      "timeout": 3.0
+    }
+  },
+  "references": {
+    "datasets": [],
+    "inputs": [
+      {
+        "kind": "verified_scenario_plan",
+        "path": "/Users/hesam/Documents/CARLA PY/runs/scenario-plan-native-integration-pilot-v1/manifest.json",
+        "run_id": "scenario-plan-native-integration-pilot-v1",
+        "sha256": "4b1b7414f8083c53f48261bab2d14b5fff97cd602d83c09c826ec22a21712d5e",
+        "size_bytes": 5720
+      }
+    ],
+    "models": []
+  },
+  "reproducibility": {
+    "configuration": {
+      "canonicalization": "json-sort-keys-utf8-v1",
+      "identity_excluded_top_level_keys": [
+        "created_at",
+        "output_dir",
+        "output_path",
+        "run_id",
+        "runs_root",
+        "started_at"
+      ],
+      "identity_sha256": "4e22faad9c393a8180294040a6ed7ce0a17bddbfc2a90f0e3f601d50e29fb23a",
+      "identity_size_bytes": 480,
+      "resolved_sha256": "4e22faad9c393a8180294040a6ed7ce0a17bddbfc2a90f0e3f601d50e29fb23a",
+      "resolved_size_bytes": 480,
+      "sensitive_values_redacted_before_hashing": true
+    },
+    "dependency_locks": [
+      {
+        "relative_path": "uv.lock",
+        "sha256": "b0a7b28d9efc2d388f729420104386831abdb85d3cbf06b539c4b5e0cf8d7864",
+        "size_bytes": 218427
+      }
+    ],
+    "hardware": {
+      "accelerators": {
+        "available": true,
+        "cuda": {
+          "available": false,
+          "device_count": 0,
+          "devices": [],
+          "runtime_version": null
+        },
+        "cudnn": {
+          "available": false,
+          "version": null
+        },
+        "determinism": {
+          "cudnn_benchmark": false,
+          "cudnn_deterministic": false,
+          "deterministic_algorithms": false
+        },
+        "mps": {
+          "available": true,
+          "built": true
+        },
+        "rocm_version": null,
+        "version": "2.13.0"
+      },
+      "container": {
+        "detected": false,
+        "image_digest": null
+      },
+      "cpu": {
+        "architecture": "arm64",
+        "logical_count": 8,
+        "model": "Apple M1"
+      },
+      "memory": {
+        "total_bytes": 8589934592
+      },
+      "tools": {
+        "git": "git version 2.50.1 (Apple Git-155)",
+        "python_compiler": "Clang 17.0.0 (clang-1700.0.13.3)",
+        "uv": "uv 0.11.2 (02036a8ba 2026-03-26 aarch64-apple-darwin)"
+      }
+    },
+    "schema_version": "1.0"
+  },
+  "run_id": "native-preflight-pilot-20260726-v1",
+  "schema_version": "1.0",
+  "status": "success",
+  "timestamps": {
+    "created_at": "2026-07-26T20:36:28.540666Z",
+    "finished_at": "2026-07-26T20:36:29.262273Z",
+    "started_at": "2026-07-26T20:36:29.254977Z",
+    "updated_at": "2026-07-26T20:36:29.262273Z"
+  }
+}

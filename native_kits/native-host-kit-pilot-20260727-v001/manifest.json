@@ -1,0 +1,257 @@
+{
+  "artifacts": [
+    {
+      "metadata": {
+        "dataset_id": "ds-carla0916-native-pilot-v001",
+        "kit_id": "native-host-kit-pilot-20260727-v001",
+        "planned_capture_count": 50
+      },
+      "mime_type": "text/markdown",
+      "path": "README.md",
+      "registered_at": "2026-07-26T20:58:00.094417Z",
+      "role": "native_host_kit_readme",
+      "sha256": "3821a5d43a775740ad0a01a99f796836d2e64f730dae5c95da224737acbde93d",
+      "size_bytes": 2921
+    },
+    {
+      "metadata": {
+        "dataset_id": "ds-carla0916-native-pilot-v001",
+        "kit_id": "native-host-kit-pilot-20260727-v001",
+        "planned_capture_count": 50
+      },
+      "mime_type": "application/octet-stream",
+      "path": "checksums.sha256",
+      "registered_at": "2026-07-26T20:58:00.095069Z",
+      "role": "native_host_kit_checksum_index",
+      "sha256": "c067dbeb2735735b528d1e55cd6bd8aad856ddb417f2584f5b1351a4aa96974b",
+      "size_bytes": 504
+    },
+    {
+      "metadata": {
+        "dataset_id": "ds-carla0916-native-pilot-v001",
+        "kit_id": "native-host-kit-pilot-20260727-v001",
+        "planned_capture_count": 50
+      },
+      "mime_type": "application/json",
+      "path": "kit.json",
+      "registered_at": "2026-07-26T20:58:00.091418Z",
+      "role": "native_host_kit_release_manifest",
+      "sha256": "0ca79a7cd166feb1b9d4f8f3a400bebdaf6f0066e32c300dc79b837e1e7b0764",
+      "size_bytes": 3283
+    },
+    {
+      "metadata": {
+        "dataset_id": "ds-carla0916-native-pilot-v001",
+        "kit_id": "native-host-kit-pilot-20260727-v001",
+        "planned_capture_count": 50
+      },
+      "mime_type": "application/json",
+      "path": "kit_config.json",
+      "registered_at": "2026-07-26T20:58:00.090744Z",
+      "role": "native_host_kit_configuration",
+      "sha256": "defa35e0f25836c66e5cd69251594c30120b06fccebeda980a78534298bc844f",
+      "size_bytes": 548
+    },
+    {
+      "metadata": {
+        "dataset_id": "ds-carla0916-native-pilot-v001",
+        "kit_id": "native-host-kit-pilot-20260727-v001",
+        "planned_capture_count": 50
+      },
+      "mime_type": "text/csv",
+      "path": "payload/inventory.csv",
+      "registered_at": "2026-07-26T20:58:00.093826Z",
+      "role": "native_host_kit_payload_inventory_csv",
+      "sha256": "64e9de05f87b4d1724ec45a22172f879d2cba09276704bcb9746fc45eedd2a76",
+      "size_bytes": 13124
+    },
+    {
+      "metadata": {
+        "dataset_id": "ds-carla0916-native-pilot-v001",
+        "kit_id": "native-host-kit-pilot-20260727-v001",
+        "planned_capture_count": 50
+      },
+      "mime_type": "application/json",
+      "path": "payload/inventory.json",
+      "registered_at": "2026-07-26T20:58:00.093220Z",
+      "role": "native_host_kit_payload_inventory_json",
+      "sha256": "12b283478dca407dd308ffcb08354a07488bda87d3f3241f2b93d7c340e94178",
+      "size_bytes": 23952
+    },
+    {
+      "metadata": {
+        "dataset_id": "ds-carla0916-native-pilot-v001",
+        "kit_id": "native-host-kit-pilot-20260727-v001",
+        "planned_capture_count": 50
+      },
+      "mime_type": "application/zip",
+      "path": "payload/native-host-kit.zip",
+      "registered_at": "2026-07-26T20:58:00.092623Z",
+      "role": "native_host_kit_payload_archive",
+      "sha256": "8d3df04d2843aedb510c2a9d264d3d6d779abaa1851ed57ddb82f73c6f378214",
+      "size_bytes": 1336683
+    }
+  ],
+  "carla": {
+    "endpoint": {
+      "host": "172.20.10.7",
+      "port": 2000
+    },
+    "map": null,
+    "version": "0.9.16"
+  },
+  "environment": {
+    "packages": {
+      "carla": null,
+      "matplotlib": "3.11.1",
+      "msgpack": "1.2.1",
+      "numpy": "2.5.1",
+      "opencv-python": "5.0.0.93"
+    },
+    "platform": {
+      "machine": "arm64",
+      "release": "25.5.0",
+      "system": "Darwin"
+    },
+    "python": {
+      "implementation": "CPython",
+      "version": "3.12.11"
+    }
+  },
+  "experiment": null,
+  "failure": null,
+  "git": {
+    "available": true,
+    "commit": null,
+    "dirty": true
+  },
+  "invocation": {
+    "cli_args": {
+      "config": "configs/native_host/native_pilot_kit_v1.json",
+      "kits_root": "native_kits"
+    },
+    "config": {
+      "kit": {
+        "carla_version": "0.9.16",
+        "dataset_id": "ds-carla0916-native-pilot-v001",
+        "host": "172.20.10.7",
+        "kit_id": "native-host-kit-pilot-20260727-v001",
+        "max_episodes": 1,
+        "partitions": [
+          "train"
+        ],
+        "port": 2000,
+        "python_version": "3.12",
+        "requirements": {
+          "linux": "requirements-linux-py312.txt",
+          "windows": "requirements-windows-py312.txt"
+        },
+        "scenario_plan": "../../runs/scenario-plan-native-integration-pilot-v1",
+        "schema_version": "1.0",
+        "title": "CARLA 0.9.16 native 50-frame integration pilot host kit"
+      },
+      "object_type": "native_host_kit",
+      "schema_version": "1.0"
+    }
+  },
+  "references": {
+    "datasets": [],
+    "inputs": [
+      {
+        "kind": "verified_scenario_plan",
+        "run_id": "scenario-plan-native-integration-pilot-v1",
+        "sha256": "4b1b7414f8083c53f48261bab2d14b5fff97cd602d83c09c826ec22a21712d5e",
+        "size_bytes": 5720
+      },
+      {
+        "kind": "windows_dependency_lock",
+        "sha256": "ceaef5c27bbaa0091cc8de17181eaf86600bba21da8ed60be0d2dbbf2d83be17",
+        "size_bytes": 43337
+      },
+      {
+        "kind": "linux_dependency_lock",
+        "sha256": "ceaef5c27bbaa0091cc8de17181eaf86600bba21da8ed60be0d2dbbf2d83be17",
+        "size_bytes": 43337
+      }
+    ],
+    "models": []
+  },
+  "reproducibility": {
+    "configuration": {
+      "canonicalization": "json-sort-keys-utf8-v1",
+      "identity_excluded_top_level_keys": [
+        "created_at",
+        "output_dir",
+        "output_path",
+        "run_id",
+        "runs_root",
+        "started_at"
+      ],
+      "identity_sha256": "63ef5586d993304351d1a06c580dc6fe0eaa18bd2024537344529cb2c09184f5",
+      "identity_size_bytes": 538,
+      "resolved_sha256": "63ef5586d993304351d1a06c580dc6fe0eaa18bd2024537344529cb2c09184f5",
+      "resolved_size_bytes": 538,
+      "sensitive_values_redacted_before_hashing": true
+    },
+    "dependency_locks": [
+      {
+        "relative_path": "uv.lock",
+        "sha256": "6f4e161d1b76dffe43f2e59df5cc4988cd322a5bda500d11c52fdc96206cc35c",
+        "size_bytes": 218427
+      }
+    ],
+    "hardware": {
+      "accelerators": {
+        "available": true,
+        "cuda": {
+          "available": false,
+          "device_count": 0,
+          "devices": [],
+          "runtime_version": null
+        },
+        "cudnn": {
+          "available": false,
+          "version": null
+        },
+        "determinism": {
+          "cudnn_benchmark": false,
+          "cudnn_deterministic": false,
+          "deterministic_algorithms": false
+        },
+        "mps": {
+          "available": true,
+          "built": true
+        },
+        "rocm_version": null,
+        "version": "2.13.0"
+      },
+      "container": {
+        "detected": false,
+        "image_digest": null
+      },
+      "cpu": {
+        "architecture": "arm64",
+        "logical_count": 8,
+        "model": "Apple M1"
+      },
+      "memory": {
+        "total_bytes": 8589934592
+      },
+      "tools": {
+        "git": "git version 2.50.1 (Apple Git-155)",
+        "python_compiler": "Clang 17.0.0 (clang-1700.0.13.3)",
+        "uv": "uv 0.11.2 (02036a8ba 2026-03-26 aarch64-apple-darwin)"
+      }
+    },
+    "schema_version": "1.0"
+  },
+  "run_id": "native-host-kit-pilot-20260727-v001",
+  "schema_version": "1.0",
+  "status": "success",
+  "timestamps": {
+    "created_at": "2026-07-26T20:57:58.926245Z",
+    "finished_at": "2026-07-26T20:58:00.095545Z",
+    "started_at": "2026-07-26T20:58:00.079622Z",
+    "updated_at": "2026-07-26T20:58:00.095545Z"
+  }
+}

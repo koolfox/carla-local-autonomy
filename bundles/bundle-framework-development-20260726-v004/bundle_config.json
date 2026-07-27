@@ -1,0 +1,118 @@
+{
+  "authors": [
+    "Hesam"
+  ],
+  "bundle_id": "bundle-framework-development-20260726-v004",
+  "commands": [
+    [
+      "uv",
+      "sync",
+      "--frozen",
+      "--all-groups"
+    ],
+    [
+      "uv",
+      "run",
+      "pytest",
+      "-q"
+    ],
+    [
+      "uv",
+      "run",
+      "ruff",
+      "format",
+      "--check",
+      "."
+    ],
+    [
+      "uv",
+      "run",
+      "ruff",
+      "check",
+      "."
+    ],
+    [
+      "uv",
+      "run",
+      "python",
+      "-m",
+      "compileall",
+      "-q",
+      "carla_vision",
+      "carla_yolo"
+    ],
+    [
+      "uv",
+      "run",
+      "carla-operator-ui",
+      "--help"
+    ]
+  ],
+  "limitations": [
+    "This is a development bundle from an uncommitted dirty worktree and is not confirmatory thesis evidence.",
+    "CARLA server binaries, Unreal assets, pretrained model weights, datasets, and live videos are fingerprinted by source manifests but are not embedded in the source archive.",
+    "The local operator panel launches host subprocesses and is intentionally loopback-only; it is not a remotely deployable multi-user application.",
+    "The crowded situation is an offline deterministic plan and has not been executed against the native CARLA PythonAPI.",
+    "The live simulator endpoint, actor state, route position, and transient traffic cannot be reconstructed from this bundle alone.",
+    "The included live matrix evidence was sequential and cannot support detector-accuracy ranking.",
+    "The hazard-stop policy is a non-learned, non-actuating systems baseline and does not establish safe autonomous driving.",
+    "Real native synchronous collection, CARLA-specific multi-seed training, locked-test evaluation, and vision-only closed-loop control remain outside this development bundle."
+  ],
+  "purpose": "development",
+  "repository_root": "../..",
+  "schema_version": "1.0",
+  "source_paths": [
+    ".gitignore",
+    "README.md",
+    "analyze_run.py",
+    "audit_dataset.py",
+    "build_report.py",
+    "build_reproduction_bundle.py",
+    "carla_vision",
+    "carla_yolo",
+    "collect_dataset.py",
+    "configs",
+    "demo.py",
+    "docs",
+    "evaluate_detector.py",
+    "finalize_failure_review.py",
+    "mine_failures.py",
+    "native_collect.py",
+    "operator_configs",
+    "operator_ui.py",
+    "package_model.py",
+    "plan_scenarios.py",
+    "pyproject.toml",
+    "replay_models.py",
+    "run_shadow_matrix.py",
+    "select_threshold.py",
+    "tests",
+    "train_detector.py",
+    "uv.lock",
+    "verify_artifacts.py",
+    "verify_reproduction_bundle.py",
+    "verify_shadow_matrix.py",
+    "verify_shadow_run.py"
+  ],
+  "sources": [
+    {
+      "label": "Prior standalone framework reproduction bundle",
+      "path": "../../bundles/bundle-framework-development-20260726-v003",
+      "role": "other",
+      "source_id": "bundle-framework-development-20260726-v003"
+    },
+    {
+      "label": "Framework validation report v0.6",
+      "path": "../../reports/rpt-framework-validation-20260726-v004",
+      "role": "report",
+      "source_id": "rpt-framework-validation-20260726-v004"
+    },
+    {
+      "label": "Operator crowded-situation scenario plan",
+      "path": "../../runs/scenario-plan-operator-poc-v1",
+      "role": "scenario-plan",
+      "source_id": "scenario-plan-operator-poc-v1"
+    }
+  ],
+  "title": "CARLA monocular-vision framework development reproduction bundle v0.6"
+}

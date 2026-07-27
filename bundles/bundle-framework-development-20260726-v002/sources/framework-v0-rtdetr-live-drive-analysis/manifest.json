@@ -1,0 +1,179 @@
+{
+  "artifacts": [
+    {
+      "metadata": {
+        "analysis_schema_version": "1.0",
+        "rows": 74,
+        "source_detections_sha256": "fe86cff17ec55150b8e9d3b1c616329be0e7cccf99008016ae15a4dac33f9b34",
+        "source_run_id": "framework-v0-rtdetr-live-drive"
+      },
+      "mime_type": "text/csv",
+      "path": "frames.csv",
+      "registered_at": "2026-07-26T17:31:21.857886Z",
+      "role": "analysis_frame_table",
+      "sha256": "f7da25baa280291175dbc267d9b128e86bb243283f4df3553d467ebdef9477f1",
+      "size_bytes": 21607
+    },
+    {
+      "metadata": {
+        "analysis_schema_version": "1.0",
+        "source_detections_sha256": "fe86cff17ec55150b8e9d3b1c616329be0e7cccf99008016ae15a4dac33f9b34",
+        "source_run_id": "framework-v0-rtdetr-live-drive"
+      },
+      "mime_type": "image/png",
+      "path": "plots/class_frequency.png",
+      "registered_at": "2026-07-26T17:31:21.860542Z",
+      "role": "analysis_plot_class_frequency",
+      "sha256": "41b5a139dbdea930a6c4e650aabaab451e9ed7ce6309bf67032c845c13058dd9",
+      "size_bytes": 36121
+    },
+    {
+      "metadata": {
+        "analysis_schema_version": "1.0",
+        "source_detections_sha256": "fe86cff17ec55150b8e9d3b1c616329be0e7cccf99008016ae15a4dac33f9b34",
+        "source_run_id": "framework-v0-rtdetr-live-drive"
+      },
+      "mime_type": "image/png",
+      "path": "plots/detections_hazards.png",
+      "registered_at": "2026-07-26T17:31:21.859924Z",
+      "role": "analysis_plot_detections_hazards",
+      "sha256": "145b845650883fb9853aeba6a74ff8ae9c0d811f5ea950ba760447b57798b0f0",
+      "size_bytes": 37765
+    },
+    {
+      "metadata": {
+        "analysis_schema_version": "1.0",
+        "source_detections_sha256": "fe86cff17ec55150b8e9d3b1c616329be0e7cccf99008016ae15a4dac33f9b34",
+        "source_run_id": "framework-v0-rtdetr-live-drive"
+      },
+      "mime_type": "image/png",
+      "path": "plots/latency_cadence.png",
+      "registered_at": "2026-07-26T17:31:21.858609Z",
+      "role": "analysis_plot_latency_cadence",
+      "sha256": "1a2be25222e2456f270ba01715bef437efe84d770a2cf4ed991a2ff376d4ae50",
+      "size_bytes": 172339
+    },
+    {
+      "metadata": {
+        "analysis_schema_version": "1.0",
+        "source_detections_sha256": "fe86cff17ec55150b8e9d3b1c616329be0e7cccf99008016ae15a4dac33f9b34",
+        "source_run_id": "framework-v0-rtdetr-live-drive"
+      },
+      "mime_type": "image/png",
+      "path": "plots/simulator_speed.png",
+      "registered_at": "2026-07-26T17:31:21.859296Z",
+      "role": "analysis_plot_simulator_speed",
+      "sha256": "797c87cb535b9784eddd038b9419b44808fe86adb7f91bf8346a066dceb8fac2",
+      "size_bytes": 60971
+    },
+    {
+      "metadata": {
+        "analysis_schema_version": "1.0",
+        "source_detections_sha256": "fe86cff17ec55150b8e9d3b1c616329be0e7cccf99008016ae15a4dac33f9b34",
+        "source_run_id": "framework-v0-rtdetr-live-drive"
+      },
+      "mime_type": "application/json",
+      "path": "summary_metrics.json",
+      "registered_at": "2026-07-26T17:31:21.857156Z",
+      "role": "analysis_summary_metrics",
+      "sha256": "51ad1f231abde126bd480653134cd9d89845532349877a44e3663221078afa84",
+      "size_bytes": 4940
+    }
+  ],
+  "carla": {
+    "endpoint": {
+      "host": "172.20.10.7",
+      "port": 2000
+    },
+    "map": "Carla/Maps/Town10HD_Opt",
+    "version": "0.9.16"
+  },
+  "environment": {
+    "packages": {
+      "carla": null,
+      "matplotlib": "3.11.1",
+      "numpy": "2.5.1",
+      "opencv-python": "5.0.0.93",
+      "torch": "2.13.0",
+      "torchvision": "0.28.0",
+      "ultralytics": "8.4.106"
+    },
+    "platform": {
+      "machine": "arm64",
+      "release": "25.5.0",
+      "system": "Darwin"
+    },
+    "python": {
+      "implementation": "CPython",
+      "version": "3.12.11"
+    }
+  },
+  "failure": null,
+  "git": {
+    "available": true,
+    "commit": null,
+    "dirty": true
+  },
+  "invocation": {
+    "cli_args": [
+      "--source-run",
+      "runs/framework-v0-rtdetr-live-drive",
+      "--runs-root",
+      "runs",
+      "--run-id",
+      "framework-v0-rtdetr-live-drive-analysis"
+    ],
+    "config": {
+      "analysis_schema_version": "1.0",
+      "analysis_type": "post_hoc_detection_run",
+      "source_run": {
+        "detections": {
+          "path": "logs/detections.jsonl",
+          "sha256": "fe86cff17ec55150b8e9d3b1c616329be0e7cccf99008016ae15a4dac33f9b34",
+          "size_bytes": 200369
+        },
+        "manifest": {
+          "path": "manifest.json",
+          "sha256": "eb49e06740dcfa68436538a195552bb304079a32a8a7021959a37f37d356e749",
+          "size_bytes": 3988
+        },
+        "path": "/Users/hesam/Documents/CARLA PY/runs/framework-v0-rtdetr-live-drive",
+        "run_id": "framework-v0-rtdetr-live-drive",
+        "schema_version": "1.0",
+        "status": "success",
+        "type": "source_run"
+      }
+    }
+  },
+  "references": {
+    "datasets": [
+      {
+        "detections": {
+          "path": "logs/detections.jsonl",
+          "sha256": "fe86cff17ec55150b8e9d3b1c616329be0e7cccf99008016ae15a4dac33f9b34",
+          "size_bytes": 200369
+        },
+        "manifest": {
+          "path": "manifest.json",
+          "sha256": "eb49e06740dcfa68436538a195552bb304079a32a8a7021959a37f37d356e749",
+          "size_bytes": 3988
+        },
+        "path": "/Users/hesam/Documents/CARLA PY/runs/framework-v0-rtdetr-live-drive",
+        "run_id": "framework-v0-rtdetr-live-drive",
+        "schema_version": "1.0",
+        "status": "success",
+        "type": "source_run"
+      }
+    ],
+    "models": []
+  },
+  "run_id": "framework-v0-rtdetr-live-drive-analysis",
+  "schema_version": "1.0",
+  "status": "success",
+  "timestamps": {
+    "created_at": "2026-07-26T17:31:21.516704Z",
+    "finished_at": "2026-07-26T17:31:21.861407Z",
+    "started_at": "2026-07-26T17:31:21.569855Z",
+    "updated_at": "2026-07-26T17:31:21.861407Z"
+  }
+}

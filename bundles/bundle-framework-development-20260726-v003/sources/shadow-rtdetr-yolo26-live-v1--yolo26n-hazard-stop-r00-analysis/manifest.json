@@ -1,0 +1,250 @@
+{
+  "artifacts": [
+    {
+      "metadata": {
+        "analysis_schema_version": "1.0",
+        "rows": 103,
+        "source_detections_sha256": "d8432003212d88a016ece60107463a582bc15eb0b1a86071d2991d5e1cfca8a4",
+        "source_run_id": "shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00"
+      },
+      "mime_type": "text/csv",
+      "path": "frames.csv",
+      "registered_at": "2026-07-26T19:29:05.409231Z",
+      "role": "analysis_frame_table",
+      "sha256": "fd419a6a54d36b850aa7ede927dc583960bc1df649ba0c6cafb3f01a86a25b36",
+      "size_bytes": 28349
+    },
+    {
+      "metadata": {
+        "analysis_schema_version": "1.0",
+        "source_detections_sha256": "d8432003212d88a016ece60107463a582bc15eb0b1a86071d2991d5e1cfca8a4",
+        "source_run_id": "shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00"
+      },
+      "mime_type": "image/png",
+      "path": "plots/class_frequency.png",
+      "registered_at": "2026-07-26T19:29:05.412148Z",
+      "role": "analysis_plot_class_frequency",
+      "sha256": "863fa9459be51f9ab9c1b8f0d8ad91e11453c33186d70e3c9dfcd2faed82e9df",
+      "size_bytes": 34201
+    },
+    {
+      "metadata": {
+        "analysis_schema_version": "1.0",
+        "source_detections_sha256": "d8432003212d88a016ece60107463a582bc15eb0b1a86071d2991d5e1cfca8a4",
+        "source_run_id": "shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00"
+      },
+      "mime_type": "image/png",
+      "path": "plots/detections_hazards.png",
+      "registered_at": "2026-07-26T19:29:05.411467Z",
+      "role": "analysis_plot_detections_hazards",
+      "sha256": "5d6ae3a9832efd8d9ea28fc19a5872e1a0587819c06a831cac3a96f7f4784f4e",
+      "size_bytes": 30693
+    },
+    {
+      "metadata": {
+        "analysis_schema_version": "1.0",
+        "source_detections_sha256": "d8432003212d88a016ece60107463a582bc15eb0b1a86071d2991d5e1cfca8a4",
+        "source_run_id": "shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00"
+      },
+      "mime_type": "image/png",
+      "path": "plots/latency_cadence.png",
+      "registered_at": "2026-07-26T19:29:05.410072Z",
+      "role": "analysis_plot_latency_cadence",
+      "sha256": "6eb07ef5534827517281bfef6e81c80e3bd44e8f52eab266c3e84533ac581b73",
+      "size_bytes": 196562
+    },
+    {
+      "metadata": {
+        "analysis_schema_version": "1.0",
+        "source_detections_sha256": "d8432003212d88a016ece60107463a582bc15eb0b1a86071d2991d5e1cfca8a4",
+        "source_run_id": "shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00"
+      },
+      "mime_type": "image/png",
+      "path": "plots/simulator_speed.png",
+      "registered_at": "2026-07-26T19:29:05.410768Z",
+      "role": "analysis_plot_simulator_speed",
+      "sha256": "6c49095d1bd0191a61755d6866b2fc802060a39e8a990479f63b50b3c954adf3",
+      "size_bytes": 54755
+    },
+    {
+      "metadata": {
+        "analysis_schema_version": "1.0",
+        "source_detections_sha256": "d8432003212d88a016ece60107463a582bc15eb0b1a86071d2991d5e1cfca8a4",
+        "source_run_id": "shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00"
+      },
+      "mime_type": "application/json",
+      "path": "summary_metrics.json",
+      "registered_at": "2026-07-26T19:29:05.408389Z",
+      "role": "analysis_summary_metrics",
+      "sha256": "963beee860449acc0e5b35185a1a6bf9f95a9776369b725f3d99fd20dae06e05",
+      "size_bytes": 4811
+    }
+  ],
+  "carla": {
+    "endpoint": {
+      "host": "172.20.10.7",
+      "port": 2000
+    },
+    "map": "Carla/Maps/Town10HD_Opt",
+    "version": "0.9.16"
+  },
+  "environment": {
+    "packages": {
+      "carla": null,
+      "matplotlib": "3.11.1",
+      "numpy": "2.5.1",
+      "opencv-python": "5.0.0.93",
+      "torch": "2.13.0",
+      "torchvision": "0.28.0",
+      "ultralytics": "8.4.106"
+    },
+    "platform": {
+      "machine": "arm64",
+      "release": "25.5.0",
+      "system": "Darwin"
+    },
+    "python": {
+      "implementation": "CPython",
+      "version": "3.12.11"
+    }
+  },
+  "experiment": null,
+  "failure": null,
+  "git": {
+    "available": true,
+    "commit": null,
+    "dirty": true
+  },
+  "invocation": {
+    "cli_args": [
+      "--source-run",
+      "runs/shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00",
+      "--runs-root",
+      "runs",
+      "--run-id",
+      "shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00-analysis"
+    ],
+    "config": {
+      "analysis_schema_version": "1.0",
+      "analysis_type": "post_hoc_detection_run",
+      "source_run": {
+        "detections": {
+          "path": "logs/detections.jsonl",
+          "sha256": "d8432003212d88a016ece60107463a582bc15eb0b1a86071d2991d5e1cfca8a4",
+          "size_bytes": 168291
+        },
+        "manifest": {
+          "path": "manifest.json",
+          "sha256": "db70ebf8b919380eeb352fbaf9582cf5f7d037313ea3c7d8b9ec8e393a4e292e",
+          "size_bytes": 9100
+        },
+        "path": "/Users/hesam/Documents/CARLA PY/runs/shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00",
+        "run_id": "shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00",
+        "schema_version": "1.0",
+        "status": "success",
+        "type": "source_run"
+      }
+    }
+  },
+  "references": {
+    "datasets": [
+      {
+        "detections": {
+          "path": "logs/detections.jsonl",
+          "sha256": "d8432003212d88a016ece60107463a582bc15eb0b1a86071d2991d5e1cfca8a4",
+          "size_bytes": 168291
+        },
+        "manifest": {
+          "path": "manifest.json",
+          "sha256": "db70ebf8b919380eeb352fbaf9582cf5f7d037313ea3c7d8b9ec8e393a4e292e",
+          "size_bytes": 9100
+        },
+        "path": "/Users/hesam/Documents/CARLA PY/runs/shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00",
+        "run_id": "shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00",
+        "schema_version": "1.0",
+        "status": "success",
+        "type": "source_run"
+      }
+    ],
+    "inputs": [],
+    "models": []
+  },
+  "reproducibility": {
+    "configuration": {
+      "canonicalization": "json-sort-keys-utf8-v1",
+      "identity_excluded_top_level_keys": [
+        "created_at",
+        "output_dir",
+        "output_path",
+        "run_id",
+        "runs_root",
+        "started_at"
+      ],
+      "identity_sha256": "9824ea636db427ff969657cfd2ead106ace60ba9756b7cc61f2a067599f57437",
+      "identity_size_bytes": 588,
+      "resolved_sha256": "9824ea636db427ff969657cfd2ead106ace60ba9756b7cc61f2a067599f57437",
+      "resolved_size_bytes": 588,
+      "sensitive_values_redacted_before_hashing": true
+    },
+    "dependency_locks": [
+      {
+        "relative_path": "uv.lock",
+        "sha256": "a2377ea1eb77f0d310237bb3c7e9aa757cd23fae6fa1bd059d5646fc3d306f61",
+        "size_bytes": 218427
+      }
+    ],
+    "hardware": {
+      "accelerators": {
+        "available": true,
+        "cuda": {
+          "available": false,
+          "device_count": 0,
+          "devices": [],
+          "runtime_version": null
+        },
+        "cudnn": {
+          "available": false,
+          "version": null
+        },
+        "determinism": {
+          "cudnn_benchmark": false,
+          "cudnn_deterministic": false,
+          "deterministic_algorithms": false
+        },
+        "mps": {
+          "available": true,
+          "built": true
+        },
+        "rocm_version": null,
+        "version": "2.13.0"
+      },
+      "container": {
+        "detected": false,
+        "image_digest": null
+      },
+      "cpu": {
+        "architecture": "arm64",
+        "logical_count": 8,
+        "model": "Apple M1"
+      },
+      "memory": {
+        "total_bytes": 8589934592
+      },
+      "tools": {
+        "git": "git version 2.50.1 (Apple Git-155)",
+        "python_compiler": "Clang 17.0.0 (clang-1700.0.13.3)",
+        "uv": "uv 0.11.2 (02036a8ba 2026-03-26 aarch64-apple-darwin)"
+      }
+    },
+    "schema_version": "1.0"
+  },
+  "run_id": "shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00-analysis",
+  "schema_version": "1.0",
+  "status": "success",
+  "timestamps": {
+    "created_at": "2026-07-26T19:29:03.903287Z",
+    "finished_at": "2026-07-26T19:29:05.412904Z",
+    "started_at": "2026-07-26T19:29:05.099758Z",
+    "updated_at": "2026-07-26T19:29:05.412904Z"
+  }
+}

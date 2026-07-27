@@ -1,0 +1,307 @@
+{
+  "all_sources_verified_before_archival": true,
+  "bundle_id": "bundle-framework-development-20260726-v003",
+  "schema_version": "1.0",
+  "source_count": 7,
+  "sources": [
+    {
+      "archived_manifest": {
+        "path": "sources/bundle-framework-development-20260726-v002/manifest.json",
+        "sha256": "e8864662f3df0a4893dfcf58d6d0b78b3a3e8e88221469f513f2f170e9302f24",
+        "size_bytes": 22193
+      },
+      "configured_locator": "../../bundles/bundle-framework-development-20260726-v002",
+      "label": "Prior standalone framework reproduction bundle",
+      "role": "other",
+      "source_id": "bundle-framework-development-20260726-v002",
+      "verification": {
+        "artifact_bytes": 1936814,
+        "artifact_count": 23,
+        "checksum_index_count": 1,
+        "checksum_index_entries": 22,
+        "deep_verification": {
+          "bundle_id": "bundle-framework-development-20260726-v002",
+          "dependency_lock_count": 1,
+          "kind": "reproduction_bundle",
+          "purpose": "development",
+          "source_count": 11,
+          "source_file_count": 147
+        },
+        "external_reference_count": 0,
+        "git": {
+          "available": true,
+          "commit": null,
+          "dirty": true
+        },
+        "role_counts": {
+          "dependency_lockfile_snapshot": 1,
+          "reproduction_bundle_configuration": 1,
+          "reproduction_bundle_release_manifest": 1,
+          "reproduction_checksum_index": 1,
+          "reproduction_commands": 1,
+          "reproduction_environment_snapshot": 1,
+          "reproduction_readme": 1,
+          "reproduction_script": 1,
+          "reproduction_source_archive": 1,
+          "reproduction_source_graph": 1,
+          "reproduction_source_inventory_csv": 1,
+          "reproduction_source_inventory_json": 1,
+          "reproduction_source_manifest": 11
+        },
+        "run_id": "bundle-framework-development-20260726-v002",
+        "schema_version": "1.0",
+        "status": "success",
+        "unregistered_file_count": 0
+      }
+    },
+    {
+      "archived_manifest": {
+        "path": "sources/rpt-framework-validation-20260726-v003/manifest.json",
+        "sha256": "40fcb6fdf902009ab6780c865ee2f966dabdc698b241eaf7e301f2e6c5b95879",
+        "size_bytes": 15945
+      },
+      "configured_locator": "../../reports/rpt-framework-validation-20260726-v003",
+      "label": "Framework validation report v0.5",
+      "role": "report",
+      "source_id": "rpt-framework-validation-20260726-v003",
+      "verification": {
+        "artifact_bytes": 400154,
+        "artifact_count": 11,
+        "checksum_index_count": 1,
+        "checksum_index_entries": 10,
+        "deep_verification": {
+          "kind": "report",
+          "metric_row_count": 54,
+          "purpose": "development",
+          "report_id": "rpt-framework-validation-20260726-v003",
+          "source_count": 7
+        },
+        "external_reference_count": 7,
+        "git": {
+          "available": true,
+          "commit": null,
+          "dirty": true
+        },
+        "role_counts": {
+          "report_checksum_index": 1,
+          "report_configuration": 1,
+          "report_document": 1,
+          "report_metric_table": 1,
+          "report_plot": 4,
+          "report_release_manifest": 1,
+          "report_source_artifact_table": 1,
+          "report_source_inventory": 1
+        },
+        "run_id": "rpt-framework-validation-20260726-v003",
+        "schema_version": "1.0",
+        "status": "success",
+        "unregistered_file_count": 0
+      }
+    },
+    {
+      "archived_manifest": {
+        "path": "sources/shadow-rtdetr-yolo26-live-v1/manifest.json",
+        "sha256": "e0f1351856ea7c1d3b735de2e4c413718977cf17e882d1cc86f522cfb4816f73",
+        "size_bytes": 12405
+      },
+      "configured_locator": "../../runs/shadow-rtdetr-yolo26-live-v1",
+      "label": "RT-DETR and YOLO26 live shadow matrix",
+      "role": "shadow-matrix",
+      "source_id": "shadow-rtdetr-yolo26-live-v1",
+      "verification": {
+        "artifact_bytes": 41992,
+        "artifact_count": 11,
+        "checksum_index_count": 1,
+        "checksum_index_entries": 10,
+        "deep_verification": {
+          "actuation_applied": false,
+          "kind": "vision_shadow_matrix",
+          "matrix_id": "shadow-rtdetr-yolo26-live-v1",
+          "mode": "execute",
+          "planned_run_count": 2,
+          "successful_run_count": 2
+        },
+        "external_reference_count": 5,
+        "git": {
+          "available": true,
+          "commit": null,
+          "dirty": true
+        },
+        "role_counts": {
+          "resolved_shadow_matrix_configuration": 1,
+          "shadow_matrix_checksum_index": 1,
+          "shadow_matrix_child_log": 4,
+          "shadow_matrix_execution_results": 1,
+          "shadow_matrix_plan_csv": 1,
+          "shadow_matrix_plan_jsonl": 1,
+          "shadow_matrix_release_manifest": 1,
+          "shadow_matrix_report": 1
+        },
+        "run_id": "shadow-rtdetr-yolo26-live-v1",
+        "schema_version": "1.0",
+        "status": "success",
+        "unregistered_file_count": 0
+      }
+    },
+    {
+      "archived_manifest": {
+        "path": "sources/shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00/manifest.json",
+        "sha256": "1d30b86aa4b27f207ecd9273e0346352047ac854bd06402f3e58d6aabc4b91b3",
+        "size_bytes": 9113
+      },
+      "configured_locator": "../../runs/shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00",
+      "label": "RT-DETR-L live RGB policy shadow",
+      "role": "vision-shadow",
+      "source_id": "shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00",
+      "verification": {
+        "artifact_bytes": 2895291,
+        "artifact_count": 6,
+        "checksum_index_count": 0,
+        "checksum_index_entries": 0,
+        "deep_verification": {
+          "actuation_applied": false,
+          "kind": "vision_shadow_run",
+          "policy": "hazard-stop-shadow-v1",
+          "proposal_count": 73,
+          "run_id": "shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00"
+        },
+        "external_reference_count": 1,
+        "git": {
+          "available": true,
+          "commit": null,
+          "dirty": true
+        },
+        "role_counts": {
+          "annotated_video": 1,
+          "detections_jsonl": 1,
+          "latest_overlay": 1,
+          "run_summary": 1,
+          "vision_policy_input_audit": 1,
+          "vision_shadow_proposals": 1
+        },
+        "run_id": "shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00",
+        "schema_version": "1.0",
+        "status": "success",
+        "unregistered_file_count": 0
+      }
+    },
+    {
+      "archived_manifest": {
+        "path": "sources/shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00/manifest.json",
+        "sha256": "db70ebf8b919380eeb352fbaf9582cf5f7d037313ea3c7d8b9ec8e393a4e292e",
+        "size_bytes": 9100
+      },
+      "configured_locator": "../../runs/shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00",
+      "label": "YOLO26n live RGB policy shadow",
+      "role": "vision-shadow",
+      "source_id": "shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00",
+      "verification": {
+        "artifact_bytes": 3416913,
+        "artifact_count": 6,
+        "checksum_index_count": 0,
+        "checksum_index_entries": 0,
+        "deep_verification": {
+          "actuation_applied": false,
+          "kind": "vision_shadow_run",
+          "policy": "hazard-stop-shadow-v1",
+          "proposal_count": 103,
+          "run_id": "shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00"
+        },
+        "external_reference_count": 1,
+        "git": {
+          "available": true,
+          "commit": null,
+          "dirty": true
+        },
+        "role_counts": {
+          "annotated_video": 1,
+          "detections_jsonl": 1,
+          "latest_overlay": 1,
+          "run_summary": 1,
+          "vision_policy_input_audit": 1,
+          "vision_shadow_proposals": 1
+        },
+        "run_id": "shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00",
+        "schema_version": "1.0",
+        "status": "success",
+        "unregistered_file_count": 0
+      }
+    },
+    {
+      "archived_manifest": {
+        "path": "sources/shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00-analysis/manifest.json",
+        "sha256": "745c207f2f229620e628e3d85b3b2817f6602cccefe53defa2c754473d536a2e",
+        "size_bytes": 8145
+      },
+      "configured_locator": "../../runs/shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00-analysis",
+      "label": "RT-DETR-L live systems analysis",
+      "role": "runtime-analysis",
+      "source_id": "shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00-analysis",
+      "verification": {
+        "artifact_bytes": 317250,
+        "artifact_count": 6,
+        "checksum_index_count": 0,
+        "checksum_index_entries": 0,
+        "deep_verification": {
+          "kind": "tracked_run"
+        },
+        "external_reference_count": 2,
+        "git": {
+          "available": true,
+          "commit": null,
+          "dirty": true
+        },
+        "role_counts": {
+          "analysis_frame_table": 1,
+          "analysis_plot_class_frequency": 1,
+          "analysis_plot_detections_hazards": 1,
+          "analysis_plot_latency_cadence": 1,
+          "analysis_plot_simulator_speed": 1,
+          "analysis_summary_metrics": 1
+        },
+        "run_id": "shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00-analysis",
+        "schema_version": "1.0",
+        "status": "success",
+        "unregistered_file_count": 0
+      }
+    },
+    {
+      "archived_manifest": {
+        "path": "sources/shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00-analysis/manifest.json",
+        "sha256": "f423b915d7d0ea4be4eece0c3cbb62323c7f4ba88907f4b5fc9f02d1a97b7135",
+        "size_bytes": 8133
+      },
+      "configured_locator": "../../runs/shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00-analysis",
+      "label": "YOLO26n live systems analysis",
+      "role": "runtime-analysis",
+      "source_id": "shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00-analysis",
+      "verification": {
+        "artifact_bytes": 349371,
+        "artifact_count": 6,
+        "checksum_index_count": 0,
+        "checksum_index_entries": 0,
+        "deep_verification": {
+          "kind": "tracked_run"
+        },
+        "external_reference_count": 2,
+        "git": {
+          "available": true,
+          "commit": null,
+          "dirty": true
+        },
+        "role_counts": {
+          "analysis_frame_table": 1,
+          "analysis_plot_class_frequency": 1,
+          "analysis_plot_detections_hazards": 1,
+          "analysis_plot_latency_cadence": 1,
+          "analysis_plot_simulator_speed": 1,
+          "analysis_summary_metrics": 1
+        },
+        "run_id": "shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00-analysis",
+        "schema_version": "1.0",
+        "status": "success",
+        "unregistered_file_count": 0
+      }
+    }
+  ]
+}
