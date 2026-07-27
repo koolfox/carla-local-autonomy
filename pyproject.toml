@@ -47,6 +47,8 @@ carla-voxel-test = "carla_vision.voxel.capture:main"
 carla-train-voxel = "carla_vision.voxel.training.runner:main"
 carla-voxel-shadow = "carla_vision.voxel.shadow:main"
 carla-train-imitation = "carla_vision.imitation.runner:main"
+carla-evaluate-drive = "carla_vision.closed_loop_cli:main"
+carla-summarize-drive-evaluations = "carla_vision.closed_loop_report:main"
 
 [dependency-groups]
 dev = [
