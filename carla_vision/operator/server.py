@@ -18,6 +18,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from .catalog import RESEARCH_ROOTS, build_catalog
 from .commands import build_command_plan
 from .contracts import OperatorJobRequest
+from .drive import DriveSessionManager
 from .jobs import JobManager
 from .situations import PROP_PRESETS, WEATHER_PRESETS, SituationSpec, save_situation_suite
 
@@ -126,6 +127,11 @@ class OperatorApplication:
             workspace=self.workspace,
             sessions_root=sessions_root,
         )
+        self.drive = DriveSessionManager(
+            workspace=self.workspace,
+            carla_host=self.carla_host,
+            carla_port=self.carla_port,
+        )
 
     def bootstrap(self) -> dict[str, Any]:
         return {
@@ -139,7 +145,11 @@ class OperatorApplication:
             "weather_presets": list(WEATHER_PRESETS),
             "prop_presets": list(PROP_PRESETS),
             "jobs": self.jobs.list(),
+            "drive": self.drive.state(),
         }
+
+    def close(self) -> None:
+        self.drive.shutdown()
 
     def save_situation(self, raw: Any) -> dict[str, Any]:
         if not isinstance(raw, Mapping):
@@ -362,6 +372,10 @@ class OperatorHTTPServer(ThreadingHTTPServer):
         self.application = application
         super().__init__(server_address, OperatorRequestHandler)
 
+    def server_close(self) -> None:
+        self.application.close()
+        super().server_close()
+
 
 class OperatorRequestHandler(BaseHTTPRequestHandler):
     server: OperatorHTTPServer
@@ -379,6 +393,7 @@ class OperatorRequestHandler(BaseHTTPRequestHandler):
         cache: str = "no-store",
         content_disposition: str | None = None,
         content_security_policy: str = _APPLICATION_CSP,
+        extra_headers: Mapping[str, str] | None = None,
     ) -> None:
         self.send_response(status)
         self.send_header("Content-Type", content_type)
@@ -389,6 +404,8 @@ class OperatorRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Referrer-Policy", "no-referrer")
         if content_disposition is not None:
             self.send_header("Content-Disposition", content_disposition)
+        for name, value in (extra_headers or {}).items():
+            self.send_header(str(name), str(value))
         self.send_header("Content-Security-Policy", content_security_policy)
         self.end_headers()
 
@@ -408,6 +425,22 @@ class OperatorRequestHandler(BaseHTTPRequestHandler):
             length=len(body),
         )
         self.wfile.write(body)
+
+    def _bytes(
+        self,
+        status: HTTPStatus,
+        payload: bytes,
+        *,
+        content_type: str,
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> None:
+        self._headers(
+            status,
+            content_type=content_type,
+            length=len(payload),
+            extra_headers=extra_headers,
+        )
+        self.wfile.write(payload)
 
     def _file(
         self,
@@ -494,6 +527,22 @@ class OperatorRequestHandler(BaseHTTPRequestHandler):
             if path == "/api/jobs":
                 self._json(HTTPStatus.OK, {"jobs": self.server.application.jobs.list()})
                 return
+            if path == "/api/drive/catalog":
+                self._json(HTTPStatus.OK, self.server.application.drive.catalog())
+                return
+            if path == "/api/drive/state":
+                self._json(HTTPStatus.OK, self.server.application.drive.state())
+                return
+            if path == "/api/drive/frame.jpg":
+                view = parse_qs(parsed.query).get("view", ["raw"])[0]
+                sequence, payload = self.server.application.drive.frame(view)
+                self._bytes(
+                    HTTPStatus.OK,
+                    payload,
+                    content_type="image/jpeg",
+                    extra_headers={"X-Drive-Frame-Sequence": str(sequence)},
+                )
+                return
             if path == "/api/evidence":
                 raw = parse_qs(parsed.query).get("path", [""])[0]
                 self._json(
@@ -558,6 +607,51 @@ class OperatorRequestHandler(BaseHTTPRequestHandler):
                 self._json(
                     HTTPStatus.ACCEPTED,
                     self.server.application.start_job(self._body()),
+                )
+                return
+            if path == "/api/drive/start":
+                body = self._body()
+                if not isinstance(body, Mapping):
+                    raise TypeError("drive start request must be an object")
+                self._json(
+                    HTTPStatus.ACCEPTED,
+                    self.server.application.drive.start(body),
+                )
+                return
+            if path == "/api/drive/control":
+                body = self._body()
+                if not isinstance(body, Mapping):
+                    raise TypeError("drive control request must be an object")
+                self._json(
+                    HTTPStatus.OK,
+                    self.server.application.drive.control(body),
+                )
+                return
+            if path == "/api/drive/weather":
+                body = self._body()
+                if not isinstance(body, Mapping):
+                    raise TypeError("drive weather request must be an object")
+                self._json(
+                    HTTPStatus.ACCEPTED,
+                    self.server.application.drive.weather(body),
+                )
+                return
+            if path == "/api/drive/emergency-stop":
+                body = self._body()
+                if not isinstance(body, Mapping):
+                    raise TypeError("drive emergency-stop request must be an object")
+                self._json(
+                    HTTPStatus.ACCEPTED,
+                    self.server.application.drive.emergency_stop(body),
+                )
+                return
+            if path == "/api/drive/stop":
+                body = self._body()
+                if not isinstance(body, Mapping):
+                    raise TypeError("drive stop request must be an object")
+                self._json(
+                    HTTPStatus.ACCEPTED,
+                    self.server.application.drive.stop(body),
                 )
                 return
             if path.startswith("/api/jobs/") and path.endswith("/stop"):

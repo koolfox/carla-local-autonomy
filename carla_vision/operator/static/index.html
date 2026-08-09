@@ -37,7 +37,8 @@
       </div>
 
       <nav class="tabs" aria-label="Operator sections">
-        <button class="tab active" data-tab="live" type="button">Live &amp; Record</button>
+        <button class="tab active" data-tab="drive" type="button">Drive Console</button>
+        <button class="tab" data-tab="live" type="button">Live &amp; Record</button>
         <button class="tab" data-tab="situation" type="button">Situation Builder</button>
         <button class="tab" data-tab="workflows" type="button">Research Workflows</button>
         <button class="tab" data-tab="evidence" type="button">
@@ -49,7 +50,302 @@
       </nav>
 
       <main>
-        <section id="panel-live" class="panel active" aria-labelledby="live-title">
+        <section id="panel-drive" class="panel active" aria-labelledby="drive-title">
+          <div class="section-heading drive-heading">
+            <div>
+              <p class="eyebrow">HUMAN-IN-CONTROL RESEARCH DRIVE</p>
+              <h2 id="drive-title">Drive, observe, and retain the evidence</h2>
+              <p>
+                Choose a vehicle and reproducible random spawn, take keyboard control,
+                view the exact camera stream, and save the resulting research run.
+              </p>
+            </div>
+            <div class="drive-heading-badges">
+              <span id="drive-status" class="status-pill neutral">idle</span>
+              <span class="boundary-badge drive-advisory-badge">MODEL: ADVISORY ONLY · NEVER ACTUATES</span>
+            </div>
+          </div>
+
+          <div class="drive-console-layout">
+            <div class="drive-stage-column">
+              <article class="card drive-viewer-card">
+                <div class="drive-viewer-toolbar">
+                  <div class="drive-view-switch" role="group" aria-label="Camera view">
+                    <button id="drive-view-raw" class="drive-view-button active" type="button" aria-pressed="true">
+                      Raw camera
+                    </button>
+                    <button id="drive-view-overlay" class="drive-view-button" type="button" aria-pressed="false">
+                      Model view
+                    </button>
+                  </div>
+                  <div class="drive-view-actions">
+                    <span id="drive-frame-state" class="drive-frame-state">Waiting for a session</span>
+                    <button id="drive-focus" class="secondary" type="button">Focus driving controls</button>
+                    <button id="drive-emergency" class="emergency-button" type="button" disabled>
+                      Emergency stop
+                    </button>
+                  </div>
+                </div>
+
+                <div
+                  id="drive-viewport"
+                  class="drive-viewport"
+                  tabindex="0"
+                  role="application"
+                  aria-label="CARLA driving camera. Focus this viewport to use keyboard controls."
+                >
+                  <img id="drive-frame" alt="Live front monocular CARLA camera">
+                  <div id="drive-empty" class="drive-empty-state">
+                    <span class="drive-empty-icon" aria-hidden="true">▣</span>
+                    <strong>No live camera yet</strong>
+                    <span>Configure the run, start the session, then focus this viewport to drive.</span>
+                  </div>
+                  <div class="drive-hud drive-hud-top">
+                    <span id="drive-hud-session">NO SESSION</span>
+                    <span id="drive-hud-recording" class="drive-recording-indicator">REC OFF</span>
+                  </div>
+                  <div class="drive-hud drive-hud-bottom">
+                    <div>
+                      <strong id="drive-speed">0.0</strong>
+                      <span>m/s</span>
+                    </div>
+                    <div>
+                      <strong id="drive-gear">N</strong>
+                      <span>gear</span>
+                    </div>
+                    <div>
+                      <strong id="drive-elapsed">00:00</strong>
+                      <span>elapsed</span>
+                    </div>
+                    <div>
+                      <strong id="drive-input-age">—</strong>
+                      <span>input age</span>
+                    </div>
+                  </div>
+                  <div id="drive-focus-shield" class="drive-focus-shield">
+                    Click or use “Focus driving controls” before driving
+                  </div>
+                </div>
+
+                <div class="drive-control-deck" aria-label="Driving key state">
+                  <div class="drive-key-map">
+                    <div class="drive-key-row">
+                      <span id="drive-key-w" class="drive-key">W <small>↑</small></span>
+                    </div>
+                    <div class="drive-key-row">
+                      <span id="drive-key-a" class="drive-key">A <small>←</small></span>
+                      <span id="drive-key-s" class="drive-key">S <small>↓</small></span>
+                      <span id="drive-key-d" class="drive-key">D <small>→</small></span>
+                    </div>
+                  </div>
+                  <div class="drive-key-notes">
+                    <p><kbd>W</kbd>/<kbd>↑</kbd> throttle · <kbd>S</kbd>/<kbd>↓</kbd> brake · <kbd>A D</kbd> steer</p>
+                    <p><kbd>Space</kbd> handbrake · hold <kbd>Shift</kbd> + throttle for safe reverse</p>
+                  </div>
+                  <div class="drive-pedals" aria-label="Current command">
+                    <span>Throttle <strong id="drive-command-throttle">0%</strong></span>
+                    <span>Steer <strong id="drive-command-steer">0%</strong></span>
+                    <span>Brake <strong id="drive-command-brake">100%</strong></span>
+                  </div>
+                </div>
+              </article>
+
+              <article class="card drive-model-boundary">
+                <div>
+                  <p class="eyebrow">CONTROL BOUNDARY</p>
+                  <h3>Model output is visual advice, never a driving command</h3>
+                </div>
+                <p>
+                  Bounding boxes and model metadata can be displayed and recorded.
+                  Only current human keyboard input reaches the vehicle; losing focus
+                  sends a full-brake command and activates the deadman boundary.
+                </p>
+              </article>
+
+              <article class="card drive-capability-card">
+                <div class="card-heading">
+                  <span class="step">IO</span>
+                  <div>
+                    <h3>Server &amp; world capabilities</h3>
+                    <p>Read-only truth from the connected bridge; unavailable controls are not simulated.</p>
+                  </div>
+                </div>
+                <div class="drive-server-facts">
+                  <div><span>Connection</span><strong id="drive-server-connection">checking</strong></div>
+                  <div><span>CARLA version</span><strong id="drive-server-version">—</strong></div>
+                  <div><span>Current map</span><strong id="drive-server-map">—</strong></div>
+                  <div><span>Spawn points</span><strong id="drive-spawn-count">—</strong></div>
+                </div>
+                <div id="drive-capability-list" class="drive-capability-list" aria-live="polite">
+                  <p class="drive-capability-empty">Drive catalog has not loaded yet.</p>
+                </div>
+              </article>
+            </div>
+
+            <aside class="drive-setup-column">
+              <form id="drive-start-form" class="card drive-setup-form">
+                <div class="card-heading">
+                  <span class="step">01</span>
+                  <div>
+                    <h3>Vehicle &amp; session</h3>
+                    <p>One browser-controlled ego vehicle with a front RGB camera.</p>
+                  </div>
+                </div>
+                <div class="fields two">
+                  <label class="span-2">
+                    Run ID
+                    <input id="drive-run-id" required>
+                  </label>
+                  <label>
+                    Host
+                    <input id="drive-host" value="172.20.10.7" required>
+                  </label>
+                  <label>
+                    Port
+                    <input id="drive-port" type="number" value="2000" min="1" max="65535" required>
+                  </label>
+                  <label class="span-2">
+                    Vehicle
+                    <select id="drive-vehicle" required>
+                      <option value="">Load server vehicles first</option>
+                    </select>
+                  </label>
+                  <label>
+                    Color
+                    <select id="drive-color">
+                      <option value="">Blueprint default</option>
+                    </select>
+                  </label>
+                  <label>
+                    Random spawn seed
+                    <input id="drive-seed" type="number" value="20260809" min="0" step="1" required>
+                  </label>
+                  <label class="span-2">
+                    Weather
+                    <select id="drive-weather" required>
+                      <option value="">Load weather presets first</option>
+                    </select>
+                    <small>Changes apply live while a session is running.</small>
+                  </label>
+                  <label class="span-2">
+                    Fixed research props
+                    <select id="drive-props" required>
+                      <option value="">Load scene prop presets first</option>
+                    </select>
+                    <small>Session-owned static props only; this does not create dynamic traffic or walkers.</small>
+                  </label>
+                </div>
+
+                <div class="drive-form-section">
+                  <div class="card-heading compact">
+                    <span class="step">02</span>
+                    <div>
+                      <h3>Camera &amp; model</h3>
+                      <p>Each raw or model image retains the frame sequence it represents.</p>
+                    </div>
+                  </div>
+                  <div class="fields two">
+                    <label>
+                      Resolution
+                      <select id="drive-resolution">
+                        <option value="640x384">640 × 384 · responsive</option>
+                        <option value="1280x720">1280 × 720</option>
+                      </select>
+                    </label>
+                    <label>
+                      Camera FPS
+                      <input id="drive-camera-fps" type="number" value="10" min="1" max="20" step="1">
+                    </label>
+                    <label>
+                      Camera FOV
+                      <input id="drive-camera-fov" type="number" value="90" min="30" max="150" step="1">
+                    </label>
+                    <label class="check-row drive-model-toggle">
+                      <input id="drive-detector-enabled" type="checkbox" checked>
+                      <span>Enable model overlay</span>
+                    </label>
+                    <label>
+                      Detector
+                      <select id="drive-detector">
+                        <option value="rtdetr">RT-DETR</option>
+                        <option value="yolo">YOLO</option>
+                      </select>
+                    </label>
+                    <label>
+                      Weights
+                      <select id="drive-weights" required></select>
+                    </label>
+                    <label>
+                      Device
+                      <select id="drive-device">
+                        <option value="mps">MPS · Apple</option>
+                        <option value="cuda">CUDA</option>
+                        <option value="cpu">CPU</option>
+                      </select>
+                    </label>
+                    <label>
+                      Image size
+                      <input id="drive-image-size" type="number" value="640" min="64" max="4096" step="32">
+                    </label>
+                    <label class="range-field span-2">
+                      <span>Confidence <output id="drive-confidence-value">0.55</output></span>
+                      <input id="drive-confidence" type="range" min="0" max="1" value="0.55" step="0.01">
+                    </label>
+                  </div>
+                </div>
+
+                <div class="drive-form-section">
+                  <div class="card-heading compact">
+                    <span class="step">03</span>
+                    <div>
+                      <h3>Retained output</h3>
+                      <p>Save the exact drive for later inspection and analysis.</p>
+                    </div>
+                  </div>
+                  <div class="fields">
+                    <label class="check-row">
+                      <input id="drive-record-video" type="checkbox" checked>
+                      <span>Record session video</span>
+                    </label>
+                    <label class="check-row">
+                      <input id="drive-spectator-follow" type="checkbox">
+                      <span>Follow ego on CARLA server monitor</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="drive-session-actions">
+                  <button id="drive-start" class="primary" type="submit">Start manual drive</button>
+                  <button id="drive-stop" class="secondary" type="button" disabled>Stop &amp; Save</button>
+                </div>
+                <p id="drive-output-path" class="drive-output-path" aria-live="polite">
+                  No retained output yet.
+                </p>
+              </form>
+
+              <article class="card drive-session-health">
+                <div class="inspector-header">
+                  <div>
+                    <p class="eyebrow">LIVE SAFETY STATE</p>
+                    <h3>Manual control heartbeat</h3>
+                  </div>
+                  <span id="drive-deadman" class="status-pill neutral">inactive</span>
+                </div>
+                <dl class="drive-health-grid">
+                  <div><dt>Vehicle actor</dt><dd id="drive-vehicle-id">—</dd></div>
+                  <div><dt>Camera actor</dt><dd id="drive-camera-id">—</dd></div>
+                  <div><dt>Throttle</dt><dd id="drive-telemetry-throttle">0%</dd></div>
+                  <div><dt>Steer</dt><dd id="drive-telemetry-steer">0%</dd></div>
+                  <div><dt>Brake</dt><dd id="drive-telemetry-brake">0%</dd></div>
+                  <div><dt>Detector</dt><dd id="drive-detector-state">off</dd></div>
+                </dl>
+                <p id="drive-error" class="drive-error" role="alert"></p>
+              </article>
+            </aside>
+          </div>
+        </section>
+
+        <section id="panel-live" class="panel" aria-labelledby="live-title">
           <div class="section-heading">
             <div>
               <p class="eyebrow">FRONT MONOCULAR RGB</p>

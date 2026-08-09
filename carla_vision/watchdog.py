@@ -71,11 +71,12 @@ def _actuator_process(
             if should_stop:
                 break
             if latest_control is not None:
-                # CARLA's native client applies controls asynchronously. Sending only
-                # changed controls keeps the watchdog responsive even when the server
-                # has a slow simulation frame.
+                # Consume every RPC response.  The lightweight bridge's handcrafted
+                # async path cannot drain acknowledgements, so a long drive would
+                # otherwise accumulate unread responses on this safety-critical
+                # connection.
                 if latest_control != last_applied_control:
-                    rpc.apply_vehicle_control_async(vehicle_id, latest_control)
+                    rpc.apply_vehicle_control(vehicle_id, latest_control)
                     last_applied_control = latest_control
                 armed = True
                 last_command = time.monotonic()

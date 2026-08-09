@@ -6,8 +6,11 @@ Control policy: vision proposals never actuate the vehicle
 
 ## Purpose
 
-The operator UI gives a thesis researcher one simple place to:
+The operator UI gives a researcher one simple place to:
 
+- manually drive one session-owned CARLA vehicle from the browser;
+- see the live raw camera or the exact frame used by the selected model;
+- retain raw/annotated videos and synchronized control/detection logs;
 - start a live detector and annotated recording;
 - select RT-DETR or YOLO weights and runtime settings;
 - enable a non-actuating vision-policy shadow;
@@ -25,8 +28,8 @@ The operator UI gives a thesis researcher one simple place to:
 - inspect job status, logs, registered overlays, and videos.
 
 It is intentionally a small orchestration layer over the existing strict
-Python CLIs. It does not duplicate simulator, dataset, training, replay, or
-verification logic.
+Python CLIs and lightweight CARLA bridge. It does not duplicate simulator,
+dataset, training, replay, or verification logic.
 
 ## Start
 
@@ -46,11 +49,97 @@ synchronous collection on that machine, but does not block the lightweight
 MessagePack live viewer, RT-DETR/YOLO overlay, MP4 recording, or optional
 teacher motion.
 
-The server refuses non-loopback bind addresses. It launches local processes
-and can authorize simulator mutation, so it must not be exposed as an
-unauthenticated network service.
+The server refuses non-loopback bind addresses. The web UI stays on the
+operator computer, while its lightweight MessagePack bridge controls the
+currently configured CARLA server. It launches local processes and can
+authorize simulator mutation, so it must not be exposed as an unauthenticated
+network service.
 
-## Five operator surfaces
+## Six operator surfaces
+
+### Research Drive Console
+
+The Drive Console is a deliberately small, game-like manual-driving surface
+for collecting and inspecting research runs without writing code. It permits
+exactly one active interactive session. Starting a session:
+
+- queries the connected CARLA server for its current map, official spawn
+  points, available vehicle blueprints, and supported colors;
+- selects a seeded random official spawn point and creates one session-owned
+  ego vehicle there;
+- optionally places one fixed, session-owned research-prop preset relative to
+  that spawn;
+- attaches a front monocular RGB camera and streams it into the browser;
+- optionally runs RT-DETR or YOLO and exposes raw and exact-model-frame views;
+- optionally records the raw drive and advisory model overlay separately;
+- optionally moves the CARLA spectator to a chase view on the server monitor.
+
+The random selection is a **start location**, not a planned route. Props are
+the small fixed presets shown by the UI; they are owned and removed by the
+session rather than persistent additions to the world.
+
+Click the camera viewport, or select **Focus driving controls**, before using
+the keyboard:
+
+- `W` or `Up`: throttle;
+- `S` or `Down`: brake;
+- `A`/`D` or `Left`/`Right`: steer;
+- `Space`: handbrake;
+- hold `Shift` with forward throttle after slowing to near zero: reverse.
+
+RT-DETR and YOLO results are visual and recorded advice only. They never send
+throttle, steer, or brake. Current human keyboard state is the only normal
+actuator input. If the viewport/browser loses focus, the tab is hidden, the
+camera becomes stale, or the control heartbeat expires, the deadman applies a
+service brake. **Emergency Stop** also applies a brake and remains latched;
+finish that session with **Stop & Save** before starting another one.
+
+Weather presets can be changed while driving. If the CARLA episode has not
+been replaced, the session restores the original weather at the end and
+removes the vehicle, camera, and props it created. Optional spectator follow
+also restores the original spectator pose under the same guard. Spectator
+follow affects only the monitor attached to the CARLA server; it does not
+change the front-RGB research input or recorded view.
+
+Use **Stop & Save** for normal completion. Output is finalized below
+`runs/<run-id>/`:
+
+```text
+manifest.json
+config.json
+summary.json
+controls.jsonl
+detections.jsonl
+events.jsonl
+latest-raw.jpg
+latest-overlay.jpg
+raw-drive.mp4
+model-overlay.mp4
+```
+
+Videos and model-specific files are retained only when their corresponding
+recording/detector options are enabled. The control log records the applied
+manual or failsafe source, input age, camera/model sequences, telemetry, and
+the explicit fact that model output was not actuated. The detections log keeps
+the exact model-frame sequence, inference time, labels, confidence, and boxes.
+
+#### 30-second validation
+
+Before a long collection, use this short manual check:
+
+1. Run `uv run carla-operator-ui --open-browser`, open **Drive Console**, and
+   confirm CARLA is reported reachable with the expected current map.
+2. Choose a vehicle/color, `clear-day` weather, a seed, and either no props or
+   one small preset. Enable recording and a known RT-DETR or YOLO weight file.
+3. Start the drive, wait for a raw frame, focus the viewport, and drive gently
+   for about 10 seconds. Verify throttle, steering, braking, speed, and gear in
+   the HUD.
+4. Switch between **Raw** and **Model** views, change weather once, then release
+   viewport focus and confirm the deadman reports full brake. Use Emergency
+   Stop only at the end because it is latched.
+5. Select **Stop & Save** before 30 seconds. Confirm `runs/<run-id>/summary.json`
+   reports success and inspect both MP4s plus the three JSONL logs before
+   authorizing a longer experiment.
 
 ### Live & Record
 
@@ -219,18 +308,28 @@ finalization is pending rather than probing undeclared files.
 - Teacher motion, native mutation, locked-test access, and real training have
   separate visible acknowledgements.
 - Native dry-run does not import CARLA or contact the simulator.
-- Closing the UI asks active child processes to terminate; runtime watchdog
-  and final-stop behavior remain authoritative.
+- Closing the UI stops the active drive and asks active child processes to
+  terminate; runtime watchdog and final-stop behavior remain authoritative.
 
 The token is a local cross-origin request guard, not user authentication. This
 POC is deliberately not a remotely hosted multi-user service.
 
 ## Current limitations
 
-- The UI launches the existing native OpenCV viewer rather than re-encoding a
-  low-latency browser video stream.
-- It offers named weather/prop presets instead of exposing every CARLA
-  attribute.
+- The Drive Console selects a seeded random official road spawn point; it does
+  not plan or validate a road-following random route.
+- It cannot reload maps, create dynamic Traffic Manager traffic or walkers, or
+  enable autopilot. Those features remain future integrations through an
+  optional official-PythonAPI native worker.
+- Situation Builder still saves and resolves deterministic plans only. Its
+  traffic, pedestrian, weather, and prop values do not populate a running
+  Drive Console session.
+- The Drive Console exposes named weather and fixed owned prop presets rather
+  than every CARLA world or blueprint attribute.
+- It allows one active interactive session and one local browser operator; it
+  is not a multi-user driving service.
+- The separate Live & Record surface still launches the existing native
+  OpenCV viewer; the browser camera stream belongs to the Drive Console.
 - It creates one situation recipe at a time; multi-recipe thesis suites remain
   JSON-configured.
 - It does not edit training hyperparameters, ontologies, or model-package

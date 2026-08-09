@@ -114,13 +114,33 @@ Start the local thesis-MVP control panel:
 uv run carla-operator-ui --open-browser
 ```
 
-It runs only on `http://127.0.0.1:8765/` and provides five simple surfaces:
-live detection/recording, situation and crowdedness controls, research
-workflows, a manifest-driven Evidence Explorer, and a verifiable session
-ledger. Operators can set traffic cars, pedestrians, crossing probability,
-weather, props, camera, duration, seeds, model, policy shadow, recording,
-replay, native capture, training, analysis, and verification without
-constructing shell commands.
+It runs only on `http://127.0.0.1:8765/` and provides six simple surfaces:
+an interactive Research Drive Console, live detection/recording, situation
+planning, research workflows, a manifest-driven Evidence Explorer, and a
+verifiable session ledger. Operators can drive, record, choose a detector,
+plan crowded scenes, replay, train, analyze, and verify without constructing
+shell commands.
+
+The **Drive Console** is the shortest path from a running CARLA server to a
+useful research recording. It uses the lightweight bridge to create one
+session-owned vehicle at a seeded random official map spawn point, attach a
+front RGB camera, and show either the live raw image or the exact model frame
+with detections. The operator can select the vehicle, a supported color, one
+fixed session-owned prop preset, named weather, RT-DETR or YOLO, recording,
+and optional spectator follow on the CARLA server monitor. Click the camera
+viewport to focus it, then use `W/A/S/D` or the arrow keys, `Space` for the
+handbrake, and `Shift` plus forward throttle for safe reverse. Model results
+are advisory only; fresh browser input is the only driving authority.
+
+Only one interactive drive can be active. Losing viewport/browser focus or
+failing to send a fresh control heartbeat applies the deadman brake, and
+Emergency Stop remains latched for that session. Finish with **Stop & Save**
+so cleanup and manifest finalization can complete. When the CARLA episode is
+unchanged, the session removes its actors and restores the prior weather. A
+recorded run is retained
+under `runs/<run-id>/` with raw and model-overlay MP4s, control/detection/event
+JSONL logs, final frames, a summary, and a checksum-tracked manifest (model
+artifacts are present only when the model/recording option is enabled).
 
 The UI is an orchestration layer over the same strict CLIs. It does not expose
 arbitrary shell execution, does not overwrite existing outputs, and keeps
@@ -132,6 +152,13 @@ indicators. Live viewing, recording, RT-DETR/YOLO overlays, and teacher motion
 use the lightweight MessagePack bridge and can run without the native module.
 Only official-PythonAPI collection, world reload, and synchronous tick
 ownership require the matching native package.
+
+The current Drive Console deliberately does not claim a road-valid random
+route, map reload, dynamic traffic or walkers, or autopilot. Those world-owned
+features need the optional matching official-PythonAPI native worker. The
+Situation Builder continues to save and resolve plans only; it does not
+populate the live Drive Console world. See [Operator UI](docs/operator_ui.md)
+for the 30-second validation workflow and the exact MVP boundary.
 
 The Evidence tab discovers tracked objects under `datasets/`, `runs/`,
 `models/`, `reports/`, `bundles/`, `native_kits/`, and
