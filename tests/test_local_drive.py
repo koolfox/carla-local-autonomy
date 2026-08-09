@@ -12,6 +12,13 @@ def test_local_drive_defaults_to_looping_behavior_agent() -> None:
     assert args.vehicles == 60
     assert args.walkers == 30
     assert args.loop_destinations is True
+    assert args.spectator_follow is True
+
+
+def test_local_drive_spectator_follow_can_be_disabled() -> None:
+    args = parse_args(["--dry-run", "--no-spectator-follow"])
+
+    assert args.spectator_follow is False
 
 
 def test_model_driver_requires_factory() -> None:

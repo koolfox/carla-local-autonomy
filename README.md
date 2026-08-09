@@ -14,6 +14,7 @@ wheel.
 
 - front monocular RGB inference with RT-DETR, YOLO, or a custom detector;
 - exact-frame live overlays and raw/annotated split view;
+- optional fixed chase view on the CARLA server monitor, with guarded pose restore;
 - latest-frame-only inference, so a slow model drops stale queued frames;
 - optional low-speed simulator-teacher driving with an independent watchdog;
 - a strict front-RGB-only policy observation contract with non-actuating
@@ -173,6 +174,13 @@ uv run carla-vision \
   --duration 20 \
   --run-id exp-rtdetr-teacher-001
 ```
+
+Add `--spectator-follow` when an operator at the CARLA machine should see a
+fixed chase view on the server monitor. This bridge option is off by default,
+does not change the front-RGB recording or policy inputs, and restores the
+previous spectator pose when the CARLA episode and spectator actor remain the
+same. It is best-effort operator visualization; do not enable it for a benchmark
+unless the run protocol calls for it.
 
 Every run is written below `runs/<run-id>/`:
 

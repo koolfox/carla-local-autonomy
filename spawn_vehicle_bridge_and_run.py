@@ -10,6 +10,7 @@ Designed for the Apple-silicon client:
 - lets runtime.py create and later destroy the front RGB camera;
 - launches RT-DETR/YOLO/custom detector with live viewer and recording;
 - optionally enables privileged low-speed teacher motion;
+- optionally follows the ego with CARLA's server-monitor spectator;
 - always attempts to park and destroy only the vehicle created by this wrapper.
 
 Vision-policy proposals remain shadow-only and are never actuated.
@@ -29,7 +30,7 @@ import time
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
-from carla_vision.bridge import CarlaError, CarlaRpc
+from carla_vision.bridge import CarlaRpc
 from carla_vision.controller import ControlCommand, PurePursuitController
 
 
@@ -56,7 +57,7 @@ def parse_json_object(value: str) -> dict[str, Any]:
     return result
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Spawn a CARLA vehicle over the lightweight RPC bridge and run "
@@ -127,6 +128,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--duration", type=float, default=30.0)
     parser.add_argument("--cruise-speed", type=float, default=2.0)
+    parser.add_argument(
+        "--spectator-follow",
+        action="store_true",
+        help="show a chase view of the spawned vehicle on the CARLA server monitor",
+    )
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--runs-root", default="runs")
     parser.add_argument("--no-video", action="store_true")
@@ -171,7 +177,7 @@ def parse_args() -> argparse.Namespace:
         help="Validate configuration and print candidate/command information only.",
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     explicit = [args.spawn_x, args.spawn_y, args.spawn_yaw]
     if any(value is not None for value in explicit) and not all(
@@ -457,6 +463,8 @@ def build_runtime_command(
         command.extend(["--weights", args.weights])
     if args.detector_factory:
         command.extend(["--detector-factory", args.detector_factory])
+    if args.spectator_follow:
+        command.append("--spectator-follow")
 
     if args.no_teacher:
         command.extend(["--control", "none"])

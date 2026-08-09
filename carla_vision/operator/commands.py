@@ -262,7 +262,7 @@ def _build_live(
         "policy_options",
         "acknowledge_teacher_motion",
     }
-    _keys(parameters, required=required, name="live job")
+    _keys(parameters, required=required, optional={"spectator_follow"}, name="live job")
     run_id = _identifier(parameters["run_id"], "run_id")
     host = _text(parameters["host"], "host")
     port = _integer(parameters["port"], "port", 1, 65535)
@@ -311,6 +311,7 @@ def _build_live(
     )
     view = _choice(parameters["view"], "view", {"none", "overlay", "split"})
     record_video = _boolean(parameters["record_video"], "record_video")
+    spectator_follow = _boolean(parameters.get("spectator_follow", False), "spectator_follow")
     shadow_policy = _choice(
         parameters["shadow_policy"],
         "shadow_policy",
@@ -387,6 +388,8 @@ def _build_live(
         )
     if not record_video:
         tokens.append("--no-video")
+    if spectator_follow:
+        tokens.append("--spectator-follow")
     return CommandPlan(
         kind="live",
         title=f"Live RGB session {run_id}",
@@ -396,9 +399,13 @@ def _build_live(
         destructive=False,
         note=(
             "Teacher may move the selected vehicle; any vision-policy proposal "
-            "remains non-actuating."
+            "remains non-actuating. Server spectator follow is best-effort "
+            "operator visualization."
             if control == "teacher"
-            else "Perception-only session; no vehicle command is requested."
+            else (
+                "Perception-only session; no vehicle command is requested. "
+                "Server spectator follow is best-effort operator visualization."
+            )
         ),
     )
 

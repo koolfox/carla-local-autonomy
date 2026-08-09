@@ -61,11 +61,18 @@ The form selects:
 - RT-DETR or YOLO weight file, device, image size, and confidence floor;
 - no motion or privileged low-speed teacher motion;
 - no policy or the built-in hazard-stop shadow;
-- split/overlay/headless view, duration, stale limit, and MP4 retention.
+- split/overlay/headless view, duration, stale limit, and MP4 retention;
+- optional fixed chase view on the monitor attached to the CARLA server.
 
 Teacher motion requires a per-launch acknowledgement. The runtime opens its
 existing exact-frame OpenCV viewer. Policy proposals are shown in the HUD and
-written to `policy_shadow.jsonl`; they are never applied.
+written to `policy_shadow.jsonl`; they are never applied. Server-monitor follow
+is unchecked by default and is best-effort operator visualization. It neither
+changes the recorded front-RGB stream nor grants motion authority. On streamed
+maps CARLA may use spectator position as a streaming reference, so leave it off
+for benchmark runs unless the protocol explicitly includes it. The runtime
+restores the previous spectator pose only if the CARLA episode and spectator
+actor have not changed.
 
 ### Situation Builder
 

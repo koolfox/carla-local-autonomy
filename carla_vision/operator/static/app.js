@@ -265,6 +265,7 @@ function bindLiveForm() {
         max_stale_seconds: number("live-stale"),
         view: $("live-view").value,
         record_video: checked("live-video"),
+        spectator_follow: checked("live-spectator-follow"),
         shadow_policy: $("live-policy").value,
         policy_options: {
           confidence: 0.35,
