@@ -120,6 +120,22 @@ class CarlaRpc:
         actors = self.value_call("get_actors_by_id", [actor_id])
         return actors[0] if actors else None
 
+    def spectator(self) -> list[Any]:
+        """Return CARLA's server-side spectator actor."""
+
+        spectator = self.value_call("get_spectator")
+        if not isinstance(spectator, list) or not spectator:
+            raise CarlaError(f"get_spectator: malformed actor {spectator!r}")
+        return spectator
+
+    def episode_id(self) -> int:
+        """Return the current CARLA episode identifier."""
+
+        episode = self.value_call("get_episode_info")
+        if not isinstance(episode, list) or not episode:
+            raise CarlaError(f"get_episode_info: malformed value {episode!r}")
+        return int(episode[0])
+
     def actor_transform(self, actor_id: int, component: str = "VehicleMesh") -> list[Any]:
         return self.value_call("get_actor_component_world_transform", actor_id, component)
 
@@ -139,6 +155,15 @@ class CarlaRpc:
 
     def apply_vehicle_control_async(self, actor_id: int, control: list[Any]) -> None:
         self.async_call("apply_control_to_vehicle", actor_id, control)
+
+    def set_actor_transform(
+        self,
+        actor_id: int,
+        transform: list[list[float]],
+    ) -> None:
+        """Move an actor and consume CARLA's response before returning."""
+
+        self.void_call("set_actor_transform", actor_id, transform)
 
     def destroy_actor(self, actor_id: int) -> None:
         """Destroy an actor created by this client."""
@@ -204,6 +229,42 @@ def vehicle_transform_from_front_camera(
             z - offset_z,
         ],
         [pitch, yaw, roll],
+    ]
+
+
+def spectator_chase_transform(
+    vehicle_transform: list[list[float]],
+    *,
+    distance: float = 7.0,
+    height: float = 3.0,
+    pitch: float = -15.0,
+) -> list[list[float]]:
+    """Place the CARLA spectator behind and above a vehicle transform."""
+
+    try:
+        location, rotation = vehicle_transform
+        x, y, z = (float(value) for value in location)
+        vehicle_pitch, yaw, roll = (float(value) for value in rotation)
+        distance = float(distance)
+        height = float(height)
+        pitch = float(pitch)
+    except (TypeError, ValueError, IndexError) as error:
+        raise ValueError("vehicle transform must contain location and rotation triples") from error
+    values = (x, y, z, vehicle_pitch, yaw, roll, distance, height, pitch)
+    if not all(math.isfinite(value) for value in values):
+        raise ValueError("spectator chase transform values must be finite")
+    if distance <= 0.0 or height <= 0.0:
+        raise ValueError("spectator chase distance and height must be positive")
+    pitch_radians = math.radians(vehicle_pitch)
+    yaw_radians = math.radians(yaw)
+    forward_xy = math.cos(pitch_radians)
+    return [
+        [
+            x - forward_xy * math.cos(yaw_radians) * distance,
+            y - forward_xy * math.sin(yaw_radians) * distance,
+            z + height,
+        ],
+        [pitch, yaw, 0.0],
     ]
 
 

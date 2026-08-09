@@ -10,6 +10,7 @@ import unittest
 import urllib.error
 import urllib.parse
 import urllib.request
+from html.parser import HTMLParser
 from pathlib import Path
 
 from carla_vision.operator.catalog import build_catalog
@@ -23,6 +24,27 @@ from carla_vision.operator.situations import (
     save_situation_suite,
 )
 from carla_vision.verification import verify_research_object
+
+
+class _FormNestingParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.form_stack: list[str] = []
+        self.form_ids: set[str] = set()
+        self.nested_forms: list[tuple[str, str]] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag != "form":
+            return
+        form_id = dict(attrs).get("id") or "<anonymous>"
+        if self.form_stack:
+            self.nested_forms.append((self.form_stack[-1], form_id))
+        self.form_stack.append(form_id)
+        self.form_ids.add(form_id)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "form" and self.form_stack:
+            self.form_stack.pop()
 
 
 def valid_situation(**overrides: object) -> dict[str, object]:
@@ -222,6 +244,7 @@ class OperatorCommandTests(unittest.TestCase):
             "max_stale_seconds": 0.75,
             "view": "none",
             "record_video": True,
+            "spectator_follow": False,
             "shadow_policy": "hazard-stop",
             "policy_options": {"confidence": 0.35, "close_bottom": 0.72},
             "acknowledge_teacher_motion": False,
@@ -238,6 +261,7 @@ class OperatorCommandTests(unittest.TestCase):
         self.assertEqual(plan.command[:2], ("/python", "-c"))
         self.assertIn("carla_vision.runtime", plan.command[2])
         self.assertIn("--shadow-policy", plan.command)
+        self.assertNotIn("--spectator-follow", plan.command)
         self.assertFalse(plan.motion_authorized)
         self.assertEqual(
             plan.expected_output,
@@ -264,6 +288,30 @@ class OperatorCommandTests(unittest.TestCase):
             workspace=self.root,
         )
         self.assertTrue(teacher.motion_authorized)
+
+        spectator = build_command_plan(
+            request(
+                "live",
+                self.live_parameters(
+                    run_id="ui-live-spectator",
+                    spectator_follow=True,
+                ),
+            ),
+            workspace=self.root,
+        )
+        self.assertIn("--spectator-follow", spectator.command)
+
+        with self.assertRaisesRegex(TypeError, "spectator_follow"):
+            build_command_plan(
+                request(
+                    "live",
+                    self.live_parameters(
+                        run_id="ui-live-invalid-spectator",
+                        spectator_follow="yes",
+                    ),
+                ),
+                workspace=self.root,
+            )
 
     def test_paths_cannot_escape_workspace_and_outputs_are_never_overwritten(self) -> None:
         outside = self.root.parent / "outside.pt"
@@ -885,6 +933,16 @@ class EvidenceExplorerServerTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertNotIn("images/latest_overlay.png", script)
         self.assertNotIn("video/overlay.mp4", script)
+
+    def test_static_operator_forms_are_not_nested(self) -> None:
+        html = (
+            Path(__file__).parents[1] / "carla_vision" / "operator" / "static" / "index.html"
+        ).read_text(encoding="utf-8")
+        parser = _FormNestingParser()
+        parser.feed(html)
+        self.assertEqual(parser.nested_forms, [])
+        self.assertIn("live-form", parser.form_ids)
+        self.assertIn("qa-form", parser.form_ids)
 
 
 class OperatorServerTests(unittest.TestCase):

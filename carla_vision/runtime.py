@@ -14,6 +14,7 @@ from .bridge import (
     CarlaCameraStream,
     CarlaRpc,
     spawn_front_camera,
+    spectator_chase_transform,
     vehicle_transform_from_front_camera,
 )
 from .contracts import DetectorConfig, PerceptionResult
@@ -113,6 +114,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--cruise-speed", type=float, default=2.5)
     parser.add_argument("--duration", type=float, default=30.0)
     parser.add_argument("--max-stale-seconds", type=float, default=0.50)
+    parser.add_argument(
+        "--spectator-follow",
+        action="store_true",
+        help="move the optional CARLA server spectator behind the selected vehicle",
+    )
 
     parser.add_argument(
         "--view",
@@ -556,6 +562,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "teacher_uses_privileged_pose": control_mode == "teacher",
                 "vision_shadow_enabled": policy_config is not None,
                 "vision_shadow_actuation_authorized": False,
+                "spectator_follow_requested": bool(args.spectator_follow),
+                "spectator_follow_enabled": False,
+                "spectator_actor_id": None,
+                "spectator_update_count": 0,
+                "spectator_restore_supported": False,
+                "spectator_restored": None,
                 "vision_shadow_policy_config": (
                     policy_config.as_dict() if policy_config is not None else None
                 ),
@@ -585,6 +597,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             run_elapsed = 0.0
             distance_travelled = 0.0
             max_speed = 0.0
+            spectator_id: int | None = None
+            spectator_rpc: CarlaRpc | None = None
+            spectator_active = False
+            spectator_episode_id: int | None = None
+            spectator_initial_transform: list[list[float]] | None = None
+            spectator_last_sequence = -1
+            spectator_update_count = 0
             estimated_speed = 0.0
             last_logged_sequence = -1
             stop_reason = "duration_complete"
@@ -607,6 +626,34 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     f"map={map_name} control={control_mode}",
                     flush=True,
                 )
+                if args.spectator_follow:
+                    try:
+                        spectator_rpc = CarlaRpc(args.host, args.port, timeout=2.0)
+                        spectator = spectator_rpc.spectator()
+                        spectator_id = int(spectator[0])
+                        spectator_episode_id = spectator_rpc.episode_id()
+                        spectator_initial_transform = spectator_rpc.actor_transform(
+                            spectator_id,
+                            "Camera",
+                        )
+                        summary["spectator_actor_id"] = spectator_id
+                        summary["spectator_follow_enabled"] = True
+                        summary["spectator_restore_supported"] = True
+                        spectator_active = True
+                        print(
+                            f"spectator_follow=enabled actor={spectator_id} view=chase",
+                            flush=True,
+                        )
+                    except Exception as exc:
+                        summary["spectator_follow_error"] = _error_record(exc)
+                        if spectator_rpc is not None:
+                            spectator_rpc.close()
+                            spectator_rpc = None
+                        print(
+                            f"WARNING: spectator follow unavailable: {exc}",
+                            file=sys.stderr,
+                            flush=True,
+                        )
 
                 detector = create_detector(detector_config)
                 summary["detector"] = detector.metadata.as_dict()
@@ -662,6 +709,27 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         hazard_hold_until = 0.0
                         hazard_clear_since: float | None = None
                         first_transform = vehicle_transform_from_front_camera(first_frame)
+                        if (
+                            spectator_active
+                            and spectator_id is not None
+                            and spectator_rpc is not None
+                        ):
+                            try:
+                                spectator_rpc.set_actor_transform(
+                                    spectator_id,
+                                    spectator_chase_transform(first_transform),
+                                )
+                                spectator_last_sequence = first_frame.sequence
+                                spectator_update_count += 1
+                            except Exception as exc:
+                                summary["spectator_follow_error"] = _error_record(exc)
+                                summary["spectator_follow_enabled"] = False
+                                spectator_active = False
+                                print(
+                                    f"WARNING: spectator follow disabled: {exc}",
+                                    file=sys.stderr,
+                                    flush=True,
+                                )
                         previous_location = (
                             float(first_transform[0][0]),
                             float(first_transform[0][1]),
@@ -745,6 +813,28 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                             # Pose and speed below are privileged simulator ground truth.
                             # They are allowed for teacher control and evaluation only.
                             transform = vehicle_transform_from_front_camera(frame)
+                            if (
+                                spectator_active
+                                and spectator_id is not None
+                                and spectator_rpc is not None
+                                and frame.sequence > spectator_last_sequence
+                            ):
+                                try:
+                                    spectator_rpc.set_actor_transform(
+                                        spectator_id,
+                                        spectator_chase_transform(transform),
+                                    )
+                                    spectator_last_sequence = frame.sequence
+                                    spectator_update_count += 1
+                                except Exception as exc:
+                                    summary["spectator_follow_error"] = _error_record(exc)
+                                    summary["spectator_follow_enabled"] = False
+                                    spectator_active = False
+                                    print(
+                                        f"WARNING: spectator follow disabled: {exc}",
+                                        file=sys.stderr,
+                                        flush=True,
+                                    )
                             current_location = (
                                 float(transform[0][0]),
                                 float(transform[0][1]),
@@ -1001,6 +1091,39 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         summary["spawned_camera_destroyed"] = False
                         finalization_errors.append(_error_record(exc))
 
+                if spectator_rpc is not None:
+                    try:
+                        current_spectator = spectator_rpc.spectator()
+                        current_spectator_id = int(current_spectator[0])
+                        current_episode_id = spectator_rpc.episode_id()
+                        if (
+                            spectator_initial_transform is not None
+                            and spectator_id is not None
+                            and current_spectator_id == spectator_id
+                            and current_episode_id == spectator_episode_id
+                        ):
+                            spectator_rpc.set_actor_transform(
+                                spectator_id,
+                                spectator_initial_transform,
+                            )
+                            summary["spectator_restored"] = True
+                        else:
+                            summary["spectator_restored"] = False
+                            summary["spectator_restore_skipped"] = (
+                                "CARLA episode or spectator actor changed during the run"
+                            )
+                    except Exception as exc:
+                        summary["spectator_restored"] = False
+                        summary["spectator_restore_error"] = _error_record(exc)
+                        print(
+                            f"WARNING: spectator restore failed: {exc}",
+                            file=sys.stderr,
+                            flush=True,
+                        )
+                    finally:
+                        spectator_rpc.close()
+                        spectator_rpc = None
+
                 try:
                     final_telemetry = (
                         verified_stop_telemetry
@@ -1069,6 +1192,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 )
                 if recording_stats is not None:
                     summary["recording_stats"] = recording_stats.as_dict()
+                summary["spectator_update_count"] = spectator_update_count
                 if finalization_errors:
                     summary["finalization_errors"] = finalization_errors
                 summary["status"] = (

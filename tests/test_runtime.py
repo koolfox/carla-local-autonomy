@@ -89,10 +89,15 @@ class RuntimeParsingTests(unittest.TestCase):
 
         self.assertEqual(args.resolution, (800, 450))
         self.assertEqual(args.control, "teacher")
+        self.assertFalse(args.spectator_follow)
         config = _detector_config(args)
         self.assertEqual(config.backend, "custom")
         self.assertEqual(config.factory, "example.detector:create")
         self.assertEqual(config.weights, Path("weights.bin"))
+
+    def test_spectator_follow_is_opt_in(self) -> None:
+        self.assertFalse(parse_args([]).spectator_follow)
+        self.assertTrue(parse_args(["--spectator-follow"]).spectator_follow)
 
     def test_parse_args_rejects_unreleased_vision_control_without_side_effects(self) -> None:
         with patch("sys.stderr", new=io.StringIO()):

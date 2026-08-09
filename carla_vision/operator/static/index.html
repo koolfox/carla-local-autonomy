@@ -113,34 +113,6 @@
 
             <article class="card">
               <div class="card-heading">
-                <span class="workflow-icon">QA</span>
-                <div>
-                  <h3>Automated dataset QA</h3>
-                  <p>
-                    Read-only integrity, regenerated labels, plots, and montage.
-                    This is not human review or release signoff.
-                  </p>
-                </div>
-              </div>
-              <form id="qa-form" class="fields">
-                <label>
-                  Manifest-backed dataset
-                  <select id="qa-dataset" required></select>
-                </label>
-                <label>
-                  Unique QA run ID
-                  <input id="qa-run-id" required>
-                </label>
-                <label>
-                  Montage samples
-                  <input id="qa-montage-count" type="number" min="1" max="10000" value="9">
-                </label>
-                <button class="primary" type="submit">Create automated QA evidence</button>
-              </form>
-            </article>
-
-            <article class="card">
-              <div class="card-heading">
                 <span class="step">02</span>
                 <div>
                   <h3>Vision model</h3>
@@ -248,6 +220,10 @@
                 <label class="check-row">
                   <input id="live-video" name="record_video" type="checkbox" checked>
                   <span>Record MP4</span>
+                </label>
+                <label class="check-row span-2">
+                  <input id="live-spectator-follow" name="spectator_follow" type="checkbox">
+                  <span>Follow ego on the CARLA server monitor (optional).</span>
                 </label>
               </div>
               <div class="actions">
@@ -441,6 +417,34 @@
           </div>
 
           <div class="workflow-grid">
+            <article class="card">
+              <div class="card-heading">
+                <span class="workflow-icon">QA</span>
+                <div>
+                  <h3>Automated dataset QA</h3>
+                  <p>
+                    Read-only integrity, regenerated labels, plots, and montage.
+                    This is not human review or release signoff.
+                  </p>
+                </div>
+              </div>
+              <form id="qa-form" class="fields">
+                <label>
+                  Manifest-backed dataset
+                  <select id="qa-dataset" required></select>
+                </label>
+                <label>
+                  Unique QA run ID
+                  <input id="qa-run-id" required>
+                </label>
+                <label>
+                  Montage samples
+                  <input id="qa-montage-count" type="number" min="1" max="10000" value="9">
+                </label>
+                <button class="primary" type="submit">Create automated QA evidence</button>
+              </form>
+            </article>
+
             <article class="card">
               <div class="card-heading">
                 <span class="workflow-icon">DC</span>

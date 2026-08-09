@@ -133,7 +133,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=180.0,
         help="Seconds to run; use 0 to continue until Ctrl+C.",
     )
-    parser.add_argument("--spectator-follow", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument(
+        "--spectator-follow",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="show a chase view of the ego vehicle on the CARLA server monitor",
+    )
     parser.add_argument("--status-every", type=float, default=1.0)
 
     parser.add_argument("--camera-resolution", type=parse_resolution, default=(640, 384))
