@@ -40,7 +40,11 @@ def _actuator_process(
 ) -> None:
     rpc: CarlaRpc | None = None
     try:
-        rpc = CarlaRpc(host, port, timeout=1.0)
+        # CARLA can take longer than one second to acknowledge a control while
+        # streaming a busy UE world.  A one-off slow response must not kill the
+        # independent brake process; its local heartbeat still enforces the
+        # control lease as soon as the server is responsive again.
+        rpc = CarlaRpc(host, port, timeout=3.0)
         actor = rpc.actor(vehicle_id)
         if actor is None or not actor[2][1].startswith("vehicle."):
             raise RuntimeError(f"actor {vehicle_id} is not a vehicle")
@@ -153,6 +157,13 @@ class SafeActuator:
 
     def send(self, command: ControlCommand) -> None:
         if not self.alive:
+            try:
+                if self._connection.poll(0.0):
+                    status, detail = self._connection.recv()
+                    if status in {"failsafe", "error"}:
+                        raise RuntimeError(f"safe actuator {status}: {detail}")
+            except (BrokenPipeError, EOFError, OSError):
+                pass
             raise RuntimeError("safe actuator is not running")
         with self._lock:
             if self._error is not None:

@@ -1,15 +1,21 @@
 from __future__ import annotations
 
 import json
+import re
 import tempfile
 import threading
 import unittest
 import urllib.error
 import urllib.request
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
-from carla_vision.operator.drive import DriveSession, DriveSessionManager
+from carla_vision.operator.drive import (
+    DriveSession,
+    DriveSessionManager,
+    _validate_camera_attachment,
+)
 from carla_vision.operator.drive_contracts import (
     DriveInput,
     DriveStartConfig,
@@ -19,6 +25,54 @@ from carla_vision.operator.server import create_server
 
 CARLA_HOST = "172.20.10.7"
 CARLA_PORT = 2000
+STATIC_ROOT = Path(__file__).parents[1] / "carla_vision" / "operator" / "static"
+
+
+class _StaticHtmlContractParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.ids: list[str] = []
+        self.elements: dict[str, tuple[str, dict[str, str | None]]] = {}
+        self.forms: list[str] = []
+        self.details: list[str] = []
+        self.nested_forms: list[tuple[str, str]] = []
+        self.controls: list[dict[str, Any]] = []
+        self._form_stack: list[str] = []
+        self._details_stack: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attributes = dict(attrs)
+        element_id = attributes.get("id")
+        if element_id is not None:
+            self.ids.append(element_id)
+            self.elements[element_id] = (tag, attributes)
+
+        if tag == "form":
+            form_id = element_id or "<anonymous>"
+            if self._form_stack:
+                self.nested_forms.append((self._form_stack[-1], form_id))
+            self.forms.append(form_id)
+            self._form_stack.append(form_id)
+        elif tag == "details":
+            details_id = element_id or "<anonymous>"
+            self.details.append(details_id)
+            self._details_stack.append(details_id)
+
+        if tag in {"button", "input", "select", "textarea"} and element_id is not None:
+            self.controls.append(
+                {
+                    "id": element_id,
+                    "tag": tag,
+                    "form": self._form_stack[-1] if self._form_stack else None,
+                    "details": tuple(self._details_stack),
+                }
+            )
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "form" and self._form_stack:
+            self._form_stack.pop()
+        elif tag == "details" and self._details_stack:
+            self._details_stack.pop()
 
 
 def valid_start(**overrides: object) -> dict[str, object]:
@@ -207,6 +261,19 @@ class DriveInputTests(unittest.TestCase):
                 drive_input = DriveInput.from_mapping(valid_control(throttle=0.8, **overrides))
                 command = drive_input.command(max_throttle=0.55)
                 self.assertEqual(command.throttle, 0.0)
+
+
+class CameraAttachmentTests(unittest.TestCase):
+    def test_accepts_serialized_camera_parented_to_ego(self) -> None:
+        _validate_camera_attachment([50, 49], 49)
+
+    def test_rejects_wrong_or_malformed_parent(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "not attached"):
+            _validate_camera_attachment([50, 48], 49)
+        for malformed in ([], [50], [50, "not-an-actor"]):
+            with self.subTest(camera=malformed):
+                with self.assertRaisesRegex(RuntimeError, "malformed parent metadata"):
+                    _validate_camera_attachment(malformed, 49)
 
 
 class DriveSessionControlTests(_WorkspaceTestCase):
@@ -407,6 +474,165 @@ class DriveSessionManagerTests(_WorkspaceTestCase):
         )
         self.assertFalse(catalog["capabilities"]["autopilot"])
         self.assertFalse(catalog["capabilities"]["map_reload"])
+
+
+class StaticDriveConsoleContractTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.html = (STATIC_ROOT / "index.html").read_text(encoding="utf-8")
+        self.script = (STATIC_ROOT / "app.js").read_text(encoding="utf-8")
+        self.styles = (STATIC_ROOT / "app.css").read_text(encoding="utf-8")
+        self.parser = _StaticHtmlContractParser()
+        self.parser.feed(self.html)
+
+    def test_html_has_unique_ids_one_form_and_closed_advanced_settings(self) -> None:
+        duplicate_ids = sorted(
+            element_id
+            for element_id in set(self.parser.ids)
+            if self.parser.ids.count(element_id) > 1
+        )
+        self.assertEqual(duplicate_ids, [])
+        self.assertEqual(self.parser.nested_forms, [])
+        self.assertIn("drive-start-form", self.parser.forms)
+        self.assertEqual(self.parser.details.count("drive-advanced-settings"), 1)
+
+        details_tag, details_attributes = self.parser.elements["drive-advanced-settings"]
+        self.assertEqual(details_tag, "details")
+        self.assertNotIn("open", details_attributes)
+
+        controls = {item["id"]: item for item in self.parser.controls}
+        primary_configuration = {
+            "drive-vehicle",
+            "drive-color",
+            "drive-map-choice",
+            "drive-weather",
+            "drive-traffic-choice",
+            "drive-walkers-choice",
+            "drive-props",
+            "drive-starting-choice",
+            "drive-detector-enabled",
+            "drive-record-video",
+            "drive-spectator-follow",
+        }
+        actual_primary = {
+            item["id"]
+            for item in self.parser.controls
+            if item["form"] == "drive-start-form"
+            and not item["details"]
+            and item["tag"] != "button"
+        }
+        self.assertEqual(actual_primary, primary_configuration)
+
+        advanced_configuration = {
+            "drive-run-id",
+            "drive-host",
+            "drive-port",
+            "drive-seed",
+            "drive-resolution",
+            "drive-camera-fps",
+            "drive-camera-fov",
+            "drive-detector",
+            "drive-weights",
+            "drive-device",
+            "drive-image-size",
+            "drive-confidence",
+        }
+        for element_id in advanced_configuration:
+            with self.subTest(element_id=element_id):
+                self.assertEqual(controls[element_id]["form"], "drive-start-form")
+                self.assertEqual(
+                    controls[element_id]["details"],
+                    ("drive-advanced-settings",),
+                )
+
+        for element_id in ("drive-start", "drive-start-another"):
+            with self.subTest(element_id=element_id):
+                self.assertEqual(controls[element_id]["form"], "drive-start-form")
+                self.assertEqual(controls[element_id]["details"], ())
+
+    def test_every_literal_javascript_id_reference_exists_in_html(self) -> None:
+        literal_id_references = set(re.findall(r"\$\(\s*[\"']([^\"']+)[\"']\s*\)", self.script))
+        self.assertGreater(len(literal_id_references), 100)
+        self.assertEqual(sorted(literal_id_references - set(self.parser.ids)), [])
+
+    def test_touch_hud_mapping_pointer_lifecycle_and_responsive_visibility(self) -> None:
+        expected_controls = {
+            "drive-touch-left": "left",
+            "drive-touch-right": "right",
+            "drive-touch-throttle": "forward",
+            "drive-touch-brake": "brake",
+            "drive-touch-handbrake": "handBrake",
+            "drive-touch-reverse": "reverseModifier",
+        }
+        for element_id, mapping in expected_controls.items():
+            with self.subTest(element_id=element_id):
+                tag, attributes = self.parser.elements[element_id]
+                self.assertEqual(tag, "button")
+                self.assertEqual(attributes.get("type"), "button")
+                self.assertEqual(attributes.get("data-drive-control"), mapping)
+
+        for binding in (
+            'button.addEventListener("pointerdown", handleDrivePointerDown);',
+            'button.addEventListener("pointerup", releaseDrivePointer);',
+            'button.addEventListener("pointercancel", releaseDrivePointer);',
+            'button.addEventListener("lostpointercapture", releaseDrivePointer);',
+            "button.setPointerCapture(event.pointerId);",
+            "state.drive.touchPointers.delete(event.pointerId);",
+            "bindDriveTouchControls();",
+        ):
+            with self.subTest(binding=binding):
+                self.assertIn(binding, self.script)
+
+        self.assertIn('document.body.classList.toggle("drive-immersive", immersive);', self.script)
+        self.assertRegex(
+            self.styles,
+            re.compile(r"\.drive-touch-controls\s*\{\s*display:\s*none;", re.DOTALL),
+        )
+        self.assertRegex(
+            self.styles,
+            re.compile(
+                r"@media\s*\(any-pointer:\s*coarse\),\s*\(hover:\s*none\)\s*\{"
+                r".*?\.drive-immersive\s+\.drive-touch-controls\s*\{.*?display:\s*flex;",
+                re.DOTALL,
+            ),
+        )
+        self.assertRegex(
+            self.styles,
+            re.compile(
+                r"@media\s*\(pointer:\s*fine\)\s+and\s+\(hover:\s*hover\)\s*\{"
+                r".*?\.drive-touch-controls\s*\{.*?display:\s*none;",
+                re.DOTALL,
+            ),
+        )
+        self.assertIn("touch-action: none;", self.styles)
+
+    def test_keyboard_heartbeat_and_focus_loss_keep_deadman_wired(self) -> None:
+        viewport_tag, viewport_attributes = self.parser.elements["drive-viewport"]
+        self.assertEqual(viewport_tag, "div")
+        self.assertEqual(viewport_attributes.get("tabindex"), "0")
+
+        safety_hooks = (
+            'viewport.addEventListener("keydown", (event) => handleDriveKey(event, true));',
+            'viewport.addEventListener("keyup", (event) => handleDriveKey(event, false));',
+            'viewport.addEventListener("blur", () => releaseDriveControl("Viewport focus lost"));',
+            'window.addEventListener("blur", () => releaseDriveControl("Browser focus lost"));',
+            'window.addEventListener("pagehide", () => releaseDriveControl("Page closing"));',
+            'document.addEventListener("visibilitychange", () => {',
+            'if (document.hidden) releaseDriveControl("Page hidden");',
+            "window.setInterval(() => void sendDriveControl(), 67);",
+            "void sendDriveControl({ safety: true, keepalive: true });",
+        )
+        for hook in safety_hooks:
+            with self.subTest(hook=hook):
+                self.assertIn(hook, self.script)
+
+        self.assertRegex(
+            self.script,
+            re.compile(
+                r"const command = safety\s*\?\s*\{\s*throttle:\s*0,\s*steer:\s*0,"
+                r"\s*brake:\s*1,\s*hand_brake:\s*false,\s*reverse:\s*false\s*\}",
+                re.DOTALL,
+            ),
+        )
 
 
 class _FakeHttpDriveManager:

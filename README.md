@@ -114,31 +114,31 @@ Start the local thesis-MVP control panel:
 uv run carla-operator-ui --open-browser
 ```
 
-It runs only on `http://127.0.0.1:8765/` and provides six simple surfaces:
-an interactive Research Drive Console, live detection/recording, situation
-planning, research workflows, a manifest-driven Evidence Explorer, and a
-verifiable session ledger. Operators can drive, record, choose a detector,
-plan crowded scenes, replay, train, analyze, and verify without constructing
-shell commands.
+It runs only on `http://127.0.0.1:8765/`. The primary **Drive** surface is a
+game-like Garage → Cockpit → Run saved flow. The older capture, planning,
+workflow, evidence, and activity screens remain available under the single
+**Research tools** tab instead of competing with the driving experience.
 
-The **Drive Console** is the shortest path from a running CARLA server to a
-useful research recording. It uses the lightweight bridge to create one
-session-owned vehicle at a seeded random official map spawn point, attach a
-front RGB camera, and show either the live raw image or the exact model frame
-with detections. The operator can select the vehicle, a supported color, one
-fixed session-owned prop preset, named weather, RT-DETR or YOLO, recording,
-and optional spectator follow on the CARLA server monitor. Click the camera
-viewport to focus it, then use `W/A/S/D` or the arrow keys, `Space` for the
-handbrake, and `Shift` plus forward throttle for safe reverse. Model results
-are advisory only; fresh browser input is the only driving authority.
+In the Garage, choose the car and colour, current-world weather, a fixed road
+scene, AI overlay, recording, and optional server-monitor camera. Technical
+connection, camera, and detector values stay in the closed **Advanced
+settings** section. **Start Drive** creates one session-owned vehicle at a
+seeded random official map spawn point and attaches its front RGB camera.
+The page then becomes an immersive Cockpit: app navigation and setup disappear
+while the camera, small HUD, view switch, emergency brake, and end action stay
+visible. Use `W/A/S/D` or the arrow keys, `Space` for the handbrake, and
+`Shift` plus forward throttle for safe reverse. Coarse-pointer/touch screens
+receive multi-touch steering, throttle, brake, handbrake, and hold-to-reverse
+controls over the camera. Model results are advisory only; fresh human input
+is the only driving authority.
 
 Only one interactive drive can be active. Losing viewport/browser focus or
 failing to send a fresh control heartbeat applies the deadman brake, and
-Emergency Stop remains latched for that session. Finish with **Stop & Save**
-so cleanup and manifest finalization can complete. When the CARLA episode is
+**Emergency Brake** remains latched for that session. Finish with **End Drive
+& Save** so cleanup and manifest finalization can complete. When the CARLA episode is
 unchanged, the session removes its actors and restores the prior weather. A
-recorded run is retained
-under `runs/<run-id>/` with raw and model-overlay MP4s, control/detection/event
+recorded run is retained under `runs/<run-id>/` with raw and model-overlay MP4s,
+control/detection/event
 JSONL logs, final frames, a summary, and a checksum-tracked manifest (model
 artifacts are present only when the model/recording option is enabled).
 
@@ -147,11 +147,11 @@ arbitrary shell execution, does not overwrite existing outputs, and keeps
 native world reload, teacher motion, locked-test access, and real training
 behind separate acknowledgements. See [Operator UI](docs/operator_ui.md).
 
-`CARLA · reachable` and `PythonAPI · missing` are independent capability
-indicators. Live viewing, recording, RT-DETR/YOLO overlays, and teacher motion
-use the lightweight MessagePack bridge and can run without the native module.
-Only official-PythonAPI collection, world reload, and synchronous tick
-ownership require the matching native package.
+Live driving, recording, RT-DETR/YOLO overlays, weather, and fixed road scenes
+use the lightweight MessagePack bridge and can run without the native Python
+module. The Garage shows map, traffic, pedestrians, and route controls, but
+keeps unsupported choices disabled until a matching official-PythonAPI
+Simulator Worker is connected.
 
 The current Drive Console deliberately does not claim a road-valid random
 route, map reload, dynamic traffic or walkers, or autopilot. Those world-owned

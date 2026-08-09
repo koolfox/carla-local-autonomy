@@ -53,6 +53,17 @@ def _map_short_name(raw: str) -> str:
     return raw.rsplit("/", 1)[-1].removesuffix(".umap")
 
 
+def _validate_camera_attachment(camera: list[Any], vehicle_id: int) -> None:
+    """Validate the authoritative parent recorded in CARLA's actor serialization."""
+
+    try:
+        parent_id = int(camera[1])
+    except (IndexError, TypeError, ValueError) as error:
+        raise RuntimeError("spawned front camera has malformed parent metadata") from error
+    if parent_id != vehicle_id:
+        raise RuntimeError("spawned front camera is not attached to the ego vehicle")
+
+
 def _jpeg(image: np.ndarray, quality: int = 86) -> bytes:
     ok, encoded = cv2.imencode(
         ".jpg",
@@ -582,6 +593,7 @@ class DriveSession:
             camera_id = int(camera[0])
             self._camera_id = camera_id
             owned_actor_ids.append((camera_id, "camera"))
+            _validate_camera_attachment(camera, vehicle_id)
             if not camera[5]:
                 raise RuntimeError("spawned front camera did not expose a stream token")
             stream = CarlaCameraStream(
@@ -589,17 +601,17 @@ class DriveSession:
                 camera[5],
                 timeout=max(8.0, 4.0 / self.config.camera_fps),
             )
-            first_frame = stream.wait_for_frame(timeout=10.0)
-            inferred = vehicle_transform_from_front_camera(first_frame)
-            actual = rpc.actor_transform(vehicle_id)
-            if np.linalg.norm(np.asarray(inferred[0]) - np.asarray(actual[0])) > 0.15:
-                raise RuntimeError("front camera mount did not validate against the ego vehicle")
+            stream.wait_for_frame(timeout=10.0)
 
             actuator = SafeActuator(
                 self.config.host,
                 self.config.port,
                 vehicle_id,
-                heartbeat_timeout=0.35,
+                # The browser lease already substitutes full brake at 0.40s,
+                # while camera freshness has its own threshold. This independent
+                # process timeout is only the second boundary for a dead owner
+                # and must tolerate normal LAN/UE scheduling.
+                heartbeat_timeout=1.5,
             )
             if self.config.detector_enabled:
                 detector = create_detector(
