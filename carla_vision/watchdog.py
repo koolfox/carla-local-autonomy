@@ -40,7 +40,11 @@ def _actuator_process(
 ) -> None:
     rpc: CarlaRpc | None = None
     try:
-        rpc = CarlaRpc(host, port, timeout=1.0)
+        # CARLA can take longer than one second to acknowledge a control while
+        # streaming a busy UE world.  A one-off slow response must not kill the
+        # independent brake process; its local heartbeat still enforces the
+        # control lease as soon as the server is responsive again.
+        rpc = CarlaRpc(host, port, timeout=3.0)
         actor = rpc.actor(vehicle_id)
         if actor is None or not actor[2][1].startswith("vehicle."):
             raise RuntimeError(f"actor {vehicle_id} is not a vehicle")
@@ -71,11 +75,12 @@ def _actuator_process(
             if should_stop:
                 break
             if latest_control is not None:
-                # CARLA's native client applies controls asynchronously. Sending only
-                # changed controls keeps the watchdog responsive even when the server
-                # has a slow simulation frame.
+                # Consume every RPC response.  The lightweight bridge's handcrafted
+                # async path cannot drain acknowledgements, so a long drive would
+                # otherwise accumulate unread responses on this safety-critical
+                # connection.
                 if latest_control != last_applied_control:
-                    rpc.apply_vehicle_control_async(vehicle_id, latest_control)
+                    rpc.apply_vehicle_control(vehicle_id, latest_control)
                     last_applied_control = latest_control
                 armed = True
                 last_command = time.monotonic()
@@ -152,6 +157,13 @@ class SafeActuator:
 
     def send(self, command: ControlCommand) -> None:
         if not self.alive:
+            try:
+                if self._connection.poll(0.0):
+                    status, detail = self._connection.recv()
+                    if status in {"failsafe", "error"}:
+                        raise RuntimeError(f"safe actuator {status}: {detail}")
+            except (BrokenPipeError, EOFError, OSError):
+                pass
             raise RuntimeError("safe actuator is not running")
         with self._lock:
             if self._error is not None:

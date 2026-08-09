@@ -907,6 +907,962 @@ button.secondary:hover,
   word-break: break-word;
 }
 
+.drive-heading {
+  align-items: center;
+}
+
+.drive-heading-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.drive-advisory-badge {
+  border-color: rgba(114, 183, 255, 0.34);
+  color: var(--blue);
+  background: rgba(114, 183, 255, 0.08);
+}
+
+.drive-console-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(350px, 0.7fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.drive-stage-column,
+.drive-setup-column {
+  display: grid;
+  min-width: 0;
+  gap: 16px;
+}
+
+.drive-setup-column {
+  position: sticky;
+  top: 15px;
+  max-height: calc(100vh - 30px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+body:not(.drive-immersive) .drive-heading,
+body:not(.drive-immersive) .drive-setup-column {
+  width: min(820px, 100%);
+  margin-right: auto;
+  margin-left: auto;
+}
+
+body:not(.drive-immersive) .drive-heading {
+  margin-bottom: 18px;
+}
+
+body:not(.drive-immersive) .drive-console-layout {
+  display: block;
+}
+
+body:not(.drive-immersive) .drive-stage-column {
+  display: none;
+}
+
+body:not(.drive-immersive) .drive-setup-column {
+  position: static;
+  max-height: none;
+  overflow: visible;
+}
+
+.drive-viewer-card {
+  padding: 13px;
+  overflow: hidden;
+  border-color: #30444c;
+  background: #080d0f;
+}
+
+.drive-viewer-toolbar,
+.drive-view-actions,
+.drive-view-switch {
+  display: flex;
+  align-items: center;
+}
+
+.drive-viewer-toolbar {
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 2px 12px;
+}
+
+.drive-view-switch {
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #0d1518;
+}
+
+.drive-view-button {
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.drive-view-button:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.drive-view-button.active {
+  color: #061310;
+  background: var(--teal);
+}
+
+.drive-view-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.36;
+}
+
+.drive-view-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.drive-frame-state {
+  max-width: 240px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drive-view-actions button.secondary {
+  min-height: 33px;
+  padding: 6px 10px;
+  font-size: 10px;
+}
+
+#drive-focus,
+.emergency-button {
+  display: none;
+}
+
+.emergency-button {
+  min-height: 33px;
+  padding: 6px 11px;
+  border: 1px solid rgba(255, 117, 111, 0.56);
+  border-radius: 9px;
+  color: #ffd0cd;
+  background: rgba(255, 117, 111, 0.12);
+  font-size: 10px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.emergency-button:hover:not(:disabled) {
+  border-color: var(--red);
+  background: rgba(255, 117, 111, 0.22);
+}
+
+.emergency-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.drive-viewport {
+  position: relative;
+  display: grid;
+  width: 100%;
+  min-height: clamp(390px, 51vw, 720px);
+  aspect-ratio: 16 / 9;
+  place-items: center;
+  overflow: hidden;
+  border: 2px solid #1a292f;
+  border-radius: 11px;
+  outline: none;
+  background:
+    radial-gradient(circle at center, rgba(57, 215, 189, 0.055), transparent 40%),
+    #020405;
+  cursor: crosshair;
+  touch-action: none;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.drive-viewport.focused {
+  border-color: var(--teal);
+  box-shadow: 0 0 0 3px rgba(57, 215, 189, 0.11), inset 0 0 35px rgba(57, 215, 189, 0.04);
+}
+
+.drive-viewport.reversing {
+  border-color: var(--yellow);
+}
+
+.drive-viewport img {
+  display: none;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.drive-empty-state {
+  display: flex;
+  max-width: 430px;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  padding: 30px;
+  color: #61777c;
+  text-align: center;
+}
+
+.drive-empty-state strong {
+  color: #a7b6b8;
+  font-size: 17px;
+}
+
+.drive-empty-state span:last-child {
+  font-size: 11px;
+}
+
+.drive-empty-icon {
+  color: var(--teal);
+  font-size: 29px;
+  opacity: 0.6;
+}
+
+.drive-hud {
+  position: absolute;
+  right: 13px;
+  left: 13px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #f5fbfa;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  pointer-events: none;
+  text-shadow: 0 1px 5px #000;
+}
+
+.drive-hud-top {
+  top: 13px;
+}
+
+.drive-hud-bottom {
+  bottom: 13px;
+  justify-content: flex-start;
+}
+
+.drive-hud-bottom > div {
+  min-width: 69px;
+  padding: 7px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.58);
+  backdrop-filter: blur(5px);
+}
+
+.drive-hud-bottom strong,
+.drive-hud-bottom span {
+  display: block;
+}
+
+.drive-hud-bottom strong {
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.drive-hud-bottom span {
+  margin-top: 2px;
+  color: #9fb0b2;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.drive-recording-indicator {
+  padding: 5px 8px;
+  border-radius: 999px;
+  color: #95a8aa;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.drive-recording-indicator.active {
+  color: #ffd0cd;
+  background: rgba(137, 21, 21, 0.72);
+}
+
+.drive-focus-shield {
+  position: absolute;
+  top: 13px;
+  left: 50%;
+  z-index: 3;
+  max-width: calc(100% - 260px);
+  padding: 6px 10px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(243, 198, 95, 0.28);
+  border-radius: 999px;
+  color: #e7d69e;
+  background: rgba(20, 17, 7, 0.76);
+  font-size: 9px;
+  font-weight: 750;
+  text-align: center;
+  pointer-events: none;
+}
+
+.drive-focus-shield.hidden {
+  display: none;
+}
+
+.drive-control-deck {
+  display: grid;
+  grid-template-columns: auto minmax(220px, 1fr) auto;
+  gap: 17px;
+  align-items: center;
+  padding: 14px 3px 2px;
+}
+
+.drive-key-map {
+  display: grid;
+  gap: 4px;
+}
+
+.drive-key-row {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+}
+
+.drive-key {
+  display: inline-grid;
+  width: 38px;
+  height: 31px;
+  grid-template-columns: auto auto;
+  place-content: center;
+  gap: 3px;
+  border: 1px solid #34474f;
+  border-radius: 6px;
+  color: #9dafb2;
+  background: #111a1e;
+  font-size: 10px;
+  font-weight: 850;
+  transition: 80ms ease;
+}
+
+.drive-key small {
+  color: #637a7f;
+  font-size: 8px;
+}
+
+.drive-key.active {
+  transform: translateY(1px);
+  border-color: var(--teal);
+  color: #071411;
+  background: var(--teal);
+  box-shadow: 0 0 16px rgba(57, 215, 189, 0.2);
+}
+
+.drive-key.active small {
+  color: #0e554a;
+}
+
+.drive-key-notes p {
+  margin: 2px 0;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+kbd {
+  padding: 1px 4px;
+  border: 1px solid #34474f;
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  color: #c9d5d6;
+  background: #121c20;
+  font: 9px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.drive-pedals {
+  display: grid;
+  gap: 3px;
+  min-width: 142px;
+}
+
+.drive-pedals span {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: #73898e;
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.drive-pedals strong {
+  color: var(--teal);
+  font-variant-numeric: tabular-nums;
+}
+
+.drive-model-boundary {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 13px;
+  border: 1px solid rgba(114, 183, 255, 0.2);
+  border-radius: 10px;
+  color: #9db9c4;
+  background: rgba(114, 183, 255, 0.055);
+  font-size: 11px;
+}
+
+.drive-model-boundary strong {
+  color: var(--blue);
+}
+
+.drive-capability-card > summary,
+.drive-session-health > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 760;
+  list-style-position: inside;
+}
+
+.drive-capability-card > summary small {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 550;
+}
+
+.drive-capability-content {
+  padding-top: 15px;
+}
+
+.drive-server-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+  margin-bottom: 12px;
+}
+
+.drive-server-facts div {
+  min-width: 0;
+  padding: 9px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.14);
+}
+
+.drive-server-facts span,
+.drive-server-facts strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drive-server-facts span {
+  color: #70858a;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.drive-server-facts strong {
+  margin-top: 3px;
+  font-size: 11px;
+}
+
+.drive-server-facts .fact-ok {
+  color: var(--green);
+}
+
+.drive-server-facts .fact-bad {
+  color: var(--red);
+}
+
+.drive-capability-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.drive-capability-list > div {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 9px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: #0d1518;
+  font-size: 10px;
+}
+
+.drive-capability-list strong {
+  font-size: 9px;
+  text-align: right;
+}
+
+.capability-ready {
+  color: var(--green);
+}
+
+.capability-unavailable {
+  color: #70858a;
+}
+
+.drive-capability-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.drive-setup-form {
+  padding: 19px;
+}
+
+.garage-group {
+  min-width: 0;
+  margin: 0;
+  padding: 14px 0 0;
+  border: 0;
+  border-top: 1px solid var(--line-soft);
+}
+
+.garage-group + .garage-group {
+  margin-top: 15px;
+}
+
+.garage-group legend {
+  margin-bottom: 10px;
+  padding: 0;
+  color: var(--teal);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.garage-group select:disabled {
+  cursor: not-allowed;
+  color: #829397;
+  opacity: 0.72;
+}
+
+.garage-worker-note {
+  margin: 10px 0 0;
+  padding: 9px 10px;
+  border-radius: 8px;
+  color: #82969a;
+  background: rgba(255, 255, 255, 0.025);
+  font-size: 9px;
+}
+
+.drive-simple-toggles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 16px;
+}
+
+.drive-simple-toggle {
+  min-height: 72px;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #0d1518;
+  cursor: pointer;
+}
+
+.drive-simple-toggle input {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.drive-simple-toggle span,
+.drive-simple-toggle strong,
+.drive-simple-toggle small {
+  display: block;
+}
+
+.drive-simple-toggle strong {
+  color: var(--text);
+  font-size: 10px;
+}
+
+.drive-simple-toggle small {
+  margin-top: 3px;
+  color: #788c90;
+  font-size: 8px;
+  font-weight: 520;
+  line-height: 1.3;
+}
+
+.drive-advanced {
+  margin-top: 15px;
+  padding-top: 13px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.drive-advanced > summary {
+  cursor: pointer;
+  color: #a8b8ba;
+  font-size: 11px;
+  font-weight: 720;
+}
+
+.drive-advanced > p {
+  margin: 8px 0 12px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.drive-form-section {
+  margin-top: 19px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.card-heading.compact {
+  margin-bottom: 13px;
+}
+
+.drive-model-toggle {
+  align-self: end;
+}
+
+.drive-session-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.drive-session-actions button {
+  width: 100%;
+}
+
+.drive-session-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.drive-output-path {
+  max-width: 100%;
+  margin: 10px 0 0;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.drive-result-banner {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 13px;
+  border: 1px solid rgba(112, 214, 163, 0.3);
+  border-radius: 10px;
+  background: rgba(112, 214, 163, 0.07);
+}
+
+.drive-result-banner[hidden] {
+  display: none;
+}
+
+.drive-result-banner strong {
+  color: var(--green);
+  font-size: 13px;
+}
+
+.drive-result-banner .drive-output-path {
+  margin-top: 4px;
+}
+
+.drive-result-banner button {
+  width: 100%;
+}
+
+.drive-health-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin: 14px 0 0;
+}
+
+.drive-health-grid div {
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.13);
+}
+
+.drive-health-grid dt {
+  color: #70858a;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.drive-health-grid dd {
+  margin: 3px 0 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drive-error {
+  margin: 11px 0 0;
+  color: var(--red);
+  font-size: 10px;
+}
+
+.drive-session-end {
+  display: none;
+  min-height: 33px;
+  padding: 6px 11px;
+  border: 1px solid rgba(112, 214, 163, 0.4);
+  border-radius: 9px;
+  color: var(--green);
+  background: rgba(112, 214, 163, 0.08);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.drive-session-end:disabled {
+  cursor: wait;
+  opacity: 0.45;
+}
+
+.drive-touch-controls {
+  display: none;
+}
+
+.research-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: -10px 0 22px;
+  padding: 5px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: rgba(15, 23, 26, 0.88);
+}
+
+.research-tab {
+  min-height: 38px;
+  padding: 7px 13px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 11px;
+  font-weight: 720;
+}
+
+.research-tab:hover,
+.research-tab.active {
+  color: var(--text);
+  background: var(--surface-3);
+}
+
+.research-tab.active {
+  color: var(--teal);
+}
+
+.research-panel {
+  display: none;
+}
+
+.research-panel.active {
+  display: block;
+  animation: panel-in 180ms ease;
+}
+
+.research-capability-card {
+  margin-bottom: 18px;
+  box-shadow: none;
+}
+
+body.drive-immersive {
+  overflow: hidden;
+  background: #020405;
+}
+
+.drive-immersive .app-shell {
+  width: 100%;
+  height: 100dvh;
+  margin: 0;
+  padding: 0;
+}
+
+.drive-immersive .topbar,
+.drive-immersive .safety-strip,
+.drive-immersive .tabs,
+.drive-immersive .drive-heading,
+.drive-immersive .drive-setup-column,
+.drive-immersive .drive-model-boundary,
+.drive-immersive .drive-control-deck {
+  display: none;
+}
+
+.drive-immersive main,
+.drive-immersive #panel-drive,
+.drive-immersive .drive-console-layout,
+.drive-immersive .drive-stage-column {
+  width: 100%;
+  height: 100%;
+}
+
+.drive-immersive .drive-console-layout,
+.drive-immersive .drive-stage-column {
+  display: block;
+}
+
+.drive-immersive .drive-viewer-card {
+  display: flex;
+  width: 100%;
+  height: 100dvh;
+  flex-direction: column;
+  padding: 9px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.drive-immersive .drive-viewer-toolbar {
+  flex: 0 0 auto;
+  min-height: 45px;
+  padding: 0 2px 9px;
+}
+
+.drive-immersive .drive-session-end {
+  display: inline-flex;
+  align-items: center;
+}
+
+.drive-immersive #drive-focus,
+.drive-immersive .emergency-button {
+  display: inline-flex;
+  align-items: center;
+}
+
+.drive-immersive .drive-viewport {
+  width: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+  aspect-ratio: auto;
+  border-radius: 8px;
+}
+
+.drive-immersive .drive-viewport img {
+  object-fit: contain;
+}
+
+@media (any-pointer: coarse), (hover: none) {
+  .drive-immersive .drive-touch-controls {
+    position: absolute;
+    right: 15px;
+    bottom: 15px;
+    left: 15px;
+    z-index: 5;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 14px;
+    pointer-events: none;
+  }
+
+  .drive-touch-steering,
+  .drive-touch-pedals {
+    display: flex;
+    gap: 7px;
+    align-items: flex-end;
+    pointer-events: none;
+  }
+
+  .drive-touch-controls button {
+    display: grid;
+    width: 58px;
+    height: 58px;
+    padding: 5px;
+    place-items: center;
+    border: 1px solid rgba(255, 255, 255, 0.34);
+    border-radius: 16px;
+    color: #f2f7f6;
+    background: rgba(7, 13, 15, 0.72);
+    box-shadow: 0 5px 18px rgba(0, 0, 0, 0.3);
+    font-size: 10px;
+    font-weight: 850;
+    line-height: 1.05;
+    pointer-events: auto;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .drive-touch-steering button {
+    font-size: 22px;
+  }
+
+  .drive-touch-controls button.active {
+    transform: scale(0.95);
+    border-color: var(--teal);
+    color: #061310;
+    background: rgba(57, 215, 189, 0.92);
+  }
+
+  .drive-touch-controls .touch-throttle {
+    border-color: rgba(112, 214, 163, 0.58);
+    color: #c9f6df;
+  }
+
+  .drive-touch-controls #drive-touch-brake {
+    border-color: rgba(255, 117, 111, 0.58);
+    color: #ffd0cd;
+  }
+
+  .drive-immersive .drive-hud-bottom {
+    bottom: 89px;
+  }
+
+  .drive-immersive .drive-view-button,
+  .drive-immersive .drive-view-actions button {
+    min-height: 44px;
+    padding-right: 13px;
+    padding-left: 13px;
+  }
+}
+
+@media (pointer: fine) and (hover: hover) {
+  .drive-touch-controls {
+    display: none;
+  }
+}
+
 .toast {
   position: fixed;
   right: 20px;
@@ -936,6 +1892,16 @@ button.secondary:hover,
 }
 
 @media (max-width: 1100px) {
+  .drive-console-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .drive-setup-column {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+
   .fields.five {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -978,6 +1944,55 @@ button.secondary:hover,
     justify-content: flex-start;
   }
 
+  .drive-heading-badges,
+  .drive-viewer-toolbar,
+  .drive-view-actions {
+    width: 100%;
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
+
+  .drive-viewer-toolbar {
+    flex-direction: column;
+  }
+
+  .drive-viewport {
+    min-height: 0;
+  }
+
+  .drive-focus-shield {
+    top: 48px;
+    max-width: calc(100% - 24px);
+    border-radius: 8px;
+  }
+
+  .drive-hud-bottom {
+    gap: 4px;
+  }
+
+  .drive-hud-bottom > div {
+    min-width: 52px;
+    padding: 5px 6px;
+  }
+
+  .drive-hud-bottom strong {
+    font-size: 12px;
+  }
+
+  .drive-control-deck,
+  .drive-model-boundary {
+    grid-template-columns: 1fr;
+  }
+
+  .drive-key-row {
+    justify-content: flex-start;
+  }
+
+  .drive-server-facts,
+  .drive-capability-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .form-grid,
   .workflow-grid,
   .evidence-filters,
@@ -1000,5 +2015,93 @@ button.secondary:hover,
     position: sticky;
     top: 0;
     z-index: 10;
+  }
+}
+
+@media (max-width: 480px) {
+  .drive-view-actions button,
+  .drive-frame-state,
+  .drive-view-switch {
+    width: 100%;
+  }
+
+  .drive-view-button {
+    flex: 1;
+  }
+
+  .drive-frame-state {
+    max-width: none;
+  }
+
+  .drive-server-facts,
+  .drive-capability-list,
+  .drive-session-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .drive-simple-toggles {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 780px) {
+  .drive-immersive .app-shell {
+    width: 100%;
+    padding: 0;
+  }
+
+  .drive-immersive .drive-viewer-toolbar {
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .drive-immersive .drive-view-actions {
+    width: auto;
+    align-items: center;
+    justify-content: flex-end;
+  }
+
+  .drive-immersive .drive-frame-state {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) and (any-pointer: coarse),
+  (max-width: 480px) and (hover: none) {
+  .drive-immersive .drive-viewer-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .drive-immersive .drive-view-switch,
+  .drive-immersive .drive-view-actions {
+    width: 100%;
+  }
+
+  .drive-immersive .drive-view-actions button {
+    width: auto;
+    flex: 1;
+  }
+
+  .drive-immersive #drive-focus {
+    display: none;
+  }
+
+  .drive-touch-pedals {
+    display: grid;
+    grid-template-columns: repeat(2, 52px);
+  }
+
+  .drive-touch-controls button {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    font-size: 8px;
+  }
+
+  .drive-immersive .drive-hud-bottom {
+    bottom: 125px;
   }
 }

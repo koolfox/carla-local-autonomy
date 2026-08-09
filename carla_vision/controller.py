@@ -65,6 +65,7 @@ class ControlCommand:
     steer: float
     brake: float
     hand_brake: bool = False
+    reverse: bool = False
 
     def as_carla(self) -> list[float | bool | int]:
         return [
@@ -72,7 +73,7 @@ class ControlCommand:
             float(self.steer),
             float(self.brake),
             bool(self.hand_brake),
-            False,
+            bool(self.reverse),
             False,
             0,
         ]
