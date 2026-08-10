@@ -1,0 +1,79 @@
+name: Voxel flow CI
+
+on:
+  pull_request:
+    paths:
+      - "carla_vision/voxel/flow_teacher.py"
+      - "carla_vision/voxel/flow_capture.py"
+      - "carla_vision/voxel/training/flow_*.py"
+      - "carla_vision/voxel/model_examples/temporal_flow.py"
+      - "tests/test_voxel_flow_*.py"
+      - "docs/voxel_flow_fa.md"
+      - "pyproject.toml"
+      - ".github/workflows/voxel-flow-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "carla_vision/voxel/flow_teacher.py"
+      - "carla_vision/voxel/flow_capture.py"
+      - "carla_vision/voxel/training/flow_*.py"
+      - "carla_vision/voxel/model_examples/temporal_flow.py"
+      - "tests/test_voxel_flow_*.py"
+      - "pyproject.toml"
+      - ".github/workflows/voxel-flow-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Install project
+        run: uv sync --all-groups --frozen
+
+      - name: Lint voxel-flow modules
+        run: >-
+          uv run ruff check
+          carla_vision/voxel/flow_teacher.py
+          carla_vision/voxel/flow_capture.py
+          carla_vision/voxel/training/flow_dataset.py
+          carla_vision/voxel/training/flow_model.py
+          carla_vision/voxel/training/flow_losses.py
+          carla_vision/voxel/training/flow_metrics.py
+          carla_vision/voxel/training/flow_runner.py
+          carla_vision/voxel/model_examples/temporal_flow.py
+          tests/test_voxel_flow_teacher.py
+          tests/test_voxel_flow_training.py
+          tests/test_voxel_flow_dataset.py
+          tests/test_voxel_flow_cli.py
+
+      - name: Run voxel-flow tests
+        run: >-
+          uv run pytest -q
+          tests/test_voxel_flow_teacher.py
+          tests/test_voxel_flow_training.py
+          tests/test_voxel_flow_dataset.py
+          tests/test_voxel_flow_cli.py
+
+      - name: Check teacher capture dry run
+        run: uv run carla-voxel-flow-capture --dry-run --frames 3
+
+      - name: Check flow training dry run
+        run: >-
+          uv run carla-train-voxel-flow --dry-run --device cpu
+          --image-size 32x48 --encoder-channels 16 --recurrent-channels 16
+          --seed-channels 16 --decoder-channels 8
