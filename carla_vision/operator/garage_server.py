@@ -1,15 +1,16 @@
 """Additive Garage integration for the existing local operator server.
 
 The base operator application, HTTP routes, browser Drive engine, research jobs,
-and artifact APIs remain intact.  This wrapper swaps in the additive Garage
-drive manager and injects same-origin JavaScript/CSS that expose the extra
-controls without rewriting the existing static application.
+and artifact APIs remain intact. This wrapper swaps in the additive Garage
+drive manager, adds one allow-listed research-job endpoint, and injects
+same-origin JavaScript/CSS without rewriting the existing static application.
 """
 
 from __future__ import annotations
 
 import json
 import webbrowser
+from collections.abc import Mapping
 from http import HTTPStatus
 from pathlib import Path
 from typing import Any, Sequence
@@ -17,6 +18,7 @@ from urllib.parse import urlparse
 
 from . import server as base
 from .garage_drive import GarageDriveSessionManager
+from .garage_research import GarageResearchRequest, build_garage_research_plan
 
 GARAGE_STATIC_ROOT = Path(__file__).resolve().parent / "garage_static"
 _GARAGE_SCRIPT = "/static/garage-integration.js"
@@ -43,7 +45,7 @@ def _injected_index() -> bytes:
 
 
 class GarageOperatorRequestHandler(base.OperatorRequestHandler):
-    """Serve the base operator app plus the additive Garage assets."""
+    """Serve the base operator app plus additive Garage routes/assets."""
 
     def do_GET(self) -> None:
         try:
@@ -65,6 +67,36 @@ class GarageOperatorRequestHandler(base.OperatorRequestHandler):
             self._error(error)
             return
         super().do_GET()
+
+    def do_POST(self) -> None:
+        path = urlparse(self.path).path
+        if path != "/api/garage/jobs":
+            super().do_POST()
+            return
+        try:
+            if not self._authorized():
+                self._json(
+                    HTTPStatus.FORBIDDEN,
+                    {"error": {"type": "PermissionError", "message": "invalid UI token"}},
+                )
+                return
+            body = self._body()
+            if not isinstance(body, Mapping):
+                raise TypeError("Garage research request must be an object")
+            request = GarageResearchRequest.from_mapping(body)
+            application = self.server.application
+            plan = build_garage_research_plan(
+                request,
+                workspace=application.workspace,
+                carla_host=application.carla_host,
+                carla_port=application.carla_port,
+            )
+            self._json(
+                HTTPStatus.ACCEPTED,
+                application.jobs.submit(request, plan),  # request uses the same JobManager protocol
+            )
+        except BaseException as error:
+            self._error(error)
 
 
 class GarageOperatorDriveManager(GarageDriveSessionManager):
@@ -124,6 +156,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "local_only": True,
                 "garage_research_bridge": True,
                 "garage_drive_modes": True,
+                "garage_research_jobs": True,
             },
             ensure_ascii=False,
             indent=2,
