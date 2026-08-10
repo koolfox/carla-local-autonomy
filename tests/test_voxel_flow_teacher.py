@@ -17,10 +17,11 @@ def test_decode_carla_optical_flow_round_trip() -> None:
 
 
 def test_dynamic_depth_change_becomes_forward_voxel_velocity() -> None:
-    depth_source = np.full((5, 5), 5.0, dtype=np.float32)
-    depth_target = np.full((5, 5), 6.0, dtype=np.float32)
-    semantic = np.full((5, 5), 10, dtype=np.uint8)
-    optical = np.zeros((5, 5, 2), dtype=np.float32)
+    depth_source = np.full((4, 4), 5.0, dtype=np.float32)
+    depth_target = np.full((4, 4), 6.0, dtype=np.float32)
+    semantic = np.zeros((4, 4), dtype=np.uint8)
+    semantic[2, 2] = 10
+    optical = np.zeros((4, 4, 2), dtype=np.float32)
     spec = VoxelGridSpec(
         x_min=0.0,
         x_max=10.0,
@@ -43,11 +44,11 @@ def test_dynamic_depth_change_becomes_forward_voxel_velocity() -> None:
         dt_s=0.5,
         pixel_stride=1,
     )
-    assert stats.dynamic_points > 0
-    assert stats.valid_voxels == int(valid.sum())
-    assert valid.any()
-    assert float(np.median(flow[0][valid])) == pytest.approx(2.0, abs=1e-5)
-    assert float(np.max(np.abs(flow[1:][:, valid]))) == pytest.approx(0.0, abs=1e-5)
+    assert stats.dynamic_points == 1
+    assert stats.valid_voxels == int(valid.sum()) == 1
+    assert float(flow[0][valid][0]) == pytest.approx(2.0, abs=1e-5)
+    assert float(flow[1][valid][0]) == pytest.approx(0.0, abs=1e-5)
+    assert float(flow[2][valid][0]) == pytest.approx(0.0, abs=1e-5)
 
 
 def test_invalid_flow_payload_is_rejected() -> None:
