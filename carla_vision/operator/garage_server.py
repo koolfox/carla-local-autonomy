@@ -67,11 +67,33 @@ class GarageOperatorRequestHandler(base.OperatorRequestHandler):
         super().do_GET()
 
 
+class GarageOperatorDriveManager(GarageDriveSessionManager):
+    """Garage manager with workspace checkpoint discovery for the browser selector."""
+
+    def catalog(self) -> dict[str, Any]:
+        payload = super().catalog()
+        checkpoints: list[str] = []
+        ignored_roots = {".git", ".venv", "__pycache__", "node_modules"}
+        for suffix in ("*.pt", "*.pth", "*.ckpt"):
+            for path in self.workspace.rglob(suffix):
+                try:
+                    relative = path.relative_to(self.workspace)
+                except ValueError:
+                    continue
+                if any(part in ignored_roots for part in relative.parts):
+                    continue
+                if path.is_symlink() or not path.is_file():
+                    continue
+                checkpoints.append(relative.as_posix())
+        payload["policy_checkpoints"] = sorted(set(checkpoints), key=str.casefold)
+        return payload
+
+
 def create_server(**kwargs: Any) -> base.OperatorHTTPServer:
     """Create the normal operator server and add Garage-only extensions."""
 
     server = base.create_server(**kwargs)
-    server.application.drive = GarageDriveSessionManager(
+    server.application.drive = GarageOperatorDriveManager(
         workspace=server.application.workspace,
         carla_host=server.application.carla_host,
         carla_port=server.application.carla_port,
@@ -123,6 +145,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 __all__ = [
     "GARAGE_STATIC_ROOT",
+    "GarageOperatorDriveManager",
     "GarageOperatorRequestHandler",
     "create_server",
     "main",
