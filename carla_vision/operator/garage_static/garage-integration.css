@@ -1,0 +1,44 @@
+.drive-research-actions {
+  display: flex;
+  flex: 1 1 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+  width: 100%;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.drive-research-copy {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.drive-research-copy span {
+  color: var(--muted, #a7adb7);
+  font-size: 0.82rem;
+}
+
+.drive-research-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+@media (max-width: 760px) {
+  .drive-research-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .drive-research-buttons {
+    justify-content: stretch;
+  }
+
+  .drive-research-buttons button {
+    flex: 1 1 auto;
+  }
+}
