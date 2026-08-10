@@ -8,6 +8,7 @@ from carla_vision.operator.garage_research import (
     GarageResearchRequest,
     build_garage_research_plan,
 )
+from carla_vision.operator.garage_server import _validate_research_runtime
 
 HOST = "127.0.0.1"
 PORT = 2000
@@ -169,3 +170,37 @@ def test_output_names_are_non_overwriting(tmp_path: Path) -> None:
             epochs=1,
             dry_run=False,
         )
+
+
+def test_runtime_guards_keep_destructive_and_live_workflows_in_their_safe_contexts() -> None:
+    teacher = request(
+        "teacher_capture",
+        scenario_plan="plan.json",
+        dataset_id="teacher-a",
+        behavior="normal",
+        max_episodes=1,
+        acknowledge=True,
+    )
+    with pytest.raises(RuntimeError, match="end the active Garage drive"):
+        _validate_research_runtime(teacher, {"status": "running"})
+    _validate_research_runtime(teacher, {"status": "idle"})
+
+    live = request(
+        "closed_loop_evaluate",
+        run_id="eval",
+        driver_label="manual",
+        duration=10,
+        dry_run=False,
+    )
+    with pytest.raises(RuntimeError, match="requires a running Garage ego"):
+        _validate_research_runtime(live, {"status": "idle"})
+    _validate_research_runtime(live, {"status": "running"})
+
+    dry = request(
+        "closed_loop_evaluate",
+        run_id="eval",
+        driver_label="manual",
+        duration=10,
+        dry_run=True,
+    )
+    _validate_research_runtime(dry, {"status": "idle"})
