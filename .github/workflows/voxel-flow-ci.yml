@@ -58,6 +58,7 @@ jobs:
           carla_vision/voxel/model_examples/temporal_flow.py
           tests/test_voxel_flow_teacher.py
           tests/test_voxel_flow_training.py
+          tests/test_voxel_flow_dataset.py
           tests/test_voxel_flow_cli.py
 
       - name: Run voxel-flow tests
@@ -65,6 +66,7 @@ jobs:
           uv run pytest -q
           tests/test_voxel_flow_teacher.py
           tests/test_voxel_flow_training.py
+          tests/test_voxel_flow_dataset.py
           tests/test_voxel_flow_cli.py
 
       - name: Check teacher capture dry run
