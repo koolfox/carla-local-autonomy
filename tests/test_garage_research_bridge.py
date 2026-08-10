@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import threading
 import urllib.error
 import urllib.request
@@ -20,6 +21,8 @@ def _get(url: str) -> tuple[int, str, str]:
 
 
 def test_garage_server_preserves_base_operator_and_injects_only_additive_assets(tmp_path: Path) -> None:
+    (tmp_path / "models" / "imitation").mkdir(parents=True)
+    (tmp_path / "models" / "imitation" / "best.pt").write_bytes(b"checkpoint")
     server = create_server(
         workspace=tmp_path,
         bind="127.0.0.1",
@@ -44,9 +47,12 @@ def test_garage_server_preserves_base_operator_and_injects_only_additive_assets(
 
         _, javascript_type, javascript = _get(f"{root}/static/garage-integration.js")
         assert javascript_type in {"text/javascript", "application/javascript"}
-        assert "Inspect saved run" in javascript
-        assert "Verify saved run" in javascript
+        assert "drive-control-mode" in javascript
+        assert "BehaviorAgent" in javascript
+        assert "Imitation model" not in javascript  # labels come from the live catalog
+        assert "VOXEL PLANNER" in javascript
         assert 'startJob("verify"' in javascript
+        assert 'startJob("analyze"' in javascript
         assert "refreshBootstrap()" in javascript
         assert "selectEvidence(path)" in javascript
         assert "/api/drive/control" not in javascript
@@ -55,11 +61,20 @@ def test_garage_server_preserves_base_operator_and_injects_only_additive_assets(
         _, css_type, css = _get(f"{root}/static/garage-integration.css")
         assert css_type == "text/css"
         assert ".drive-research-actions" in css
+        assert ".garage-drive-mode" in css
+        assert "body.garage-autonomous" in css
 
         _, base_js_type, base_js = _get(f"{root}/static/app.js")
         assert base_js_type in {"text/javascript", "application/javascript"}
         assert 'request("/api/drive/start"' in base_js
         assert 'request("/api/drive/control"' in base_js
+
+        _, catalog_type, catalog_text = _get(f"{root}/api/drive/catalog")
+        assert catalog_type == "application/json"
+        catalog = json.loads(catalog_text)
+        modes = {row["id"] for row in catalog["control_modes"]}
+        assert modes == {"manual", "behavior", "imitation", "voxel"}
+        assert "models/imitation/best.pt" in catalog["policy_checkpoints"]
     finally:
         server.shutdown()
         thread.join(timeout=3.0)
@@ -75,6 +90,7 @@ def test_bridge_assets_are_separate_from_existing_static_files() -> None:
     base_js = (STATIC_ROOT / "app.js").read_text(encoding="utf-8")
     assert "garage-integration.js" not in base_html
     assert "drive-research-actions" not in base_js
+    assert "drive-control-mode" not in base_js
 
 
 def test_unknown_extra_static_asset_is_still_rejected(tmp_path: Path) -> None:
