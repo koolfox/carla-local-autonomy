@@ -1,8 +1,8 @@
 """Privileged camera teacher for dynamic voxel velocity labels.
 
-The deployable model never imports this module.  It combines CARLA depth,
+The deployable model never imports this module. It combines CARLA depth,
 semantic segmentation, optical flow and camera poses to build supervision for
-moving vehicles and pedestrians.  Output flow is an instantaneous velocity in
+moving vehicles and pedestrians. Output flow is an instantaneous velocity in
 source-camera coordinates (x-forward, y-right, z-up), stored per occupied voxel.
 """
 
@@ -41,17 +41,21 @@ def decode_carla_optical_flow(
 ) -> np.ndarray:
     """Decode CARLA ``sensor.camera.optical_flow`` into normalized XY flow.
 
-    CARLA stores two float32 values per pixel.  Documentation defines each
+    CARLA stores two float32 values per pixel. Documentation defines each
     component in approximately [-2, 2]; multiplying X by image width and Y by
     image height converts them to pixel displacement units.
     """
 
     if width <= 0 or height <= 0:
         raise ValueError("optical-flow image dimensions must be positive")
-    values = np.frombuffer(raw_data, dtype=np.float32)
     expected = width * height * 2
-    if values.size != expected:
-        raise ValueError(f"expected {expected} optical-flow floats, received {values.size}")
+    expected_bytes = expected * np.dtype(np.float32).itemsize
+    actual_bytes = memoryview(raw_data).nbytes
+    if actual_bytes != expected_bytes:
+        raise ValueError(
+            f"expected {expected_bytes} optical-flow bytes, received {actual_bytes}"
+        )
+    values = np.frombuffer(raw_data, dtype=np.float32)
     flow = values.reshape(height, width, 2).copy()
     if not np.isfinite(flow).all():
         raise ValueError("CARLA optical-flow payload contains non-finite values")
@@ -114,7 +118,6 @@ def _candidate_correspondences(
         return empty, empty, np.empty(0, dtype=np.uint8), np.empty(0, dtype=np.int32)
     rows = rows[valid]
     cols = cols[valid]
-    source_depth = source_depth[valid]
     normalized = flow_normalized[rows, cols]
     target_cols_f = cols.astype(np.float64) + sign * normalized[:, 0] * width
     target_rows_f = rows.astype(np.float64) + sign * normalized[:, 1] * height
@@ -177,9 +180,9 @@ def build_dynamic_voxel_flow(
 ) -> tuple[np.ndarray, np.ndarray, VoxelFlowTeacherStats]:
     """Lift privileged optical flow into a sparse dynamic voxel-velocity target.
 
-    Two optical-flow directions are evaluated.  The sign with the smallest
+    Two optical-flow directions are evaluated. The sign with the smallest
     median world-space residual on non-dynamic pixels is selected, which makes
-    the teacher robust to renderer/API direction conventions.  Static-camera
+    the teacher robust to renderer/API direction conventions. Static-camera
     ego motion is removed by comparing source and target points in world space.
     """
 
@@ -260,7 +263,9 @@ def build_dynamic_voxel_flow(
                 flat_flow[:, voxel] = np.median(velocity[start:end], axis=0)
                 flat_valid[voxel] = True
 
-    sampled_points = int(math.ceil(source.shape[0] / pixel_stride) * math.ceil(source.shape[1] / pixel_stride))
+    sampled_points = int(
+        math.ceil(source.shape[0] / pixel_stride) * math.ceil(source.shape[1] / pixel_stride)
+    )
     stats = VoxelFlowTeacherStats(
         dt_s=float(dt_s),
         optical_flow_direction_sign=int(chosen_sign),
