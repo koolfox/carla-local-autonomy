@@ -27,9 +27,9 @@ from .runner import (
     _parse_image_size,
     _resolve_device,
     _set_seed,
-    _validate_args as _validate_base_args,
     _write_json,
 )
+from .runner import _validate_args as _validate_base_args
 
 FLOW_TRAINING_SCHEMA_VERSION = "1.0"
 
@@ -203,7 +203,15 @@ def _checkpoint_payload(
 
 
 def _synthetic_smoke(args: argparse.Namespace, device: torch.device) -> dict[str, Any]:
-    spec = VoxelGridSpec(x_min=0, x_max=8, y_min=-4, y_max=4, z_min=-1, z_max=3, resolution=1)
+    spec = VoxelGridSpec(
+        x_min=0,
+        x_max=8,
+        y_min=-4,
+        y_max=4,
+        z_min=-1,
+        z_max=3,
+        resolution=1,
+    )
     config = TemporalVoxelModelConfig(
         horizons_s=args.horizons,
         grid_shape_zyx=spec.shape,
@@ -216,7 +224,13 @@ def _synthetic_smoke(args: argparse.Namespace, device: torch.device) -> dict[str
     model = TemporalVoxelFlowNet(config).to(device)
     height, width = args.image_size
     rgb = torch.rand(1, args.history_frames, 3, height, width, device=device)
-    occupancy = torch.zeros(1, len(args.horizons), *spec.shape, dtype=torch.int8, device=device)
+    occupancy = torch.zeros(
+        1,
+        len(args.horizons),
+        *spec.shape,
+        dtype=torch.int8,
+        device=device,
+    )
     semantics = torch.full_like(occupancy, 255, dtype=torch.uint8)
     occupancy[..., 1:3, 3:5, 3:5] = 1
     semantics[occupancy == 1] = 3
@@ -239,14 +253,20 @@ def _synthetic_smoke(args: argparse.Namespace, device: torch.device) -> dict[str
     result.update(flow_endpoint_metrics(outputs["flow_mps"], flow, valid))
     result.update(
         dynamic_occupancy_iou(
-            outputs["occupancy_logits"], outputs["semantic_logits"], occupancy, semantics, args.horizons
+            outputs["occupancy_logits"],
+            outputs["semantic_logits"],
+            occupancy,
+            semantics,
+            args.horizons,
         )
     )
     return result
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Train temporal RGB-only occupancy with voxel flow.")
+    parser = argparse.ArgumentParser(
+        description="Train temporal RGB-only occupancy with voxel flow."
+    )
     parser.add_argument("--dataset", action="append", type=Path, default=[])
     parser.add_argument("--output", type=Path, default=Path("models/temporal-voxel-flow"))
     parser.add_argument("--history-frames", type=int, default=4)
@@ -308,50 +328,130 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     train_dataset = TemporalVoxelFlowDataset(partition="train", **common)
     val_dataset = TemporalVoxelFlowDataset(partition="val", **common)
     test_dataset = TemporalVoxelFlowDataset(partition="test", **common)
-    available = {"train": len(train_dataset), "val": len(val_dataset), "test": len(test_dataset)}
+    available = {
+        "train": len(train_dataset),
+        "val": len(val_dataset),
+        "test": len(test_dataset),
+    }
     if not len(train_dataset):
         raise RuntimeError("training split has no samples with teacher_flow labels")
     spec = train_dataset.spec
     model = TemporalVoxelFlowNet(_model_config(args, spec)).to(device)
-    train_loader = _loader(train_dataset, batch_size=args.batch_size, num_workers=args.num_workers, shuffle=True)
-    val_loader = _loader(val_dataset, batch_size=args.batch_size, num_workers=args.num_workers, shuffle=False) if len(val_dataset) else None
-    test_loader = _loader(test_dataset, batch_size=args.batch_size, num_workers=args.num_workers, shuffle=False) if len(test_dataset) else None
+    train_loader = _loader(
+        train_dataset,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+        shuffle=True,
+    )
+    val_loader = (
+        _loader(
+            val_dataset,
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+            shuffle=False,
+        )
+        if len(val_dataset)
+        else None
+    )
+    test_loader = (
+        _loader(
+            test_dataset,
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+            shuffle=False,
+        )
+        if len(test_dataset)
+        else None
+    )
 
     if args.dry_run:
-        metrics = _run_epoch(model, train_loader, device=device, horizons_s=args.horizons, optimizer=None, args=args, max_batches=1)
-        summary = {"dry_run": True, "synthetic": False, "device": str(device), "parameter_count": model.parameter_count, "grid": spec.as_dict(), "samples": available, "metrics": metrics}
+        metrics = _run_epoch(
+            model,
+            train_loader,
+            device=device,
+            horizons_s=args.horizons,
+            optimizer=None,
+            args=args,
+            max_batches=1,
+        )
+        summary = {
+            "dry_run": True,
+            "synthetic": False,
+            "device": str(device),
+            "parameter_count": model.parameter_count,
+            "grid": spec.as_dict(),
+            "samples": available,
+            "metrics": metrics,
+        }
         print(json.dumps(summary, indent=2, sort_keys=True))
         return summary
 
     output = _ensure_output(args.output)
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=args.learning_rate,
+        weight_decay=args.weight_decay,
+    )
     history: list[dict[str, Any]] = []
     best_score = -math.inf
     best_epoch = 0
     for epoch in range(1, args.epochs + 1):
-        train_metrics = _run_epoch(model, train_loader, device=device, horizons_s=args.horizons, optimizer=optimizer, args=args, max_batches=args.max_batches)
+        train_metrics = _run_epoch(
+            model,
+            train_loader,
+            device=device,
+            horizons_s=args.horizons,
+            optimizer=optimizer,
+            args=args,
+            max_batches=args.max_batches,
+        )
         val_metrics = None
         if val_loader is not None:
             with torch.no_grad():
-                val_metrics = _run_epoch(model, val_loader, device=device, horizons_s=args.horizons, optimizer=None, args=args, max_batches=args.max_batches)
+                val_metrics = _run_epoch(
+                    model,
+                    val_loader,
+                    device=device,
+                    horizons_s=args.horizons,
+                    optimizer=None,
+                    args=args,
+                    max_batches=args.max_batches,
+                )
         score_metrics = val_metrics or train_metrics
         score = float(score_metrics["mean_dynamic_iou"])
         history.append({"epoch": epoch, "train": train_metrics, "val": val_metrics})
-        payload = _checkpoint_payload(model, spec=spec, args=args, epoch=epoch, metrics=score_metrics)
+        payload = _checkpoint_payload(
+            model,
+            spec=spec,
+            args=args,
+            epoch=epoch,
+            metrics=score_metrics,
+        )
         torch.save(payload, output / "checkpoint_last.pt")
         if score > best_score:
-            best_score, best_epoch = score, epoch
+            best_score = score
+            best_epoch = epoch
             torch.save(payload, output / "checkpoint_best.pt")
         _write_json(output / "history.json", history)
 
     eval_loader = test_loader or val_loader or train_loader
     with torch.no_grad():
-        evaluation = _run_epoch(model, eval_loader, device=device, horizons_s=args.horizons, optimizer=None, args=args, max_batches=args.max_batches)
+        evaluation = _run_epoch(
+            model,
+            eval_loader,
+            device=device,
+            horizons_s=args.horizons,
+            optimizer=None,
+            args=args,
+            max_batches=args.max_batches,
+        )
     latency = _inference_latency(model, eval_loader, device)
     peak_memory_mb = (
-        float(torch.cuda.max_memory_allocated(device) / (1024**2)) if device.type == "cuda" else None
+        float(torch.cuda.max_memory_allocated(device) / (1024**2))
+        if device.type == "cuda"
+        else None
     )
     summary = {
         "schema_version": FLOW_TRAINING_SCHEMA_VERSION,
@@ -360,7 +460,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "parameter_count": model.parameter_count,
         "grid": spec.as_dict(),
         "samples": available,
-        "splits": split_summary(roots, split_seed=args.seed, val_fraction=args.val_fraction, test_fraction=args.test_fraction),
+        "splits": split_summary(
+            roots,
+            split_seed=args.seed,
+            val_fraction=args.val_fraction,
+            test_fraction=args.test_fraction,
+        ),
         "best_epoch": best_epoch,
         "best_mean_dynamic_iou": best_score,
         "flow_head": True,
@@ -371,7 +476,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "rgb_only_inference": True,
     }
     _write_json(output / "summary.json", summary)
-    _write_json(output / "config.json", {key: str(value) if isinstance(value, Path) else value for key, value in vars(args).items()})
+    _write_json(
+        output / "config.json",
+        {
+            key: str(value) if isinstance(value, Path) else value
+            for key, value in vars(args).items()
+        },
+    )
     print(json.dumps(summary, indent=2, sort_keys=True))
     return summary
 
