@@ -6,7 +6,6 @@ import argparse
 import json
 import queue
 from collections.abc import Sequence
-from pathlib import Path
 from typing import Any
 
 import cv2
@@ -25,8 +24,8 @@ from .capture import (
     _transform_dict,
     _validated_args,
     _write_json,
-    build_parser as build_base_parser,
 )
+from .capture import build_parser as build_base_parser
 from .flow_teacher import build_dynamic_voxel_flow, decode_carla_optical_flow
 from .geometry import (
     decode_carla_depth_bgra,
