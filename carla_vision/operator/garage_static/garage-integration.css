@@ -14,25 +14,11 @@
   background: rgba(255, 170, 40, 0.06);
 }
 
-.garage-autonomy-ack input {
-  margin-top: 0.2rem;
-}
-
-.garage-autonomy-ack span {
-  display: grid;
-  gap: 0.2rem;
-}
-
+.garage-autonomy-ack input { margin-top: 0.2rem; }
+.garage-autonomy-ack span { display: grid; gap: 0.2rem; }
 .garage-autonomy-ack small,
-.garage-mode-note {
-  color: var(--muted, #a7adb7);
-}
-
-.garage-mode-note {
-  margin: 0.75rem 0 0;
-  font-size: 0.84rem;
-  line-height: 1.45;
-}
+.garage-mode-note { color: var(--muted, #a7adb7); }
+.garage-mode-note { margin: 0.75rem 0 0; font-size: 0.84rem; line-height: 1.45; }
 
 .drive-garage-mode-badge {
   display: inline-flex;
@@ -49,13 +35,8 @@
 
 body.garage-autonomous .drive-control-deck,
 body.garage-autonomous .drive-touch-controls,
-body.garage-autonomous .drive-model-boundary {
-  display: none !important;
-}
-
-body.garage-autonomous #drive-viewport {
-  cursor: default;
-}
+body.garage-autonomous .drive-model-boundary { display: none !important; }
+body.garage-autonomous #drive-viewport { cursor: default; }
 
 .drive-research-actions {
   display: flex;
@@ -69,23 +50,10 @@ body.garage-autonomous #drive-viewport {
   border-top: 1px solid rgba(255, 255, 255, 0.12);
 }
 
-.drive-research-copy {
-  display: grid;
-  gap: 0.2rem;
-  min-width: 0;
-}
-
-.drive-research-copy span {
-  color: var(--muted, #a7adb7);
-  font-size: 0.82rem;
-}
-
-.drive-research-buttons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  justify-content: flex-end;
-}
+.drive-research-copy { display: grid; gap: 0.2rem; min-width: 0; }
+.drive-research-copy span,
+.garage-research-shelf span { color: var(--muted, #a7adb7); font-size: 0.82rem; }
+.drive-research-buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-end; }
 
 .garage-research-shelf {
   display: grid;
@@ -97,48 +65,72 @@ body.garage-autonomous #drive-viewport {
   background: rgba(255, 255, 255, 0.025);
 }
 
-.garage-research-shelf > div:first-child {
-  display: grid;
-  gap: 0.2rem;
-}
-
-.garage-research-shelf span {
-  color: var(--muted, #a7adb7);
-  font-size: 0.82rem;
-}
-
+.garage-research-shelf > div:first-child { display: grid; gap: 0.2rem; }
 .garage-research-shortcuts {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0.45rem;
 }
+.garage-research-shortcuts button { min-width: 0; padding-inline: 0.55rem; }
 
-.garage-research-shortcuts button {
+.garage-research-launcher {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding-top: 0.75rem;
+}
+
+.garage-research-launcher > summary {
+  cursor: pointer;
+  font-weight: 700;
+  user-select: none;
+}
+
+.garage-research-launcher-body {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin-top: 0.8rem;
+}
+
+.garage-research-launcher-body label {
+  display: grid;
+  gap: 0.3rem;
   min-width: 0;
-  padding-inline: 0.55rem;
+}
+
+.garage-research-launcher-body .span-2 { grid-column: 1 / -1; }
+.garage-research-check {
+  display: flex !important;
+  align-items: center;
+  gap: 0.5rem !important;
+  padding: 0.55rem 0;
+}
+.garage-research-check input { width: auto; }
+
+.garage-research-live {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.55rem;
+  font-size: 0.8rem;
+}
+.garage-research-live.ready {
+  border: 1px solid rgba(95, 205, 135, 0.3);
+  background: rgba(75, 190, 115, 0.08);
+}
+.garage-research-live.waiting {
+  border: 1px solid rgba(255, 190, 90, 0.25);
+  background: rgba(255, 170, 40, 0.055);
 }
 
 @media (max-width: 980px) {
-  .garage-research-shortcuts {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+  .garage-research-shortcuts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 760px) {
-  .drive-research-actions {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .drive-research-buttons {
-    justify-content: stretch;
-  }
-
-  .drive-research-buttons button {
-    flex: 1 1 auto;
-  }
-
-  .garage-research-shortcuts {
-    grid-template-columns: 1fr;
-  }
+  .drive-research-actions { align-items: stretch; flex-direction: column; }
+  .drive-research-buttons { justify-content: stretch; }
+  .drive-research-buttons button { flex: 1 1 auto; }
+  .garage-research-shortcuts,
+  .garage-research-launcher-body { grid-template-columns: 1fr; }
+  .garage-research-launcher-body .span-2 { grid-column: auto; }
 }
