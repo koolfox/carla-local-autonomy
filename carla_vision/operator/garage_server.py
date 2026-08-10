@@ -1,8 +1,9 @@
-"""Additive Garage-to-Research UI bridge for the existing operator server.
+"""Additive Garage integration for the existing local operator server.
 
-The underlying OperatorApplication, DriveSessionManager, HTTP API, and static
-application remain unchanged. This wrapper only injects one same-origin script
-and stylesheet into the existing index page and serves those two extra assets.
+The base operator application, HTTP routes, browser Drive engine, research jobs,
+and artifact APIs remain intact.  This wrapper swaps in the additive Garage
+drive manager and injects same-origin JavaScript/CSS that expose the extra
+controls without rewriting the existing static application.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from typing import Any, Sequence
 from urllib.parse import urlparse
 
 from . import server as base
+from .garage_drive import GarageDriveSessionManager
 
 GARAGE_STATIC_ROOT = Path(__file__).resolve().parent / "garage_static"
 _GARAGE_SCRIPT = "/static/garage-integration.js"
@@ -41,7 +43,7 @@ def _injected_index() -> bytes:
 
 
 class GarageOperatorRequestHandler(base.OperatorRequestHandler):
-    """Serve the unchanged operator app plus the additive Garage bridge assets."""
+    """Serve the base operator app plus the additive Garage assets."""
 
     def do_GET(self) -> None:
         try:
@@ -66,9 +68,14 @@ class GarageOperatorRequestHandler(base.OperatorRequestHandler):
 
 
 def create_server(**kwargs: Any) -> base.OperatorHTTPServer:
-    """Create the normal operator server and replace only its request handler."""
+    """Create the normal operator server and add Garage-only extensions."""
 
     server = base.create_server(**kwargs)
+    server.application.drive = GarageDriveSessionManager(
+        workspace=server.application.workspace,
+        carla_host=server.application.carla_host,
+        carla_port=server.application.carla_port,
+    )
     server.RequestHandlerClass = GarageOperatorRequestHandler
     return server
 
@@ -94,6 +101,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "workspace": str(Path(args.workspace).expanduser().resolve()),
                 "local_only": True,
                 "garage_research_bridge": True,
+                "garage_drive_modes": True,
             },
             ensure_ascii=False,
             indent=2,
