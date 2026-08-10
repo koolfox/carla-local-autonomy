@@ -164,9 +164,7 @@ class VoxelActuationRuntime:
         latency_ms = (time.perf_counter() - started) * 1000.0
         best_index = next(index for index, candidate in enumerate(candidates) if candidate is best)
         best_score = scores[best_index]
-        collision_risk = float(
-            np.clip(best_score.collision / self.planner_config.trajectory_steps, 0.0, 1.0)
-        )
+        collision_risk = float(np.clip(best_score.collision, 0.0, 1.0))
         uncertain_fraction = float(np.mean(uncertain))
         generated_at_s = time.monotonic()
         proposal = VoxelPlannerProposal(
