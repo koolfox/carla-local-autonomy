@@ -24,6 +24,9 @@ GARAGE_STATIC_ROOT = Path(__file__).resolve().parent / "garage_static"
 _GARAGE_SCRIPT = "/static/garage-integration.js"
 _GARAGE_RESEARCH_SCRIPT = "/static/garage-research.js"
 _GARAGE_STYLE = "/static/garage-integration.css"
+_LIVE_RESEARCH_KINDS = frozenset(
+    {"voxel_capture", "voxel_flow_capture", "voxel_shadow", "closed_loop_evaluate"}
+)
 
 
 def _injected_index() -> bytes:
@@ -47,6 +50,16 @@ def _injected_index() -> bytes:
         1,
     )
     return source.encode("utf-8")
+
+
+def _validate_research_runtime(request: GarageResearchRequest, drive_state: Mapping[str, Any]) -> None:
+    status = str(drive_state.get("status", "idle"))
+    active = status in {"starting", "running", "stopping"}
+    if request.kind == "teacher_capture" and active:
+        raise RuntimeError("end the active Garage drive before starting destructive teacher capture")
+    dry_run = request.parameters.get("dry_run") is True
+    if request.kind in _LIVE_RESEARCH_KINDS and not dry_run and status != "running":
+        raise RuntimeError(f"{request.kind} requires a running Garage ego or dry_run=true")
 
 
 class GarageOperatorRequestHandler(base.OperatorRequestHandler):
@@ -93,6 +106,7 @@ class GarageOperatorRequestHandler(base.OperatorRequestHandler):
                 raise TypeError("Garage research request must be an object")
             request = GarageResearchRequest.from_mapping(body)
             application = self.server.application
+            _validate_research_runtime(request, application.drive.state())
             plan = build_garage_research_plan(
                 request,
                 workspace=application.workspace,
@@ -101,7 +115,7 @@ class GarageOperatorRequestHandler(base.OperatorRequestHandler):
             )
             self._json(
                 HTTPStatus.ACCEPTED,
-                application.jobs.submit(request, plan),  # request uses the same JobManager protocol
+                application.jobs.submit(request, plan),
             )
         except BaseException as error:
             self._error(error)
