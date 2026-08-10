@@ -22,12 +22,14 @@ from .garage_research import GarageResearchRequest, build_garage_research_plan
 
 GARAGE_STATIC_ROOT = Path(__file__).resolve().parent / "garage_static"
 _GARAGE_SCRIPT = "/static/garage-integration.js"
+_GARAGE_RESEARCH_SCRIPT = "/static/garage-research.js"
 _GARAGE_STYLE = "/static/garage-integration.css"
 
 
 def _injected_index() -> bytes:
     source = (base.STATIC_ROOT / "index.html").read_text(encoding="utf-8")
-    if _GARAGE_SCRIPT in source or _GARAGE_STYLE in source:
+    assets = (_GARAGE_SCRIPT, _GARAGE_RESEARCH_SCRIPT, _GARAGE_STYLE)
+    if any(asset in source for asset in assets):
         raise RuntimeError("garage integration assets are already present in the base index")
     if "</head>" not in source or "</body>" not in source:
         raise RuntimeError("operator index is missing expected head/body boundaries")
@@ -38,7 +40,10 @@ def _injected_index() -> bytes:
     )
     source = source.replace(
         "</body>",
-        f'    <script src="{_GARAGE_SCRIPT}"></script>\n  </body>',
+        (
+            f'    <script src="{_GARAGE_SCRIPT}"></script>\n'
+            f'    <script src="{_GARAGE_RESEARCH_SCRIPT}"></script>\n  </body>'
+        ),
         1,
     )
     return source.encode("utf-8")
@@ -59,6 +64,9 @@ class GarageOperatorRequestHandler(base.OperatorRequestHandler):
                 return
             if path == _GARAGE_SCRIPT:
                 self._file(GARAGE_STATIC_ROOT / "garage-integration.js", cache="no-cache")
+                return
+            if path == _GARAGE_RESEARCH_SCRIPT:
+                self._file(GARAGE_STATIC_ROOT / "garage-research.js", cache="no-cache")
                 return
             if path == _GARAGE_STYLE:
                 self._file(GARAGE_STATIC_ROOT / "garage-integration.css", cache="no-cache")
