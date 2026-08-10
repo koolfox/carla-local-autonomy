@@ -69,13 +69,17 @@ class VoxelActuationRuntime:
         self.spec = spec
         self.planner_config = planner_config or ShadowPlannerConfig()
         self.supervisor_policy = supervisor_policy or VoxelActuationSupervisorPolicy()
-        self.readiness_report = readiness_report or {
-            "status": "passed",
-            "actuation_readiness": True,
-            "actuation_enabled_by_this_report": False,
-            "failed_checks": [],
-            "source": "explicit_runtime_acknowledgement",
-        }
+        self.readiness_report = (
+            {
+                "status": "passed",
+                "actuation_readiness": True,
+                "actuation_enabled_by_this_report": False,
+                "failed_checks": [],
+                "source": "explicit_runtime_acknowledgement",
+            }
+            if readiness_report is None
+            else readiness_report
+        )
         self.history: deque[np.ndarray] = deque(maxlen=self.planner_config.history_frames)
 
     def reset(self) -> None:
