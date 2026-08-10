@@ -1,0 +1,48 @@
+name: Garage research bridge CI
+
+on:
+  pull_request:
+    paths:
+      - "carla_vision/operator/garage_server.py"
+      - "carla_vision/operator/garage_static/**"
+      - "carla_vision/operator/server.py"
+      - "carla_vision/operator/drive.py"
+      - "carla_vision/operator/static/**"
+      - "tests/test_garage_research_bridge.py"
+      - "tests/test_drive_console.py"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/garage-research-bridge-ci.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install project
+        run: uv sync --all-groups
+
+      - name: Lint Garage bridge
+        run: >-
+          uv run ruff check
+          carla_vision/operator/garage_server.py
+          tests/test_garage_research_bridge.py
+
+      - name: Run Garage bridge and Drive Console regression tests
+        run: >-
+          uv run pytest -q
+          tests/test_garage_research_bridge.py
+          tests/test_drive_console.py
+
+      - name: Check operator entry point
+        run: uv run carla-operator-ui --help
