@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Convenience wrapper for ``python -m carla_vision.local_drive``."""
+"""Compatibility wrapper for the current ``carla-local-drive`` entry point."""
 
-from carla_vision.local_drive import main
+from carla_vision.voxel.local_drive_actuation import main
 
 
 if __name__ == "__main__":
