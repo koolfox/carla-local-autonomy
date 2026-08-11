@@ -139,17 +139,6 @@ def _workspace_path(
     return resolved
 
 
-def _optional_file(
-    workspace: Path,
-    value: Any,
-    name: str,
-    suffixes: tuple[str, ...],
-) -> Path | None:
-    if value is None or str(value).strip() == "":
-        return None
-    return _workspace_path(workspace, value, name, kind="file", suffixes=suffixes)
-
-
 def _unused_directory(workspace: Path, root: str, run_id: str) -> Path:
     output = (workspace / root / _identifier(run_id, "run_id")).resolve()
     output.relative_to(workspace)
@@ -163,10 +152,6 @@ def _module_command(module: str, *tokens: str) -> tuple[str, ...]:
         raise ValueError("internal Garage module name is invalid")
     invocation = f"from {module} import main; raise SystemExit(main())"
     return (sys.executable, "-c", invocation, *tokens)
-
-
-def _relative(workspace: Path, path: Path) -> str:
-    return path.relative_to(workspace).as_posix()
 
 
 def _teacher_plan(request: GarageResearchRequest, workspace: Path, host: str, port: int) -> CommandPlan:
