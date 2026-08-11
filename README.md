@@ -1,74 +1,15 @@
 # CARLA Vision Research
 
-A model-neutral, artifact-first framework for monocular-vision research in
-CARLA 0.9.16. The primary detector is RT-DETR, but the runtime accepts
-Ultralytics YOLO or any custom PyTorch-compatible adapter that implements the
-small `Detector` protocol.
+A CARLA 0.9.16 research codebase for monocular RGB perception, data collection,
+training, evaluation, local driving, temporal voxel occupancy/flow, and a local
+Garage/Cockpit operator UI.
 
-The current deployment defaults to CARLA at `172.20.10.7:2000`, vehicle actor
-`24`, and front RGB camera actor `25`. The Apple-silicon client uses a
-version-coupled MessagePack/TCP bridge, so it does not require a native CARLA
-wheel.
+## Claim boundary
 
-## What works now
-
-- front monocular RGB inference with RT-DETR, YOLO, or a custom detector;
-- exact-frame live overlays and raw/annotated split view;
-- optional fixed chase view on the CARLA server monitor, with guarded pose restore;
-- latest-frame-only inference, so a slow model drops stale queued frames;
-- optional low-speed simulator-teacher driving with an independent watchdog;
-- a strict front-RGB-only policy observation contract with non-actuating
-  shadow proposals, on-screen status, input auditing, and semantic verification;
-- sequential live multi-model shadow matrices with opt-in teacher motion,
-  isolated child artifacts, videos, logs, and parent/child integrity checks;
-- MP4, PNG, JSONL, summary, environment/model provenance, and SHA-256 manifest;
-- read-only post-hoc run analysis with CSV and four plots;
-- synchronized RGB plus privileged instance-segmentation dataset capture;
-- CARLA semantic ontology and visible-mask boxes;
-- canonical COCO plus derived YOLO labels, per-frame metadata, retained masks,
-  dataset checksum index, and split-leakage guards;
-- read-only dataset QA that reproduces labels/exports and emits plots/montage.
-- deterministic scenario recipes, hierarchical seeds, map/weather OOD
-  partitions, and integrity-verifiable episode plans;
-- a native official-PythonAPI collection worker with synchronous fixed-delta
-  stepping, Traffic Manager seeding, traffic/walkers/props, and exact-frame
-  RGB/instance capture;
-- a deterministic Windows/Linux native-host ZIP with a verified 50-frame
-  plan, hash-pinned dependencies, read-only preflight, and guarded collection;
-- immutable-dataset verification before training or evaluation;
-- RT-DETR, YOLO, and custom training adapters with resolved configs, seed
-  schedules, logs, plots, checkpoint hashes, and dry-run validation;
-- canonical COCO/operating-point evaluation with episode bootstrap,
-  stratification, calibration, latency, plots, and failure montages.
-- paired multi-model replay over one checksum-locked RGB order, retaining each
-  child evaluation plus per-image disagreements, episode-cluster bootstrap,
-  latency/accuracy tables, PNG/SVG plots, and a comparison montage;
-- validation-only operating-threshold selection with deterministic grids,
-  episode-bootstrap stability, plots, and a sealed threshold artifact;
-- validation-only failure categorization, diversity-capped review queues, and
-  immutable human-reviewed failure catalogs that cannot migrate validation
-  RGB into training;
-- a read-only recursive verifier for runs, datasets, plans, models, reports,
-  paired replays, checksum indexes, external references, and clean-Git
-  publication gates;
-- a sealed point-in-time evidence index spanning all seven canonical research
-  roots, retaining verification failures alongside verified objects and
-  generating canonical tables, plots, checksums, and a human-readable report;
-- immutable model promotion with packaged weights, input/inference contracts,
-  ontology, model card, licenses, training lineage, and checksum index;
-- manifest-driven report releases with canonical CSV tables, Markdown,
-  raster/vector plots, source-graph verification, and no manual metric
-  transcription;
-- canonical experiment/configuration identities plus privacy-safe CPU, memory,
-  accelerator, deterministic-backend, tool, and dependency-lock provenance;
-- standalone checksum-indexed reproduction bundles containing a deterministic
-  source archive, file inventory, source manifests, lockfiles, environment
-  envelope, and tokenized rerun commands.
-
-`--control vision` is intentionally unavailable. The detector and future
-deployable policy may consume only the ordered front RGB stream. CARLA pose,
-instance masks, actor IDs, and other privileged state are restricted to
-teacher-data generation, teacher control, or evaluation.
+This README describes capabilities that are visible in the current source tree
+and installed entry points. A code path, passing unit test, or available UI
+option is **not** evidence that a driving policy performs well in live CARLA.
+Closed-loop behavior must be measured against a running simulator.
 
 ## Install
 
@@ -76,16 +17,23 @@ teacher-data generation, teacher control, or evaluation.
 uv sync --all-groups
 ```
 
-The installed commands are:
+## Current installed commands
+
+The commands below are the exact `[project.scripts]` entries currently declared
+in `pyproject.toml`:
 
 ```text
 carla-vision
 carla-analyze-run
+carla-build-evidence-index
 carla-collect-dataset
 carla-audit-dataset
 carla-plan-scenarios
 carla-native-preflight
 carla-native-collect
+carla-record-behavior-teacher
+carla-verify-teacher-episodes
+carla-compare-teacher-episodes
 carla-build-native-kit
 carla-verify-native-kit
 carla-train-detector
@@ -95,7 +43,6 @@ carla-select-threshold
 carla-mine-failures
 carla-finalize-failure-review
 carla-verify
-carla-build-evidence-index
 carla-package-model
 carla-build-report
 carla-build-reproduction
@@ -104,497 +51,163 @@ carla-verify-shadow
 carla-shadow-matrix
 carla-verify-shadow-matrix
 carla-operator-ui
+carla-local-drive
+carla-voxel-test
+carla-voxel-flow-capture
+carla-train-voxel
+carla-train-voxel-flow
+carla-voxel-shadow
+carla-benchmark-voxel
+carla-build-voxel-readiness-evidence
+carla-verify-voxel-actuation-readiness
+carla-train-imitation
+carla-evaluate-drive
+carla-summarize-drive-evaluations
 ```
 
 ## Operator UI
 
-Start the local thesis-MVP control panel:
+Start the current Garage server with:
 
 ```bash
 uv run carla-operator-ui --open-browser
 ```
 
-It runs only on `http://127.0.0.1:8765/`. The primary **Drive** surface is a
-game-like Garage → Cockpit → Run saved flow. The older capture, planning,
-workflow, evidence, and activity screens remain available under the single
-**Research tools** tab instead of competing with the driving experience.
+`carla-operator-ui` currently resolves to
+`carla_vision.operator.garage_server:main`. The Garage server is additive: it
+reuses the existing operator server, Drive session engine, research jobs, and
+artifact APIs, then adds Garage drive modes and an allow-listed research-job
+endpoint.
 
-In the Garage, choose the car and colour, current-world weather, a fixed road
-scene, AI overlay, recording, and optional server-monitor camera. Technical
-connection, camera, and detector values stay in the closed **Advanced
-settings** section. **Start Drive** creates one session-owned vehicle at a
-seeded random official map spawn point and attaches its front RGB camera.
-The page then becomes an immersive Cockpit: app navigation and setup disappear
-while the camera, small HUD, view switch, emergency brake, and end action stay
-visible. Use `W/A/S/D` or the arrow keys, `Space` for the handbrake, and
-`Shift` plus forward throttle for safe reverse. Coarse-pointer/touch screens
-receive multi-touch steering, throttle, brake, handbrake, and hold-to-reverse
-controls over the camera. Model results are advisory only; fresh human input
-is the only driving authority.
+### Garage driving modes
 
-Only one interactive drive can be active. Losing viewport/browser focus or
-failing to send a fresh control heartbeat applies the deadman brake, and
-**Emergency Brake** remains latched for that session. Finish with **End Drive
-& Save** so cleanup and manifest finalization can complete. When the CARLA episode is
-unchanged, the session removes its actors and restores the prior weather. A
-recorded run is retained under `runs/<run-id>/` with raw and model-overlay MP4s,
-control/detection/event
-JSONL logs, final frames, a summary, and a checksum-tracked manifest (model
-artifacts are present only when the model/recording option is enabled).
+The source currently defines four control modes:
 
-The UI is an orchestration layer over the same strict CLIs. It does not expose
-arbitrary shell execution, does not overwrite existing outputs, and keeps
-native world reload, teacher motion, locked-test access, and real training
-behind separate acknowledgements. See [Operator UI](docs/operator_ui.md).
+| Mode | Code-visible availability condition | Control source |
+|---|---|---|
+| Manual | always | browser keyboard/touch input |
+| BehaviorAgent | CARLA PythonAPI + BehaviorAgent importable | BehaviorAgent |
+| Imitation | CARLA PythonAPI importable | RGB + speed imitation policy |
+| Voxel Planner | CARLA PythonAPI + BehaviorAgent importable | BehaviorAgent longitudinal control + supervised voxel steering |
 
-Live driving, recording, RT-DETR/YOLO overlays, weather, and fixed road scenes
-use the lightweight MessagePack bridge and can run without the native Python
-module. The Garage shows map, traffic, pedestrians, and route controls, but
-keeps unsupported choices disabled until a matching official-PythonAPI
-Simulator Worker is connected.
+Autonomous modes require explicit operator acknowledgement. While an
+autonomous mode is active, browser driving input is locked out. The existing
+Emergency Brake remains exposed by the Cockpit UI.
 
-The current Drive Console deliberately does not claim a road-valid random
-route, map reload, dynamic traffic or walkers, or autopilot. Those world-owned
-features need the optional matching official-PythonAPI native worker. The
-Situation Builder continues to save and resolve plans only; it does not
-populate the live Drive Console world. See [Operator UI](docs/operator_ui.md)
-for the 30-second validation workflow and the exact MVP boundary.
+Imitation and Voxel modes require a workspace-contained checkpoint ending in
+`.pt`, `.pth`, or `.ckpt`. The Garage discovers compatible checkpoint files
+inside the workspace. Voxel mode may also receive a workspace-contained JSON
+readiness report.
 
-The Evidence tab discovers tracked objects under `datasets/`, `runs/`,
-`models/`, `reports/`, `bundles/`, `native_kits/`, and
-`operator_sessions/`. It shows only artifacts declared by each manifest and
-never guesses filenames. The browser view reports availability, not
-integrity; its Verify action hands the selected object to the existing
-read-only verifier.
+Selecting an autonomous mode disables the normal detector-overlay option for
+that drive session; the policy path uses its own CARLA RGB sensor rather than
+the browser JPEG stream.
 
-## Live RT-DETR
+### Traffic and pedestrians
 
-Perception-only mode is the default and does not move the vehicle:
+Garage traffic and walker population controls are enabled only when the CARLA
+PythonAPI is importable in the operator environment. Spawned traffic vehicles,
+walkers, and walker controllers are owned by the drive session and are cleaned
+up when that session closes.
 
-```bash
-uv run carla-vision \
-  --detector rtdetr \
-  --weights rtdetr-l.pt \
-  --device mps \
-  --view split \
-  --duration 30 \
-  --run-id exp-rtdetr-shadow-001
-```
+The Garage does **not** turn a random spawn point into a planned road route.
+Map reload and route planning are separate concerns and are not claimed here as
+part of the Garage drive flow.
 
-Window keys:
+### Saved-run actions
 
-- `Q` or `Esc`: stop;
-- `S`: split view;
-- `O`: overlay only;
-- `M`: toggle the view.
+After a successful saved drive, the Garage integration can:
 
-The privileged development teacher must be requested explicitly:
+- open the run in the research/evidence UI;
+- launch the existing run analysis workflow;
+- launch the existing recursive verification workflow.
 
-```bash
-uv run carla-vision \
-  --detector rtdetr \
-  --weights rtdetr-l.pt \
-  --device mps \
-  --control teacher \
-  --cruise-speed 2.0 \
-  --view split \
-  --duration 20 \
-  --run-id exp-rtdetr-teacher-001
-```
+These actions reuse existing project backends rather than implementing separate
+analysis or verification logic in the browser.
 
-Add `--spectator-follow` when an operator at the CARLA machine should see a
-fixed chase view on the server monitor. This bridge option is off by default,
-does not change the front-RGB recording or policy inputs, and restores the
-previous spectator pose when the CARLA episode and spectator actor remain the
-same. It is best-effort operator visualization; do not enable it for a benchmark
-unless the run protocol calls for it.
+## Garage research launcher
 
-Every run is written below `runs/<run-id>/`:
+The Garage research endpoint accepts only the following fixed research kinds:
 
 ```text
-manifest.json
-summary.json
-images/latest_overlay.png
-logs/detections.jsonl
-video/overlay.mp4
+teacher_capture
+imitation_train
+voxel_capture
+voxel_flow_capture
+voxel_train
+voxel_flow_train
+voxel_shadow
+voxel_benchmark
+closed_loop_evaluate
 ```
 
-Analyze a completed run without changing it:
+Requests cannot supply an arbitrary shell command or Python module. Each kind
+maps to one fixed project module with a validated parameter contract.
 
-```bash
-uv run carla-analyze-run \
-  --source-run runs/exp-rtdetr-teacher-001 \
-  --runs-root runs \
-  --run-id exp-rtdetr-teacher-001-analysis
-```
+Runtime boundaries currently enforced by the server include:
 
-## Live vision-policy shadow
+- Behavior teacher capture cannot start while a Garage drive is active.
+- Live voxel capture, voxel-flow capture, voxel shadow, and closed-loop
+  evaluation require a running Garage ego unless the request is a dry run.
+- Voxel capture/shadow attach observation sensors and do not own vehicle
+  control.
+- The closed-loop evaluator is an observer for collision/lane/route/brake
+  metrics and does not issue vehicle control.
+- Voxel benchmark is offline over retained artifacts.
 
-A shadow policy receives only a copied front-RGB frame, RGB-derived
-detections, sequence/timestamp, and camera FOV. It cannot receive CARLA pose,
-speed, route, map, actor IDs, segmentation, or other privileged simulator
-state through the observation contract. Its throttle/steer/brake proposal is
-logged and displayed but never applied:
+## Local drive CLI
 
-```bash
-uv run carla-vision \
-  --detector rtdetr \
-  --weights rtdetr-l.pt \
-  --device mps \
-  --shadow-policy hazard-stop \
-  --policy-options '{"confidence":0.35,"close_bottom":0.72}' \
-  --control teacher \
-  --expected-map Town10HD_Opt \
-  --view split \
-  --duration 12 \
-  --run-id exp-rtdetr-policy-shadow-001
-```
+`carla-local-drive` currently resolves to
+`carla_vision.voxel.local_drive_actuation:main`.
 
-Create a preregistered sequential plan without contacting CARLA:
+The voxel actuation path is opt-in and retains the existing local-drive path
+when voxel actuation is not enabled. Live actuation requires explicit
+acknowledgement and a predictor factory/checkpoint configuration appropriate to
+the selected predictor.
 
-```bash
-uv run carla-shadow-matrix \
-  --config configs/shadow/rtdetr_yolo26_live_shadow_v1.json \
-  --runs-root runs
-```
+See [`docs/voxel_actuation_fa.md`](docs/voxel_actuation_fa.md) for the current
+voxel-actuation CLI contract.
 
-Real teacher-driven execution is intentionally a separate opt-in action:
+## Research components present in the source tree
 
-```bash
-uv run carla-shadow-matrix \
-  --config configs/shadow/rtdetr_yolo26_live_shadow_v1.json \
-  --runs-root runs \
-  --execute \
-  --acknowledge-teacher-motion
-```
+The current package includes code for:
 
-Verify the parent and each child independently:
+- RT-DETR/YOLO/custom detector runtime and recording;
+- synchronized RGB plus privileged teacher capture;
+- dataset QA, scenario planning, replay, threshold selection, failure mining,
+  evidence indexing, model packaging, reporting, and reproduction bundles;
+- official-PythonAPI native collection and BehaviorAgent teacher episodes;
+- imitation-policy training and driving evaluation;
+- temporal RGB-only voxel occupancy/flow training;
+- privileged voxel/flow teacher capture;
+- voxel shadow planning, benchmarking, readiness checks, and opt-in actuation;
+- closed-loop driving evaluation and evaluation summaries;
+- local Operator/Garage orchestration over those existing backends.
 
-```bash
-uv run carla-verify-shadow-matrix runs/shadow-rtdetr-yolo26-live-v1
-uv run carla-verify-shadow \
-  runs/shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00
-uv run carla-verify \
-  runs/shadow-rtdetr-yolo26-live-v1 \
-  runs/shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00 \
-  runs/shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00 \
-  --reject-unregistered
-```
+The presence of these modules is a software-capability statement only. It does
+not imply that a trained checkpoint is present, that a particular model has
+been trained successfully, or that closed-loop CARLA performance has been
+validated.
 
-The built-in hazard-stop policy is a contract/systems baseline, not a safe
-driver. Custom policies use `--shadow-policy custom --policy-factory
-package.module:create`; structural isolation prevents accidental privileged
-inputs but is not a security sandbox for malicious custom code.
+## Safety and privileged-data boundary
 
-## Dataset Factory v0
+Privileged CARLA signals may be used by teacher-data generation and evaluation
+components. Deployable imitation and temporal voxel model paths are intended to
+consume RGB-derived inputs rather than privileged simulator state.
 
-This collector attaches a privileged instance-segmentation camera at exactly
-the RGB camera pose. It retains a sample only when both sensor messages have
-the same CARLA frame ID, timestamp, dimensions, FOV, and transform.
+Shadow/observer components are separate from actuation components. Do not infer
+that a shadow result or offline benchmark authorizes vehicle actuation.
 
-Start with a no-motion pilot:
+## Tests versus simulator validation
 
-```bash
-uv run carla-collect-dataset \
-  --dataset-id ds-carla0916-town10-pilot-v001 \
-  --resolution 1280x720 \
-  --samples 100 \
-  --sample-every 3 \
-  --control none \
-  --split unassigned \
-  --scenario-id scn-town10-static-clear \
-  --episode-id ep-static-r00
-```
-
-The collector can use the disclosed privileged teacher route:
-
-```bash
-uv run carla-collect-dataset \
-  --dataset-id ds-carla0916-town10-teacher-v001 \
-  --resolution 1280x720 \
-  --samples 250 \
-  --sample-every 3 \
-  --control teacher \
-  --split train \
-  --scenario-id scn-town10-clear-teacher \
-  --episode-id ep-clear-r00
-```
-
-A dataset release contains lossless RGB PNGs, retained BGRA teacher masks,
-per-frame JSON, COCO annotations, YOLO labels, `data.yaml`, `dataset.json`,
-`checksums.sha256`, and a provenance `manifest.json`.
-
-Audit it before training:
-
-```bash
-uv run carla-audit-dataset \
-  --dataset datasets/ds-carla0916-town10-pilot-v001 \
-  --runs-root runs \
-  --run-id ds-carla0916-town10-pilot-v001-qa
-```
-
-The raw-bridge collector is useful for a non-destructive pilot against an
-already-running world. Before any world reload, create a read-only native
-readiness artifact for the deliberately small 50-frame integration plan:
-
-```bash
-uv run carla-plan-scenarios \
-  --suite configs/scenarios/native_integration_pilot_v1.json \
-  --split-plan configs/scenarios/split_plan_native_integration_pilot_v1.json \
-  --run-id scenario-plan-native-integration-pilot-v1
-
-uv run carla-native-preflight \
-  --scenario-plan runs/scenario-plan-native-integration-pilot-v1 \
-  --dataset-id ds-carla0916-native-pilot-v001 \
-  --run-id native-preflight-pilot-001 \
-  --host 172.20.10.7 \
-  --partition train \
-  --max-episodes 1
-```
-
-The preflight verifies the plan, selected episodes, unused Dataset ID, TCP
-endpoint, read-only server version/map RPC, official PythonAPI import and
-client/server version agreement, plus two manual gates. It produces a
-manifest, JSON/CSV checks, selected-episode record, and Markdown report while
-recording `simulator_mutated: false`.
-
-A ready-to-transfer host package is retained at:
+Use repository tests and CI for code/contract regressions. Use live CARLA runs
+for simulator integration, and closed-loop metrics for driving behavior. Keep
+those three claims separate:
 
 ```text
-native_kits/native-host-kit-pilot-20260727-v003/payload/native-host-kit.zip
+CODE / CONTRACT     -> static checks, unit/integration tests, CI
+LIVE CARLA          -> spawn, sensors, actuation, cleanup, simulator response
+DRIVING BEHAVIOR    -> collisions, lane events, route progress, braking, success
 ```
 
-It targets CPython 3.12 on Windows/Linux x86-64 and contains the exact
-50-frame plan, collection source, verified hashed requirements, and PowerShell
-and shell scripts. Collection is refused unless a matching verified preflight
-is ready and the literal confirmation token is supplied. See
-[Portable native-host kit](docs/native_host_kit.md) and
-[First native pilot checklist](docs/native_pilot_checklist.md).
-
-## Train and evaluate
-
-Training first verifies the complete dataset checksum index and split
-invariants. A dry run resolves all inputs without starting the backend:
-
-```bash
-uv run carla-train-detector \
-  --config configs/training/rtdetr_pilot_v1.json \
-  --dataset datasets/ds-carla0916-thesis-pilot-v001 \
-  --weights rtdetr-l.pt \
-  --dry-run
-```
-
-The current three-frame dataset has only an `unassigned` development
-partition, so it is correctly rejected as a training input. Once a trainable
-release exists, remove `--dry-run` to launch the configured backend.
-
-Run model-neutral offline evaluation on an allowed development partition:
-
-```bash
-uv run carla-evaluate-detector \
-  --config configs/evaluation/rtdetr_development_v1.json \
-  --dataset datasets/ds-carla0916-town10-pilot-v001 \
-  --detector rtdetr \
-  --weights rtdetr-l.pt \
-  --device mps \
-  --run-id eval-rtdetr-pretrained-pilot-v1
-```
-
-Selecting a locked test partition requires the explicit
-`--acknowledge-locked-test` gate. That flag records authorization; it does not
-relax checksum, leakage, or configuration validation.
-
-Run two or more detector adapters on the exact same immutable RGB order:
-
-```bash
-uv run carla-replay-models \
-  --config configs/replay/rtdetr_yolo26_development_v1.json \
-  --dataset datasets/ds-carla0916-town10-pilot-v001 \
-  --evaluation-config configs/evaluation/model_comparison_development_v1.json \
-  --runs-root runs
-```
-
-The retained development pilot
-`runs/replay-rtdetr-yolo26-pilot-v1` compares RT-DETR-L and YOLO26n on all
-three pilot frames. It recursively verifies both child evaluations and records
-the sample-order digest, canonical predictions, paired TP/FP/FN outcomes,
-latency, bootstrap deltas, tables, plots, and a visual disagreement panel.
-The sample is one unassigned episode, and the shared `0.05` prediction cutoff
-removes all YOLO26n predictions because its maximum score on these views is
-lower. This is a useful calibration diagnostic, not a model-ranking claim.
-Final comparisons must select model-specific operating thresholds on
-validation data and freeze them before locked-test replay.
-
-## Verify, index, package, and report
-
-Verify one or more objects recursively without modifying them:
-
-```bash
-uv run carla-verify \
-  datasets/ds-carla0916-town10-pilot-v001 \
-  runs/scenario-plan-thesis-pilot-v1 \
-  runs/eval-rtdetr-pretrained-pilot-v1 \
-  runs/replay-rtdetr-yolo26-pilot-v1 \
-  --reject-unregistered
-```
-
-`--require-clean-git` adds the confirmatory-publication gate. It correctly
-fails for the current development artifacts because they were created before
-the repository had a clean commit.
-
-Seal a point-in-time workspace evidence index without contacting CARLA:
-
-```bash
-uv run carla-build-evidence-index \
-  --workspace . \
-  --registry-id evidence-index-workspace-20260727-v001
-
-uv run carla-verify \
-  runs/evidence-index-workspace-20260727-v001 \
-  --reject-unregistered
-```
-
-The index scans only immediate children of the seven canonical roots, attempts
-deep verification for every discovered object, retains failures instead of
-omitting them, and emits JSON/CSV/Markdown plus PNG/SVG inventory plots. New
-objects created later do not invalidate the snapshot; drift in any recorded
-source manifest or in the non-following tree snapshot of an already-invalid
-source does. See [Evidence index](docs/evidence_index.md).
-
-After a successful real training run, promote its selected checkpoint using a
-strict model-release configuration:
-
-```bash
-uv run carla-package-model \
-  --config configs/model_release/<release>.json \
-  --training-run runs/<successful-training-run> \
-  --models-root models
-```
-
-The runtime and evaluator can then consume the entire verified contract:
-
-```bash
-uv run carla-vision --model-package models/<model-id> --device mps
-uv run carla-evaluate-detector \
-  --config configs/evaluation/<evaluation>.json \
-  --dataset datasets/<dataset-id> \
-  --model-package models/<model-id> \
-  --device mps
-```
-
-Loose `--detector`, `--weights`, `--detector-factory`, and `--image-size`
-options are mutually exclusive with `--model-package`, preventing accidental
-drift from the released preprocessing/adapter contract.
-
-Build the current development report entirely from verified manifests:
-
-```bash
-uv run carla-build-report \
-  --config configs/reports/framework_validation_v8.json \
-  --reports-root reports
-
-uv run carla-verify \
-  reports/rpt-framework-validation-20260727-v008 \
-  --reject-unregistered
-```
-
-The generated release contains `report.md`, `report.json`, canonical inventory
-and metric CSVs, PNG/SVG plots, a checksum index, and a tracker manifest.
-
-Build a standalone development reproduction bundle:
-
-```bash
-uv run carla-build-reproduction \
-  --config configs/reproduction/framework_development_bundle_v9.json \
-  --bundles-root bundles
-
-uv run carla-verify-reproduction \
-  bundles/bundle-framework-development-20260727-v009
-```
-
-This bundle archives deterministic source bytes and `uv.lock`, not mutable
-paths to the original research objects. The current bundle is development-only
-because the workspace has no clean commit. See
-[Reproducibility and provenance](docs/reproducibility.md) for the identity,
-privacy, archive, semantic-verification, and confirmatory-gate contracts.
-
-## Custom detector
-
-Use `--detector custom --detector-factory package.module:create`. The callable
-receives `DetectorConfig` and returns an object with:
-
-```python
-class Detector(Protocol):
-    @property
-    def name(self) -> str: ...
-
-    @property
-    def metadata(self) -> DetectorMetadata: ...
-
-    def infer(self, image_bgr: np.ndarray) -> tuple[Detection, ...]: ...
-
-    def close(self) -> None: ...
-```
-
-Detections must use original-image pixel coordinates. This contract keeps
-runtime, visualization, recording, risk logic, and analysis independent of the
-model family.
-
-## Verification
-
-```bash
-uv run ruff format --check .
-uv run ruff check .
-uv run python -m compileall -q .
-uv run python -m unittest discover -s tests -v
-```
-
-The repository currently contains development evidence, including a live
-RT-DETR teacher drive, a current-schema perception smoke and analysis, a
-three-frame exact-sync dataset pilot and QA run, a 23-episode deterministic
-scenario plan, a real pretrained RT-DETR development evaluation, a paired
-RT-DETR/YOLO26 replay, a verified live non-actuating policy-shadow matrix,
-standalone reproduction bundles, and manifest-generated validation reports.
-The v0.6 release adds the loopback operator POC and situation planning. The
-v0.7 release adds a read-only native readiness artifact, operator preflight
-control, a 50-frame first native plan, and stronger multi-episode provenance.
-The v0.8 release adds the portable guarded native-host kit and its independent
-semantic verifier. The v0.9 release adds the sealed workspace evidence index,
-semantic drift verification, and the manifest-driven Evidence Explorer.
-These artifacts were produced from a dirty, uncommitted workspace and are not
-publishable thesis results. Exact commands, metrics, hashes, and limitations
-are recorded in the validation documentation.
-
-## Research documentation
-
-- [Architecture](docs/architecture.md)
-- [Experiment protocol](docs/experiment_protocol.md)
-- [Artifact policy](docs/artifact_policy.md)
-- [Paired replay](docs/paired_replay.md)
-- [Threshold and failure workflow](docs/threshold_and_failure_workflow.md)
-- [Reproducibility and provenance](docs/reproducibility.md)
-- [Evidence index](docs/evidence_index.md)
-- [Operator UI](docs/operator_ui.md)
-- [Portable native-host kit](docs/native_host_kit.md)
-- [First native pilot checklist](docs/native_pilot_checklist.md)
-- [Validation report v0.9](docs/validation_report_v0.9.md)
-- [Validation report v0.8](docs/validation_report_v0.8.md)
-- [Validation report v0.7](docs/validation_report_v0.7.md)
-- [Validation report v0.6](docs/validation_report_v0.6.md)
-- [Validation report v0.5](docs/validation_report_v0.5.md)
-- [Validation report v0.4](docs/validation_report_v0.4.md)
-- [Validation report v0.3](docs/validation_report_v0.3.md)
-- [Native host runbook](docs/native_host_runbook.md)
-
-The implementation follows CARLA 0.9.16 behavior and uses the official
-[Python examples](https://github.com/carla-simulator/carla/tree/0.9.16/PythonAPI/examples),
-[sensor reference](https://carla.readthedocs.io/en/0.9.16/ref_sensors/), and
-[synchronous-mode guidance](https://carla.readthedocs.io/en/0.9.16/adv_synchrony_timestep/)
-as versioned references.
-
-## Safety boundary
-
-This is simulator research software. A 2D RGB box is not metric distance,
-teacher control is not vision-only autonomy, and CARLA results do not establish
-real-world vehicle safety. Motion remains opt-in, low-speed, watchdog guarded,
-and followed by a verified stop.
+A green first line does not automatically make the other two green.
