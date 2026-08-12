@@ -9,6 +9,7 @@ same-origin JavaScript/CSS without rewriting the existing static application.
 from __future__ import annotations
 
 import json
+import threading
 import webbrowser
 from collections.abc import Mapping
 from http import HTTPStatus
@@ -18,6 +19,7 @@ from urllib.parse import urlparse
 
 from . import server as base
 from .garage_drive import GarageDriveSessionManager
+from .garage_preview import GaragePreviewManager
 from .garage_research import GarageResearchRequest, build_garage_research_plan
 
 GARAGE_STATIC_ROOT = Path(__file__).resolve().parent / "garage_static"
@@ -88,14 +90,71 @@ class GarageOperatorRequestHandler(base.OperatorRequestHandler):
             if path == _GARAGE_STYLE:
                 self._file(GARAGE_STATIC_ROOT / "garage-integration.css", cache="no-cache")
                 return
+            if path == "/api/garage/preview/state":
+                self._json(HTTPStatus.OK, self.server.application.preview.state())
+                return
+            if path == "/api/garage/preview/frame.jpg":
+                sequence, payload = self.server.application.preview.frame()
+                self._bytes(
+                    HTTPStatus.OK,
+                    payload,
+                    content_type="image/jpeg",
+                    extra_headers={"X-Garage-Preview-Frame-Sequence": str(sequence)},
+                )
+                return
+            if path == "/api/garage/preview/stream.mjpg":
+                self._preview_stream()
+                return
         except BaseException as error:
             self._error(error)
             return
         super().do_GET()
 
+    def _preview_stream(self) -> None:
+        """Serve new preview frames continuously until the browser disconnects."""
+
+        boundary = "carla-garage-preview"
+        session = self.server.application.preview.subscribe()
+        self.send_response(HTTPStatus.OK)
+        self.send_header(
+            "Content-Type",
+            f"multipart/x-mixed-replace; boundary={boundary}",
+        )
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.close_connection = True
+        sequence = -1
+        try:
+            while True:
+                try:
+                    sequence, payload = session.wait_for_frame(sequence, timeout=5.0)
+                except TimeoutError:
+                    continue
+                header = (
+                    f"--{boundary}\r\n"
+                    "Content-Type: image/jpeg\r\n"
+                    f"Content-Length: {len(payload)}\r\n"
+                    f"X-Garage-Preview-Frame-Sequence: {sequence}\r\n\r\n"
+                ).encode("ascii")
+                self.wfile.write(header)
+                self.wfile.write(payload)
+                self.wfile.write(b"\r\n")
+                self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError, EOFError, OSError):
+            return
+
     def do_POST(self) -> None:
         path = urlparse(self.path).path
-        if path != "/api/garage/jobs":
+        preview_routes = {
+            "/api/garage/preview/configure",
+            "/api/garage/preview/orbit",
+            "/api/garage/preview/stop",
+        }
+        if path != "/api/garage/jobs" and path not in preview_routes:
             super().do_POST()
             return
         try:
@@ -106,6 +165,20 @@ class GarageOperatorRequestHandler(base.OperatorRequestHandler):
                 )
                 return
             body = self._body()
+            if path in preview_routes:
+                if not isinstance(body, Mapping):
+                    raise TypeError("Garage preview request must be an object")
+                if path.endswith("/configure"):
+                    result = self.server.application.preview.configure(body)
+                    status = HTTPStatus.CREATED
+                elif path.endswith("/orbit"):
+                    result = self.server.application.preview.orbit(body)
+                    status = HTTPStatus.OK
+                else:
+                    result = self.server.application.preview.stop(body)
+                    status = HTTPStatus.OK
+                self._json(status, result)
+                return
             if not isinstance(body, Mapping):
                 raise TypeError("Garage research request must be an object")
             request = GarageResearchRequest.from_mapping(body)
@@ -128,6 +201,23 @@ class GarageOperatorRequestHandler(base.OperatorRequestHandler):
 class GarageOperatorDriveManager(GarageDriveSessionManager):
     """Garage manager with workspace checkpoint discovery for the browser selector."""
 
+    def attach_preview(
+        self,
+        preview: GaragePreviewManager,
+        world_mode_lock: threading.RLock,
+    ) -> None:
+        self._garage_preview = preview
+        self._garage_world_mode_lock = world_mode_lock
+
+    def start(self, raw: Mapping[str, Any]) -> dict[str, Any]:
+        preview = getattr(self, "_garage_preview", None)
+        world_mode_lock = getattr(self, "_garage_world_mode_lock", None)
+        if preview is None or world_mode_lock is None:
+            return super().start(raw)
+        with world_mode_lock:
+            preview.stop_for_drive()
+            return super().start(raw)
+
     def catalog(self) -> dict[str, Any]:
         payload = super().catalog()
         checkpoints: list[str] = []
@@ -147,16 +237,66 @@ class GarageOperatorDriveManager(GarageDriveSessionManager):
         return payload
 
 
-def create_server(**kwargs: Any) -> base.OperatorHTTPServer:
+class GarageOperatorApplication(base.OperatorApplication):
+    """Base operator state plus the mutually-exclusive real Garage preview."""
+
+    preview: GaragePreviewManager
+
+    def close(self) -> None:
+        preview = getattr(self, "preview", None)
+        if preview is not None:
+            preview.shutdown()
+        super().close()
+
+
+def create_server(
+    *,
+    workspace: str | Path,
+    bind: str = "127.0.0.1",
+    port: int = 8765,
+    sessions_root: str | Path = "operator_sessions",
+    carla_host: str = "172.20.10.7",
+    carla_port: int = 2000,
+    world_worker_url: str | None = None,
+    world_worker_token: str | None = None,
+) -> base.OperatorHTTPServer:
     """Create the normal operator server and add Garage-only extensions."""
 
-    server = base.create_server(**kwargs)
-    server.application.drive = GarageOperatorDriveManager(
-        workspace=server.application.workspace,
-        carla_host=server.application.carla_host,
-        carla_port=server.application.carla_port,
-        world_worker=server.application.world_worker,
+    if bind not in base._LOCAL_BINDS:
+        raise ValueError("the operator UI is local-only; bind to loopback")
+    if not 0 <= int(port) <= 65535:
+        raise ValueError("port must be in [0, 65535]")
+    if (world_worker_url is None) != (world_worker_token is None):
+        raise ValueError("World Worker URL and bearer token must be configured together")
+    world_worker = (
+        None
+        if world_worker_url is None or world_worker_token is None
+        else base.WorldWorkerClient(str(world_worker_url), str(world_worker_token))
     )
+    application = GarageOperatorApplication(
+        workspace=workspace,
+        sessions_root=sessions_root,
+        carla_host=str(carla_host),
+        carla_port=int(carla_port),
+        world_worker=world_worker,
+    )
+    drive = GarageOperatorDriveManager(
+        workspace=application.workspace,
+        carla_host=application.carla_host,
+        carla_port=application.carla_port,
+        world_worker=application.world_worker,
+    )
+    application.drive = drive
+    world_mode_lock = threading.RLock()
+    application.preview = GaragePreviewManager(
+        carla_host=application.carla_host,
+        carla_port=application.carla_port,
+        world_worker=application.world_worker,
+        drive_state=drive.state,
+        world_mode_lock=world_mode_lock,
+    )
+    drive.attach_preview(application.preview, world_mode_lock)
+    server = base.OperatorHTTPServer((str(bind), int(port)), application)
     server.RequestHandlerClass = GarageOperatorRequestHandler
     return server
 

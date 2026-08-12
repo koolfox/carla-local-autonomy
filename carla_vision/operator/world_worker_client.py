@@ -273,7 +273,15 @@ class WorldWorkerClient:
                 detail.append(f"unknown {', '.join(unknown)}")
             raise ValueError(f"World Worker scene payload has {'; '.join(detail)}")
         return WorldWorkerScene.from_response(
-            self._request("POST", "/v1/scenes/prepare", dict(payload))
+            # Native map reloads can legitimately outlive ordinary LAN control
+            # calls. Keep the longer budget local to this destructive request;
+            # heartbeat, control and stop retain the normal short timeout.
+            self._request(
+                "POST",
+                "/v1/scenes/prepare",
+                dict(payload),
+                timeout=max(self.timeout, 120.0),
+            )
         )
 
     def start_scene(self, scene: WorldWorkerScene) -> WorldWorkerScene:
@@ -340,6 +348,8 @@ class WorldWorkerClient:
         method: str,
         path: str,
         payload: Mapping[str, Any] | None = None,
+        *,
+        timeout: float | None = None,
     ) -> dict[str, Any]:
         body = None
         headers = {
@@ -361,7 +371,10 @@ class WorldWorkerClient:
             method=method,
         )
         try:
-            with self._opener.open(request, timeout=self.timeout) as response:
+            with self._opener.open(
+                request,
+                timeout=self.timeout if timeout is None else float(timeout),
+            ) as response:
                 status = int(response.status)
                 raw = response.read(_MAX_RESPONSE_BYTES + 1)
         except HTTPError as error:

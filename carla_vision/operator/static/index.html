@@ -169,26 +169,73 @@
             </div>
 
             <aside class="drive-setup-column">
-              <section class="garage-bay" aria-labelledby="garage-bay-title">
-                <div class="garage-bay-art" aria-hidden="true">
-                  <span class="garage-bay-road"></span>
-                  <svg viewBox="0 0 320 120" focusable="false">
-                    <path
-                      d="M54 75 79 42c5-7 13-11 22-12l105-4c12 0 23 5 31 14l19 23 22 7c10 3 17 12 17 23v5H27v-6c0-9 6-16 15-18l12-3Z"
-                    />
-                    <path d="M93 43 82 64h64V38l-45 2c-3 0-6 1-8 3Zm68-6v27h74l-13-17c-6-7-14-11-23-11l-38 1Z" />
-                    <circle cx="83" cy="97" r="18" />
-                    <circle cx="243" cy="97" r="18" />
-                  </svg>
+              <section id="garage-preview" class="garage-bay" aria-labelledby="garage-bay-title">
+                <div class="garage-preview-media">
+                  <img
+                    id="garage-preview-frame"
+                    alt="Live CARLA exterior view of the selected vehicle"
+                    draggable="false"
+                  >
+                  <div id="garage-preview-fallback" class="garage-preview-fallback">
+                    <span class="garage-preview-mark" aria-hidden="true">CV</span>
+                    <strong>See the real CARLA world</strong>
+                    <span>Open a temporary garage to inspect the car, map, ground, and weather.</span>
+                  </div>
+                  <div id="garage-preview-loading" class="garage-preview-loading" hidden>
+                    <span class="garage-preview-spinner" aria-hidden="true"></span>
+                    <strong id="garage-preview-loading-title">Preparing CARLA garage…</strong>
+                    <span id="garage-preview-loading-note">The selected world is loading.</span>
+                  </div>
+                  <div
+                    id="garage-orbit-surface"
+                    class="garage-orbit-surface"
+                    role="application"
+                    tabindex="0"
+                    aria-label="360 degree vehicle view. Drag left or right, swipe, or use the arrow keys to orbit."
+                    hidden
+                  ></div>
+
+                  <div class="garage-preview-toolbar">
+                    <span id="garage-preview-status" class="garage-preview-status">Live CARLA off</span>
+                    <button id="garage-preview-toggle" class="garage-preview-toggle" type="button">
+                      Enter garage
+                    </button>
+                  </div>
+                  <div id="garage-camera-presets" class="garage-camera-presets" role="group" aria-label="Garage camera view" hidden>
+                    <button class="active" type="button" data-garage-camera="orbit" aria-pressed="true">Orbit</button>
+                    <button type="button" data-garage-camera="front" aria-pressed="false">Front</button>
+                    <button type="button" data-garage-camera="rear" aria-pressed="false">Rear</button>
+                    <button type="button" data-garage-camera="top" aria-pressed="false">Top</button>
+                  </div>
+                  <button id="garage-orbit-reset" class="garage-orbit-reset" type="button" hidden>Reset</button>
+                  <p id="garage-preview-error" class="garage-preview-error" role="alert" hidden></p>
+
+                  <div class="garage-preview-caption">
+                    <p class="eyebrow">CARLA garage</p>
+                    <h3 id="garage-bay-title">Ready your car</h3>
+                    <p id="garage-bay-world">Choose a vehicle and the scene you want to explore.</p>
+                    <div class="garage-bay-meta" aria-live="polite">
+                      <span id="garage-bay-car">No car selected</span>
+                      <span id="garage-bay-weather">Weather pending</span>
+                    </div>
+                  </div>
+                  <p id="garage-orbit-hint" class="garage-orbit-hint" hidden>
+                    Drag or swipe to look around
+                  </p>
                 </div>
-                <div class="garage-bay-copy">
-                  <p class="eyebrow">Selected drive</p>
-                  <h3 id="garage-bay-title">Ready your car</h3>
-                  <p id="garage-bay-world">Choose a vehicle and the scene you want to explore.</p>
-                </div>
-                <div class="garage-bay-meta" aria-live="polite">
-                  <span id="garage-bay-car">No car selected</span>
-                  <span id="garage-bay-weather">Weather pending</span>
+
+                <div class="garage-carousel-shell" aria-label="Vehicle selection">
+                  <button id="garage-vehicle-prev" class="garage-carousel-arrow" type="button" aria-label="Previous vehicle">&#8249;</button>
+                  <div
+                    id="garage-vehicle-carousel"
+                    class="garage-vehicle-carousel"
+                    role="listbox"
+                    aria-label="Available CARLA vehicles"
+                    aria-orientation="horizontal"
+                  >
+                    <p class="garage-carousel-empty">Cars will appear when CARLA connects.</p>
+                  </div>
+                  <button id="garage-vehicle-next" class="garage-carousel-arrow" type="button" aria-label="Next vehicle">&#8250;</button>
                 </div>
               </section>
 
@@ -202,7 +249,7 @@
                 <fieldset class="garage-group garage-car-group">
                   <legend>Car</legend>
                   <div class="fields two">
-                    <label>
+                    <label class="garage-select-source">
                       Model
                       <select id="drive-vehicle" required>
                         <option value="">Loading cars…</option>
@@ -217,8 +264,13 @@
                   </div>
                 </fieldset>
 
+                <details id="garage-world-settings" class="garage-world-settings">
+                  <summary>
+                    <span>World &amp; traffic</span>
+                    <strong id="garage-world-summary">Choose a map and weather</strong>
+                  </summary>
                 <fieldset class="garage-group garage-world-group">
-                  <legend>World</legend>
+                  <legend class="visually-hidden">World</legend>
                   <div class="fields two">
                     <label id="drive-map-field">
                       Map
@@ -301,6 +353,7 @@
                     Checking for a secure World Worker. Free manual driving remains available.
                   </p>
                 </fieldset>
+                </details>
 
                 <div class="drive-simple-toggles" aria-label="Drive options">
                   <label class="drive-simple-toggle">
