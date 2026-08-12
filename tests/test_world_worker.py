@@ -3,6 +3,8 @@ from __future__ import annotations
 import fnmatch
 import http.client
 import json
+import os
+import subprocess
 import threading
 import unittest
 from dataclasses import dataclass
@@ -305,6 +307,7 @@ class FakeTrafficManager:
         self.seed: int | None = None
         self.paths: list[tuple[int, list[FakeLocation]]] = []
         self.lights: list[int] = []
+        self.shutdown = False
 
     def get_port(self) -> int:
         return self.port
@@ -328,6 +331,9 @@ class FakeTrafficManager:
     def set_path(self, actor: FakeActor, locations: list[FakeLocation]) -> None:
         self.paths.append((actor.id, list(locations)))
 
+    def shut_down(self) -> None:
+        self.shutdown = True
+
 
 class FakeClient:
     def __init__(
@@ -341,6 +347,7 @@ class FakeClient:
         self.traffic_manager = traffic_manager
         self.timeout: float | None = None
         self.loaded_maps: list[str] = []
+        self.traffic_manager_calls = 0
 
     def set_timeout(self, timeout: float) -> None:
         self.timeout = timeout
@@ -367,6 +374,7 @@ class FakeClient:
         return self.world
 
     def get_trafficmanager(self, port: int) -> FakeTrafficManager:
+        self.traffic_manager_calls += 1
         if port != self.traffic_manager.port:
             raise ValueError("wrong Traffic Manager port")
         return self.traffic_manager
@@ -523,6 +531,129 @@ class WorldWorkerTest(unittest.TestCase):
         self.assertTrue(all(actor.destroyed for actor in all_owned))
         self.assertIs(self.world.weather, original_weather)
         self.assertFalse(self.traffic_manager.synchronous)
+        self.assertTrue(self.traffic_manager.shutdown)
+
+    def test_current_map_never_starts_isolated_loader(self) -> None:
+        runner_calls: list[list[str]] = []
+
+        def runner(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            del kwargs
+            runner_calls.append(command)
+            raise AssertionError("the current map must not start a child")
+
+        worker = WorldWorker(
+            carla_loader=lambda: self.carla,
+            route_planner_loader=lambda: lambda map_object: FakePlanner(map_object),
+            clock=self.clock,
+            start_monitor=False,
+            map_process_runner=runner,
+        )
+        self.addCleanup(worker.close)
+
+        prepared = worker.prepare({"map_name": "Town10HD_Opt"})
+
+        self.assertEqual(prepared["scene"]["map_name"], "Town10HD_Opt")
+        self.assertEqual(runner_calls, [])
+        self.assertEqual(self.client.loaded_maps, [])
+
+    def test_map_change_runs_in_child_without_bearer_token_and_reconnects(self) -> None:
+        calls: list[tuple[list[str], dict[str, Any]]] = []
+
+        def runner(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            calls.append((command, kwargs))
+            self.assertEqual(self.client.traffic_manager_calls, 0)
+            self.client.world = FakeWorld("Town05", self.library)
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        worker = WorldWorker(
+            carla_loader=lambda: self.carla,
+            route_planner_loader=lambda: lambda map_object: FakePlanner(map_object),
+            clock=self.clock,
+            start_monitor=False,
+            map_process_runner=runner,
+        )
+        self.addCleanup(worker.close)
+        previous_token = os.environ.get("CARLA_WORLD_WORKER_TOKEN")
+        os.environ["CARLA_WORLD_WORKER_TOKEN"] = "not-for-map-child"
+        self.addCleanup(
+            lambda: (
+                os.environ.pop("CARLA_WORLD_WORKER_TOKEN", None)
+                if previous_token is None
+                else os.environ.__setitem__("CARLA_WORLD_WORKER_TOKEN", previous_token)
+            )
+        )
+
+        prepared = worker.prepare({"map_name": "Town05"})
+
+        self.assertEqual(prepared["scene"]["map_name"], "Town05")
+        self.assertEqual(self.client.loaded_maps, [])
+        self.assertEqual(self.client.traffic_manager_calls, 1)
+        self.assertGreaterEqual(self.carla.client_calls, 2)
+        self.assertEqual(len(calls), 1)
+        command, options = calls[0]
+        self.assertIn("--internal-map-load", command)
+        self.assertEqual(command[command.index("--target-map") + 1], "/Game/Carla/Maps/Town05/Town05")
+        self.assertNotIn("CARLA_WORLD_WORKER_TOKEN", options["env"])
+        self.assertTrue(options["check"] is False)
+
+    def test_child_crash_is_accepted_when_carla_reached_target_map(self) -> None:
+        def runner(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            del kwargs
+            self.client.world = FakeWorld("Town05", self.library)
+            return subprocess.CompletedProcess(command, -1073741819, "", "native crash")
+
+        worker = WorldWorker(
+            carla_loader=lambda: self.carla,
+            route_planner_loader=lambda: lambda map_object: FakePlanner(map_object),
+            clock=self.clock,
+            start_monitor=False,
+            map_process_runner=runner,
+        )
+        self.addCleanup(worker.close)
+
+        prepared = worker.prepare({"map_name": "Town05"})
+
+        self.assertEqual(prepared["scene"]["map_name"], "Town05")
+        self.assertEqual(self.client.loaded_maps, [])
+
+    def test_child_timeout_is_accepted_when_carla_reached_target_map(self) -> None:
+        def runner(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            self.client.world = FakeWorld("Town05", self.library)
+            raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+
+        worker = WorldWorker(
+            carla_loader=lambda: self.carla,
+            route_planner_loader=lambda: lambda map_object: FakePlanner(map_object),
+            clock=self.clock,
+            start_monitor=False,
+            map_process_runner=runner,
+        )
+        self.addCleanup(worker.close)
+
+        prepared = worker.prepare({"map_name": "Town05"})
+
+        self.assertEqual(prepared["scene"]["map_name"], "Town05")
+
+    def test_child_failure_without_target_map_reports_map_load_failed(self) -> None:
+        def runner(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            del kwargs
+            return subprocess.CompletedProcess(command, 1, "", "load failed")
+
+        worker = WorldWorker(
+            carla_loader=lambda: self.carla,
+            route_planner_loader=lambda: lambda map_object: FakePlanner(map_object),
+            clock=self.clock,
+            start_monitor=False,
+            map_reconnect_seconds=1.0,
+            map_process_runner=runner,
+        )
+        self.addCleanup(worker.close)
+
+        with self.assertRaises(WorkerError) as caught:
+            worker.prepare({"map_name": "Town05"})
+
+        self.assertEqual(caught.exception.code, "map_load_failed")
+        self.assertEqual(self.client.loaded_maps, [])
 
     def test_random_destination_is_enforced_and_mode_switches(self) -> None:
         prepared = self.worker.prepare(
@@ -574,6 +705,7 @@ class WorldWorkerTest(unittest.TestCase):
         self.assertFalse(catalog["capabilities"]["random_route"])
         with self.assertRaisesRegex(WorkerError, "GlobalRoutePlanner"):
             unavailable.prepare({"route_mode": "random_destination"})
+        self.assertTrue(self.traffic_manager.shutdown)
 
     def test_large_research_seed_is_bounded_for_carla_seed_apis(self) -> None:
         prepared = self.worker.prepare({"seed": 2**63 - 1})

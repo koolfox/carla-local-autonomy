@@ -500,15 +500,9 @@ class StaticDriveConsoleContractTests(unittest.TestCase):
         self.assertNotIn("open", details_attributes)
 
         controls = {item["id"]: item for item in self.parser.controls}
-        primary_configuration = {
+        direct_primary_configuration = {
             "drive-vehicle",
             "drive-color",
-            "drive-map-choice",
-            "drive-weather",
-            "drive-traffic-choice",
-            "drive-walkers-choice",
-            "drive-props",
-            "drive-starting-choice",
             "drive-detector-enabled",
             "drive-record-video",
             "drive-spectator-follow",
@@ -520,7 +514,20 @@ class StaticDriveConsoleContractTests(unittest.TestCase):
             and not item["details"]
             and item["tag"] != "button"
         }
-        self.assertEqual(actual_primary, primary_configuration)
+        self.assertEqual(actual_primary, direct_primary_configuration)
+
+        world_configuration = {
+            "drive-map-choice",
+            "drive-weather",
+            "drive-traffic-choice",
+            "drive-walkers-choice",
+            "drive-props",
+            "drive-starting-choice",
+        }
+        for element_id in world_configuration:
+            with self.subTest(element_id=element_id):
+                self.assertEqual(controls[element_id]["form"], "drive-start-form")
+                self.assertEqual(controls[element_id]["details"], ("garage-world-settings",))
 
         advanced_configuration = {
             "drive-run-id",

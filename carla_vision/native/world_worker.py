@@ -26,6 +26,8 @@ import os
 import random
 import re
 import secrets
+import subprocess
+import sys
 import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -43,6 +45,8 @@ DEFAULT_PORT = 8766
 DEFAULT_CARLA_HOST = "127.0.0.1"
 DEFAULT_CARLA_PORT = 2000
 DEFAULT_TRAFFIC_MANAGER_PORT = 8000
+DEFAULT_MAP_LOAD_TIMEOUT = 60.0
+DEFAULT_MAP_RECONNECT_SECONDS = 30.0
 TOKEN_ENVIRONMENT_VARIABLE = "CARLA_WORLD_WORKER_TOKEN"
 
 _MAX_BODY_BYTES = 64 * 1024
@@ -524,6 +528,8 @@ class WorldWorker:
         carla_port: int = DEFAULT_CARLA_PORT,
         traffic_manager_port: int = DEFAULT_TRAFFIC_MANAGER_PORT,
         timeout: float = 5.0,
+        map_load_timeout: float = DEFAULT_MAP_LOAD_TIMEOUT,
+        map_reconnect_seconds: float = DEFAULT_MAP_RECONNECT_SECONDS,
         lease_seconds: float = 30.0,
         control_timeout: float = 0.75,
         expected_carla_version: str = EXPECTED_CARLA_VERSION,
@@ -534,6 +540,7 @@ class WorldWorker:
         clock: Callable[[], float] = time.monotonic,
         start_monitor: bool = True,
         monitor_period: float = 0.05,
+        map_process_runner: Callable[..., Any] = subprocess.run,
     ) -> None:
         if not 1 <= int(carla_port) <= 65535:
             raise ValueError("carla_port must be in [1, 65535]")
@@ -541,6 +548,10 @@ class WorldWorker:
             raise ValueError("traffic_manager_port must be in [1, 65535]")
         if not 0.1 <= float(timeout) <= 300.0:
             raise ValueError("timeout must be in [0.1, 300]")
+        if not 5.0 <= float(map_load_timeout) <= 600.0:
+            raise ValueError("map_load_timeout must be in [5, 600]")
+        if not 1.0 <= float(map_reconnect_seconds) <= 300.0:
+            raise ValueError("map_reconnect_seconds must be in [1, 300]")
         if not 2.0 <= float(lease_seconds) <= 3600.0:
             raise ValueError("lease_seconds must be in [2, 3600]")
         if not 0.1 <= float(control_timeout) <= 10.0:
@@ -552,6 +563,8 @@ class WorldWorker:
         self.carla_port = int(carla_port)
         self.traffic_manager_port = int(traffic_manager_port)
         self.timeout = float(timeout)
+        self.map_load_timeout = float(map_load_timeout)
+        self.map_reconnect_seconds = float(map_reconnect_seconds)
         self.lease_seconds = float(lease_seconds)
         self.control_timeout = float(control_timeout)
         self.expected_carla_version = str(expected_carla_version)
@@ -559,6 +572,7 @@ class WorldWorker:
         self._route_planner_loader = route_planner_loader
         self._clock = clock
         self._monitor_period = float(monitor_period)
+        self._map_process_runner = map_process_runner
         self._lock = threading.RLock()
         self._client: Any | None = None
         self._carla: Any | None = None
@@ -587,6 +601,11 @@ class WorldWorker:
             client_version = str(self._client.get_client_version())
             server_version = str(self._client.get_server_version())
         except Exception as error:
+            # A CARLA episode transition can invalidate an existing Client.
+            # Never retain a transport that already failed; the next request
+            # gets a fresh version-checked connection.
+            self._client = None
+            self._carla = None
             raise WorkerError(
                 HTTPStatus.SERVICE_UNAVAILABLE,
                 "carla_unavailable",
@@ -604,6 +623,104 @@ class WorldWorker:
             )
         return self._client, world, self._carla
 
+    def _invalidate_client(self) -> None:
+        self._client = None
+        self._carla = None
+
+    @staticmethod
+    def _world_matches_target(world: Any, target: str) -> bool:
+        actual = str(world.get_map().name)
+        return target in {actual, _map_short_name(actual)} or _map_short_name(target) == (
+            _map_short_name(actual)
+        )
+
+    def _run_isolated_map_load(self, target: str) -> str:
+        """Run the crash-prone native ``load_world`` call outside this server.
+
+        On Windows a native PythonAPI failure can terminate the calling Python
+        process. The authenticated listener therefore never invokes
+        ``Client.load_world`` itself. A short-lived child may fail or time out;
+        the parent then reconciles against CARLA's authoritative current map.
+        """
+
+        command = [
+            sys.executable,
+            str(Path(__file__).resolve()),
+            "--internal-map-load",
+            "--carla-host",
+            self.carla_host,
+            "--carla-port",
+            str(self.carla_port),
+            "--timeout",
+            str(self.map_load_timeout),
+            "--expected-carla-version",
+            self.expected_carla_version,
+            "--target-map",
+            target,
+        ]
+        environment = dict(os.environ)
+        # The child is not an HTTP service and never needs the bearer secret.
+        environment.pop(TOKEN_ENVIRONMENT_VARIABLE, None)
+        try:
+            completed = self._map_process_runner(
+                command,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=self.map_load_timeout + 10.0,
+                check=False,
+                env=environment,
+            )
+        except subprocess.TimeoutExpired:
+            return "isolated map loader exceeded its bounded timeout"
+        except Exception as error:
+            return f"isolated map loader could not start: {type(error).__name__}: {error}"
+
+        returncode = int(getattr(completed, "returncode", 1))
+        if returncode == 0:
+            return "isolated map loader completed"
+        stderr = str(getattr(completed, "stderr", "")).strip().replace("\r", " ").replace(
+            "\n", " "
+        )
+        if len(stderr) > 800:
+            stderr = stderr[-800:]
+        detail = f"isolated map loader exited with code {returncode}"
+        return detail if not stderr else f"{detail}: {stderr}"
+
+    def _reconnect_after_map_load(self, target: str, diagnostic: str) -> tuple[Any, Any]:
+        deadline = time.monotonic() + self.map_reconnect_seconds
+        last_error = diagnostic
+        while True:
+            self._invalidate_client()
+            try:
+                client, world, _ = self._ensure_client()
+                if self._world_matches_target(world, target):
+                    return client, world
+                last_error = (
+                    f"CARLA reports {_map_short_name(str(world.get_map().name))!r}, "
+                    f"expected {_map_short_name(target)!r}"
+                )
+            except WorkerError as error:
+                last_error = str(error)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0.0:
+                break
+            time.sleep(min(0.5, remaining))
+        raise WorkerError(
+            HTTPStatus.SERVICE_UNAVAILABLE,
+            "map_load_failed",
+            f"CARLA did not stabilize on map {_map_short_name(target)!r}: {last_error}",
+        )
+
+    def _load_world_isolated(self, target: str) -> tuple[Any, Any]:
+        diagnostic = self._run_isolated_map_load(target)
+        # Discard the connection created before the episode transition even if
+        # the child reported failure. A timed-out/crashed child may still have
+        # successfully initiated the authoritative CARLA map reload.
+        self._invalidate_client()
+        return self._reconnect_after_map_load(target, diagnostic)
+
     def _planner_factory(self) -> Callable[[Any], Any] | None:
         if not self._route_planner_checked:
             try:
@@ -614,14 +731,10 @@ class WorldWorker:
         return self._route_planner_factory
 
     def _capabilities(self, client: Any | None = None) -> dict[str, bool]:
-        random_route = False
-        if client is not None and self._planner_factory() is not None:
-            try:
-                random_route = hasattr(
-                    client.get_trafficmanager(self.traffic_manager_port), "set_path"
-                )
-            except Exception:
-                random_route = False
+        # Do not instantiate/cache a process-local TrafficManager merely to
+        # report capabilities. The actual post-reload instance is validated
+        # in ``prepare`` before a random route is planned.
+        random_route = client is not None and self._planner_factory() is not None
         return {
             "map_reload": True,
             "weather": True,
@@ -1280,27 +1393,24 @@ class WorldWorker:
                     "another leased scene is already active",
                 )
             client, current_world, _ = self._ensure_client()
-            traffic_manager = client.get_trafficmanager(self.traffic_manager_port)
-            capabilities = self._capabilities(client)
-            if config.route_mode == "random_destination" and not capabilities["random_route"]:
-                raise WorkerError(
-                    HTTPStatus.UNPROCESSABLE_ENTITY,
-                    "random_route_unavailable",
-                    "random_destination requires GlobalRoutePlanner and TrafficManager.set_path",
-                )
-
             target = self._available_map_target(client, current_world, config.map_name)
-            try:
-                world = current_world if target is None else client.load_world(target)
-            except Exception as error:
-                raise WorkerError(
-                    HTTPStatus.SERVICE_UNAVAILABLE,
-                    "map_load_failed",
-                    f"CARLA map load failed: {type(error).__name__}: {error}",
-                ) from error
+            if target is None:
+                world = current_world
+            else:
+                client, world = self._load_world_isolated(target)
             self._ensure_async_world(world)
+            traffic_manager: Any | None = None
             try:
                 traffic_manager = client.get_trafficmanager(self.traffic_manager_port)
+                if config.route_mode == "random_destination" and (
+                    self._planner_factory() is None or not hasattr(traffic_manager, "set_path")
+                ):
+                    raise WorkerError(
+                        HTTPStatus.UNPROCESSABLE_ENTITY,
+                        "random_route_unavailable",
+                        "random_destination requires GlobalRoutePlanner and "
+                        "TrafficManager.set_path",
+                    )
                 traffic_manager.set_synchronous_mode(False)
                 simulator_seed = config.seed % _SIMULATOR_SEED_MODULUS
                 if hasattr(traffic_manager, "set_random_device_seed"):
@@ -1314,7 +1424,11 @@ class WorldWorker:
                 if hasattr(world, "set_pedestrians_cross_factor"):
                     world.set_pedestrians_cross_factor(0.2)
                 original_weather = world.get_weather()
+            except WorkerError:
+                self._release_traffic_manager(traffic_manager)
+                raise
             except Exception as error:
+                self._release_traffic_manager(traffic_manager)
                 raise WorkerError(
                     HTTPStatus.SERVICE_UNAVAILABLE,
                     "world_prepare_failed",
@@ -1728,6 +1842,25 @@ class WorldWorker:
             return
         current.destroy()
 
+    @staticmethod
+    def _release_traffic_manager(
+        traffic_manager: Any | None,
+        errors: list[str] | None = None,
+    ) -> None:
+        if traffic_manager is None:
+            return
+        try:
+            traffic_manager.set_synchronous_mode(False)
+        except Exception as error:
+            if errors is not None:
+                errors.append(f"Traffic Manager async restore failed: {error}")
+        if hasattr(traffic_manager, "shut_down"):
+            try:
+                traffic_manager.shut_down()
+            except Exception as error:
+                if errors is not None:
+                    errors.append(f"Traffic Manager shutdown failed: {error}")
+
     def _cleanup_resources(self, scene: SceneLease, *, reason: str) -> dict[str, Any]:
         scene.status = "stopping"
         scene.stop_reason = reason
@@ -1740,6 +1873,7 @@ class WorldWorker:
             scene.cleanup_errors.append(f"episode guard query failed: {error}")
         scene.cleanup_guard_passed = same_episode
         if not same_episode:
+            self._release_traffic_manager(scene.traffic_manager, scene.cleanup_errors)
             scene.cleanup_errors.append(
                 "CARLA episode changed; actor and weather cleanup intentionally skipped"
             )
@@ -1766,10 +1900,7 @@ class WorldWorker:
             current_world.set_weather(scene.original_weather)
         except Exception as error:
             scene.cleanup_errors.append(f"weather restore failed: {error}")
-        try:
-            scene.traffic_manager.set_synchronous_mode(False)
-        except Exception as error:
-            scene.cleanup_errors.append(f"Traffic Manager async restore failed: {error}")
+        self._release_traffic_manager(scene.traffic_manager, scene.cleanup_errors)
         scene.route["enforced"] = False
         scene.deadman_active = True
         scene.status = "stopped"
@@ -2076,6 +2207,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--carla-port", type=int, default=DEFAULT_CARLA_PORT)
     parser.add_argument("--traffic-manager-port", type=int, default=DEFAULT_TRAFFIC_MANAGER_PORT)
     parser.add_argument("--timeout", type=float, default=5.0)
+    parser.add_argument("--map-load-timeout", type=float, default=DEFAULT_MAP_LOAD_TIMEOUT)
+    parser.add_argument(
+        "--map-reconnect-seconds",
+        type=float,
+        default=DEFAULT_MAP_RECONNECT_SECONDS,
+    )
     parser.add_argument("--lease-seconds", type=float, default=30.0)
     parser.add_argument("--control-timeout", type=float, default=0.75)
     parser.add_argument("--expected-carla-version", default=EXPECTED_CARLA_VERSION)
@@ -2089,6 +2226,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         parser.error("--traffic-manager-port must be in [1, 65535]")
     if not 0.1 <= args.timeout <= 300.0:
         parser.error("--timeout must be in [0.1, 300]")
+    if not 5.0 <= args.map_load_timeout <= 600.0:
+        parser.error("--map-load-timeout must be in [5, 600]")
+    if not 1.0 <= args.map_reconnect_seconds <= 300.0:
+        parser.error("--map-reconnect-seconds must be in [1, 300]")
     if not 2.0 <= args.lease_seconds <= 3600.0:
         parser.error("--lease-seconds must be in [2, 3600]")
     if not 0.1 <= args.control_timeout <= 10.0:
@@ -2098,7 +2239,61 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     return args
 
 
+def _parse_internal_map_load_args(argv: Sequence[str]) -> argparse.Namespace:
+    """Parse the private one-shot child contract used for map transitions."""
+
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--carla-host", required=True)
+    parser.add_argument("--carla-port", type=int, required=True)
+    parser.add_argument("--timeout", type=float, required=True)
+    parser.add_argument("--expected-carla-version", required=True)
+    parser.add_argument("--target-map", required=True)
+    args = parser.parse_args(argv)
+    if not 1 <= args.carla_port <= 65535:
+        parser.error("--carla-port must be in [1, 65535]")
+    if not 5.0 <= args.timeout <= 600.0:
+        parser.error("--timeout must be in [5, 600]")
+    target = str(args.target_map).strip()
+    if not _MAP_NAME.fullmatch(target):
+        parser.error("--target-map is invalid")
+    args.target_map = target
+    return args
+
+
+def _internal_map_load_main(argv: Sequence[str]) -> int:
+    """Run only CARLA's crash-prone ``load_world`` RPC in a child process."""
+
+    args = _parse_internal_map_load_args(argv)
+    try:
+        carla = _default_carla_loader()
+        client = carla.Client(args.carla_host, args.carla_port)
+        client.set_timeout(args.timeout)
+        client_version = str(client.get_client_version())
+        server_version = str(client.get_server_version())
+        expected = str(args.expected_carla_version)
+        if expected and (client_version != expected or server_version != expected):
+            raise RuntimeError(
+                "CARLA client/server version mismatch: "
+                f"expected={expected}, client={client_version}, server={server_version}"
+            )
+        world = client.load_world(args.target_map)
+        actual = str(world.get_map().name)
+        if _map_short_name(actual) != _map_short_name(args.target_map):
+            raise RuntimeError(
+                f"CARLA loaded {_map_short_name(actual)!r}, "
+                f"expected {_map_short_name(args.target_map)!r}"
+            )
+    except Exception as error:
+        detail = f"{type(error).__name__}: {error}".replace("\r", " ").replace("\n", " ")
+        print(f"isolated CARLA map load failed: {detail[:1200]}", file=sys.stderr, flush=True)
+        return 1
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
+    child_argv = list(sys.argv[1:] if argv is None else argv)
+    if child_argv[:1] == ["--internal-map-load"]:
+        return _internal_map_load_main(child_argv[1:])
     args = parse_args(argv)
     try:
         token, token_source = _load_token(token_file=args.token_file, bind=args.bind)
@@ -2109,6 +2304,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         carla_port=args.carla_port,
         traffic_manager_port=args.traffic_manager_port,
         timeout=args.timeout,
+        map_load_timeout=args.map_load_timeout,
+        map_reconnect_seconds=args.map_reconnect_seconds,
         lease_seconds=args.lease_seconds,
         control_timeout=args.control_timeout,
         expected_carla_version=args.expected_carla_version,
@@ -2133,6 +2330,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "host": args.carla_host,
                     "port": args.carla_port,
                 },
+                "map_load_timeout": args.map_load_timeout,
+                "map_reconnect_seconds": args.map_reconnect_seconds,
                 "token_source": token_source,
             },
             ensure_ascii=False,

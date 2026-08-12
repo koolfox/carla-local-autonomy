@@ -44,6 +44,25 @@ const state = {
     lastTerminalSession: null,
     initialControlMode: "manual",
     modeTakeoverPromise: null,
+    garage: {
+      enabled: false,
+      active: false,
+      busy: false,
+      failed: false,
+      streamReady: false,
+      configKey: "",
+      configureTimer: null,
+      stateTimer: null,
+      orbitTimer: null,
+      orbitInFlight: false,
+      pendingOrbit: false,
+      sequence: 0,
+      yaw: 325,
+      pitch: -10,
+      distance: 6.5,
+      cameraPreset: "orbit",
+      pointer: null,
+    },
   },
 };
 
@@ -421,6 +440,435 @@ function populateDriveColors() {
   $("drive-color").disabled = !colors.length || driveIsActive();
 }
 
+const GARAGE_DEFAULT_ORBIT = Object.freeze({ yaw: 325, pitch: -10, distance: 6.5 });
+const GARAGE_CAMERA_PRESETS = Object.freeze({
+  orbit: GARAGE_DEFAULT_ORBIT,
+  front: { yaw: 0, pitch: -8, distance: 6 },
+  rear: { yaw: 180, pitch: -8, distance: 6 },
+  top: { yaw: 325, pitch: -25, distance: 8 },
+});
+
+function garagePreviewPayload() {
+  return {
+    map_name: $("drive-map-choice").value || state.drive.catalog?.map || "current",
+    weather_preset: $("drive-weather").value || "keep",
+    vehicle_blueprint: $("drive-vehicle").value,
+    color: $("drive-color").value,
+    seed: number("drive-seed"),
+    traffic_count: Number($("drive-traffic-choice")?.value || 0),
+    walker_count: Number($("drive-walkers-choice")?.value || 0),
+    prop_preset: $("drive-props").value || "none",
+    spectator_mirror: checked("drive-spectator-follow"),
+  };
+}
+
+function garagePayloadKey(payload = garagePreviewPayload()) {
+  return JSON.stringify(payload);
+}
+
+function garagePreviewAvailable() {
+  return Boolean(
+    state.drive.catalog?.connected &&
+    driveWorldCapabilities().nativeWorker &&
+    $("drive-vehicle").value,
+  );
+}
+
+function garagePreviewIsActive(payload) {
+  const preview = payload?.state || payload?.preview || payload || {};
+  const status = String(preview.status || "").toLowerCase();
+  return preview.active === true || preview.open === true || preview.running === true ||
+    ["ready", "running", "open", "configured"].includes(status);
+}
+
+function setGarageCameraPreset(name) {
+  const selected = name in GARAGE_CAMERA_PRESETS ? name : "orbit";
+  state.drive.garage.cameraPreset = selected;
+  for (const button of document.querySelectorAll("[data-garage-camera]")) {
+    const active = button.dataset.garageCamera === selected;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  }
+}
+
+function setGaragePreviewBusy(busy, title = "Preparing CARLA garage…", note = "The selected world is loading.") {
+  state.drive.garage.busy = Boolean(busy);
+  $("garage-preview-loading-title").textContent = title;
+  $("garage-preview-loading-note").textContent = note;
+  $("garage-preview-loading").hidden = !busy;
+  renderGaragePreviewUi();
+}
+
+function setGaragePreviewError(message = "") {
+  const error = String(message || "");
+  state.drive.garage.failed = Boolean(error);
+  const output = $("garage-preview-error");
+  output.textContent = error;
+  output.hidden = !error;
+  renderGaragePreviewUi();
+}
+
+function renderGaragePreviewUi() {
+  const garage = state.drive.garage;
+  const available = garagePreviewAvailable();
+  const live = garage.enabled && garage.active;
+  const interactive = live && !garage.busy;
+  const preview = $("garage-preview");
+  preview.classList.toggle("live", live);
+  preview.classList.toggle("busy", garage.busy);
+  preview.classList.toggle("failed", garage.failed);
+  $("garage-preview-frame").classList.toggle("visible", live);
+  $("garage-preview-fallback").hidden = live || garage.busy;
+  $("garage-orbit-surface").hidden = !interactive;
+  $("garage-orbit-reset").hidden = !interactive;
+  $("garage-camera-presets").hidden = !interactive;
+  $("garage-orbit-hint").hidden = !interactive;
+
+  const status = $("garage-preview-status");
+  status.textContent = garage.busy
+    ? "Loading CARLA…"
+    : live
+      ? "● Live CARLA"
+      : garage.failed
+        ? "Garage unavailable"
+        : "Live CARLA off";
+  status.classList.toggle("active", live);
+
+  const toggle = $("garage-preview-toggle");
+  toggle.textContent = garage.busy
+    ? "Please wait…"
+    : live
+      ? "Exit garage"
+      : garage.failed
+        ? "Try again"
+        : "Enter garage";
+  toggle.disabled = garage.busy || driveIsActive() || (!live && !available);
+  toggle.title = !available && !live
+    ? "Connect the World Worker and choose a CARLA vehicle first."
+    : "";
+}
+
+function loadGarageLiveStream() {
+  const frame = $("garage-preview-frame");
+  state.drive.garage.streamReady = false;
+  frame.src = `/api/garage/preview/stream.mjpg?t=${Date.now()}`;
+}
+
+function unloadGarageLiveStream() {
+  const frame = $("garage-preview-frame");
+  frame.removeAttribute("src");
+  state.drive.garage.streamReady = false;
+}
+
+async function refreshGaragePreviewState({ quiet = true } = {}) {
+  if (driveIsActive()) return;
+  try {
+    const payload = await request("/api/garage/preview/state");
+    const active = garagePreviewIsActive(payload);
+    state.drive.garage.active = active;
+    if (active) {
+      state.drive.garage.enabled = true;
+      if (!$("garage-preview-frame").getAttribute("src")) loadGarageLiveStream();
+    } else if (state.drive.garage.enabled && !state.drive.garage.busy) {
+      state.drive.garage.enabled = false;
+      unloadGarageLiveStream();
+    }
+    renderGaragePreviewUi();
+  } catch (error) {
+    if (!quiet && state.drive.garage.enabled) setGaragePreviewError(error.message);
+  }
+}
+
+async function configureGaragePreview({ announce = false } = {}) {
+  if (driveIsActive() || !garagePreviewAvailable()) return;
+  const payload = garagePreviewPayload();
+  if (!payload.vehicle_blueprint) return;
+  const key = garagePayloadKey(payload);
+  state.drive.garage.enabled = true;
+  setGaragePreviewError();
+  setGaragePreviewBusy(
+    true,
+    state.drive.garage.active ? "Updating the garage…" : "Preparing CARLA garage…",
+    "CARLA is placing the selected car in the world.",
+  );
+  try {
+    await request("/api/garage/preview/configure", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    state.drive.garage.configKey = key;
+    state.drive.garage.active = true;
+    Object.assign(state.drive.garage, GARAGE_DEFAULT_ORBIT);
+    state.drive.garage.sequence = 0;
+    setGarageCameraPreset("orbit");
+    loadGarageLiveStream();
+    if (announce) showToast("Live CARLA garage is ready. Drag or swipe around the car.");
+  } catch (error) {
+    state.drive.garage.active = false;
+    state.drive.garage.enabled = false;
+    unloadGarageLiveStream();
+    setGaragePreviewError(error.message);
+    if (announce) showToast(error.message, true);
+  } finally {
+    setGaragePreviewBusy(false);
+    renderGaragePreviewUi();
+  }
+}
+
+function scheduleGarageConfigure() {
+  renderGarageBay();
+  if (!state.drive.garage.enabled || driveIsActive()) return;
+  const nextKey = garagePayloadKey();
+  if (nextKey === state.drive.garage.configKey) return;
+  window.clearTimeout(state.drive.garage.configureTimer);
+  state.drive.garage.configureTimer = window.setTimeout(
+    () => void configureGaragePreview(),
+    450,
+  );
+}
+
+async function closeGaragePreview({ announce = false } = {}) {
+  window.clearTimeout(state.drive.garage.configureTimer);
+  state.drive.garage.enabled = false;
+  setGaragePreviewError();
+  setGaragePreviewBusy(true, "Closing the garage…", "Releasing the temporary CARLA scene.");
+  try {
+    await request("/api/garage/preview/stop", {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    if (announce) showToast("Live garage closed.");
+  } catch (error) {
+    if (announce) showToast(error.message, true);
+  } finally {
+    state.drive.garage.active = false;
+    state.drive.garage.configKey = "";
+    unloadGarageLiveStream();
+    setGaragePreviewBusy(false);
+    renderGaragePreviewUi();
+  }
+}
+
+async function toggleGaragePreview() {
+  if (state.drive.garage.active || state.drive.garage.enabled) {
+    await closeGaragePreview({ announce: true });
+  } else {
+    await configureGaragePreview({ announce: true });
+  }
+}
+
+function normalizeGarageYaw(value) {
+  return ((Number(value) % 360) + 360) % 360;
+}
+
+function clampGarage(value, minimum, maximum) {
+  return Math.min(maximum, Math.max(minimum, Number(value)));
+}
+
+async function sendGarageOrbit() {
+  const garage = state.drive.garage;
+  if (!garage.active) return;
+  if (garage.orbitInFlight) {
+    garage.pendingOrbit = true;
+    return;
+  }
+  garage.orbitInFlight = true;
+  garage.pendingOrbit = false;
+  try {
+    await request("/api/garage/preview/orbit", {
+      method: "POST",
+      body: JSON.stringify({
+        sequence: ++garage.sequence,
+        yaw: garage.yaw,
+        pitch: garage.pitch,
+        distance: garage.distance,
+      }),
+    });
+  } catch (error) {
+    setGaragePreviewError(error.message);
+  } finally {
+    garage.orbitInFlight = false;
+    if (garage.pendingOrbit) void sendGarageOrbit();
+  }
+}
+
+function scheduleGarageOrbit() {
+  window.clearTimeout(state.drive.garage.orbitTimer);
+  state.drive.garage.orbitTimer = window.setTimeout(() => void sendGarageOrbit(), 35);
+}
+
+function applyGarageCameraPreset(name) {
+  const preset = GARAGE_CAMERA_PRESETS[name] || GARAGE_DEFAULT_ORBIT;
+  state.drive.garage.yaw = preset.yaw;
+  state.drive.garage.pitch = preset.pitch;
+  state.drive.garage.distance = preset.distance;
+  setGarageCameraPreset(name in GARAGE_CAMERA_PRESETS ? name : "orbit");
+  scheduleGarageOrbit();
+}
+
+function selectGarageVehicle(value, { focus = false } = {}) {
+  const select = $("drive-vehicle");
+  if (!value || select.value === value) {
+    syncGarageVehicleCarousel({ focus });
+    return;
+  }
+  select.value = value;
+  select.dispatchEvent(new Event("change", { bubbles: true }));
+  syncGarageVehicleCarousel({ focus: true });
+}
+
+function syncGarageVehicleCarousel({ focus = false } = {}) {
+  const selected = $("drive-vehicle").value;
+  for (const card of document.querySelectorAll("[data-garage-vehicle]")) {
+    const active = card.dataset.garageVehicle === selected;
+    card.classList.toggle("active", active);
+    card.setAttribute("aria-selected", String(active));
+    card.tabIndex = active ? 0 : -1;
+    if (active && focus) {
+      card.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+      card.focus({ preventScroll: true });
+    }
+  }
+}
+
+function renderGarageVehicleCarousel() {
+  const carousel = $("garage-vehicle-carousel");
+  const vehicles = state.drive.catalog?.vehicles || [];
+  const signature = JSON.stringify(vehicles.map((vehicle) => [vehicle.id, vehicle.label]));
+  if (carousel.dataset.signature === signature) {
+    syncGarageVehicleCarousel();
+    return;
+  }
+  carousel.dataset.signature = signature;
+  carousel.replaceChildren();
+  if (!vehicles.length) {
+    const empty = document.createElement("p");
+    empty.className = "garage-carousel-empty";
+    empty.textContent = "No compatible CARLA vehicles are available.";
+    carousel.append(empty);
+    document.body.classList.remove("garage-carousel-ready");
+    return;
+  }
+  for (const vehicle of vehicles) {
+    const label = vehicle.label || vehicle.id;
+    const parts = String(label).split(" · ");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "garage-vehicle-card";
+    button.dataset.garageVehicle = vehicle.id;
+    button.setAttribute("role", "option");
+    button.setAttribute("aria-label", `Select ${label}`);
+    const make = document.createElement("small");
+    make.textContent = parts.length > 1 ? parts[0] : "CARLA vehicle";
+    const model = document.createElement("strong");
+    model.textContent = parts.length > 1 ? parts.slice(1).join(" · ") : label;
+    button.append(make, model);
+    button.addEventListener("click", () => selectGarageVehicle(vehicle.id));
+    carousel.append(button);
+  }
+  document.body.classList.add("garage-carousel-ready");
+  syncGarageVehicleCarousel();
+}
+
+function moveGarageVehicle(direction) {
+  const vehicles = state.drive.catalog?.vehicles || [];
+  if (!vehicles.length) return;
+  const current = vehicles.findIndex((vehicle) => vehicle.id === $("drive-vehicle").value);
+  const next = (Math.max(0, current) + direction + vehicles.length) % vehicles.length;
+  selectGarageVehicle(vehicles[next].id, { focus: true });
+}
+
+function bindGaragePreview() {
+  $("garage-preview-toggle").addEventListener("click", () => void toggleGaragePreview());
+  $("garage-orbit-reset").addEventListener("click", () => applyGarageCameraPreset("orbit"));
+  $("garage-vehicle-prev").addEventListener("click", () => moveGarageVehicle(-1));
+  $("garage-vehicle-next").addEventListener("click", () => moveGarageVehicle(1));
+  for (const button of document.querySelectorAll("[data-garage-camera]")) {
+    button.addEventListener("click", () => applyGarageCameraPreset(button.dataset.garageCamera));
+  }
+
+  const frame = $("garage-preview-frame");
+  frame.addEventListener("load", () => {
+    state.drive.garage.streamReady = true;
+    setGaragePreviewError();
+    renderGaragePreviewUi();
+  });
+  frame.addEventListener("error", () => {
+    if (!state.drive.garage.enabled) return;
+    state.drive.garage.streamReady = false;
+    setGaragePreviewError("The CARLA garage stream stopped. Exit the garage and try again.");
+  });
+
+  const orbit = $("garage-orbit-surface");
+  orbit.addEventListener("pointerdown", (event) => {
+    if (!state.drive.garage.active) return;
+    orbit.setPointerCapture(event.pointerId);
+    state.drive.garage.pointer = {
+      id: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      yaw: state.drive.garage.yaw,
+      pitch: state.drive.garage.pitch,
+    };
+    orbit.classList.add("dragging");
+    event.preventDefault();
+  });
+  orbit.addEventListener("pointermove", (event) => {
+    const start = state.drive.garage.pointer;
+    if (!start || start.id !== event.pointerId) return;
+    state.drive.garage.yaw = normalizeGarageYaw(start.yaw - (event.clientX - start.x) * 0.35);
+    state.drive.garage.pitch = clampGarage(start.pitch + (event.clientY - start.y) * 0.22, -25, 15);
+    setGarageCameraPreset("orbit");
+    scheduleGarageOrbit();
+    event.preventDefault();
+  });
+  const releasePointer = (event) => {
+    if (state.drive.garage.pointer?.id !== event.pointerId) return;
+    state.drive.garage.pointer = null;
+    orbit.classList.remove("dragging");
+  };
+  orbit.addEventListener("pointerup", releasePointer);
+  orbit.addEventListener("pointercancel", releasePointer);
+  orbit.addEventListener("lostpointercapture", releasePointer);
+  orbit.addEventListener("wheel", (event) => {
+    if (!state.drive.garage.active) return;
+    state.drive.garage.distance = clampGarage(
+      state.drive.garage.distance + Math.sign(event.deltaY) * 0.4,
+      3.5,
+      10,
+    );
+    setGarageCameraPreset("orbit");
+    scheduleGarageOrbit();
+    event.preventDefault();
+  }, { passive: false });
+  orbit.addEventListener("keydown", (event) => {
+    const changes = {
+      ArrowLeft: [-8, 0, 0],
+      ArrowRight: [8, 0, 0],
+      ArrowUp: [0, -4, 0],
+      ArrowDown: [0, 4, 0],
+      "+": [0, 0, -0.5],
+      "=": [0, 0, -0.5],
+      "-": [0, 0, 0.5],
+    };
+    const change = changes[event.key];
+    if (!change || !state.drive.garage.active) return;
+    state.drive.garage.yaw = normalizeGarageYaw(state.drive.garage.yaw + change[0]);
+    state.drive.garage.pitch = clampGarage(state.drive.garage.pitch + change[1], -25, 15);
+    state.drive.garage.distance = clampGarage(state.drive.garage.distance + change[2], 3.5, 10);
+    setGarageCameraPreset("orbit");
+    scheduleGarageOrbit();
+    event.preventDefault();
+  });
+
+  window.setInterval(() => {
+    if (state.drive.garage.enabled && !state.drive.garage.busy) {
+      void refreshGaragePreviewState();
+    }
+  }, 1800);
+  renderGaragePreviewUi();
+}
+
 function selectPreferredDriveWeight() {
   const detector = $("drive-detector").value;
   const weights = state.catalog?.weights || [];
@@ -567,6 +1015,7 @@ function populateDriveCatalog(catalog) {
     "";
   setOptions("drive-props", props, "No scene prop presets reported", preferredProps);
   populateDriveColors();
+  renderGarageVehicleCarousel();
   renderDriveCapabilities();
   configureDriveWorldControls();
   updateDriveConfigAvailability();
@@ -637,6 +1086,8 @@ function renderGarageBay() {
   $("garage-bay-car").textContent = vehicle;
   $("garage-bay-weather").textContent = weather;
   $("garage-bay-world").textContent = `${map} · ${scene}`;
+  $("garage-world-summary").textContent = `${map} · ${weather}`;
+  syncGarageVehicleCarousel();
   const color = $("drive-color").value.split(",").map(Number);
   const validColor = color.length === 3 && color.every(
     (channel) => Number.isInteger(channel) && channel >= 0 && channel <= 255,
@@ -647,6 +1098,7 @@ function renderGarageBay() {
   } else {
     bay.style.removeProperty("--garage-car-color");
   }
+  renderGaragePreviewUi();
 }
 
 function renderDriveState() {
@@ -1338,10 +1790,18 @@ function bindDriveConsole() {
   $("drive-vehicle").addEventListener("change", () => {
     populateDriveColors();
     renderGarageBay();
+    scheduleGarageConfigure();
   });
-  $("drive-color").addEventListener("change", renderGarageBay);
-  for (const id of ["drive-map-choice", "drive-weather", "drive-props"]) {
-    $(id).addEventListener("change", renderGarageBay);
+  $("drive-color").addEventListener("change", scheduleGarageConfigure);
+  for (const id of [
+    "drive-map-choice",
+    "drive-weather",
+    "drive-props",
+    "drive-traffic-choice",
+    "drive-walkers-choice",
+    "drive-spectator-follow",
+  ]) {
+    $(id).addEventListener("change", scheduleGarageConfigure);
   }
   $("drive-detector").addEventListener("change", selectPreferredDriveWeight);
   $("drive-detector-enabled").addEventListener("change", updateDriveModelToggle);
@@ -1350,6 +1810,7 @@ function bindDriveConsole() {
     button.addEventListener("click", () => setDriveInitialControlMode(button.dataset.driveMode));
   }
   bindDriveTouchControls();
+  bindGaragePreview();
 
   const viewport = $("drive-viewport");
   viewport.addEventListener("click", focusDriveControl);
@@ -2172,6 +2633,7 @@ async function initialize() {
   }
   try {
     await refreshDriveCatalog();
+    await refreshGaragePreviewState();
     await refreshDriveState();
   } catch (error) {
     showToast(`Could not initialize Drive Console: ${error.message}`, true);
