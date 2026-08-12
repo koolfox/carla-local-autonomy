@@ -44,19 +44,23 @@ def _injected_index() -> bytes:
     source = source.replace(
         "</body>",
         (
-            f'    <script src="{_GARAGE_SCRIPT}"></script>\n'
-            f'    <script src="{_GARAGE_RESEARCH_SCRIPT}"></script>\n  </body>'
+            f'    <script src="{_GARAGE_SCRIPT}" defer></script>\n'
+            f'    <script src="{_GARAGE_RESEARCH_SCRIPT}" defer></script>\n  </body>'
         ),
         1,
     )
     return source.encode("utf-8")
 
 
-def _validate_research_runtime(request: GarageResearchRequest, drive_state: Mapping[str, Any]) -> None:
+def _validate_research_runtime(
+    request: GarageResearchRequest, drive_state: Mapping[str, Any]
+) -> None:
     status = str(drive_state.get("status", "idle"))
     active = status in {"starting", "running", "stopping"}
     if request.kind == "teacher_capture" and active:
-        raise RuntimeError("end the active Garage drive before starting destructive teacher capture")
+        raise RuntimeError(
+            "end the active Garage drive before starting destructive teacher capture"
+        )
     dry_run = request.parameters.get("dry_run") is True
     if request.kind in _LIVE_RESEARCH_KINDS and not dry_run and status != "running":
         raise RuntimeError(f"{request.kind} requires a running Garage ego or dry_run=true")
@@ -151,6 +155,7 @@ def create_server(**kwargs: Any) -> base.OperatorHTTPServer:
         workspace=server.application.workspace,
         carla_host=server.application.carla_host,
         carla_port=server.application.carla_port,
+        world_worker=server.application.world_worker,
     )
     server.RequestHandlerClass = GarageOperatorRequestHandler
     return server
@@ -158,6 +163,7 @@ def create_server(**kwargs: Any) -> base.OperatorHTTPServer:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = base.parse_args(argv)
+    world_worker_token = base.resolve_world_worker_token(args)
     server = create_server(
         workspace=args.workspace,
         bind=args.bind,
@@ -165,6 +171,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         sessions_root=args.sessions_root,
         carla_host=args.carla_host,
         carla_port=args.carla_port,
+        world_worker_url=args.world_worker_url,
+        world_worker_token=world_worker_token,
     )
     address, port = server.server_address[:2]
     display_host = "127.0.0.1" if address in {"0.0.0.0", "::"} else address
@@ -176,6 +184,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "url": url,
                 "workspace": str(Path(args.workspace).expanduser().resolve()),
                 "local_only": True,
+                "world_worker_configured": args.world_worker_url is not None,
                 "garage_research_bridge": True,
                 "garage_drive_modes": True,
                 "garage_research_jobs": True,

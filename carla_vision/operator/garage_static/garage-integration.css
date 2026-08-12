@@ -37,6 +37,7 @@ body.garage-autonomous .drive-control-deck,
 body.garage-autonomous .drive-touch-controls,
 body.garage-autonomous .drive-model-boundary { display: none !important; }
 body.garage-autonomous #drive-viewport { cursor: default; }
+body.garage-autonomy-selected #drive-control-mode-field { display: none !important; }
 
 .drive-research-actions {
   display: flex;

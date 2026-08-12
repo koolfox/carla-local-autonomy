@@ -311,6 +311,11 @@ function driveIsAutopilot() {
   return driveSessionControlMode() === "autopilot";
 }
 
+function driveExtensionBlocksManualControl() {
+  const blocker = window.carlaGarageManualControlBlocked;
+  return typeof blocker === "function" && blocker();
+}
+
 function driveSessionId() {
   return state.drive.session?.session_id || "";
 }
@@ -353,11 +358,13 @@ function driveWorldCapabilities() {
       nativeWorker &&
       driveCapabilityValue(capabilities, ["random_route", "route_planning", "native_route_planning"]),
     traffic:
-      nativeWorker &&
-      driveCapabilityValue(capabilities, ["traffic_manager", "traffic", "spawn_traffic"]),
+      (nativeWorker &&
+        driveCapabilityValue(capabilities, ["traffic_manager", "traffic", "spawn_traffic"])) ||
+      driveCapabilityValue(capabilities, ["garage_traffic_population"]),
     walkers:
-      nativeWorker &&
-      driveCapabilityValue(capabilities, ["walkers", "walker_population", "spawn_walkers"]),
+      (nativeWorker &&
+        driveCapabilityValue(capabilities, ["walkers", "walker_population", "spawn_walkers"])) ||
+      driveCapabilityValue(capabilities, ["garage_walker_population"]),
     autopilot:
       nativeWorker &&
       driveCapabilityValue(capabilities, ["autopilot", "native_autopilot"]),
@@ -916,6 +923,7 @@ function renderDriveKeyState() {
 async function sendDriveControl({ safety = false, keepalive = false } = {}) {
   const sessionId = driveSessionId();
   if (!sessionId) return;
+  if (driveExtensionBlocksManualControl()) return;
   if (!safety && driveIsAutopilot()) return;
   if (!safety && (!driveIsRunning() || !state.drive.inputFocused)) {
     return;
@@ -1010,7 +1018,12 @@ async function requestDriveManualMode() {
 }
 
 function activateDriveInputFocus() {
-  if (!driveIsRunning() || driveIsAutopilot() || driveEmergencyLatched()) return;
+  if (
+    !driveIsRunning() ||
+    driveIsAutopilot() ||
+    driveExtensionBlocksManualControl() ||
+    driveEmergencyLatched()
+  ) return;
   state.drive.inputFocused = true;
   $("drive-viewport").classList.add("focused");
   $("drive-focus-shield").classList.add("hidden");
@@ -1047,6 +1060,10 @@ function handleDriveKey(event, pressed) {
   if (!driveIsRunning()) return;
   const key = driveKeyName(event);
   if (!key) return;
+  if (driveExtensionBlocksManualControl()) {
+    event.preventDefault();
+    return;
+  }
   if (driveIsAutopilot()) {
     event.preventDefault();
     if (pressed) {
@@ -1089,6 +1106,7 @@ function handleDrivePointerDown(event) {
   if (event.pointerType === "mouse" && event.button !== 0) return;
   event.preventDefault();
   event.stopPropagation();
+  if (driveExtensionBlocksManualControl()) return;
   if (driveIsAutopilot()) {
     void requestDriveManualMode().then((taken) => {
       if (taken) {
@@ -1151,6 +1169,37 @@ function bindDriveTouchControls() {
   }
 }
 
+function driveStartPayload() {
+  return {
+    run_id: $("drive-run-id").value,
+    host: $("drive-host").value,
+    port: number("drive-port"),
+    vehicle_blueprint: $("drive-vehicle").value,
+    color: $("drive-color").value,
+    seed: number("drive-seed"),
+    map_name: driveWorldCapabilities().mapReload
+      ? $("drive-map-choice").value || state.drive.catalog?.map || "current"
+      : "current",
+    traffic_count: number("drive-traffic-choice"),
+    walker_count: number("drive-walkers-choice"),
+    route_mode: $("drive-starting-choice").value || "free",
+    initial_control_mode: state.drive.initialControlMode,
+    weather_preset: $("drive-weather").value,
+    prop_preset: $("drive-props").value,
+    detector_enabled: checked("drive-detector-enabled"),
+    detector: $("drive-detector").value,
+    weights: $("drive-weights").value,
+    device: $("drive-device").value,
+    image_size: number("drive-image-size"),
+    confidence: number("drive-confidence"),
+    resolution: $("drive-resolution").value,
+    camera_fps: number("drive-camera-fps"),
+    camera_fov: number("drive-camera-fov"),
+    record_video: checked("drive-record-video"),
+    spectator_follow: checked("drive-spectator-follow"),
+  };
+}
+
 async function startDrive(event) {
   event.preventDefault();
   const button = event.submitter || $("drive-start");
@@ -1159,34 +1208,7 @@ async function startDrive(event) {
   try {
     const payload = await request("/api/drive/start", {
       method: "POST",
-      body: JSON.stringify({
-        run_id: $("drive-run-id").value,
-        host: $("drive-host").value,
-        port: number("drive-port"),
-        vehicle_blueprint: $("drive-vehicle").value,
-        color: $("drive-color").value,
-        seed: number("drive-seed"),
-        map_name: driveWorldCapabilities().mapReload
-          ? $("drive-map-choice").value || state.drive.catalog?.map || "current"
-          : "current",
-        traffic_count: number("drive-traffic-choice"),
-        walker_count: number("drive-walkers-choice"),
-        route_mode: $("drive-starting-choice").value || "free",
-        initial_control_mode: state.drive.initialControlMode,
-        weather_preset: $("drive-weather").value,
-        prop_preset: $("drive-props").value,
-        detector_enabled: checked("drive-detector-enabled"),
-        detector: $("drive-detector").value,
-        weights: $("drive-weights").value,
-        device: $("drive-device").value,
-        image_size: number("drive-image-size"),
-        confidence: number("drive-confidence"),
-        resolution: $("drive-resolution").value,
-        camera_fps: number("drive-camera-fps"),
-        camera_fov: number("drive-camera-fov"),
-        record_video: checked("drive-record-video"),
-        spectator_follow: checked("drive-spectator-follow"),
-      }),
+      body: JSON.stringify(driveStartPayload()),
     });
     const nextSession = payload.state || payload;
     state.drive.session = {

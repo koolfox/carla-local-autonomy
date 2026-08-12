@@ -127,6 +127,7 @@ class OperatorApplication:
         self.workspace = Path(workspace).expanduser().resolve(strict=True)
         self.carla_host = carla_host
         self.carla_port = carla_port
+        self.world_worker = world_worker
         self.token = secrets.token_urlsafe(24)
         self.jobs = JobManager(
             workspace=self.workspace,
@@ -736,17 +737,24 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def resolve_world_worker_token(args: argparse.Namespace) -> str | None:
+    """Resolve the configured worker credential without exposing it to the browser."""
+
+    if args.world_worker_url is None:
+        return None
+    if not _ENVIRONMENT_NAME.fullmatch(args.world_worker_token_env):
+        raise ValueError("World Worker token environment variable name is invalid")
+    token = os.environ.get(args.world_worker_token_env)
+    if not token:
+        raise RuntimeError(
+            f"World Worker token environment variable {args.world_worker_token_env!r} is empty"
+        )
+    return token
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
-    world_worker_token: str | None = None
-    if args.world_worker_url is not None:
-        if not _ENVIRONMENT_NAME.fullmatch(args.world_worker_token_env):
-            raise ValueError("World Worker token environment variable name is invalid")
-        world_worker_token = os.environ.get(args.world_worker_token_env)
-        if not world_worker_token:
-            raise RuntimeError(
-                f"World Worker token environment variable {args.world_worker_token_env!r} is empty"
-            )
+    world_worker_token = resolve_world_worker_token(args)
     server = create_server(
         workspace=args.workspace,
         bind=args.bind,
@@ -794,4 +802,5 @@ __all__ = [
     "create_server",
     "main",
     "parse_args",
+    "resolve_world_worker_token",
 ]

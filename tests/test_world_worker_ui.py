@@ -7,6 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
 STATIC_ROOT = ROOT / "carla_vision" / "operator" / "static"
+GARAGE_STATIC_ROOT = ROOT / "carla_vision" / "operator" / "garage_static"
 
 
 class _ElementParser(HTMLParser):
@@ -27,6 +28,9 @@ class WorldWorkerGarageContractTests(unittest.TestCase):
         cls.html = (STATIC_ROOT / "index.html").read_text(encoding="utf-8")
         cls.script = (STATIC_ROOT / "app.js").read_text(encoding="utf-8")
         cls.styles = (STATIC_ROOT / "app.css").read_text(encoding="utf-8")
+        cls.garage_script = (GARAGE_STATIC_ROOT / "garage-integration.js").read_text(
+            encoding="utf-8"
+        )
         cls.parser = _ElementParser()
         cls.parser.feed(cls.html)
 
@@ -109,6 +113,29 @@ class WorldWorkerGarageContractTests(unittest.TestCase):
         for field in expected:
             with self.subTest(field=field):
                 self.assertIn(field, self.script)
+
+    def test_garage_extends_the_base_worker_payload_without_selector_collision(self) -> None:
+        self.assertIn("function driveStartPayload()", self.script)
+        self.assertIn("const base = driveStartPayload();", self.garage_script)
+        self.assertIn('element("drive-garage-control-mode")', self.garage_script)
+        self.assertIn('id="drive-garage-control-mode"', self.garage_script)
+        self.assertNotIn('id="drive-control-mode" required', self.garage_script)
+
+        for field in (
+            "traffic_count: workerOwnsWorld ? base.traffic_count : 0",
+            "walker_count: workerOwnsWorld ? base.walker_count : 0",
+            'initial_control_mode: autonomous ? "manual" : base.initial_control_mode',
+            "traffic_vehicles: workerOwnsWorld",
+            "walkers: workerOwnsWorld",
+        ):
+            with self.subTest(field=field):
+                self.assertIn(field, self.garage_script)
+
+    def test_garage_autonomy_blocks_every_base_manual_input_path(self) -> None:
+        self.assertIn("window.carlaGarageManualControlBlocked", self.garage_script)
+        self.assertIn("function driveExtensionBlocksManualControl()", self.script)
+        self.assertGreaterEqual(self.script.count("driveExtensionBlocksManualControl()"), 5)
+        self.assertIn("state.drive?.session?.garage_mode || selectedMode()", self.garage_script)
 
     def test_autopilot_takeover_precedes_manual_commands(self) -> None:
         self.assertIn('request("/api/drive/mode", {', self.script)
