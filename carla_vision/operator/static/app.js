@@ -251,8 +251,11 @@ function activateTab(name) {
   if (name !== "drive" && state.drive.inputFocused) {
     releaseDriveControl("Drive console hidden");
   }
+  document.body.classList.toggle("drive-tab-active", name === "drive");
   for (const tab of document.querySelectorAll(".tab")) {
-    tab.classList.toggle("active", tab.dataset.tab === name);
+    const active = tab.dataset.tab === name;
+    tab.classList.toggle("active", active);
+    tab.setAttribute("aria-selected", String(active));
   }
   for (const panel of document.querySelectorAll(".panel")) {
     panel.classList.toggle("active", panel.id === `panel-${name}`);
@@ -261,7 +264,9 @@ function activateTab(name) {
 
 function activateResearchTool(name) {
   for (const tab of document.querySelectorAll(".research-tab")) {
-    tab.classList.toggle("active", tab.dataset.researchTab === name);
+    const active = tab.dataset.researchTab === name;
+    tab.classList.toggle("active", active);
+    tab.setAttribute("aria-selected", String(active));
   }
   for (const panel of document.querySelectorAll(".research-panel")) {
     panel.classList.toggle("active", panel.id === `panel-${name}`);
@@ -565,6 +570,7 @@ function populateDriveCatalog(catalog) {
   renderDriveCapabilities();
   configureDriveWorldControls();
   updateDriveConfigAvailability();
+  renderGarageBay();
 }
 
 async function refreshDriveCatalog() {
@@ -617,6 +623,32 @@ function driveDetectorLabel(detector) {
   return detector.label || detector.name || detector.detector || detector.status || "enabled";
 }
 
+function selectedOptionLabel(id, fallback) {
+  const select = $(id);
+  const option = select?.selectedOptions?.[0];
+  return option?.textContent?.trim() || fallback;
+}
+
+function renderGarageBay() {
+  const vehicle = selectedOptionLabel("drive-vehicle", "No car selected");
+  const weather = selectedOptionLabel("drive-weather", "Weather pending");
+  const map = selectedOptionLabel("drive-map-choice", "Current map");
+  const scene = selectedOptionLabel("drive-props", "Open road");
+  $("garage-bay-car").textContent = vehicle;
+  $("garage-bay-weather").textContent = weather;
+  $("garage-bay-world").textContent = `${map} · ${scene}`;
+  const color = $("drive-color").value.split(",").map(Number);
+  const validColor = color.length === 3 && color.every(
+    (channel) => Number.isInteger(channel) && channel >= 0 && channel <= 255,
+  );
+  const bay = document.querySelector(".garage-bay");
+  if (validColor) {
+    bay.style.setProperty("--garage-car-color", `rgb(${color.join(", ")})`);
+  } else {
+    bay.style.removeProperty("--garage-car-color");
+  }
+}
+
 function renderDriveState() {
   const session = state.drive.session || { status: "idle" };
   const statusName = session.status || "idle";
@@ -631,7 +663,7 @@ function renderDriveState() {
   document.title = immersive ? "Driving · CARLA Vision Operator" : "CARLA Vision Operator";
   const status = $("drive-status");
   status.textContent = {
-    idle: "Ready",
+    idle: state.drive.catalog?.connected ? "Ready" : "Unavailable",
     starting: "Starting…",
     running: "Driving",
     stopping: "Saving…",
@@ -639,6 +671,7 @@ function renderDriveState() {
     failed: "Drive failed",
   }[statusName] || statusName;
   status.className = `status-pill ${statusClass(statusName)}`;
+  renderGarageBay();
   const telemetry = session.telemetry || {};
   const speed = Number(telemetry.speed_mps ?? telemetry.speed ?? 0);
   $("drive-speed").textContent = Number.isFinite(speed) ? speed.toFixed(1) : "0.0";
@@ -695,6 +728,13 @@ function renderDriveState() {
     driveIsActive() ||
     !state.drive.catalog?.connected ||
     !$("drive-vehicle").value;
+  $("drive-start-note").textContent = driveIsActive()
+    ? "Drive session in progress."
+    : !state.drive.catalog?.connected
+      ? "CARLA is offline. Start CARLA or check the host in Advanced settings."
+      : !$("drive-vehicle").value
+        ? "No compatible vehicle is available."
+        : "";
   $("drive-stop").disabled = !["starting", "running"].includes(statusName);
   $("drive-emergency").disabled = !driveIsRunning();
   $("drive-focus").disabled =
@@ -705,8 +745,8 @@ function renderDriveState() {
       ? "Keyboard active"
       : "Take keyboard control";
   $("drive-advisory-badge").textContent = autopilotActive
-    ? "CARLA autopilot · vision AI stays advisory"
-    : "Vision AI stays advisory";
+    ? "CARLA autopilot · detections remain visual"
+    : "Detections only — you drive";
   $("drive-control-boundary-title").textContent = autopilotActive
     ? "Simulator autopilot active."
     : "Human control.";
@@ -731,6 +771,7 @@ function renderDriveState() {
   const saved = statusName === "success";
   $("drive-result-banner").hidden = !saved;
   $("drive-start").hidden = saved;
+  $("drive-session-actions").hidden = saved;
   $("drive-start-another").disabled =
     !saved || !state.drive.catalog?.connected || !$("drive-vehicle").value;
 
@@ -739,7 +780,7 @@ function renderDriveState() {
       ? session.overlay_frame_sequence
       : session.raw_frame_sequence;
   $("drive-frame-state").textContent = driveIsRunning()
-    ? `${state.drive.view === "overlay" ? "AI detections" : "Camera"} · frame ${sequence ?? "—"}`
+    ? `${state.drive.view === "overlay" ? "Detections" : "Camera"} · frame ${sequence ?? "—"}`
     : statusName === "starting"
       ? "Starting camera stream…"
       : statusName === "stopping"
@@ -1294,7 +1335,14 @@ function bindDriveConsole() {
   $("drive-focus").addEventListener("click", focusDriveControl);
   $("drive-view-raw").addEventListener("click", () => setDriveView("raw"));
   $("drive-view-overlay").addEventListener("click", () => setDriveView("overlay"));
-  $("drive-vehicle").addEventListener("change", populateDriveColors);
+  $("drive-vehicle").addEventListener("change", () => {
+    populateDriveColors();
+    renderGarageBay();
+  });
+  $("drive-color").addEventListener("change", renderGarageBay);
+  for (const id of ["drive-map-choice", "drive-weather", "drive-props"]) {
+    $(id).addEventListener("change", renderGarageBay);
+  }
   $("drive-detector").addEventListener("change", selectPreferredDriveWeight);
   $("drive-detector-enabled").addEventListener("change", updateDriveModelToggle);
   $("drive-weather").addEventListener("change", changeDriveWeather);
