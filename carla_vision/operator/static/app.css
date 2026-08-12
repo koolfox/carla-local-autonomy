@@ -1202,6 +1202,18 @@ body:not(.drive-immersive) .drive-setup-column {
   background: rgba(137, 21, 21, 0.72);
 }
 
+.drive-mode-indicator {
+  padding: 5px 8px;
+  border-radius: 999px;
+  color: #9de8d9;
+  background: rgba(16, 91, 79, 0.68);
+}
+
+.drive-mode-indicator.autopilot {
+  color: #d5e8ff;
+  background: rgba(38, 82, 133, 0.76);
+}
+
 .drive-focus-shield {
   position: absolute;
   top: 13px;
@@ -1465,6 +1477,10 @@ kbd {
   opacity: 0.72;
 }
 
+.garage-group [hidden] {
+  display: none !important;
+}
+
 .garage-worker-note {
   margin: 10px 0 0;
   padding: 9px 10px;
@@ -1472,6 +1488,67 @@ kbd {
   color: #82969a;
   background: rgba(255, 255, 255, 0.025);
   font-size: 9px;
+}
+
+.garage-worker-note.ready {
+  color: #9de8d9;
+  background: rgba(57, 215, 189, 0.07);
+}
+
+.garage-control-mode {
+  display: grid;
+  gap: 7px;
+}
+
+.garage-field-label {
+  color: #aebdc0;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.drive-mode-selector {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.drive-mode-selector button {
+  display: grid;
+  min-height: 58px;
+  align-content: center;
+  gap: 4px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--muted);
+  background: #0d1518;
+  text-align: left;
+}
+
+.drive-mode-selector button.active {
+  border-color: rgba(57, 215, 189, 0.55);
+  color: var(--text);
+  background: rgba(57, 215, 189, 0.09);
+}
+
+.drive-mode-selector button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.drive-mode-selector strong,
+.drive-mode-selector small {
+  display: block;
+}
+
+.drive-mode-selector strong {
+  color: inherit;
+  font-size: 10px;
+}
+
+.drive-mode-selector small {
+  color: #788c90;
+  font-size: 8px;
 }
 
 .drive-simple-toggles {
@@ -2040,6 +2117,10 @@ body.drive-immersive {
   }
 
   .drive-simple-toggles {
+    grid-template-columns: 1fr;
+  }
+
+  .drive-mode-selector {
     grid-template-columns: 1fr;
   }
 }

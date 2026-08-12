@@ -1,0 +1,690 @@
+from __future__ import annotations
+
+import fnmatch
+import http.client
+import json
+import threading
+import unittest
+from dataclasses import dataclass
+from typing import Any
+
+from carla_vision.native.world_worker import (
+    SceneConfig,
+    WorkerError,
+    WorldWorker,
+    create_server,
+)
+from carla_vision.operator.situations import WEATHER_PRESETS
+
+
+class FakeClock:
+    def __init__(self) -> None:
+        self.value = 100.0
+
+    def __call__(self) -> float:
+        return self.value
+
+    def advance(self, seconds: float) -> None:
+        self.value += seconds
+
+
+class FakeAttribute:
+    def __init__(self, value: str, recommended: list[str] | None = None) -> None:
+        self.value = value
+        self.recommended_values = list(recommended or [])
+
+    def __str__(self) -> str:
+        return self.value
+
+
+class FakeBlueprint:
+    def __init__(self, identifier: str, attributes: dict[str, FakeAttribute] | None = None) -> None:
+        self.id = identifier
+        self.attributes = attributes or {}
+
+    def has_attribute(self, name: str) -> bool:
+        return name in self.attributes
+
+    def get_attribute(self, name: str) -> FakeAttribute:
+        return self.attributes[name]
+
+    def set_attribute(self, name: str, value: str) -> None:
+        self.attributes[name].value = str(value)
+
+
+class FakeBlueprintLibrary:
+    def __init__(self) -> None:
+        colors = ["255,0,0", "0,0,255"]
+        self.blueprints = {
+            "vehicle.tesla.model3": FakeBlueprint(
+                "vehicle.tesla.model3",
+                {
+                    "role_name": FakeAttribute(""),
+                    "color": FakeAttribute(colors[0], colors),
+                    "driver_id": FakeAttribute("0", ["0", "1"]),
+                    "base_type": FakeAttribute("car"),
+                },
+            ),
+            "vehicle.audi.tt": FakeBlueprint(
+                "vehicle.audi.tt",
+                {
+                    "role_name": FakeAttribute(""),
+                    "color": FakeAttribute(colors[1], colors),
+                    "driver_id": FakeAttribute("0", ["0", "1"]),
+                    "base_type": FakeAttribute("car"),
+                },
+            ),
+            "walker.pedestrian.0001": FakeBlueprint(
+                "walker.pedestrian.0001",
+                {
+                    "role_name": FakeAttribute(""),
+                    "is_invincible": FakeAttribute("true"),
+                    "speed": FakeAttribute("1.4", ["0.0", "1.4", "2.8"]),
+                },
+            ),
+            "controller.ai.walker": FakeBlueprint("controller.ai.walker"),
+            "static.prop.trafficcone01": FakeBlueprint("static.prop.trafficcone01"),
+            "static.prop.trafficcone02": FakeBlueprint("static.prop.trafficcone02"),
+            "static.prop.warningconstruction": FakeBlueprint("static.prop.warningconstruction"),
+            "static.prop.streetbarrier": FakeBlueprint("static.prop.streetbarrier"),
+            "static.prop.warningaccident": FakeBlueprint("static.prop.warningaccident"),
+            "static.prop.dirtdebris01": FakeBlueprint("static.prop.dirtdebris01"),
+        }
+
+    def find(self, identifier: str) -> FakeBlueprint:
+        if identifier not in self.blueprints:
+            raise KeyError(identifier)
+        return self.blueprints[identifier]
+
+    def filter(self, pattern: str) -> list[FakeBlueprint]:
+        return [
+            blueprint
+            for identifier, blueprint in self.blueprints.items()
+            if fnmatch.fnmatch(identifier, pattern)
+        ]
+
+
+@dataclass
+class FakeLocation:
+    x: float = 0.0
+    y: float = 0.0
+    z: float = 0.0
+
+    def distance(self, other: Any) -> float:
+        return ((self.x - other.x) ** 2 + (self.y - other.y) ** 2 + (self.z - other.z) ** 2) ** 0.5
+
+
+@dataclass
+class FakeRotation:
+    pitch: float = 0.0
+    yaw: float = 0.0
+    roll: float = 0.0
+
+
+class FakeTransform:
+    def __init__(
+        self,
+        location: FakeLocation | None = None,
+        rotation: FakeRotation | None = None,
+    ) -> None:
+        self.location = location or FakeLocation()
+        self.rotation = rotation or FakeRotation()
+
+
+class FakeVehicleControl:
+    def __init__(
+        self,
+        *,
+        throttle: float = 0.0,
+        steer: float = 0.0,
+        brake: float = 0.0,
+        hand_brake: bool = False,
+        reverse: bool = False,
+    ) -> None:
+        self.throttle = throttle
+        self.steer = steer
+        self.brake = brake
+        self.hand_brake = hand_brake
+        self.reverse = reverse
+
+
+class FakeWeather:
+    def __init__(self, marker: str = "initial") -> None:
+        self.marker = marker
+        for preset in WEATHER_PRESETS.values():
+            for name, value in preset.items():
+                if name != "light":
+                    setattr(self, name, float(value))
+
+
+class FakeActor:
+    def __init__(
+        self,
+        world: FakeWorld,
+        actor_id: int,
+        blueprint: FakeBlueprint,
+        transform: FakeTransform,
+    ) -> None:
+        self.world = world
+        self.id = actor_id
+        self.type_id = blueprint.id
+        self.transform = transform
+        self.attributes = {name: str(attribute) for name, attribute in blueprint.attributes.items()}
+        self.is_alive = True
+        self.destroyed = False
+        self.controls: list[FakeVehicleControl] = []
+        self.autopilot = False
+        self.autopilot_port: int | None = None
+        self.started = False
+        self.stopped = False
+        self.destination: FakeLocation | None = None
+        self.maximum_speed: float | None = None
+
+    def apply_control(self, control: FakeVehicleControl) -> None:
+        self.controls.append(control)
+
+    def set_autopilot(self, enabled: bool, port: int) -> None:
+        self.autopilot = enabled
+        self.autopilot_port = port
+
+    def get_location(self) -> FakeLocation:
+        return self.transform.location
+
+    def get_transform(self) -> FakeTransform:
+        return self.transform
+
+    def start(self) -> None:
+        self.started = True
+
+    def stop(self) -> None:
+        self.stopped = True
+
+    def go_to_location(self, location: FakeLocation) -> None:
+        self.destination = location
+
+    def set_max_speed(self, speed: float) -> None:
+        self.maximum_speed = speed
+
+    def destroy(self) -> None:
+        self.destroyed = True
+        self.is_alive = False
+        self.world.actors.pop(self.id, None)
+
+
+class FakeMap:
+    def __init__(self, name: str) -> None:
+        self.name = f"/Game/Carla/Maps/{name}/{name}"
+        self.spawn_points = [
+            FakeTransform(FakeLocation(float(index * 50), float(index * 3), 0.5))
+            for index in range(8)
+        ]
+
+    def get_spawn_points(self) -> list[FakeTransform]:
+        return list(self.spawn_points)
+
+
+class FakeSettings:
+    def __init__(self, synchronous: bool = False) -> None:
+        self.synchronous_mode = synchronous
+
+
+class FakeWorld:
+    _world_ids = 1
+
+    def __init__(
+        self,
+        name: str,
+        library: FakeBlueprintLibrary,
+        *,
+        synchronous: bool = False,
+    ) -> None:
+        self.id = FakeWorld._world_ids
+        FakeWorld._world_ids += 1
+        self.map = FakeMap(name)
+        self.library = library
+        self.settings = FakeSettings(synchronous)
+        self.weather = FakeWeather()
+        self.actors: dict[int, FakeActor] = {}
+        self.next_actor_id = self.id * 1000
+        self.spectator = type("Spectator", (), {"id": self.id * 100 + 1})()
+        self.walker_seed: int | None = None
+        self.cross_factor: float | None = None
+        self.wait_count = 0
+
+    def get_map(self) -> FakeMap:
+        return self.map
+
+    def get_blueprint_library(self) -> FakeBlueprintLibrary:
+        return self.library
+
+    def get_settings(self) -> FakeSettings:
+        return self.settings
+
+    def get_weather(self) -> FakeWeather:
+        return self.weather
+
+    def set_weather(self, weather: FakeWeather) -> None:
+        self.weather = weather
+
+    def get_spectator(self) -> Any:
+        return self.spectator
+
+    def set_pedestrians_seed(self, seed: int) -> None:
+        self.walker_seed = seed
+
+    def set_pedestrians_cross_factor(self, factor: float) -> None:
+        self.cross_factor = factor
+
+    def try_spawn_actor(
+        self,
+        blueprint: FakeBlueprint,
+        transform: FakeTransform,
+        attach_to: FakeActor | None = None,
+    ) -> FakeActor:
+        del attach_to
+        actor = FakeActor(self, self.next_actor_id, blueprint, transform)
+        self.next_actor_id += 1
+        self.actors[actor.id] = actor
+        return actor
+
+    def get_actor(self, actor_id: int) -> FakeActor | None:
+        return self.actors.get(actor_id)
+
+    def get_random_location_from_navigation(self) -> FakeLocation:
+        return FakeLocation(float(self.next_actor_id % 100), 7.0, 0.5)
+
+    def wait_for_tick(self, seconds: float) -> None:
+        del seconds
+        self.wait_count += 1
+
+
+class FakeTrafficManager:
+    def __init__(self, port: int) -> None:
+        self.port = port
+        self.synchronous = False
+        self.seed: int | None = None
+        self.paths: list[tuple[int, list[FakeLocation]]] = []
+        self.lights: list[int] = []
+
+    def get_port(self) -> int:
+        return self.port
+
+    def set_synchronous_mode(self, enabled: bool) -> None:
+        self.synchronous = enabled
+
+    def set_random_device_seed(self, seed: int) -> None:
+        self.seed = seed
+
+    def set_global_distance_to_leading_vehicle(self, distance: float) -> None:
+        self.distance = distance
+
+    def global_percentage_speed_difference(self, difference: float) -> None:
+        self.speed_difference = difference
+
+    def update_vehicle_lights(self, actor: FakeActor, enabled: bool) -> None:
+        if enabled:
+            self.lights.append(actor.id)
+
+    def set_path(self, actor: FakeActor, locations: list[FakeLocation]) -> None:
+        self.paths.append((actor.id, list(locations)))
+
+
+class FakeClient:
+    def __init__(
+        self,
+        world: FakeWorld,
+        library: FakeBlueprintLibrary,
+        traffic_manager: FakeTrafficManager,
+    ) -> None:
+        self.world = world
+        self.library = library
+        self.traffic_manager = traffic_manager
+        self.timeout: float | None = None
+        self.loaded_maps: list[str] = []
+
+    def set_timeout(self, timeout: float) -> None:
+        self.timeout = timeout
+
+    def get_client_version(self) -> str:
+        return "0.9.16"
+
+    def get_server_version(self) -> str:
+        return "0.9.16"
+
+    def get_world(self) -> FakeWorld:
+        return self.world
+
+    def get_available_maps(self) -> list[str]:
+        return [
+            "/Game/Carla/Maps/Town10HD_Opt/Town10HD_Opt",
+            "/Game/Carla/Maps/Town05/Town05",
+        ]
+
+    def load_world(self, name: str) -> FakeWorld:
+        short_name = str(name).replace("\\", "/").rsplit("/", 1)[-1]
+        self.loaded_maps.append(short_name)
+        self.world = FakeWorld(short_name, self.library)
+        return self.world
+
+    def get_trafficmanager(self, port: int) -> FakeTrafficManager:
+        if port != self.traffic_manager.port:
+            raise ValueError("wrong Traffic Manager port")
+        return self.traffic_manager
+
+
+class FakeCarla:
+    Location = FakeLocation
+    Rotation = FakeRotation
+    Transform = FakeTransform
+    VehicleControl = FakeVehicleControl
+    WeatherParameters = FakeWeather
+
+    def __init__(self, client: FakeClient) -> None:
+        self.client = client
+        self.client_calls = 0
+
+    def Client(self, host: str, port: int) -> FakeClient:  # noqa: N802
+        self.client_calls += 1
+        self.last_endpoint = (host, port)
+        return self.client
+
+
+class FakeWaypoint:
+    def __init__(self, location: FakeLocation) -> None:
+        self.transform = FakeTransform(location)
+
+
+class FakePlanner:
+    def __init__(self, map_object: FakeMap) -> None:
+        self.map_object = map_object
+
+    def trace_route(
+        self,
+        origin: FakeLocation,
+        destination: FakeLocation,
+    ) -> list[tuple[FakeWaypoint, str]]:
+        middle = FakeLocation(
+            (origin.x + destination.x) / 2.0,
+            (origin.y + destination.y) / 2.0,
+            (origin.z + destination.z) / 2.0,
+        )
+        return [
+            (FakeWaypoint(origin), "LANEFOLLOW"),
+            (FakeWaypoint(middle), "LANEFOLLOW"),
+            (FakeWaypoint(destination), "LANEFOLLOW"),
+        ]
+
+
+class WorldWorkerTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.clock = FakeClock()
+        self.library = FakeBlueprintLibrary()
+        self.world = FakeWorld("Town10HD_Opt", self.library)
+        self.traffic_manager = FakeTrafficManager(8000)
+        self.client = FakeClient(self.world, self.library, self.traffic_manager)
+        self.carla = FakeCarla(self.client)
+        self.loader_calls = 0
+
+        def load_carla() -> FakeCarla:
+            self.loader_calls += 1
+            return self.carla
+
+        self.worker = WorldWorker(
+            carla_loader=load_carla,
+            route_planner_loader=lambda: lambda map_object: FakePlanner(map_object),
+            clock=self.clock,
+            lease_seconds=5.0,
+            control_timeout=0.5,
+            start_monitor=False,
+        )
+
+    def tearDown(self) -> None:
+        self.worker.close()
+
+    @staticmethod
+    def lease(response: dict[str, Any]) -> tuple[str, str]:
+        scene = response["scene"]
+        return str(scene["scene_id"]), str(scene["lease_token"])
+
+    def test_scene_config_defaults_and_strict_allow_list(self) -> None:
+        config = SceneConfig.from_mapping({})
+        self.assertEqual(config.map_name, "current")
+        self.assertEqual(config.route_mode, "free")
+        self.assertEqual(config.initial_control_mode, "manual")
+        with self.assertRaisesRegex(WorkerError, "unknown fields"):
+            SceneConfig.from_mapping({"shell": "rm"})
+        with self.assertRaisesRegex(WorkerError, "route_mode"):
+            SceneConfig.from_mapping({"route_mode": "wander"})
+
+    def test_health_and_catalog_load_carla_lazily(self) -> None:
+        self.assertEqual(self.loader_calls, 0)
+        health = self.worker.health()
+        self.assertTrue(health["ready"])
+        self.assertEqual(self.loader_calls, 1)
+        self.assertNotIn("token", json.dumps(health))
+        catalog = self.worker.catalog()
+        self.assertEqual(catalog["maps"][0].keys(), {"id", "label"})
+        self.assertEqual(catalog["vehicles"][0].keys(), {"id", "label", "colors"})
+        self.assertTrue(catalog["capabilities"]["random_route"])
+        self.assertTrue(catalog["capabilities"]["asynchronous_world"])
+        self.assertEqual(catalog["carla"]["current_map"], "Town10HD_Opt")
+
+    def test_manual_deadman_lease_cleanup_and_owned_props(self) -> None:
+        original_weather = self.world.weather
+        prepared = self.worker.prepare(
+            {
+                "weather_preset": "heavy-rain",
+                "color": "255,0,0",
+                "seed": 42,
+                "traffic_count": 2,
+                "walker_count": 2,
+                "prop_preset": "cones",
+            }
+        )
+        scene_id, lease_token = self.lease(prepared)
+        scene = prepared["scene"]
+        self.assertEqual(scene["traffic_count"], 2)
+        self.assertEqual(scene["walker_count"], 2)
+        self.assertEqual(len(scene["prop_actor_ids"]), 2)
+        self.assertEqual(scene["map_name"], "Town10HD_Opt")
+        self.assertIsInstance(scene["episode_id"], int)
+        self.assertEqual(self.client.loaded_maps, [])
+        self.assertIsNot(self.world.weather, original_weather)
+
+        started = self.worker.start(scene_id, {"lease_token": lease_token})
+        ego = self.world.get_actor(started["scene"]["ego_actor_id"])
+        assert ego is not None
+        self.assertEqual(ego.controls[-1].brake, 1.0)
+        controlled = self.worker.control(
+            scene_id,
+            {
+                "lease_token": lease_token,
+                "sequence": 1,
+                "throttle": 0.4,
+                "steer": -0.2,
+                "brake": 0.0,
+                "hand_brake": False,
+                "reverse": False,
+            },
+        )
+        self.assertFalse(controlled["scene"]["deadman_active"])
+        self.assertEqual(ego.controls[-1].throttle, 0.4)
+
+        self.clock.advance(0.6)
+        self.worker.heartbeat(scene_id, {"lease_token": lease_token})
+        self.worker.enforce_timeouts()
+        self.assertEqual(ego.controls[-1].brake, 1.0)
+        self.assertTrue(self.worker.current_scene()["scene"]["deadman_active"])
+
+        all_owned = list(self.world.actors.values())
+        self.clock.advance(5.1)
+        self.worker.enforce_timeouts()
+        self.assertIsNone(self.worker.current_scene()["scene"])
+        self.assertTrue(all(actor.destroyed for actor in all_owned))
+        self.assertIs(self.world.weather, original_weather)
+        self.assertFalse(self.traffic_manager.synchronous)
+
+    def test_random_destination_is_enforced_and_mode_switches(self) -> None:
+        prepared = self.worker.prepare(
+            {
+                "route_mode": "random_destination",
+                "initial_control_mode": "autopilot",
+                "seed": 99,
+            }
+        )
+        scene_id, lease_token = self.lease(prepared)
+        self.assertTrue(prepared["scene"]["route"]["planned"])
+        self.assertFalse(prepared["scene"]["route"]["enforced"])
+        self.assertIsNotNone(prepared["scene"]["destination"])
+
+        started = self.worker.start(scene_id, {"lease_token": lease_token})
+        ego = self.world.get_actor(started["scene"]["ego_actor_id"])
+        assert ego is not None
+        self.assertTrue(ego.autopilot)
+        self.assertTrue(started["scene"]["route"]["enforced"])
+        self.assertEqual(len(self.traffic_manager.paths), 1)
+
+        manual = self.worker.mode(
+            scene_id,
+            {"lease_token": lease_token, "control_mode": "manual"},
+        )
+        self.assertFalse(ego.autopilot)
+        self.assertTrue(manual["scene"]["deadman_active"])
+        self.assertFalse(manual["scene"]["route"]["enforced"])
+        autopilot = self.worker.mode(
+            scene_id,
+            {"lease_token": lease_token, "control_mode": "autopilot"},
+        )
+        self.assertTrue(ego.autopilot)
+        self.assertTrue(autopilot["scene"]["route"]["enforced"])
+        self.assertEqual(len(self.traffic_manager.paths), 2)
+        stopped = self.worker.stop(scene_id, {"lease_token": lease_token})
+        self.assertEqual(stopped["status"], "stopped")
+        self.assertTrue(stopped["scene"]["cleanup_guard_passed"])
+
+    def test_random_destination_rejected_when_route_planner_is_missing(self) -> None:
+        unavailable = WorldWorker(
+            carla_loader=lambda: self.carla,
+            route_planner_loader=lambda: None,
+            clock=self.clock,
+            start_monitor=False,
+        )
+        self.addCleanup(unavailable.close)
+        catalog = unavailable.catalog()
+        self.assertFalse(catalog["capabilities"]["random_route"])
+        with self.assertRaisesRegex(WorkerError, "GlobalRoutePlanner"):
+            unavailable.prepare({"route_mode": "random_destination"})
+
+    def test_large_research_seed_is_bounded_for_carla_seed_apis(self) -> None:
+        prepared = self.worker.prepare({"seed": 2**63 - 1})
+        scene_id, lease_token = self.lease(prepared)
+
+        self.assertGreaterEqual(self.traffic_manager.seed, 0)
+        self.assertLess(self.traffic_manager.seed, 2**31 - 1)
+        self.assertGreaterEqual(self.world.walker_seed, 0)
+        self.assertLess(self.world.walker_seed, 2**31 - 1)
+
+        self.worker.stop(scene_id, {"lease_token": lease_token})
+
+    def test_stale_controls_wrong_lease_and_one_active_scene_are_rejected(self) -> None:
+        prepared = self.worker.prepare({})
+        scene_id, lease_token = self.lease(prepared)
+        with self.assertRaisesRegex(WorkerError, "another leased scene"):
+            self.worker.prepare({})
+        with self.assertRaisesRegex(WorkerError, "lease does not match"):
+            self.worker.start(scene_id, {"lease_token": "x" * 32})
+        self.worker.start(scene_id, {"lease_token": lease_token})
+        payload = {
+            "lease_token": lease_token,
+            "sequence": 4,
+            "throttle": 0.0,
+            "steer": 0.0,
+            "brake": 1.0,
+            "hand_brake": False,
+            "reverse": False,
+        }
+        self.worker.control(scene_id, payload)
+        with self.assertRaisesRegex(WorkerError, "newer"):
+            self.worker.control(scene_id, payload)
+        with self.assertRaisesRegex(WorkerError, "unknown fields"):
+            self.worker.heartbeat(scene_id, {"lease_token": lease_token, "rpc": "anything"})
+
+    def test_episode_guard_refuses_to_destroy_replaced_world(self) -> None:
+        prepared = self.worker.prepare({"traffic_count": 1})
+        scene_id, lease_token = self.lease(prepared)
+        old_actors = list(self.world.actors.values())
+        self.client.world = FakeWorld("Town10HD_Opt", self.library)
+        stopped = self.worker.stop(scene_id, {"lease_token": lease_token})
+        self.assertFalse(stopped["scene"]["cleanup_guard_passed"])
+        self.assertTrue(
+            any("episode changed" in value for value in stopped["scene"]["cleanup_errors"])
+        )
+        self.assertTrue(all(not actor.destroyed for actor in old_actors))
+
+    def test_synchronous_world_is_rejected_without_mutation(self) -> None:
+        self.world.settings.synchronous_mode = True
+        with self.assertRaisesRegex(WorkerError, "asynchronous CARLA world"):
+            self.worker.prepare({})
+        self.assertEqual(self.world.actors, {})
+
+    def test_http_requires_bearer_and_returns_strict_error_envelope(self) -> None:
+        token = "test-token-that-is-long-enough"
+        server = create_server(
+            bind="127.0.0.1",
+            port=0,
+            token=token,
+            worker=self.worker,
+        )
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        host, port = server.server_address[:2]
+
+        connection = http.client.HTTPConnection(host, port, timeout=3)
+        connection.request("GET", "/v1/health")
+        response = connection.getresponse()
+        unauthorized = json.loads(response.read())
+        self.assertEqual(response.status, 401)
+        self.assertEqual(unauthorized["error"]["code"], "unauthorized")
+        connection.close()
+
+        connection = http.client.HTTPConnection(host, port, timeout=3)
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        connection.request("GET", "/v1/catalog", headers=headers)
+        response = connection.getresponse()
+        catalog = json.loads(response.read())
+        self.assertEqual(response.status, 200)
+        self.assertIn("maps", catalog)
+        connection.request(
+            "POST",
+            "/v1/scenes/prepare",
+            body=json.dumps({"command": "shell"}),
+            headers=headers,
+        )
+        response = connection.getresponse()
+        invalid = json.loads(response.read())
+        self.assertEqual(response.status, 400)
+        self.assertEqual(invalid["error"]["code"], "unknown_fields")
+        connection.close()
+
+    def test_non_loopback_server_requires_explicit_flag_and_strong_token(self) -> None:
+        with self.assertRaisesRegex(ValueError, "allow-lan"):
+            create_server(
+                bind="0.0.0.0",
+                port=0,
+                token="x" * 40,
+                worker=self.worker,
+            )
+        with self.assertRaisesRegex(ValueError, "at least 32"):
+            create_server(
+                bind="0.0.0.0",
+                port=0,
+                token="x" * 20,
+                worker=self.worker,
+                allow_lan=True,
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()

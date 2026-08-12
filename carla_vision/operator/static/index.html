@@ -31,8 +31,8 @@
       <div class="safety-strip">
         <span class="safety-icon" aria-hidden="true">◎</span>
         <p>
-          AI can draw suggestions on the camera view, but it never steers or brakes.
-          The car stops automatically if this page loses driving focus.
+          Vision AI can draw suggestions, but it never steers or brakes. Manual driving
+          keeps its focus-loss brake; simulator autopilot must be selected explicitly.
         </p>
       </div>
 
@@ -45,16 +45,18 @@
         <section id="panel-drive" class="panel active" aria-labelledby="drive-title">
           <div class="section-heading drive-heading">
             <div>
-              <p class="eyebrow">MANUAL DRIVE</p>
+              <p class="eyebrow">MANUAL OR SIMULATOR AUTOPILOT</p>
               <h2 id="drive-title">Drive CARLA from this page</h2>
               <p>
-                Pick a car, weather, and road scene. Start the drive, click the camera,
-                then use the keyboard like a simple driving game.
+                Pick a car and world. Drive it yourself, or start in CARLA autopilot
+                when a secure World Worker is available.
               </p>
             </div>
             <div class="drive-heading-badges">
               <span id="drive-status" class="status-pill neutral">idle</span>
-              <span class="boundary-badge drive-advisory-badge">AI suggestions only — you stay in control</span>
+              <span id="drive-advisory-badge" class="boundary-badge drive-advisory-badge">
+                Vision AI stays advisory
+              </span>
             </div>
           </div>
 
@@ -95,6 +97,7 @@
                   </div>
                   <div class="drive-hud drive-hud-top">
                     <span id="drive-hud-session">NO SESSION</span>
+                    <span id="drive-hud-mode" class="drive-mode-indicator">MANUAL</span>
                     <span id="drive-hud-recording" class="drive-recording-indicator">REC OFF</span>
                   </div>
                   <div class="drive-hud drive-hud-bottom">
@@ -156,8 +159,10 @@
               </article>
 
               <div class="drive-model-boundary" role="note">
-                <strong>Human control only.</strong>
-                <span>AI boxes are visual hints. Leaving the camera or browser applies the brake.</span>
+                <strong id="drive-control-boundary-title">Human control.</strong>
+                <span id="drive-control-boundary-copy">
+                  AI boxes are visual hints. Leaving the camera or browser applies the brake.
+                </span>
               </div>
 
             </div>
@@ -191,7 +196,7 @@
                 <fieldset class="garage-group">
                   <legend>World</legend>
                   <div class="fields two">
-                    <label>
+                    <label id="drive-map-field">
                       Map
                       <select id="drive-map-choice" disabled>
                         <option>Loading current map…</option>
@@ -203,16 +208,24 @@
                         <option value="">Loading weather…</option>
                       </select>
                     </label>
-                    <label>
-                      Traffic density
+                    <label id="drive-traffic-field" hidden>
+                      Traffic vehicles
                       <select id="drive-traffic-choice" disabled>
-                        <option>Simulator Worker required</option>
+                        <option value="0">No moving traffic</option>
+                        <option value="5">5 vehicles</option>
+                        <option value="10">10 vehicles</option>
+                        <option value="20">20 vehicles</option>
+                        <option value="40">40 vehicles</option>
                       </select>
                     </label>
-                    <label>
+                    <label id="drive-walkers-field" hidden>
                       Pedestrians
                       <select id="drive-walkers-choice" disabled>
-                        <option>Simulator Worker required</option>
+                        <option value="0">No pedestrians</option>
+                        <option value="5">5 pedestrians</option>
+                        <option value="10">10 pedestrians</option>
+                        <option value="20">20 pedestrians</option>
+                        <option value="40">40 pedestrians</option>
                       </select>
                     </label>
                     <label>
@@ -222,16 +235,46 @@
                       </select>
                       <small>Add fixed items such as cones, construction, or an accident scene.</small>
                     </label>
-                    <label>
-                      Starting point / route
+                    <label id="drive-route-field" hidden>
+                      Route
                       <select id="drive-starting-choice" disabled>
-                        <option>Random starting point · no route planned</option>
+                        <option value="free">Free drive · random road start</option>
+                        <option value="random_destination">Random road destination</option>
                       </select>
                     </label>
+                    <div id="drive-control-mode-field" class="garage-control-mode span-2" hidden>
+                      <span class="garage-field-label">Initial driving mode</span>
+                      <div
+                        id="drive-control-mode"
+                        class="drive-mode-selector"
+                        role="radiogroup"
+                        aria-label="Initial driving mode"
+                      >
+                        <button
+                          id="drive-mode-manual"
+                          class="active"
+                          type="button"
+                          data-drive-mode="manual"
+                          aria-pressed="true"
+                        >
+                          <strong>Manual</strong>
+                          <small>Keyboard or touch</small>
+                        </button>
+                        <button
+                          id="drive-mode-autopilot"
+                          type="button"
+                          data-drive-mode="autopilot"
+                          aria-pressed="false"
+                          disabled
+                        >
+                          <strong>Autopilot</strong>
+                          <small>Take control any time</small>
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  <p class="garage-worker-note">
-                    Connect Simulator Worker to change maps, add moving traffic or pedestrians,
-                    and plan a route. You can still drive freely now.
+                  <p id="drive-worker-note" class="garage-worker-note" aria-live="polite">
+                    Checking for a secure World Worker. Free manual driving remains available.
                   </p>
                 </fieldset>
 

@@ -14,6 +14,18 @@ from .situations import PROP_PRESETS, WEATHER_PRESETS
 
 _RUN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _RESOLUTION = re.compile(r"^(\d{3,4})x(\d{3,4})$")
+_MAP_NAME = re.compile(r"^[A-Za-z0-9_./-]{1,160}$")
+_CONTROL_MODES = frozenset({"manual", "autopilot"})
+_ROUTE_MODES = frozenset({"free", "random_destination"})
+_WORKER_FIELDS = frozenset(
+    {
+        "map_name",
+        "traffic_count",
+        "walker_count",
+        "route_mode",
+        "initial_control_mode",
+    }
+)
 _WEATHER_FIELDS = (
     "cloudiness",
     "precipitation",
@@ -92,6 +104,12 @@ class DriveStartConfig:
     camera_fov: float
     record_video: bool
     spectator_follow: bool
+    world_worker_enabled: bool = False
+    map_name: str = "current"
+    traffic_count: int = 0
+    walker_count: int = 0
+    route_mode: str = "free"
+    initial_control_mode: str = "manual"
     max_throttle: float = 0.55
 
     @classmethod
@@ -102,6 +120,7 @@ class DriveStartConfig:
         workspace: Path,
         expected_host: str,
         expected_port: int,
+        world_worker_configured: bool = False,
     ) -> Self:
         allowed = {
             "run_id",
@@ -123,18 +142,17 @@ class DriveStartConfig:
             "camera_fov",
             "record_video",
             "spectator_follow",
+            *_WORKER_FIELDS,
         }
         _strict_keys(raw, allowed, "drive start request")
-        required = allowed - {"color"}
+        required = allowed - {"color"} - _WORKER_FIELDS
         missing = sorted(key for key in required if key not in raw)
         if missing:
             raise ValueError(f"drive start request is missing fields: {', '.join(missing)}")
 
         run_id = str(raw["run_id"]).strip()
         if not _RUN_ID.fullmatch(run_id):
-            raise ValueError(
-                "run_id must use 1-128 letters, digits, '.', '_' or '-'"
-            )
+            raise ValueError("run_id must use 1-128 letters, digits, '.', '_' or '-'")
         host = str(raw["host"]).strip()
         port = _integer(raw["port"], "port", 1, 65535)
         if host != expected_host or port != expected_port:
@@ -148,6 +166,8 @@ class DriveStartConfig:
         if color is not None and (
             len(color) > 32
             or any(character not in "0123456789," for character in color)
+            or len(color.split(",")) != 3
+            or any(not item or not 0 <= int(item) <= 255 for item in color.split(","))
         ):
             raise ValueError("color must be an RGB triplet supplied by the vehicle catalog")
 
@@ -181,6 +201,34 @@ class DriveStartConfig:
         if not 320 <= width <= 1920 or not 180 <= height <= 1080:
             raise ValueError("resolution must be between 320x180 and 1920x1080")
 
+        map_name = str(raw.get("map_name", "current")).strip()
+        if map_name != "current" and not _MAP_NAME.fullmatch(map_name):
+            raise ValueError("map_name must be 'current' or an exact CARLA map identifier")
+        traffic_count = _integer(raw.get("traffic_count", 0), "traffic_count", 0, 250)
+        walker_count = _integer(raw.get("walker_count", 0), "walker_count", 0, 250)
+        route_mode = str(raw.get("route_mode", "free")).strip()
+        if route_mode not in _ROUTE_MODES:
+            raise ValueError("route_mode must be free or random_destination")
+        initial_control_mode = str(raw.get("initial_control_mode", "manual")).strip()
+        if initial_control_mode not in _CONTROL_MODES:
+            raise ValueError("initial_control_mode must be manual or autopilot")
+        if not world_worker_configured:
+            unsupported = []
+            if map_name != "current":
+                unsupported.append("map_name")
+            if traffic_count:
+                unsupported.append("traffic_count")
+            if walker_count:
+                unsupported.append("walker_count")
+            if route_mode != "free":
+                unsupported.append("route_mode")
+            if initial_control_mode != "manual":
+                unsupported.append("initial_control_mode")
+            if unsupported:
+                raise ValueError(
+                    "configured World Worker is required for: " + ", ".join(unsupported)
+                )
+
         return cls(
             run_id=run_id,
             host=host,
@@ -202,13 +250,24 @@ class DriveStartConfig:
             camera_fov=_number(raw["camera_fov"], "camera_fov", 30.0, 150.0),
             record_video=_boolean(raw["record_video"], "record_video"),
             spectator_follow=_boolean(raw["spectator_follow"], "spectator_follow"),
+            world_worker_enabled=bool(world_worker_configured),
+            map_name=map_name,
+            traffic_count=traffic_count,
+            walker_count=walker_count,
+            route_mode=route_mode,
+            initial_control_mode=initial_control_mode,
         )
 
     def manifest_config(self) -> dict[str, Any]:
         return {
             "object_type": "interactive_drive_session",
             "runtime_sensor_contract": "front_monocular_rgb_only",
-            "control_mode": "browser_manual_with_deadman",
+            "control_mode": (
+                f"world_worker_{self.initial_control_mode}"
+                if self.world_worker_enabled
+                else "browser_manual_with_deadman"
+            ),
+            "world_owner": "world_worker" if self.world_worker_enabled else "raw_bridge_session",
             "model_output_actuated": False,
             "run_id": self.run_id,
             "host": self.host,
@@ -229,6 +288,12 @@ class DriveStartConfig:
             "camera_fov": self.camera_fov,
             "record_video": self.record_video,
             "spectator_follow": self.spectator_follow,
+            "world_worker_enabled": self.world_worker_enabled,
+            "map_name": self.map_name,
+            "traffic_count": self.traffic_count,
+            "walker_count": self.walker_count,
+            "route_mode": self.route_mode,
+            "initial_control_mode": self.initial_control_mode,
             "max_throttle": self.max_throttle,
         }
 
