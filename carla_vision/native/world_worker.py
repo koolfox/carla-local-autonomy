@@ -1,10 +1,17 @@
-"""Authenticated, leased CARLA world ownership service.
+"""Standalone authenticated bridge to CARLA's official PythonAPI.
 
 The worker deliberately exposes a small HTTP/JSON allow-list rather than a
 generic CARLA RPC proxy.  It owns at most one asynchronous-world scene and all
 actors created for that scene.  The official :mod:`carla` package and optional
 route planner are imported lazily so importing this module remains safe on
 non-CARLA hosts and in unit tests.
+
+Run this file by path on the CARLA host.  Do not install the research project::
+
+    py -3.12 carla_vision\\native\\world_worker.py --help
+
+Direct-file execution uses only Python's standard library plus the official
+``carla`` module already available to the selected interpreter.
 """
 
 from __future__ import annotations
@@ -29,8 +36,6 @@ from pathlib import Path
 from typing import Any, Self
 from urllib.parse import urlparse
 
-from ..operator.situations import PROP_PRESETS, WEATHER_PRESETS
-
 SCHEMA_VERSION = "1.0"
 EXPECTED_CARLA_VERSION = "0.9.16"
 DEFAULT_BIND = "127.0.0.1"
@@ -52,6 +57,172 @@ _ACTIVE_SCENE_STATES = frozenset({"prepared", "running", "stopping"})
 _ROUTE_MODES = frozenset({"free", "random_destination"})
 _CONTROL_MODES = frozenset({"manual", "autopilot"})
 _SIMULATOR_SEED_MODULUS = 2**31 - 1
+
+# Keep the bridge executable as a single file on the CARLA host.  These small
+# presets are intentionally embedded here instead of importing the research
+# package, so ``python world_worker.py`` needs only the standard library and
+# CARLA's official PythonAPI.
+WEATHER_PRESETS: dict[str, dict[str, Any]] = {
+    "clear-day": {
+        "light": "day",
+        "cloudiness": 5.0,
+        "precipitation": 0.0,
+        "precipitation_deposits": 0.0,
+        "wind_intensity": 5.0,
+        "sun_azimuth_angle": 35.0,
+        "sun_altitude_angle": 55.0,
+        "fog_density": 0.0,
+        "fog_distance": 0.0,
+        "wetness": 0.0,
+        "fog_falloff": 0.2,
+        "scattering_intensity": 1.0,
+        "mie_scattering_scale": 0.03,
+        "rayleigh_scattering_scale": 0.0331,
+        "dust_storm": 0.0,
+    },
+    "cloudy-day": {
+        "light": "day",
+        "cloudiness": 75.0,
+        "precipitation": 0.0,
+        "precipitation_deposits": 0.0,
+        "wind_intensity": 20.0,
+        "sun_azimuth_angle": 120.0,
+        "sun_altitude_angle": 40.0,
+        "fog_density": 2.0,
+        "fog_distance": 80.0,
+        "wetness": 0.0,
+        "fog_falloff": 0.2,
+        "scattering_intensity": 1.0,
+        "mie_scattering_scale": 0.05,
+        "rayleigh_scattering_scale": 0.0331,
+        "dust_storm": 0.0,
+    },
+    "soft-rain-sunset": {
+        "light": "sunset",
+        "cloudiness": 70.0,
+        "precipitation": 20.0,
+        "precipitation_deposits": 25.0,
+        "wind_intensity": 35.0,
+        "sun_azimuth_angle": 250.0,
+        "sun_altitude_angle": 8.0,
+        "fog_density": 4.0,
+        "fog_distance": 40.0,
+        "wetness": 55.0,
+        "fog_falloff": 0.5,
+        "scattering_intensity": 1.0,
+        "mie_scattering_scale": 0.08,
+        "rayleigh_scattering_scale": 0.0331,
+        "dust_storm": 0.0,
+    },
+    "heavy-rain": {
+        "light": "day",
+        "cloudiness": 95.0,
+        "precipitation": 80.0,
+        "precipitation_deposits": 70.0,
+        "wind_intensity": 60.0,
+        "sun_azimuth_angle": 180.0,
+        "sun_altitude_angle": 25.0,
+        "fog_density": 12.0,
+        "fog_distance": 30.0,
+        "wetness": 90.0,
+        "fog_falloff": 0.5,
+        "scattering_intensity": 1.2,
+        "mie_scattering_scale": 0.1,
+        "rayleigh_scattering_scale": 0.0331,
+        "dust_storm": 0.0,
+    },
+    "fog-night": {
+        "light": "night",
+        "cloudiness": 65.0,
+        "precipitation": 0.0,
+        "precipitation_deposits": 10.0,
+        "wind_intensity": 8.0,
+        "sun_azimuth_angle": 315.0,
+        "sun_altitude_angle": -35.0,
+        "fog_density": 45.0,
+        "fog_distance": 12.0,
+        "wetness": 20.0,
+        "fog_falloff": 0.7,
+        "scattering_intensity": 1.5,
+        "mie_scattering_scale": 0.2,
+        "rayleigh_scattering_scale": 0.0331,
+        "dust_storm": 0.0,
+    },
+    "wet-day": {
+        "light": "day",
+        "cloudiness": 45.0,
+        "precipitation": 0.0,
+        "precipitation_deposits": 45.0,
+        "wind_intensity": 15.0,
+        "sun_azimuth_angle": 160.0,
+        "sun_altitude_angle": 35.0,
+        "fog_density": 3.0,
+        "fog_distance": 60.0,
+        "wetness": 70.0,
+        "fog_falloff": 0.2,
+        "scattering_intensity": 1.0,
+        "mie_scattering_scale": 0.05,
+        "rayleigh_scattering_scale": 0.0331,
+        "dust_storm": 0.0,
+    },
+}
+
+
+def _prop_transform(x: float, y: float, z: float = 0.0) -> dict[str, float]:
+    return {
+        "x": x,
+        "y": y,
+        "z": z,
+        "pitch": 0.0,
+        "yaw": 0.0,
+        "roll": 0.0,
+    }
+
+
+PROP_PRESETS: dict[str, tuple[dict[str, Any], ...]] = {
+    "none": (),
+    "cones": (
+        {
+            "blueprint_id": "static.prop.trafficcone01",
+            "relative_to": "ego_start",
+            "transform": _prop_transform(24.0, 1.8),
+        },
+        {
+            "blueprint_id": "static.prop.trafficcone02",
+            "relative_to": "ego_start",
+            "transform": _prop_transform(30.0, 1.8),
+        },
+    ),
+    "construction": (
+        {
+            "blueprint_id": "static.prop.warningconstruction",
+            "relative_to": "ego_start",
+            "transform": _prop_transform(28.0, 3.5),
+        },
+        {
+            "blueprint_id": "static.prop.streetbarrier",
+            "relative_to": "ego_start",
+            "transform": _prop_transform(34.0, 2.8),
+        },
+        {
+            "blueprint_id": "static.prop.trafficcone01",
+            "relative_to": "ego_start",
+            "transform": _prop_transform(25.0, 1.8),
+        },
+    ),
+    "accident": (
+        {
+            "blueprint_id": "static.prop.warningaccident",
+            "relative_to": "ego_start",
+            "transform": _prop_transform(30.0, 3.0),
+        },
+        {
+            "blueprint_id": "static.prop.dirtdebris01",
+            "relative_to": "ego_start",
+            "transform": _prop_transform(36.0, 1.5),
+        },
+    ),
+}
 
 
 class WorkerError(Exception):
