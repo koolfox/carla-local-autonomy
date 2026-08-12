@@ -8,7 +8,14 @@ small `Detector` protocol.
 The current deployment defaults to CARLA at `172.20.10.7:2000`, vehicle actor
 `24`, and front RGB camera actor `25`. The Apple-silicon client uses a
 version-coupled MessagePack/TCP bridge, so it does not require a native CARLA
-wheel.
+wheel for the lightweight bridge path.
+
+## Claim boundary
+
+A code path, passing unit test, green CI check, or available UI option is not
+evidence that a driving policy performs well in live CARLA. Keep software
+contract validation, live-simulator integration, and closed-loop driving
+behavior as separate claims.
 
 ## What works now
 
@@ -27,19 +34,20 @@ wheel.
 - CARLA semantic ontology and visible-mask boxes;
 - canonical COCO plus derived YOLO labels, per-frame metadata, retained masks,
   dataset checksum index, and split-leakage guards;
-- read-only dataset QA that reproduces labels/exports and emits plots/montage.
+- read-only dataset QA that reproduces labels/exports and emits plots/montage;
 - deterministic scenario recipes, hierarchical seeds, map/weather OOD
   partitions, and integrity-verifiable episode plans;
 - a native official-PythonAPI collection worker with synchronous fixed-delta
   stepping, Traffic Manager seeding, traffic/walkers/props, and exact-frame
   RGB/instance capture;
+- BehaviorAgent teacher-episode recording, verification, and comparison;
 - a deterministic Windows/Linux native-host ZIP with a verified 50-frame
   plan, hash-pinned dependencies, read-only preflight, and guarded collection;
 - immutable-dataset verification before training or evaluation;
 - RT-DETR, YOLO, and custom training adapters with resolved configs, seed
   schedules, logs, plots, checkpoint hashes, and dry-run validation;
 - canonical COCO/operating-point evaluation with episode bootstrap,
-  stratification, calibration, latency, plots, and failure montages.
+  stratification, calibration, latency, plots, and failure montages;
 - paired multi-model replay over one checksum-locked RGB order, retaining each
   child evaluation plus per-image disagreements, episode-cluster bootstrap,
   latency/accuracy tables, PNG/SVG plots, and a comparison montage;
@@ -63,12 +71,24 @@ wheel.
   accelerator, deterministic-backend, tool, and dependency-lock provenance;
 - standalone checksum-indexed reproduction bundles containing a deterministic
   source archive, file inventory, source manifests, lockfiles, environment
-  envelope, and tokenized rerun commands.
+  envelope, and tokenized rerun commands;
+- imitation-policy training and a browser Garage Imitation drive mode;
+- temporal RGB-only voxel occupancy/flow training plus privileged voxel/flow
+  teacher capture;
+- voxel shadow planning, benchmarking, readiness checks, and opt-in actuation;
+- closed-loop driving evaluation and evaluation summaries;
+- a local Garage/Cockpit flow with Manual, BehaviorAgent, Imitation, and Voxel
+  control modes, plus PythonAPI-owned traffic/walkers when available; and
+- direct saved-run handoff from Drive to inspection, analysis, and verification.
 
-`--control vision` is intentionally unavailable. The detector and future
-deployable policy may consume only the ordered front RGB stream. CARLA pose,
-instance masks, actor IDs, and other privileged state are restricted to
-teacher-data generation, teacher control, or evaluation.
+The base `carla-vision --control vision` mode remains intentionally unavailable.
+Its detector/shadow policy path is advisory. Garage autonomous modes and the
+`carla-local-drive` voxel-actuation path are separate control paths with their
+own acknowledgement and fail-closed contracts.
+
+Privileged CARLA pose, segmentation, actor IDs, optical-flow/teacher signals,
+and similar simulator state remain teacher/evaluation inputs rather than
+runtime inputs to the deployable imitation/temporal RGB model paths.
 
 ## Install
 
@@ -76,16 +96,20 @@ teacher-data generation, teacher control, or evaluation.
 uv sync --all-groups
 ```
 
-The installed commands are:
+The installed commands below are the exact current `[project.scripts]` entries:
 
 ```text
 carla-vision
 carla-analyze-run
+carla-build-evidence-index
 carla-collect-dataset
 carla-audit-dataset
 carla-plan-scenarios
 carla-native-preflight
 carla-native-collect
+carla-record-behavior-teacher
+carla-verify-teacher-episodes
+carla-compare-teacher-episodes
 carla-build-native-kit
 carla-verify-native-kit
 carla-train-detector
@@ -95,7 +119,6 @@ carla-select-threshold
 carla-mine-failures
 carla-finalize-failure-review
 carla-verify
-carla-build-evidence-index
 carla-package-model
 carla-build-report
 carla-build-reproduction
@@ -104,68 +127,154 @@ carla-verify-shadow
 carla-shadow-matrix
 carla-verify-shadow-matrix
 carla-operator-ui
+carla-local-drive
+carla-voxel-test
+carla-voxel-flow-capture
+carla-train-voxel
+carla-train-voxel-flow
+carla-voxel-shadow
+carla-benchmark-voxel
+carla-build-voxel-readiness-evidence
+carla-verify-voxel-actuation-readiness
+carla-train-imitation
+carla-evaluate-drive
+carla-summarize-drive-evaluations
 ```
 
 ## Operator UI
 
-Start the local thesis-MVP control panel:
+Start the current local Garage/Operator server:
 
 ```bash
 uv run carla-operator-ui --open-browser
 ```
 
-It runs only on `http://127.0.0.1:8765/`. The primary **Drive** surface is a
-game-like Garage → Cockpit → Run saved flow. The older capture, planning,
-workflow, evidence, and activity screens remain available under the single
-**Research tools** tab instead of competing with the driving experience.
+`carla-operator-ui` resolves to `carla_vision.operator.garage_server:main`.
+The server is local-only and accepts only loopback bind names/addresses. The
+Garage layer reuses the existing Operator server, Drive engine, job manager,
+research catalog, and artifact APIs; it does not replace them.
 
-In the Garage, choose the car and colour, current-world weather, a fixed road
-scene, AI overlay, recording, and optional server-monitor camera. Technical
-connection, camera, and detector values stay in the closed **Advanced
-settings** section. **Start Drive** creates one session-owned vehicle at a
-seeded random official map spawn point and attaches its front RGB camera.
-The page then becomes an immersive Cockpit: app navigation and setup disappear
-while the camera, small HUD, view switch, emergency brake, and end action stay
-visible. Use `W/A/S/D` or the arrow keys, `Space` for the handbrake, and
-`Shift` plus forward throttle for safe reverse. Coarse-pointer/touch screens
-receive multi-touch steering, throttle, brake, handbrake, and hold-to-reverse
-controls over the camera. Model results are advisory only; fresh human input
-is the only driving authority.
+The browser still has two top-level surfaces:
 
-Only one interactive drive can be active. Losing viewport/browser focus or
-failing to send a fresh control heartbeat applies the deadman brake, and
-**Emergency Brake** remains latched for that session. Finish with **End Drive
-& Save** so cleanup and manifest finalization can complete. When the CARLA episode is
-unchanged, the session removes its actors and restores the prior weather. A
-recorded run is retained under `runs/<run-id>/` with raw and model-overlay MP4s,
-control/detection/event
-JSONL logs, final frames, a summary, and a checksum-tracked manifest (model
-artifacts are present only when the model/recording option is enabled).
+```text
+Drive
+Research tools
+```
 
-The UI is an orchestration layer over the same strict CLIs. It does not expose
-arbitrary shell execution, does not overwrite existing outputs, and keeps
-native world reload, teacher motion, locked-test access, and real training
-behind separate acknowledgements. See [Operator UI](docs/operator_ui.md).
+The Research tools surface still contains:
 
-Live driving, recording, RT-DETR/YOLO overlays, weather, and fixed road scenes
-use the lightweight MessagePack bridge and can run without the native Python
-module. The Garage shows map, traffic, pedestrians, and route controls, but
-keeps unsupported choices disabled until a matching official-PythonAPI
-Simulator Worker is connected.
+```text
+Live capture
+Scene builder
+Workflows
+Saved results
+Activity
+```
 
-The current Drive Console deliberately does not claim a road-valid random
-route, map reload, dynamic traffic or walkers, or autopilot. Those world-owned
-features need the optional matching official-PythonAPI native worker. The
-Situation Builder continues to save and resolve plans only; it does not
-populate the live Drive Console world. See [Operator UI](docs/operator_ui.md)
-for the 30-second validation workflow and the exact MVP boundary.
+The base Operator job contract still accepts exactly:
 
-The Evidence tab discovers tracked objects under `datasets/`, `runs/`,
-`models/`, `reports/`, `bundles/`, `native_kits/`, and
-`operator_sessions/`. It shows only artifacts declared by each manifest and
-never guesses filenames. The browser view reports availability, not
-integrity; its Verify action hands the selected object to the existing
-read-only verifier.
+```text
+analyze
+dataset_qa
+live
+native_capture
+native_preflight
+replay
+scenario_plan
+shadow_matrix
+train
+verify
+```
+
+The Garage adds a separate allow-listed research endpoint for:
+
+```text
+teacher_capture
+imitation_train
+voxel_capture
+voxel_flow_capture
+voxel_train
+voxel_flow_train
+voxel_shadow
+voxel_benchmark
+closed_loop_evaluate
+```
+
+Neither command layer accepts an arbitrary browser-provided shell command.
+
+### Garage Drive modes
+
+The current Drive catalog exposes four modes:
+
+| Mode | Code-visible availability | Control owner |
+|---|---|---|
+| Manual | always | browser keyboard/touch |
+| BehaviorAgent | CARLA PythonAPI + BehaviorAgent importable | BehaviorAgent |
+| Imitation | CARLA PythonAPI importable | RGB + speed imitation policy |
+| Voxel Planner | CARLA PythonAPI + BehaviorAgent importable | BehaviorAgent longitudinal + supervised voxel steering |
+
+Autonomous modes require explicit operator acknowledgement. Browser manual
+control is rejected while autonomy owns the session. Emergency Brake is checked
+before autonomous policy execution, and setup/camera/policy failures use
+service-brake fail-closed behavior.
+
+Imitation and Voxel Drive start require a workspace-contained `.pt`, `.pth`, or
+`.ckpt` file. The Garage recursively discovers checkpoint **candidates** by
+suffix and applies filename preferences in the browser; this does not prove a
+file is compatible with the selected runtime. Compatibility is only established
+when the runtime can load/use the checkpoint.
+
+Traffic and walker population controls become available when the official CARLA
+PythonAPI is importable. Garage-created Traffic Manager vehicles, walkers, and
+walker controllers are tracked and destroyed during Garage cleanup.
+
+Manual Drive starts from a seeded CARLA spawn point and has no planned route.
+There is no operator-selectable Garage route UI. BehaviorAgent mode internally
+chooses CARLA spawn-point destinations and calls `BehaviorAgent.set_destination()`;
+Voxel mode embeds the same BehaviorAgent baseline and therefore also uses that
+internal destination handling.
+
+After a successful Drive save, the Garage can open the exact run in Saved
+results, launch the existing analysis workflow, or launch the existing recursive
+verification workflow.
+
+### Research tools retained from the base Operator
+
+Live capture still targets an existing vehicle/camera pair and can run detector
+inference/recording, optional privileged low-speed teacher motion, a non-actuating
+vision-policy shadow, and optional CARLA spectator follow. Teacher motion remains
+explicitly acknowledged.
+
+Scene builder still saves a strict situation recipe and resolves it through the
+scenario planner. Saving/planning is offline and does not itself mutate CARLA or
+populate the active Drive session.
+
+The Workflows tab still exposes dataset QA, native preflight/capture, live shadow
+matrix, paired replay, detector training, run analysis, and recursive
+verification through the existing strict command layer.
+
+Saved results still enumerates immediate manifest-backed objects under the seven
+canonical evidence roots (`datasets`, `runs`, `models`, `reports`, `bundles`,
+`native_kits`, `operator_sessions`). Browser inspection reports manifest
+information plus file availability and explicitly leaves verification as
+`not_checked` until the verifier is run.
+
+Activity remains backed by tracked `operator_sessions/` objects containing the
+validated request, resolved command plan, status, stdout/stderr logs, and
+manifest/provenance when produced.
+
+See [Operator UI](docs/operator_ui.md) for the current control ownership,
+research-job contracts, known UI wording inconsistency, and validation boundary.
+
+### Current browser wording caveat
+
+The Garage is injected onto an older manual-only Drive page. During autonomous
+Drive, Garage CSS hides the lower `Human control only` boundary and adds a live
+mode badge/note, but some top-level static copy still says `MANUAL DRIVE`,
+`AI suggestions only — you stay in control`, and `AI ... never steers or
+brakes`. Those labels are stale/misleading for Behavior/Imitation/Voxel sessions.
+The actual control source is the live Garage mode/session metadata and applied
+control log, not those static labels.
 
 ## Live RT-DETR
 
@@ -439,7 +548,7 @@ uv run carla-verify \
 ```
 
 `--require-clean-git` adds the confirmatory-publication gate. It correctly
-fails for the current development artifacts because they were created before
+fails for the referenced development artifacts because they were created before
 the repository had a clean commit.
 
 Seal a point-in-time workspace evidence index without contacting CARLA:
@@ -513,8 +622,8 @@ uv run carla-verify-reproduction \
 ```
 
 This bundle archives deterministic source bytes and `uv.lock`, not mutable
-paths to the original research objects. The current bundle is development-only
-because the workspace has no clean commit. See
+paths to the original research objects. The referenced bundle is development
+point-in-time evidence, not proof of current Garage/autonomy behavior. See
 [Reproducibility and provenance](docs/reproducibility.md) for the identity,
 privacy, archive, semantic-verification, and confirmatory-gate contracts.
 
@@ -542,28 +651,20 @@ model family.
 
 ## Verification
 
+For the current Python test suite and maintained package/browser sources, use:
+
 ```bash
-uv run ruff format --check .
-uv run ruff check .
-uv run python -m compileall -q .
-uv run python -m unittest discover -s tests -v
+uv run ruff check carla_vision carla_yolo tests
+uv run python -m compileall -q carla_vision carla_yolo tests
+find carla_vision/operator -type f -name '*.js' -print0 | xargs -0 -r -n1 node --check
+uv run pytest -q
 ```
 
-The repository currently contains development evidence, including a live
-RT-DETR teacher drive, a current-schema perception smoke and analysis, a
-three-frame exact-sync dataset pilot and QA run, a 23-episode deterministic
-scenario plan, a real pretrained RT-DETR development evaluation, a paired
-RT-DETR/YOLO26 replay, a verified live non-actuating policy-shadow matrix,
-standalone reproduction bundles, and manifest-generated validation reports.
-The v0.6 release adds the loopback operator POC and situation planning. The
-v0.7 release adds a read-only native readiness artifact, operator preflight
-control, a 50-frame first native plan, and stronger multi-episode provenance.
-The v0.8 release adds the portable guarded native-host kit and its independent
-semantic verifier. The v0.9 release adds the sealed workspace evidence index,
-semantic drift verification, and the manifest-driven Evidence Explorer.
-These artifacts were produced from a dirty, uncommitted workspace and are not
-publishable thesis results. Exact commands, metrics, hashes, and limitations
-are recorded in the validation documentation.
+Versioned validation reports and retained development artifacts in this
+repository are point-in-time evidence for the experiments that produced them.
+They should not be treated as proof that the current Garage/Imitation/Voxel
+control paths have been revalidated in live CARLA after later code changes.
+Current simulator behavior must be measured again when that claim matters.
 
 ## Research documentation
 
@@ -575,6 +676,7 @@ are recorded in the validation documentation.
 - [Reproducibility and provenance](docs/reproducibility.md)
 - [Evidence index](docs/evidence_index.md)
 - [Operator UI](docs/operator_ui.md)
+- [Voxel actuation](docs/voxel_actuation_fa.md)
 - [Portable native-host kit](docs/native_host_kit.md)
 - [First native pilot checklist](docs/native_pilot_checklist.md)
 - [Validation report v0.9](docs/validation_report_v0.9.md)
@@ -596,5 +698,7 @@ as versioned references.
 
 This is simulator research software. A 2D RGB box is not metric distance,
 teacher control is not vision-only autonomy, and CARLA results do not establish
-real-world vehicle safety. Motion remains opt-in, low-speed, watchdog guarded,
-and followed by a verified stop.
+real-world vehicle safety. Autonomous Garage/local-drive code paths also do not
+establish closed-loop quality merely because they exist or pass tests. Motion
+remains opt-in/acknowledged in the paths that require it, and live behavior must
+be validated against CARLA with retained metrics and cleanup evidence.
