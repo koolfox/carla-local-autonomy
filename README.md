@@ -548,7 +548,7 @@ uv run carla-verify \
 ```
 
 `--require-clean-git` adds the confirmatory-publication gate. It correctly
-fails for the current development artifacts because they were created before
+fails for the referenced development artifacts because they were created before
 the repository had a clean commit.
 
 Seal a point-in-time workspace evidence index without contacting CARLA:
@@ -622,8 +622,8 @@ uv run carla-verify-reproduction \
 ```
 
 This bundle archives deterministic source bytes and `uv.lock`, not mutable
-paths to the original research objects. The current bundle is development-only
-because the workspace has no clean commit. See
+paths to the original research objects. The referenced bundle is development
+point-in-time evidence, not proof of current Garage/autonomy behavior. See
 [Reproducibility and provenance](docs/reproducibility.md) for the identity,
 privacy, archive, semantic-verification, and confirmatory-gate contracts.
 
@@ -651,28 +651,20 @@ model family.
 
 ## Verification
 
+For the current Python test suite and maintained package/browser sources, use:
+
 ```bash
-uv run ruff format --check .
-uv run ruff check .
-uv run python -m compileall -q .
-uv run python -m unittest discover -s tests -v
+uv run ruff check carla_vision carla_yolo tests
+uv run python -m compileall -q carla_vision carla_yolo tests
+find carla_vision/operator -type f -name '*.js' -print0 | xargs -0 -r -n1 node --check
+uv run pytest -q
 ```
 
-The repository currently contains development evidence, including a live
-RT-DETR teacher drive, a current-schema perception smoke and analysis, a
-three-frame exact-sync dataset pilot and QA run, a 23-episode deterministic
-scenario plan, a real pretrained RT-DETR development evaluation, a paired
-RT-DETR/YOLO26 replay, a verified live non-actuating policy-shadow matrix,
-standalone reproduction bundles, and manifest-generated validation reports.
-The v0.6 release adds the loopback operator POC and situation planning. The
-v0.7 release adds a read-only native readiness artifact, operator preflight
-control, a 50-frame first native plan, and stronger multi-episode provenance.
-The v0.8 release adds the portable guarded native-host kit and its independent
-semantic verifier. The v0.9 release adds the sealed workspace evidence index,
-semantic drift verification, and the manifest-driven Evidence Explorer.
-These artifacts were produced from a dirty, uncommitted workspace and are not
-publishable thesis results. Exact commands, metrics, hashes, and limitations
-are recorded in the validation documentation.
+Versioned validation reports and retained development artifacts in this
+repository are point-in-time evidence for the experiments that produced them.
+They should not be treated as proof that the current Garage/Imitation/Voxel
+control paths have been revalidated in live CARLA after later code changes.
+Current simulator behavior must be measured again when that claim matters.
 
 ## Research documentation
 
@@ -684,6 +676,7 @@ are recorded in the validation documentation.
 - [Reproducibility and provenance](docs/reproducibility.md)
 - [Evidence index](docs/evidence_index.md)
 - [Operator UI](docs/operator_ui.md)
+- [Voxel actuation](docs/voxel_actuation_fa.md)
 - [Portable native-host kit](docs/native_host_kit.md)
 - [First native pilot checklist](docs/native_pilot_checklist.md)
 - [Validation report v0.9](docs/validation_report_v0.9.md)
