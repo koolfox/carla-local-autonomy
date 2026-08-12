@@ -37,12 +37,14 @@ from ..recording import AsyncVideoRecorder
 from ..watchdog import SafeActuator
 from .drive_contracts import DriveInput, DriveStartConfig, weather_payload
 from .situations import PROP_PRESETS, WEATHER_PRESETS
+from .world_worker_client import WorldWorkerClient, WorldWorkerScene
 
 _ACTIVE = frozenset({"starting", "running", "stopping"})
 _TERMINAL = frozenset({"success", "failed"})
 _BROWSER_LEASE_SECONDS = 0.40
 _CONTROL_PERIOD_SECONDS = 0.05
 _TELEMETRY_PERIOD_SECONDS = 0.20
+_WORKER_HEARTBEAT_SECONDS = 0.50
 
 
 def _utc_now() -> str:
@@ -51,6 +53,13 @@ def _utc_now() -> str:
 
 def _map_short_name(raw: str) -> str:
     return raw.rsplit("/", 1)[-1].removesuffix(".umap")
+
+
+def _world_worker_health_ready(payload: Mapping[str, Any]) -> bool:
+    ready = payload.get("ready")
+    if isinstance(ready, bool):
+        return ready
+    return str(payload.get("status", "")).strip().lower() in {"ok", "ready"}
 
 
 def _validate_camera_attachment(camera: list[Any], vehicle_id: int) -> None:
@@ -131,9 +140,7 @@ def _vehicle_description(
     serialized: list[list[Any]] = []
     for attribute in definition[3]:
         attribute_id, attribute_type, default = attribute[:3]
-        serialized.append(
-            [attribute_id, attribute_type, overrides.get(str(attribute_id), default)]
-        )
+        serialized.append([attribute_id, attribute_type, overrides.get(str(attribute_id), default)])
     return [definition[0], definition[1], serialized]
 
 
@@ -237,10 +244,7 @@ def _spawn_props(
             serialized = [
                 definition[0],
                 definition[1],
-                [
-                    [attribute[0], attribute[1], attribute[2]]
-                    for attribute in definition[3]
-                ],
+                [[attribute[0], attribute[1], attribute[2]] for attribute in definition[3]],
             ]
             transform = _compose_relative_transform(ego_start, item["transform"])
             actor = rpc.value_call("spawn_actor", serialized, transform)
@@ -248,9 +252,7 @@ def _spawn_props(
             spawned.append((actor_id, blueprint))
             verified = rpc.actor(actor_id)
             if verified is None or str(verified[2][1]) != blueprint:
-                raise RuntimeError(
-                    f"spawned scene prop {actor_id} did not verify as {blueprint}"
-                )
+                raise RuntimeError(f"spawned scene prop {actor_id} did not verify as {blueprint}")
     except BaseException:
         for actor_id, _ in reversed(spawned):
             try:
@@ -285,11 +287,21 @@ def _vehicle_catalog(definitions: list[Any]) -> list[dict[str, Any]]:
 class DriveSession:
     """Own every resource for one interactive browser-controlled drive."""
 
-    def __init__(self, config: DriveStartConfig, *, workspace: Path) -> None:
+    def __init__(
+        self,
+        config: DriveStartConfig,
+        *,
+        workspace: Path,
+        world_worker: WorldWorkerClient | None = None,
+    ) -> None:
         self.config = config
         self.workspace = workspace
+        self._world_worker = world_worker
+        if config.world_worker_enabled != (world_worker is not None):
+            raise ValueError("drive configuration and World Worker availability disagree")
         self.session_id = config.run_id
         self._lock = threading.RLock()
+        self._worker_request_lock = threading.Lock()
         self._frame_condition = threading.Condition(self._lock)
         self._status = "starting"
         self._error: str | None = None
@@ -309,6 +321,24 @@ class DriveSession:
         self._control_source = "deadman"
         self._requested_weather: str | None = None
         self._weather_preset = config.weather_preset
+        self._control_mode = config.initial_control_mode
+        self._mode_history: list[dict[str, Any]] = [
+            {
+                "at": _utc_now(),
+                "from": None,
+                "to": config.initial_control_mode,
+                "reason": "session_start",
+            }
+        ]
+        self._pending_events: list[dict[str, Any]] = []
+        self._worker_scene: WorldWorkerScene | None = None
+        self._worker_scene_id: str | None = None
+        self._worker_scene_stopped = False
+        self._worker_cleanup_guard_passed: bool | None = None
+        self._worker_control_sequence = 0
+        self._worker_heartbeat_stop = threading.Event()
+        self._worker_heartbeat_thread: threading.Thread | None = None
+        self._worker_heartbeat_error: BaseException | None = None
         self._raw_jpeg: bytes | None = None
         self._overlay_jpeg: bytes | None = None
         self._raw_frame_sequence = -1
@@ -326,6 +356,10 @@ class DriveSession:
         self._camera_id: int | None = None
         self._prop_ids: list[int] = []
         self._spawn_index: int | None = None
+        self._traffic_count_actual = 0
+        self._walker_count_actual = 0
+        self._route: dict[str, Any] = {}
+        self._destination: Any = None
         self._detector_name: str | None = None
         self._recording = bool(config.record_video)
         self._output_path: str | None = None
@@ -367,6 +401,17 @@ class DriveSession:
                 "input_age_seconds": input_age,
                 "deadman_active": self._deadman_active,
                 "control_source": self._control_source,
+                "control_mode": self._control_mode,
+                "world_worker": {
+                    "enabled": self._world_worker is not None,
+                    "scene_id": self._worker_scene_id,
+                    "status": (None if self._worker_scene is None else self._worker_scene.status),
+                    "cleanup_guard_passed": self._worker_cleanup_guard_passed,
+                },
+                "traffic_count_actual": self._traffic_count_actual,
+                "walker_count_actual": self._walker_count_actual,
+                "route": dict(self._route),
+                "destination": self._destination,
                 "detector": {
                     "enabled": self.config.detector_enabled,
                     "name": self._detector_name,
@@ -395,14 +440,84 @@ class DriveSession:
             if control.sequence <= self._last_input_sequence:
                 raise ValueError("control sequence must be newer than the previous input")
             self._last_input_sequence = control.sequence
-            self._last_input = (control, time.monotonic())
+            if self._control_mode == "manual":
+                self._last_input = (control, time.monotonic())
         return self.snapshot()
 
     def emergency_stop(self) -> dict[str, Any]:
+        worker = self._world_worker
+        worker_scene: WorldWorkerScene | None
         with self._lock:
             self._emergency = True
             self._deadman_active = True
             self._control_source = "emergency_stop"
+            worker_scene = self._worker_scene
+        if worker is not None and worker_scene is not None and self._control_mode != "manual":
+            with self._worker_request_lock:
+                with self._lock:
+                    worker_scene = self._worker_scene
+                    previous_mode = self._control_mode
+                if worker_scene is None:
+                    raise RuntimeError("World Worker scene is not ready")
+                updated = worker.mode(worker_scene, "manual")
+                with self._lock:
+                    self._worker_control_sequence += 1
+                    worker_sequence = self._worker_control_sequence
+                emergency_command = ControlCommand.service_brake()
+                updated = worker.control(
+                    updated,
+                    {
+                        "sequence": worker_sequence,
+                        "throttle": emergency_command.throttle,
+                        "steer": emergency_command.steer,
+                        "brake": emergency_command.brake,
+                        "hand_brake": emergency_command.hand_brake,
+                        "reverse": emergency_command.reverse,
+                    },
+                )
+                with self._lock:
+                    self._worker_scene = updated
+                    self._route = dict(updated.route)
+                    self._destination = updated.destination
+                    self._control_mode = "manual"
+                    self._last_input = None
+                self._record_mode_change(previous_mode, "manual", "emergency_stop")
+        return self.snapshot()
+
+    def request_mode(self, mode: str) -> dict[str, Any]:
+        control_mode = str(mode).strip()
+        if control_mode not in {"manual", "autopilot"}:
+            raise ValueError("control mode must be manual or autopilot")
+        with self._lock:
+            if self._status != "running":
+                raise RuntimeError("control mode can only change during a running drive")
+            if self._emergency and control_mode != "manual":
+                raise RuntimeError("emergency brake is latched; autopilot cannot be re-enabled")
+            worker_scene = self._worker_scene
+        if self._world_worker is None:
+            if control_mode != "manual":
+                raise RuntimeError("autopilot requires a configured World Worker")
+            return self.snapshot()
+        if worker_scene is None:
+            raise RuntimeError("World Worker scene is not ready")
+        with self._worker_request_lock:
+            with self._lock:
+                worker_scene = self._worker_scene
+                previous_mode = self._control_mode
+            if worker_scene is None:
+                raise RuntimeError("World Worker scene is not ready")
+            updated = self._world_worker.mode(worker_scene, control_mode)
+            with self._lock:
+                self._worker_scene = updated
+                self._route = dict(updated.route)
+                self._destination = updated.destination
+                self._control_mode = control_mode
+                self._last_input = None
+                self._deadman_active = control_mode == "manual"
+                self._control_source = (
+                    "worker_autopilot" if control_mode == "autopilot" else "browser_deadman"
+                )
+            self._record_mode_change(previous_mode, control_mode, "operator_request")
         return self.snapshot()
 
     def request_weather(self, preset: str) -> dict[str, Any]:
@@ -449,6 +564,29 @@ class DriveSession:
                 self._overlay_jpeg = payload
             self._frame_condition.notify_all()
 
+    def _record_mode_change(self, previous: str, current: str, reason: str) -> None:
+        if previous == current:
+            return
+        event = {
+            "event": "control_mode_changed",
+            "at": _utc_now(),
+            "from": previous,
+            "to": current,
+            "reason": reason,
+        }
+        with self._lock:
+            self._mode_history.append(
+                {key: value for key, value in event.items() if key != "event"}
+            )
+            self._pending_events.append(event)
+
+    def _drain_pending_events(self, stream: TextIO | None) -> None:
+        with self._lock:
+            pending = list(self._pending_events)
+            self._pending_events.clear()
+        for event in pending:
+            _json_line(stream, event)
+
     def _run(self) -> None:
         try:
             self._run_tracked()
@@ -462,45 +600,186 @@ class DriveSession:
                 self._status = "success"
                 self._finished_monotonic = time.monotonic()
 
-    def _run_tracked(self) -> None:
-        with CarlaRpc(self.config.host, self.config.port, timeout=4.0) as preflight_rpc:
-            preflight_version = str(preflight_rpc.value_call("version"))
-            preflight_map = str(preflight_rpc.value_call("get_map_info")[0])
-        model_refs: tuple[Mapping[str, Any], ...] = ()
-        if self.config.detector_enabled and self.config.weights is not None:
-            model_refs = (
+    def _begin_worker_scene(self) -> WorldWorkerScene:
+        worker = self._world_worker
+        if worker is None:
+            raise RuntimeError("World Worker is not configured")
+        with self._worker_request_lock:
+            prepared = worker.prepare_scene(
                 {
-                    "kind": "advisory_object_detector",
-                    "actuation_authorized": False,
-                    **fingerprint_file(self.config.weights),
-                },
+                    "map_name": self.config.map_name,
+                    "weather_preset": self.config.weather_preset,
+                    "vehicle_blueprint": self.config.vehicle_blueprint,
+                    "color": self.config.color,
+                    "seed": self.config.seed,
+                    "traffic_count": self.config.traffic_count,
+                    "walker_count": self.config.walker_count,
+                    "prop_preset": self.config.prop_preset,
+                    "route_mode": self.config.route_mode,
+                    "initial_control_mode": self.config.initial_control_mode,
+                }
             )
-        tracker = RunArtifactTracker(
-            self.workspace / "runs",
-            run_id=self.config.run_id,
-            cli_args={"source": "operator_drive_console"},
-            config=self.config.manifest_config(),
-            repository_root=self.workspace,
-            carla_endpoint={"host": self.config.host, "port": self.config.port},
-            carla_version=preflight_version,
-            carla_map=preflight_map,
-            model_refs=model_refs,
-        )
         with self._lock:
-            self._output_path = tracker.run_dir.relative_to(self.workspace).as_posix()
+            self._worker_scene = prepared
+            self._worker_scene_id = prepared.scene_id
+            self._traffic_count_actual = prepared.traffic_count or 0
+            self._walker_count_actual = prepared.walker_count or 0
+            self._route = dict(prepared.route)
+            self._destination = prepared.destination
+        if prepared.ego_actor_id is None:
+            raise RuntimeError("World Worker prepared a scene without an ego actor")
+        if prepared.episode_id is None:
+            raise RuntimeError("World Worker prepared a scene without an episode_id")
+        if prepared.control_mode != self.config.initial_control_mode:
+            raise RuntimeError("World Worker did not prepare the requested initial control mode")
+        with self._lock:
+            self._control_mode = self.config.initial_control_mode
+            self._deadman_active = True
+            self._control_source = "worker_prepared"
+        self._start_worker_heartbeat()
+        return prepared
 
-        failure: BaseException | None = None
-        with tracker:
+    def _activate_worker_scene(self) -> WorldWorkerScene:
+        worker = self._world_worker
+        if worker is None:
+            raise RuntimeError("World Worker is not configured")
+        with self._worker_request_lock:
+            with self._lock:
+                scene = self._worker_scene
+                heartbeat_error = self._worker_heartbeat_error
+            if heartbeat_error is not None:
+                raise RuntimeError(f"World Worker heartbeat failed: {heartbeat_error}")
+            if scene is None:
+                raise RuntimeError("World Worker scene is not ready")
+            started = worker.start_scene(scene)
+            if started.status != "running":
+                raise RuntimeError("World Worker did not enter the running scene state")
+            if started.ego_actor_id is None or started.episode_id is None:
+                raise RuntimeError("World Worker running scene lost its authoritative actors")
+            if started.control_mode != self.config.initial_control_mode:
+                raise RuntimeError("World Worker did not apply the requested initial control mode")
+            with self._lock:
+                self._worker_scene = started
+                self._route = dict(started.route)
+                self._destination = started.destination
+                self._control_mode = self.config.initial_control_mode
+                self._deadman_active = self._control_mode == "manual"
+                self._control_source = (
+                    "worker_autopilot" if self._control_mode == "autopilot" else "browser_deadman"
+                )
+        return started
+
+    def _start_worker_heartbeat(self) -> None:
+        if self._world_worker is None or self._worker_heartbeat_thread is not None:
+            return
+        self._worker_heartbeat_thread = threading.Thread(
+            target=self._worker_heartbeat_loop,
+            name=f"world-worker-heartbeat-{self.session_id}",
+            daemon=True,
+        )
+        self._worker_heartbeat_thread.start()
+
+    def _worker_heartbeat_loop(self) -> None:
+        assert self._world_worker is not None
+        while not self._worker_heartbeat_stop.wait(_WORKER_HEARTBEAT_SECONDS):
             try:
-                self._execute(tracker)
+                with self._worker_request_lock:
+                    with self._lock:
+                        scene = self._worker_scene
+                        stopped = self._worker_scene_stopped
+                    if scene is None or stopped:
+                        return
+                    updated = self._world_worker.heartbeat(scene)
+                    with self._lock:
+                        self._worker_scene = updated
             except BaseException as error:
-                failure = error
                 with self._lock:
-                    self._error = f"{type(error).__name__}: {error}"
-            finally:
-                self._finalize(tracker, failure)
-            if failure is not None:
-                raise failure
+                    self._worker_heartbeat_error = error
+                self._stop_event.set()
+                return
+
+    def _stop_worker_heartbeat(self) -> None:
+        self._worker_heartbeat_stop.set()
+        thread = self._worker_heartbeat_thread
+        if thread is not None and thread is not threading.current_thread():
+            thread.join(timeout=2.0)
+
+    def _stop_worker_scene(self) -> None:
+        worker = self._world_worker
+        with self._lock:
+            scene = self._worker_scene
+            stopped = self._worker_scene_stopped
+        if worker is None or scene is None or stopped:
+            return
+        self._stop_worker_heartbeat()
+        with self._worker_request_lock:
+            with self._lock:
+                scene = self._worker_scene
+            if scene is None:
+                return
+            updated = worker.stop_scene(scene)
+        with self._lock:
+            self._worker_scene = updated
+            self._worker_scene_stopped = True
+            self._worker_cleanup_guard_passed = updated.cleanup_guard_passed
+            self._route = dict(updated.route)
+            self._destination = updated.destination
+            for error in updated.cleanup_errors:
+                self._cleanup_errors.append(f"World Worker cleanup: {error}")
+
+    def _run_tracked(self) -> None:
+        try:
+            if self._world_worker is not None:
+                self._begin_worker_scene()
+            with CarlaRpc(self.config.host, self.config.port, timeout=4.0) as preflight_rpc:
+                preflight_version = str(preflight_rpc.value_call("version"))
+                preflight_map = str(preflight_rpc.value_call("get_map_info")[0])
+            model_refs: tuple[Mapping[str, Any], ...] = ()
+            if self.config.detector_enabled and self.config.weights is not None:
+                model_refs = (
+                    {
+                        "kind": "advisory_object_detector",
+                        "actuation_authorized": False,
+                        **fingerprint_file(self.config.weights),
+                    },
+                )
+            tracker = RunArtifactTracker(
+                self.workspace / "runs",
+                run_id=self.config.run_id,
+                cli_args={"source": "operator_drive_console"},
+                config=self.config.manifest_config(),
+                repository_root=self.workspace,
+                carla_endpoint={"host": self.config.host, "port": self.config.port},
+                carla_version=preflight_version,
+                carla_map=preflight_map,
+                model_refs=model_refs,
+            )
+            with self._lock:
+                self._output_path = tracker.run_dir.relative_to(self.workspace).as_posix()
+
+            failure: BaseException | None = None
+            with tracker:
+                try:
+                    self._execute(tracker)
+                except BaseException as error:
+                    failure = error
+                    with self._lock:
+                        self._error = f"{type(error).__name__}: {error}"
+                finally:
+                    if self._world_worker is not None and not self._worker_scene_stopped:
+                        try:
+                            self._stop_worker_scene()
+                        except Exception as error:
+                            self._cleanup_errors.append(f"World Worker cleanup: {error}")
+                    self._finalize(tracker, failure)
+                if failure is not None:
+                    raise failure
+        finally:
+            if self._world_worker is not None and not self._worker_scene_stopped:
+                try:
+                    self._stop_worker_scene()
+                except Exception as error:
+                    self._cleanup_errors.append(f"World Worker final cleanup: {error}")
 
     def _execute(self, tracker: RunArtifactTracker) -> None:
         rpc: CarlaRpc | None = None
@@ -554,33 +833,63 @@ class DriveSession:
             if not isinstance(map_info, list) or len(map_info) < 2 or not map_info[1]:
                 raise RuntimeError("CARLA map exposes no spawn points")
             self._map = _map_short_name(str(map_info[0]))
-            original_weather = [float(value) for value in rpc.value_call("get_weather_parameters")]
-            if self.config.weather_preset != "keep":
-                rpc.void_call(
-                    "set_weather_parameters",
-                    weather_payload(self.config.weather_preset),
+            spawn_transform: list[Any] | None = None
+            if self._world_worker is not None:
+                with self._lock:
+                    worker_scene = self._worker_scene
+                if worker_scene is None or worker_scene.ego_actor_id is None:
+                    raise RuntimeError("World Worker scene is not ready")
+                if worker_scene.episode_id != episode_id:
+                    raise RuntimeError(
+                        "World Worker scene episode does not match the camera bridge episode"
+                    )
+                if (
+                    worker_scene.map_name not in {None, "current"}
+                    and _map_short_name(worker_scene.map_name) != self._map
+                ):
+                    raise RuntimeError(
+                        "World Worker scene map does not match the camera bridge map"
+                    )
+                vehicle_id = worker_scene.ego_actor_id
+                verified_vehicle = rpc.actor(vehicle_id)
+                if verified_vehicle is None or not str(verified_vehicle[2][1]).startswith(
+                    "vehicle."
+                ):
+                    raise RuntimeError("World Worker ego actor did not verify as a vehicle")
+                spawn_index = worker_scene.spawn_index
+                self._vehicle_id = vehicle_id
+                self._spawn_index = spawn_index
+                self._prop_ids = list(worker_scene.prop_actor_ids)
+            else:
+                original_weather = [
+                    float(value) for value in rpc.value_call("get_weather_parameters")
+                ]
+                if self.config.weather_preset != "keep":
+                    rpc.void_call(
+                        "set_weather_parameters",
+                        weather_payload(self.config.weather_preset),
+                    )
+                    weather_changed = True
+                vehicle_id, spawn_transform, spawn_index = _spawn_vehicle(
+                    rpc,
+                    blueprint=self.config.vehicle_blueprint,
+                    color=self.config.color,
+                    spawn_points=list(map_info[1]),
+                    seed=self.config.seed,
                 )
-                weather_changed = True
-            vehicle_id, spawn_transform, spawn_index = _spawn_vehicle(
-                rpc,
-                blueprint=self.config.vehicle_blueprint,
-                color=self.config.color,
-                spawn_points=list(map_info[1]),
-                seed=self.config.seed,
-            )
-            self._vehicle_id = vehicle_id
-            self._spawn_index = spawn_index
-            owned_actor_ids.append((vehicle_id, "vehicle"))
-            rpc.apply_vehicle_control(vehicle_id, ControlCommand.parked().as_carla())
+                self._vehicle_id = vehicle_id
+                self._spawn_index = spawn_index
+                owned_actor_ids.append((vehicle_id, "vehicle"))
+                rpc.apply_vehicle_control(vehicle_id, ControlCommand.parked().as_carla())
 
-            spawned_props = _spawn_props(
-                rpc,
-                preset=self.config.prop_preset,
-                ego_start=spawn_transform,
-            )
-            for prop_id, blueprint in spawned_props:
-                owned_actor_ids.append((prop_id, f"prop:{blueprint}"))
-                self._prop_ids.append(prop_id)
+                spawned_props = _spawn_props(
+                    rpc,
+                    preset=self.config.prop_preset,
+                    ego_start=spawn_transform,
+                )
+                for prop_id, blueprint in spawned_props:
+                    owned_actor_ids.append((prop_id, f"prop:{blueprint}"))
+                    self._prop_ids.append(prop_id)
 
             camera = spawn_front_camera(
                 rpc,
@@ -603,16 +912,17 @@ class DriveSession:
             )
             stream.wait_for_frame(timeout=10.0)
 
-            actuator = SafeActuator(
-                self.config.host,
-                self.config.port,
-                vehicle_id,
-                # The browser lease already substitutes full brake at 0.40s,
-                # while camera freshness has its own threshold. This independent
-                # process timeout is only the second boundary for a dead owner
-                # and must tolerate normal LAN/UE scheduling.
-                heartbeat_timeout=1.5,
-            )
+            if self._world_worker is None:
+                actuator = SafeActuator(
+                    self.config.host,
+                    self.config.port,
+                    vehicle_id,
+                    # The browser lease already substitutes full brake at 0.40s,
+                    # while camera freshness has its own threshold. This independent
+                    # process timeout is only the second boundary for a dead owner
+                    # and must tolerate normal LAN/UE scheduling.
+                    heartbeat_timeout=1.5,
+                )
             if self.config.detector_enabled:
                 detector = create_detector(
                     DetectorConfig(
@@ -650,6 +960,9 @@ class DriveSession:
                     self._cleanup_errors.append(f"spectator setup: {error}")
                     spectator_follow_active = False
 
+            if self._world_worker is not None:
+                self._activate_worker_scene()
+
             _json_line(
                 events_stream,
                 {
@@ -664,6 +977,8 @@ class DriveSession:
                     "spawn_index": spawn_index,
                     "spawn_transform": spawn_transform,
                     "weather_preset": self.config.weather_preset,
+                    "world_worker_scene_id": self._worker_scene_id,
+                    "control_mode": self._control_mode,
                     "model_output_actuated": False,
                 },
             )
@@ -671,6 +986,7 @@ class DriveSession:
 
             renderer = OverlayRenderer(stale_after_seconds=2.0)
             while not self._stop_event.is_set():
+                self._drain_pending_events(events_stream)
                 now = time.monotonic()
                 frame = stream.latest()
                 if frame is not None and frame.sequence > last_camera_sequence:
@@ -708,11 +1024,17 @@ class DriveSession:
                         result = None
                     if result is not None and result.sequence > last_result_sequence:
                         last_result_sequence = result.sequence
+                        with self._lock:
+                            control_mode = self._control_mode
                         latest_overlay = renderer.render(
                             result,
                             now_monotonic=result.completed_monotonic,
                             hud={
-                                "CONTROL": "HUMAN / BROWSER",
+                                "CONTROL": (
+                                    "CARLA / AUTOPILOT"
+                                    if control_mode == "autopilot"
+                                    else "HUMAN / BROWSER"
+                                ),
                                 "MODEL": "ADVISORY ONLY",
                             },
                         )
@@ -733,11 +1055,24 @@ class DriveSession:
                     requested_weather = self._requested_weather
                     self._requested_weather = None
                 if requested_weather is not None:
-                    rpc.void_call(
-                        "set_weather_parameters",
-                        weather_payload(requested_weather),
-                    )
-                    weather_changed = True
+                    if self._world_worker is not None:
+                        with self._worker_request_lock:
+                            with self._lock:
+                                worker_scene = self._worker_scene
+                            if worker_scene is None:
+                                raise RuntimeError("World Worker scene is not ready")
+                            updated_scene = self._world_worker.weather(
+                                worker_scene,
+                                requested_weather,
+                            )
+                        with self._lock:
+                            self._worker_scene = updated_scene
+                    else:
+                        rpc.void_call(
+                            "set_weather_parameters",
+                            weather_payload(requested_weather),
+                        )
+                        weather_changed = True
                     with self._lock:
                         self._weather_preset = requested_weather
                     _json_line(
@@ -750,21 +1085,66 @@ class DriveSession:
                     )
 
                 if now - last_control_at >= _CONTROL_PERIOD_SECONDS:
-                    camera_stale = (
-                        last_camera_received <= 0.0
-                        or now - last_camera_received > max(1.5, 4.0 / self.config.camera_fps)
-                    )
-                    command, source, input_age = self._command(now, camera_stale=camera_stale)
-                    actuator.send(command)
+                    with self._lock:
+                        control_mode = self._control_mode
+                    if control_mode == "manual":
+                        camera_stale = (
+                            last_camera_received <= 0.0
+                            or now - last_camera_received > max(1.5, 4.0 / self.config.camera_fps)
+                        )
+                        command, source, input_age = self._command(
+                            now,
+                            camera_stale=camera_stale,
+                        )
+                        command_sent = True
+                        if self._world_worker is not None:
+                            with self._worker_request_lock:
+                                with self._lock:
+                                    if self._control_mode != "manual":
+                                        command_sent = False
+                                        worker_scene = None
+                                        worker_sequence = 0
+                                    else:
+                                        worker_scene = self._worker_scene
+                                        self._worker_control_sequence += 1
+                                        worker_sequence = self._worker_control_sequence
+                                if command_sent:
+                                    if worker_scene is None:
+                                        raise RuntimeError("World Worker scene is not ready")
+                                    updated_scene = self._world_worker.control(
+                                        worker_scene,
+                                        {
+                                            "sequence": worker_sequence,
+                                            "throttle": command.throttle,
+                                            "steer": command.steer,
+                                            "brake": command.brake,
+                                            "hand_brake": command.hand_brake,
+                                            "reverse": command.reverse,
+                                        },
+                                    )
+                                    with self._lock:
+                                        self._worker_scene = updated_scene
+                        else:
+                            assert actuator is not None
+                            actuator.send(command)
+                        if command_sent:
+                            self._write_control(
+                                controls_stream,
+                                command=command,
+                                source=source,
+                                input_age=input_age,
+                                camera_sequence=last_camera_sequence,
+                                detector_sequence=last_result_sequence,
+                            )
+                        else:
+                            with self._lock:
+                                self._deadman_active = False
+                                self._control_source = "worker_autopilot"
+                    else:
+                        with self._lock:
+                            self._deadman_active = False
+                            self._control_source = "worker_autopilot"
                     last_control_at = now
-                    self._write_control(
-                        controls_stream,
-                        command=command,
-                        source=source,
-                        input_age=input_age,
-                        camera_sequence=last_camera_sequence,
-                        detector_sequence=last_result_sequence,
-                    )
 
                 if now - last_telemetry_at >= _TELEMETRY_PERIOD_SECONDS:
                     telemetry = rpc.telemetry(vehicle_id)
@@ -778,8 +1158,22 @@ class DriveSession:
                         }
                     last_telemetry_at = now
                 time.sleep(0.01)
+            if self._world_worker is not None:
+                with self._lock:
+                    heartbeat_error = self._worker_heartbeat_error
+                if heartbeat_error is not None:
+                    raise RuntimeError(f"World Worker heartbeat failed: {heartbeat_error}")
         finally:
             self._set_status("stopping")
+            self._drain_pending_events(events_stream)
+            if self._world_worker is not None:
+                try:
+                    # The worker owns the ego/world. Stop that lease first; the
+                    # camera is a locally-owned child and may already disappear
+                    # with its parent, so raw cleanup below verifies before destroy.
+                    self._stop_worker_scene()
+                except Exception as error:
+                    self._cleanup_errors.append(f"World Worker stop: {error}")
             if actuator is not None:
                 try:
                     actuator.stop()
@@ -941,9 +1335,7 @@ class DriveSession:
             command = ControlCommand.service_brake()
             source = "camera_deadman"
         elif latest is None or age is None or age > _BROWSER_LEASE_SECONDS:
-            command = ControlCommand.service_brake(
-                steer=0.0 if latest is None else latest[0].steer
-            )
+            command = ControlCommand.service_brake(steer=0.0 if latest is None else latest[0].steer)
             source = "browser_deadman"
         else:
             command = latest[0].command(max_throttle=self.config.max_throttle)
@@ -975,9 +1367,7 @@ class DriveSession:
     ) -> None:
         with self._lock:
             telemetry = dict(self._telemetry)
-            requested_sequence = (
-                None if self._last_input is None else self._last_input[0].sequence
-            )
+            requested_sequence = None if self._last_input is None else self._last_input[0].sequence
         _json_line(
             stream,
             {
@@ -1033,6 +1423,8 @@ class DriveSession:
         failure: BaseException | None,
     ) -> None:
         summary_path = tracker.artifact_path("summary.json")
+        with self._lock:
+            mode_history = [dict(item) for item in self._mode_history]
         summary = {
             "schema_version": "1.0",
             "object_type": "interactive_drive_session_summary",
@@ -1045,6 +1437,22 @@ class DriveSession:
             "camera_id": self._camera_id,
             "prop_ids": list(self._prop_ids),
             "spawn_index": self._spawn_index,
+            "world_worker_enabled": self._world_worker is not None,
+            "world_worker_scene_id": self._worker_scene_id,
+            "world_worker_cleanup_guard_passed": self._worker_cleanup_guard_passed,
+            "control_mode": self._control_mode,
+            "initial_control_mode": self.config.initial_control_mode,
+            "final_control_mode": self._control_mode,
+            "mode_history": mode_history,
+            "route_mode": self.config.route_mode,
+            "route": dict(self._route),
+            "destination": self._destination,
+            "traffic_count": self.config.traffic_count,
+            "traffic_count_requested": self.config.traffic_count,
+            "traffic_count_actual": self._traffic_count_actual,
+            "walker_count": self.config.walker_count,
+            "walker_count_requested": self.config.walker_count,
+            "walker_count_actual": self._walker_count_actual,
             "duration_seconds": time.monotonic() - self._started_monotonic,
             "frames_seen": self._frames_seen,
             "controls_written": self._controls_written,
@@ -1079,12 +1487,14 @@ class DriveSessionManager:
         carla_port: int,
         session_factory: Callable[..., DriveSession] = DriveSession,
         rpc_factory: Callable[..., CarlaRpc] = CarlaRpc,
+        world_worker: WorldWorkerClient | None = None,
     ) -> None:
         self.workspace = Path(workspace).expanduser().resolve(strict=True)
         self.carla_host = str(carla_host)
         self.carla_port = int(carla_port)
         self._session_factory = session_factory
         self._rpc_factory = rpc_factory
+        self._world_worker = world_worker
         self._lock = threading.RLock()
         self._session: DriveSession | None = None
 
@@ -1107,8 +1517,7 @@ class DriveSessionManager:
                 ],
             ],
             "prop_presets": [
-                {"id": preset, "label": preset.replace("-", " ").title()}
-                for preset in PROP_PRESETS
+                {"id": preset, "label": preset.replace("-", " ").title()} for preset in PROP_PRESETS
             ],
             "capabilities": {
                 "manual_drive": True,
@@ -1124,6 +1533,10 @@ class DriveSessionManager:
                 "walkers": False,
                 "autopilot": False,
                 "native_worker": False,
+            },
+            "world_worker": {
+                "configured": self._world_worker is not None,
+                "connected": False,
             },
         }
         try:
@@ -1141,19 +1554,100 @@ class DriveSessionManager:
                 )
         except Exception as error:
             base["error"] = f"{type(error).__name__}: {error}"
+        if self._world_worker is not None:
+            try:
+                health = self._world_worker.health()
+                if not _world_worker_health_ready(health):
+                    raise RuntimeError("World Worker reports that CARLA is unavailable")
+                worker_payload = self._world_worker.catalog()
+                worker_catalog = worker_payload.get("catalog", worker_payload)
+                if not isinstance(worker_catalog, Mapping):
+                    raise RuntimeError("World Worker catalog must be an object")
+                worker_capabilities = worker_catalog.get("capabilities", {})
+                if not isinstance(worker_capabilities, Mapping):
+                    raise RuntimeError("World Worker capabilities must be an object")
+                for key, value in worker_capabilities.items():
+                    if isinstance(value, bool):
+                        base["capabilities"][str(key)] = value
+                base["capabilities"]["native_worker"] = True
+
+                maps = worker_catalog.get("maps")
+                if isinstance(maps, list):
+                    base["maps"] = maps
+                vehicles = worker_catalog.get("vehicles")
+                if isinstance(vehicles, list):
+                    base["vehicles"] = vehicles
+                carla_facts = worker_catalog.get("carla", {})
+                if not isinstance(carla_facts, Mapping):
+                    carla_facts = {}
+                current_map = worker_catalog.get(
+                    "current_map",
+                    worker_catalog.get("map", carla_facts.get("current_map")),
+                )
+                if isinstance(current_map, str) and current_map.strip():
+                    base["map"] = _map_short_name(current_map.strip())
+                worker_server_version = carla_facts.get("server_version")
+                if isinstance(worker_server_version, str) and worker_server_version.strip():
+                    base["server_version"] = worker_server_version.strip()
+                spawn_count = worker_catalog.get("spawn_count")
+                if (
+                    isinstance(spawn_count, int)
+                    and not isinstance(spawn_count, bool)
+                    and spawn_count >= 0
+                ):
+                    base["spawn_count"] = spawn_count
+                weather_presets = worker_catalog.get("weather_presets")
+                if isinstance(weather_presets, list) and weather_presets:
+                    base["weather_presets"] = weather_presets
+                prop_presets = worker_catalog.get("prop_presets")
+                if isinstance(prop_presets, list) and prop_presets:
+                    base["prop_presets"] = prop_presets
+                base["world_worker"] = {
+                    "configured": True,
+                    "connected": True,
+                    "status": health.get("status", "reachable"),
+                }
+            except Exception as error:
+                base["world_worker"] = {
+                    "configured": True,
+                    "connected": False,
+                    "error": f"{type(error).__name__}: {error}",
+                }
         return base
 
     def start(self, raw: Mapping[str, Any]) -> dict[str, Any]:
+        active_world_worker: WorldWorkerClient | None = None
+        if self._world_worker is not None:
+            try:
+                health = self._world_worker.health()
+                if not _world_worker_health_ready(health):
+                    raise RuntimeError("World Worker reports that CARLA is unavailable")
+            except Exception:
+                # A configured but unreachable worker must not silently claim
+                # world features. Exact legacy defaults may still drive through
+                # the existing raw bridge; non-default worker fields are rejected
+                # by DriveStartConfig below.
+                active_world_worker = None
+            else:
+                active_world_worker = self._world_worker
         config = DriveStartConfig.from_mapping(
             raw,
             workspace=self.workspace,
             expected_host=self.carla_host,
             expected_port=self.carla_port,
+            world_worker_configured=active_world_worker is not None,
         )
         with self._lock:
             if self._session is not None and self._session.snapshot()["status"] in _ACTIVE:
                 raise RuntimeError("another interactive drive session is already active")
-            session = self._session_factory(config, workspace=self.workspace)
+            if active_world_worker is None:
+                session = self._session_factory(config, workspace=self.workspace)
+            else:
+                session = self._session_factory(
+                    config,
+                    workspace=self.workspace,
+                    world_worker=active_world_worker,
+                )
             self._session = session
             session.start()
             return session.snapshot()
@@ -1197,6 +1691,17 @@ class DriveSessionManager:
         session_id = str(raw["session_id"]).strip()
         preset = str(raw["preset"]).strip()
         return self._require_session(session_id).request_weather(preset)
+
+    def mode(self, raw: Mapping[str, Any]) -> dict[str, Any]:
+        allowed = {"session_id", "mode"}
+        unknown = sorted(str(key) for key in raw if str(key) not in allowed)
+        if unknown:
+            raise ValueError(f"mode request has unknown fields: {', '.join(unknown)}")
+        if set(raw) != allowed:
+            raise ValueError("mode request requires session_id and mode")
+        session_id = str(raw["session_id"]).strip()
+        mode = str(raw["mode"]).strip()
+        return self._require_session(session_id).request_mode(mode)
 
     def stop(self, raw: Mapping[str, Any]) -> dict[str, Any]:
         session_id = self._session_id(raw)

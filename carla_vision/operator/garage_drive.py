@@ -29,8 +29,16 @@ from ..model_driver import (
     control_from_value,
     create_driving_model,
 )
-from .drive import DriveSession, DriveSessionManager, _json_line, _utc_now, _write_json
+from .drive import (
+    DriveSession,
+    DriveSessionManager,
+    _json_line,
+    _utc_now,
+    _world_worker_health_ready,
+    _write_json,
+)
 from .drive_contracts import DriveInput, DriveStartConfig
+from .world_worker_client import WorldWorkerClient
 
 _CONTROL_MODES = frozenset({"manual", "behavior", "imitation", "voxel"})
 _AUTONOMOUS_MODES = _CONTROL_MODES - {"manual"}
@@ -120,6 +128,7 @@ class GarageDriveStartConfig:
         workspace: Path,
         expected_host: str,
         expected_port: int,
+        world_worker_configured: bool = False,
     ) -> "GarageDriveStartConfig":
         extra = {
             "control_mode",
@@ -142,6 +151,7 @@ class GarageDriveStartConfig:
             workspace=workspace,
             expected_host=expected_host,
             expected_port=expected_port,
+            world_worker_configured=world_worker_configured,
         )
         mode = str(raw.get("control_mode", "manual")).strip().lower()
         if mode not in _CONTROL_MODES:
@@ -157,6 +167,8 @@ class GarageDriveStartConfig:
         )
         if mode in _AUTONOMOUS_MODES and not acknowledgement:
             raise ValueError("autonomous drive modes require explicit operator acknowledgement")
+        if mode in _AUTONOMOUS_MODES and base.initial_control_mode == "autopilot":
+            raise ValueError("Garage autonomy cannot run while World Worker autopilot owns control")
 
         checkpoint = _workspace_file(
             workspace,
@@ -226,16 +238,21 @@ class GarageDriveStartConfig:
         payload = self.base.manifest_config()
         payload.update(
             {
-                "control_mode": self.control_mode,
+                "garage_mode": self.control_mode,
                 "control_owner": (
-                    "browser_manual" if self.control_mode == "manual" else self.control_mode
+                    "world_worker_autopilot"
+                    if self.control_mode == "manual"
+                    and self.base.initial_control_mode == "autopilot"
+                    else "browser_manual"
+                    if self.control_mode == "manual"
+                    else self.control_mode
                 ),
                 "autonomy_output_actuated": self.autonomous,
                 "model_output_actuated": self.model_output_actuated,
                 "operator_acknowledged_autonomy": self.acknowledge_autonomy,
                 "behavior": self.behavior,
-                "traffic_vehicles": self.traffic_vehicles,
-                "walkers": self.walkers,
+                "garage_traffic_vehicles": self.traffic_vehicles,
+                "garage_walkers": self.walkers,
                 "tm_port": self.tm_port,
                 "target_speed_kmh": self.target_speed_kmh,
                 "policy_checkpoint": (
@@ -531,9 +548,12 @@ class _ImitationPolicy:
         dt_s: float,
     ) -> tuple[ControlCommand, str, bool, dict[str, Any]]:
         if self.latched_error is not None:
-            return ControlCommand.service_brake(), "imitation_error_latched", True, {
-                "error": self.latched_error
-            }
+            return (
+                ControlCommand.service_brake(),
+                "imitation_error_latched",
+                True,
+                {"error": self.latched_error},
+            )
         frame = self.camera.latest()
         stale_limit = max(0.5, 4.0 / self.config.camera_fps)
         if frame is None or now - frame.received_monotonic > stale_limit:
@@ -584,10 +604,15 @@ class _ImitationPolicy:
             self.errors += 1
             if self.errors >= self.config.max_policy_errors:
                 self.latched_error = f"{type(error).__name__}: {error}"
-            return ControlCommand.service_brake(), "imitation_error", True, {
-                "error": f"{type(error).__name__}: {error}",
-                "consecutive_errors": self.errors,
-            }
+            return (
+                ControlCommand.service_brake(),
+                "imitation_error",
+                True,
+                {
+                    "error": f"{type(error).__name__}: {error}",
+                    "consecutive_errors": self.errors,
+                },
+            )
 
     def close(self) -> None:
         try:
@@ -644,9 +669,12 @@ class _VoxelPolicy:
         dt_s: float,
     ) -> tuple[ControlCommand, str, bool, dict[str, Any]]:
         if self.latched_error is not None:
-            return ControlCommand.service_brake(), "voxel_error_latched", True, {
-                "error": self.latched_error
-            }
+            return (
+                ControlCommand.service_brake(),
+                "voxel_error_latched",
+                True,
+                {"error": self.latched_error},
+            )
         base_command, _, base_failsafe, base_detail = self.behavior.step()
         if base_failsafe:
             return ControlCommand.service_brake(), "voxel_behavior_fail_closed", True, base_detail
@@ -674,7 +702,12 @@ class _VoxelPolicy:
                 return ControlCommand.service_brake(), "voxel_warmup", True, {}
             decision = self.last_result["decision"]
             if now - self.last_decision_at > 0.20:
-                return ControlCommand.service_brake(), "voxel_prediction_stale", True, self.last_result
+                return (
+                    ControlCommand.service_brake(),
+                    "voxel_prediction_stale",
+                    True,
+                    self.last_result,
+                )
             if decision["emergency_brake"] or not decision["actuation_authorized"]:
                 return (
                     ControlCommand.service_brake(),
@@ -694,10 +727,15 @@ class _VoxelPolicy:
             self.errors += 1
             if self.errors >= self.config.max_policy_errors:
                 self.latched_error = f"{type(error).__name__}: {error}"
-            return ControlCommand.service_brake(), "voxel_error", True, {
-                "error": f"{type(error).__name__}: {error}",
-                "consecutive_errors": self.errors,
-            }
+            return (
+                ControlCommand.service_brake(),
+                "voxel_error",
+                True,
+                {
+                    "error": f"{type(error).__name__}: {error}",
+                    "consecutive_errors": self.errors,
+                },
+            )
 
     def close(self) -> None:
         try:
@@ -712,8 +750,18 @@ class GarageDriveSession(DriveSession):
 
     config: GarageDriveStartConfig
 
-    def __init__(self, config: GarageDriveStartConfig, *, workspace: Path) -> None:
-        super().__init__(config, workspace=workspace)  # type: ignore[arg-type]
+    def __init__(
+        self,
+        config: GarageDriveStartConfig,
+        *,
+        workspace: Path,
+        world_worker: WorldWorkerClient | None = None,
+    ) -> None:
+        super().__init__(  # type: ignore[arg-type]
+            config,
+            workspace=workspace,
+            world_worker=world_worker,
+        )
         self._garage_context: _CarlaContext | None = None
         self._population = _Population()
         self._policy: Any | None = None
@@ -726,7 +774,7 @@ class GarageDriveSession(DriveSession):
 
     def snapshot(self) -> dict[str, Any]:
         payload = super().snapshot()
-        payload["control_mode"] = self.config.control_mode
+        payload["garage_mode"] = self.config.control_mode
         payload["autonomy"] = {
             "enabled": self.config.autonomous,
             "operator_acknowledged": self.config.acknowledge_autonomy,
@@ -743,8 +791,15 @@ class GarageDriveSession(DriveSession):
 
     def submit_control(self, control: DriveInput) -> dict[str, Any]:
         if self.config.control_mode != "manual":
-            raise RuntimeError("browser manual control is disabled while an autonomous mode owns control")
+            raise RuntimeError(
+                "browser manual control is disabled while an autonomous mode owns control"
+            )
         return super().submit_control(control)
+
+    def request_mode(self, mode: str) -> dict[str, Any]:
+        if self.config.autonomous and str(mode).strip() == "autopilot":
+            raise RuntimeError("World Worker autopilot cannot take over from Garage autonomy")
+        return super().request_mode(mode)
 
     def request_stop(self, reason: str = "operator_stop") -> dict[str, Any]:
         self._close_garage_extensions()
@@ -881,7 +936,8 @@ class GarageDriveSession(DriveSession):
                 "telemetry": telemetry,
                 "camera_sequence": camera_sequence,
                 "detector_sequence": detector_sequence,
-                "control_mode": self.config.control_mode,
+                "control_mode": self._control_mode,
+                "garage_mode": self.config.control_mode,
                 "autonomy_output_actuated": True,
                 "model_output_actuated": self.config.model_output_actuated,
                 "policy_detail": dict(self._policy_detail),
@@ -921,7 +977,7 @@ class GarageDriveSession(DriveSession):
                     rewritten.append(line)
                     continue
                 if event.get("event") == "session_started":
-                    event["control_mode"] = self.config.control_mode
+                    event["garage_mode"] = self.config.control_mode
                     event["autonomy_output_actuated"] = True
                     event["model_output_actuated"] = self.config.model_output_actuated
                 rewritten.append(
@@ -944,7 +1000,8 @@ class GarageDriveSession(DriveSession):
                     path,
                     role=role,
                     metadata={
-                        "control_mode": self.config.control_mode,
+                        "control_mode": self._control_mode,
+                        "garage_mode": self.config.control_mode,
                         "autonomy_output_actuated": role == "garage_autonomous_controls",
                         "model_output_actuated": (
                             self.config.model_output_actuated
@@ -977,51 +1034,33 @@ class GarageDriveSession(DriveSession):
                 self._cleanup_errors.append(f"latest overlay frame: {error}")
 
     def _finalize(self, tracker: Any, failure: BaseException | None) -> None:
-        if self.config.control_mode == "manual":
-            try:
-                return super()._finalize(tracker, failure)
-            finally:
-                self._close_garage_extensions()
+        garage_traffic_actual = len(self._population.vehicles)
+        garage_walkers_actual = len(self._population.walkers)
+        population_error = self._population.error
         self._close_garage_extensions()
         summary_path = tracker.artifact_path("summary.json")
-        summary = {
-            "schema_version": "1.0",
-            "object_type": "interactive_drive_session_summary",
-            "status": "failed" if failure is not None else "success",
-            "run_id": self.config.run_id,
-            "session_id": self.session_id,
-            "map": self._map,
-            "server_version": self._server_version,
-            "vehicle_id": self._vehicle_id,
-            "camera_id": self._camera_id,
-            "prop_ids": list(self._prop_ids),
-            "spawn_index": self._spawn_index,
-            "duration_seconds": time.monotonic() - self._started_monotonic,
-            "frames_seen": self._frames_seen,
-            "controls_written": self._controls_written,
-            "detections_written": self._detections_written,
-            "manual_commands": self._manual_commands,
-            "deadman_commands": self._deadman_commands,
-            "autonomy_commands": self._autonomy_commands,
-            "autonomy_failsafes": self._autonomy_failsafes,
-            "control_mode": self.config.control_mode,
-            "autonomy_output_actuated": True,
-            "model_output_actuated": self.config.model_output_actuated,
-            "operator_acknowledged_autonomy": self.config.acknowledge_autonomy,
-            "recording_requested": self.config.record_video,
-            "stop_reason": self._stop_reason,
-            "failure": (
-                None
-                if failure is None
-                else {"type": type(failure).__name__, "message": str(failure)}
-            ),
-            "cleanup_errors": list(self._cleanup_errors),
-        }
+        super()._finalize(tracker, failure)
         try:
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            summary.update(
+                {
+                    "garage_mode": self.config.control_mode,
+                    "garage_traffic_vehicles_requested": self.config.traffic_vehicles,
+                    "garage_traffic_vehicles_actual": garage_traffic_actual,
+                    "garage_walkers_requested": self.config.walkers,
+                    "garage_walkers_actual": garage_walkers_actual,
+                    "garage_population_error": population_error,
+                    "autonomy_commands": self._autonomy_commands,
+                    "autonomy_failsafes": self._autonomy_failsafes,
+                    "autonomy_output_actuated": self.config.autonomous,
+                    "model_output_actuated": self.config.model_output_actuated,
+                    "operator_acknowledged_autonomy": self.config.acknowledge_autonomy,
+                }
+            )
             _write_json(summary_path, summary)
             tracker.register_artifact(summary_path, role="interactive_drive_summary")
         except Exception as error:
-            self._cleanup_errors.append(f"summary finalization: {error}")
+            self._cleanup_errors.append(f"Garage summary finalization: {error}")
 
     def _close_garage_extensions(self) -> None:
         with self._policy_lock:
@@ -1057,13 +1096,11 @@ class GarageDriveSessionManager(DriveSessionManager):
         capabilities = payload.setdefault("capabilities", {})
         capabilities.update(
             {
-                "pythonapi": pythonapi,
-                "behavior_agent": pythonapi and behavior_agent,
-                "traffic_population": pythonapi,
-                "walker_population": pythonapi,
-                "autopilot": pythonapi and behavior_agent,
-                "imitation_drive": pythonapi,
-                "voxel_drive": pythonapi and behavior_agent,
+                "garage_behavior_drive": pythonapi and behavior_agent,
+                "garage_traffic_population": pythonapi,
+                "garage_walker_population": pythonapi,
+                "garage_imitation_drive": pythonapi,
+                "garage_voxel_drive": pythonapi and behavior_agent,
             }
         )
         payload["control_modes"] = [
@@ -1083,11 +1120,22 @@ class GarageDriveSessionManager(DriveSessionManager):
         return payload
 
     def start(self, raw: Mapping[str, Any]) -> dict[str, Any]:
+        active_world_worker: WorldWorkerClient | None = None
+        if self._world_worker is not None:
+            try:
+                health = self._world_worker.health()
+                if not _world_worker_health_ready(health):
+                    raise RuntimeError("World Worker reports that CARLA is unavailable")
+            except Exception:
+                active_world_worker = None
+            else:
+                active_world_worker = self._world_worker
         config = GarageDriveStartConfig.from_mapping(
             raw,
             workspace=self.workspace,
             expected_host=self.carla_host,
             expected_port=self.carla_port,
+            world_worker_configured=active_world_worker is not None,
         )
         catalog = self.catalog()
         modes = {item["id"]: bool(item["available"]) for item in catalog["control_modes"]}
@@ -1095,7 +1143,10 @@ class GarageDriveSessionManager(DriveSessionManager):
             raise RuntimeError(
                 f"control mode {config.control_mode!r} is unavailable in this operator environment"
             )
-        if (config.traffic_vehicles or config.walkers) and not catalog["capabilities"]["pythonapi"]:
+        garage_capabilities = catalog["capabilities"]
+        if (config.traffic_vehicles and not garage_capabilities["garage_traffic_population"]) or (
+            config.walkers and not garage_capabilities["garage_walker_population"]
+        ):
             raise RuntimeError("traffic and pedestrians require CARLA PythonAPI")
         with self._lock:
             if self._session is not None and self._session.snapshot()["status"] in {
@@ -1104,7 +1155,11 @@ class GarageDriveSessionManager(DriveSessionManager):
                 "stopping",
             }:
                 raise RuntimeError("another interactive drive session is already active")
-            session = GarageDriveSession(config, workspace=self.workspace)
+            session = GarageDriveSession(
+                config,
+                workspace=self.workspace,
+                world_worker=active_world_worker,
+            )
             self._session = session
             session.start()
             return session.snapshot()

@@ -42,6 +42,8 @@ const state = {
     pollFailed: false,
     lastSafetyStopAt: 0,
     lastTerminalSession: null,
+    initialControlMode: "manual",
+    modeTakeoverPromise: null,
   },
 };
 
@@ -249,8 +251,11 @@ function activateTab(name) {
   if (name !== "drive" && state.drive.inputFocused) {
     releaseDriveControl("Drive console hidden");
   }
+  document.body.classList.toggle("drive-tab-active", name === "drive");
   for (const tab of document.querySelectorAll(".tab")) {
-    tab.classList.toggle("active", tab.dataset.tab === name);
+    const active = tab.dataset.tab === name;
+    tab.classList.toggle("active", active);
+    tab.setAttribute("aria-selected", String(active));
   }
   for (const panel of document.querySelectorAll(".panel")) {
     panel.classList.toggle("active", panel.id === `panel-${name}`);
@@ -259,7 +264,9 @@ function activateTab(name) {
 
 function activateResearchTool(name) {
   for (const tab of document.querySelectorAll(".research-tab")) {
-    tab.classList.toggle("active", tab.dataset.researchTab === name);
+    const active = tab.dataset.researchTab === name;
+    tab.classList.toggle("active", active);
+    tab.setAttribute("aria-selected", String(active));
   }
   for (const panel of document.querySelectorAll(".research-panel")) {
     panel.classList.toggle("active", panel.id === `panel-${name}`);
@@ -295,6 +302,25 @@ function driveEmergencyLatched() {
   return state.drive.session?.control_source === "emergency_stop";
 }
 
+function driveSessionControlMode() {
+  const session = state.drive.session || {};
+  const mode =
+    session.control_mode ||
+    session.initial_control_mode ||
+    session.world?.control_mode ||
+    session.mode;
+  return mode === "autopilot" ? "autopilot" : "manual";
+}
+
+function driveIsAutopilot() {
+  return driveSessionControlMode() === "autopilot";
+}
+
+function driveExtensionBlocksManualControl() {
+  const blocker = window.carlaGarageManualControlBlocked;
+  return typeof blocker === "function" && blocker();
+}
+
 function driveSessionId() {
   return state.drive.session?.session_id || "";
 }
@@ -323,6 +349,31 @@ function driveCapabilityValue(capabilities, keys) {
     return Boolean(value);
   }
   return false;
+}
+
+function driveWorldCapabilities() {
+  const capabilities = state.drive.catalog?.capabilities || {};
+  const nativeWorker = driveCapabilityValue(capabilities, ["native_worker"]);
+  return {
+    nativeWorker,
+    mapReload:
+      nativeWorker &&
+      driveCapabilityValue(capabilities, ["map_reload", "world_reload", "native_world_reload"]),
+    randomRoute:
+      nativeWorker &&
+      driveCapabilityValue(capabilities, ["random_route", "route_planning", "native_route_planning"]),
+    traffic:
+      (nativeWorker &&
+        driveCapabilityValue(capabilities, ["traffic_manager", "traffic", "spawn_traffic"])) ||
+      driveCapabilityValue(capabilities, ["garage_traffic_population"]),
+    walkers:
+      (nativeWorker &&
+        driveCapabilityValue(capabilities, ["walkers", "walker_population", "spawn_walkers"])) ||
+      driveCapabilityValue(capabilities, ["garage_walker_population"]),
+    autopilot:
+      nativeWorker &&
+      driveCapabilityValue(capabilities, ["autopilot", "native_autopilot"]),
+  };
 }
 
 function driveColorLabel(value) {
@@ -385,6 +436,61 @@ function selectPreferredDriveWeight() {
   updateDriveConfigAvailability();
 }
 
+function setDriveInitialControlMode(mode) {
+  const capabilities = driveWorldCapabilities();
+  const nextMode = mode === "autopilot" && capabilities.autopilot ? "autopilot" : "manual";
+  state.drive.initialControlMode = nextMode;
+  for (const button of document.querySelectorAll("[data-drive-mode]")) {
+    const active = button.dataset.driveMode === nextMode;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  }
+}
+
+function configureDriveWorldControls() {
+  const active = driveIsActive();
+  const capabilities = driveWorldCapabilities();
+  $("drive-map-choice").disabled = active || !capabilities.mapReload;
+
+  const gatedControls = [
+    ["drive-traffic-field", "drive-traffic-choice", capabilities.traffic],
+    ["drive-walkers-field", "drive-walkers-choice", capabilities.walkers],
+    ["drive-route-field", "drive-starting-choice", capabilities.randomRoute],
+  ];
+  for (const [fieldId, controlId, available] of gatedControls) {
+    $(fieldId).hidden = !available;
+    $(controlId).disabled = active || !available;
+  }
+
+  $("drive-control-mode-field").hidden = !capabilities.autopilot;
+  if (!capabilities.autopilot && state.drive.initialControlMode === "autopilot") {
+    setDriveInitialControlMode("manual");
+  }
+  for (const button of document.querySelectorAll("[data-drive-mode]")) {
+    button.disabled = active ||
+      (button.dataset.driveMode === "autopilot" && !capabilities.autopilot);
+  }
+
+  const note = $("drive-worker-note");
+  if (!capabilities.nativeWorker) {
+    note.textContent =
+      "World Worker unavailable. The current map and free manual drive remain available.";
+    note.className = "garage-worker-note";
+  } else {
+    const enabled = [
+      capabilities.mapReload && "maps",
+      capabilities.traffic && "traffic",
+      capabilities.walkers && "pedestrians",
+      capabilities.randomRoute && "routes",
+      capabilities.autopilot && "autopilot",
+    ].filter(Boolean);
+    note.textContent = enabled.length
+      ? `World Worker connected · ${enabled.join(", ")} ready.`
+      : "World Worker connected, but it did not authorize any optional world controls.";
+    note.className = enabled.length ? "garage-worker-note ready" : "garage-worker-note";
+  }
+}
+
 function renderDriveCapabilities() {
   const catalog = state.drive.catalog;
   if (!catalog) return;
@@ -413,7 +519,7 @@ function renderDriveCapabilities() {
     name.textContent = label;
     const status = document.createElement("strong");
     status.className = available ? "capability-ready" : "capability-unavailable";
-    status.textContent = available ? "Available via native workflow" : "Native worker unavailable";
+    status.textContent = available ? "World Worker ready" : "Unavailable";
     row.append(name, status);
     list.append(row);
   }
@@ -423,11 +529,16 @@ function populateDriveCatalog(catalog) {
   state.drive.catalog = catalog;
   if (catalog.host) $("drive-host").value = catalog.host;
   if (catalog.port) $("drive-port").value = catalog.port;
-  const mapChoice = $("drive-map-choice");
-  mapChoice.replaceChildren();
-  const mapOption = document.createElement("option");
-  mapOption.textContent = catalog.map || "Current map unavailable";
-  mapChoice.append(mapOption);
+  const currentMap = catalog.map || "";
+  const maps = (catalog.maps || []).map((map) => {
+    if (typeof map === "string") return { value: map, label: map.split("/").pop() || map };
+    const value = map.id || map.value || map.name || "";
+    return { value, label: map.label || map.name || value };
+  }).filter((map) => map.value);
+  if (currentMap && !maps.some((map) => map.value === currentMap)) {
+    maps.unshift({ value: currentMap, label: currentMap.split("/").pop() || currentMap });
+  }
+  setOptions("drive-map-choice", maps, "Current map unavailable", currentMap);
   const vehicles = (catalog.vehicles || []).map((vehicle) => ({
     value: vehicle.id,
     label: vehicle.label || vehicle.id,
@@ -457,7 +568,9 @@ function populateDriveCatalog(catalog) {
   setOptions("drive-props", props, "No scene prop presets reported", preferredProps);
   populateDriveColors();
   renderDriveCapabilities();
+  configureDriveWorldControls();
   updateDriveConfigAvailability();
+  renderGarageBay();
 }
 
 async function refreshDriveCatalog() {
@@ -500,6 +613,7 @@ function updateDriveConfigAvailability() {
     $(id).disabled = active || !detectorEnabled;
   }
   $("drive-view-overlay").disabled = !detectorEnabled;
+  configureDriveWorldControls();
 }
 
 function driveDetectorLabel(detector) {
@@ -509,15 +623,47 @@ function driveDetectorLabel(detector) {
   return detector.label || detector.name || detector.detector || detector.status || "enabled";
 }
 
+function selectedOptionLabel(id, fallback) {
+  const select = $(id);
+  const option = select?.selectedOptions?.[0];
+  return option?.textContent?.trim() || fallback;
+}
+
+function renderGarageBay() {
+  const vehicle = selectedOptionLabel("drive-vehicle", "No car selected");
+  const weather = selectedOptionLabel("drive-weather", "Weather pending");
+  const map = selectedOptionLabel("drive-map-choice", "Current map");
+  const scene = selectedOptionLabel("drive-props", "Open road");
+  $("garage-bay-car").textContent = vehicle;
+  $("garage-bay-weather").textContent = weather;
+  $("garage-bay-world").textContent = `${map} · ${scene}`;
+  const color = $("drive-color").value.split(",").map(Number);
+  const validColor = color.length === 3 && color.every(
+    (channel) => Number.isInteger(channel) && channel >= 0 && channel <= 255,
+  );
+  const bay = document.querySelector(".garage-bay");
+  if (validColor) {
+    bay.style.setProperty("--garage-car-color", `rgb(${color.join(", ")})`);
+  } else {
+    bay.style.removeProperty("--garage-car-color");
+  }
+}
+
 function renderDriveState() {
   const session = state.drive.session || { status: "idle" };
   const statusName = session.status || "idle";
   const immersive = driveIsActive();
+  const autopilotActive = driveIsRunning() && driveIsAutopilot();
+  if (autopilotActive && state.drive.inputFocused) {
+    state.drive.inputFocused = false;
+    clearDriveKeys();
+    $("drive-viewport").classList.remove("focused");
+  }
   document.body.classList.toggle("drive-immersive", immersive);
   document.title = immersive ? "Driving · CARLA Vision Operator" : "CARLA Vision Operator";
   const status = $("drive-status");
   status.textContent = {
-    idle: "Ready",
+    idle: state.drive.catalog?.connected ? "Ready" : "Unavailable",
     starting: "Starting…",
     running: "Driving",
     stopping: "Saving…",
@@ -525,6 +671,7 @@ function renderDriveState() {
     failed: "Drive failed",
   }[statusName] || statusName;
   status.className = `status-pill ${statusClass(statusName)}`;
+  renderGarageBay();
   const telemetry = session.telemetry || {};
   const speed = Number(telemetry.speed_mps ?? telemetry.speed ?? 0);
   $("drive-speed").textContent = Number.isFinite(speed) ? speed.toFixed(1) : "0.0";
@@ -549,6 +696,8 @@ function renderDriveState() {
   $("drive-hud-session").textContent = driveSessionId()
     ? `SESSION ${driveSessionId()}`
     : statusName.toUpperCase();
+  $("drive-hud-mode").textContent = driveIsAutopilot() ? "AUTOPILOT" : "MANUAL";
+  $("drive-hud-mode").classList.toggle("autopilot", driveIsAutopilot());
 
   const recording = Boolean(
     typeof session.recording === "object" ? session.recording.active : session.recording,
@@ -558,7 +707,10 @@ function renderDriveState() {
   recordingBadge.classList.toggle("active", recording);
 
   const deadman = $("drive-deadman");
-  if (driveIsRunning() && session.deadman_active) {
+  if (autopilotActive) {
+    deadman.textContent = "AUTOPILOT";
+    deadman.className = "status-pill ok";
+  } else if (driveIsRunning() && session.deadman_active) {
     deadman.textContent = "AUTO BRAKE";
     deadman.className = "status-pill bad";
   } else if (driveIsRunning() && state.drive.inputFocused && !driveEmergencyLatched()) {
@@ -576,9 +728,37 @@ function renderDriveState() {
     driveIsActive() ||
     !state.drive.catalog?.connected ||
     !$("drive-vehicle").value;
+  $("drive-start-note").textContent = driveIsActive()
+    ? "Drive session in progress."
+    : !state.drive.catalog?.connected
+      ? "CARLA is offline. Start CARLA or check the host in Advanced settings."
+      : !$("drive-vehicle").value
+        ? "No compatible vehicle is available."
+        : "";
   $("drive-stop").disabled = !["starting", "running"].includes(statusName);
   $("drive-emergency").disabled = !driveIsRunning();
-  $("drive-focus").disabled = !driveIsRunning() || driveEmergencyLatched();
+  $("drive-focus").disabled =
+    !driveIsRunning() || driveEmergencyLatched() || Boolean(state.drive.modeTakeoverPromise);
+  $("drive-focus").textContent = autopilotActive
+    ? "Take Control"
+    : state.drive.inputFocused
+      ? "Keyboard active"
+      : "Take keyboard control";
+  $("drive-advisory-badge").textContent = autopilotActive
+    ? "CARLA autopilot · detections remain visual"
+    : "Detections only — you drive";
+  $("drive-control-boundary-title").textContent = autopilotActive
+    ? "Simulator autopilot active."
+    : "Human control.";
+  $("drive-control-boundary-copy").textContent = autopilotActive
+    ? "Choose Take Control before keyboard or touch commands can reach the vehicle."
+    : "AI boxes are visual hints. Leaving the camera or browser applies the brake.";
+  if (autopilotActive) {
+    $("drive-focus-shield").textContent = state.drive.modeTakeoverPromise
+      ? "Requesting a safe handover from autopilot…"
+      : "Simulator autopilot active · choose Take Control for manual driving";
+    $("drive-focus-shield").classList.remove("hidden");
+  }
   $("drive-weather").disabled = !(state.drive.catalog?.weather_presets || []).length;
   $("drive-props").disabled =
     driveIsActive() || !(state.drive.catalog?.prop_presets || []).length;
@@ -591,6 +771,7 @@ function renderDriveState() {
   const saved = statusName === "success";
   $("drive-result-banner").hidden = !saved;
   $("drive-start").hidden = saved;
+  $("drive-session-actions").hidden = saved;
   $("drive-start-another").disabled =
     !saved || !state.drive.catalog?.connected || !$("drive-vehicle").value;
 
@@ -599,7 +780,7 @@ function renderDriveState() {
       ? session.overlay_frame_sequence
       : session.raw_frame_sequence;
   $("drive-frame-state").textContent = driveIsRunning()
-    ? `${state.drive.view === "overlay" ? "AI detections" : "Camera"} · frame ${sequence ?? "—"}`
+    ? `${state.drive.view === "overlay" ? "Detections" : "Camera"} · frame ${sequence ?? "—"}`
     : statusName === "starting"
       ? "Starting camera stream…"
       : statusName === "stopping"
@@ -632,7 +813,14 @@ async function refreshDriveState() {
   state.drive.stateInFlight = true;
   try {
     const payload = await request("/api/drive/state");
-    state.drive.session = payload.state || payload;
+    const nextSession = payload.state || payload;
+    state.drive.session = {
+      ...nextSession,
+      control_mode:
+        nextSession.control_mode ||
+        state.drive.session?.control_mode ||
+        (driveIsActive() ? state.drive.initialControlMode : "manual"),
+    };
     state.drive.pollFailed = false;
     renderDriveState();
   } catch (error) {
@@ -776,6 +964,8 @@ function renderDriveKeyState() {
 async function sendDriveControl({ safety = false, keepalive = false } = {}) {
   const sessionId = driveSessionId();
   if (!sessionId) return;
+  if (driveExtensionBlocksManualControl()) return;
+  if (!safety && driveIsAutopilot()) return;
   if (!safety && (!driveIsRunning() || !state.drive.inputFocused)) {
     return;
   }
@@ -831,7 +1021,58 @@ function releaseDriveControl(reason = "Driving focus released", sendBrake = true
   renderDriveState();
 }
 
-function focusDriveControl() {
+async function requestDriveManualMode() {
+  if (!driveIsRunning()) return false;
+  if (!driveIsAutopilot()) return true;
+  if (state.drive.modeTakeoverPromise) return state.drive.modeTakeoverPromise;
+
+  clearDriveKeys();
+  state.drive.inputFocused = false;
+  $("drive-viewport").classList.remove("focused");
+  $("drive-focus-shield").textContent = "Requesting a safe handover from autopilot…";
+  $("drive-focus-shield").classList.remove("hidden");
+
+  state.drive.modeTakeoverPromise = (async () => {
+    try {
+      const payload = await request("/api/drive/mode", {
+        method: "POST",
+        body: JSON.stringify({ session_id: driveSessionId(), mode: "manual" }),
+      });
+      const next = payload.state || payload;
+      state.drive.session = {
+        ...state.drive.session,
+        ...next,
+        control_mode: "manual",
+      };
+      showToast("Manual control is ready. Keyboard and touch input are now active.");
+      return true;
+    } catch (error) {
+      showToast(`Could not take manual control: ${error.message}`, true);
+      return false;
+    }
+  })();
+  renderDriveState();
+  const taken = await state.drive.modeTakeoverPromise;
+  state.drive.modeTakeoverPromise = null;
+  renderDriveState();
+  return taken;
+}
+
+function activateDriveInputFocus() {
+  if (
+    !driveIsRunning() ||
+    driveIsAutopilot() ||
+    driveExtensionBlocksManualControl() ||
+    driveEmergencyLatched()
+  ) return;
+  state.drive.inputFocused = true;
+  $("drive-viewport").classList.add("focused");
+  $("drive-focus-shield").classList.add("hidden");
+  renderDriveState();
+  void sendDriveControl();
+}
+
+async function focusDriveControl() {
   if (!driveIsRunning()) {
     showToast("Start a drive before taking control.", true);
     return;
@@ -840,7 +1081,9 @@ function focusDriveControl() {
     showToast("Emergency Brake is locked on. End this drive, then start another.", true);
     return;
   }
+  if (driveIsAutopilot() && !(await requestDriveManualMode())) return;
   $("drive-viewport").focus({ preventScroll: true });
+  activateDriveInputFocus();
 }
 
 function driveKeyName(event) {
@@ -855,9 +1098,25 @@ function driveKeyName(event) {
 }
 
 function handleDriveKey(event, pressed) {
-  if (!state.drive.inputFocused || !driveIsRunning()) return;
+  if (!driveIsRunning()) return;
   const key = driveKeyName(event);
   if (!key) return;
+  if (driveExtensionBlocksManualControl()) {
+    event.preventDefault();
+    return;
+  }
+  if (driveIsAutopilot()) {
+    event.preventDefault();
+    if (pressed) {
+      void requestDriveManualMode().then((taken) => {
+        if (taken && document.activeElement === $("drive-viewport")) {
+          activateDriveInputFocus();
+        }
+      });
+    }
+    return;
+  }
+  if (!state.drive.inputFocused) return;
   event.preventDefault();
   if (key === "reverseModifier" && state.drive.keys.forward) {
     state.drive.keys.forward = false;
@@ -888,6 +1147,17 @@ function handleDrivePointerDown(event) {
   if (event.pointerType === "mouse" && event.button !== 0) return;
   event.preventDefault();
   event.stopPropagation();
+  if (driveExtensionBlocksManualControl()) return;
+  if (driveIsAutopilot()) {
+    void requestDriveManualMode().then((taken) => {
+      if (taken) {
+        $("drive-viewport").focus({ preventScroll: true });
+        activateDriveInputFocus();
+        showToast("Manual control is ready. Touch the driving control again.");
+      }
+    });
+    return;
+  }
   const button = event.currentTarget;
   const control = button.dataset.driveControl;
   if (!(control in state.drive.touchKeys)) return;
@@ -940,6 +1210,37 @@ function bindDriveTouchControls() {
   }
 }
 
+function driveStartPayload() {
+  return {
+    run_id: $("drive-run-id").value,
+    host: $("drive-host").value,
+    port: number("drive-port"),
+    vehicle_blueprint: $("drive-vehicle").value,
+    color: $("drive-color").value,
+    seed: number("drive-seed"),
+    map_name: driveWorldCapabilities().mapReload
+      ? $("drive-map-choice").value || state.drive.catalog?.map || "current"
+      : "current",
+    traffic_count: number("drive-traffic-choice"),
+    walker_count: number("drive-walkers-choice"),
+    route_mode: $("drive-starting-choice").value || "free",
+    initial_control_mode: state.drive.initialControlMode,
+    weather_preset: $("drive-weather").value,
+    prop_preset: $("drive-props").value,
+    detector_enabled: checked("drive-detector-enabled"),
+    detector: $("drive-detector").value,
+    weights: $("drive-weights").value,
+    device: $("drive-device").value,
+    image_size: number("drive-image-size"),
+    confidence: number("drive-confidence"),
+    resolution: $("drive-resolution").value,
+    camera_fps: number("drive-camera-fps"),
+    camera_fov: number("drive-camera-fov"),
+    record_video: checked("drive-record-video"),
+    spectator_follow: checked("drive-spectator-follow"),
+  };
+}
+
 async function startDrive(event) {
   event.preventDefault();
   const button = event.submitter || $("drive-start");
@@ -948,33 +1249,21 @@ async function startDrive(event) {
   try {
     const payload = await request("/api/drive/start", {
       method: "POST",
-      body: JSON.stringify({
-        run_id: $("drive-run-id").value,
-        host: $("drive-host").value,
-        port: number("drive-port"),
-        vehicle_blueprint: $("drive-vehicle").value,
-        color: $("drive-color").value,
-        seed: number("drive-seed"),
-        weather_preset: $("drive-weather").value,
-        prop_preset: $("drive-props").value,
-        detector_enabled: checked("drive-detector-enabled"),
-        detector: $("drive-detector").value,
-        weights: $("drive-weights").value,
-        device: $("drive-device").value,
-        image_size: number("drive-image-size"),
-        confidence: number("drive-confidence"),
-        resolution: $("drive-resolution").value,
-        camera_fps: number("drive-camera-fps"),
-        camera_fov: number("drive-camera-fov"),
-        record_video: checked("drive-record-video"),
-        spectator_follow: checked("drive-spectator-follow"),
-      }),
+      body: JSON.stringify(driveStartPayload()),
     });
-    state.drive.session = payload.state || payload;
+    const nextSession = payload.state || payload;
+    state.drive.session = {
+      ...nextSession,
+      control_mode: nextSession.control_mode || state.drive.initialControlMode,
+    };
     state.drive.sequence = 0;
     state.drive.lastTerminalSession = null;
     renderDriveState();
-    showToast("Drive is starting. Click the camera when it appears to take control.");
+    showToast(
+      state.drive.initialControlMode === "autopilot"
+        ? "Drive is starting in simulator autopilot. Use Take Control for manual driving."
+        : "Drive is starting. Click the camera when it appears to take control.",
+    );
   } catch (error) {
     showToast(error.message, true);
     await refreshDriveState();
@@ -1046,21 +1335,33 @@ function bindDriveConsole() {
   $("drive-focus").addEventListener("click", focusDriveControl);
   $("drive-view-raw").addEventListener("click", () => setDriveView("raw"));
   $("drive-view-overlay").addEventListener("click", () => setDriveView("overlay"));
-  $("drive-vehicle").addEventListener("change", populateDriveColors);
+  $("drive-vehicle").addEventListener("change", () => {
+    populateDriveColors();
+    renderGarageBay();
+  });
+  $("drive-color").addEventListener("change", renderGarageBay);
+  for (const id of ["drive-map-choice", "drive-weather", "drive-props"]) {
+    $(id).addEventListener("change", renderGarageBay);
+  }
   $("drive-detector").addEventListener("change", selectPreferredDriveWeight);
   $("drive-detector-enabled").addEventListener("change", updateDriveModelToggle);
   $("drive-weather").addEventListener("change", changeDriveWeather);
+  for (const button of document.querySelectorAll("[data-drive-mode]")) {
+    button.addEventListener("click", () => setDriveInitialControlMode(button.dataset.driveMode));
+  }
   bindDriveTouchControls();
 
   const viewport = $("drive-viewport");
   viewport.addEventListener("click", focusDriveControl);
   viewport.addEventListener("focus", () => {
     if (!driveIsRunning()) return;
-    state.drive.inputFocused = true;
-    viewport.classList.add("focused");
-    $("drive-focus-shield").classList.add("hidden");
-    renderDriveState();
-    void sendDriveControl();
+    if (driveIsAutopilot()) {
+      void requestDriveManualMode().then((taken) => {
+        if (taken && document.activeElement === viewport) activateDriveInputFocus();
+      });
+      return;
+    }
+    activateDriveInputFocus();
   });
   viewport.addEventListener("blur", () => releaseDriveControl("Viewport focus lost"));
   viewport.addEventListener("keydown", (event) => handleDriveKey(event, true));

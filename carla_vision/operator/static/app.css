@@ -1,20 +1,21 @@
 :root {
-  --bg: #0b1013;
-  --surface: #11191d;
-  --surface-2: #172126;
-  --surface-3: #1d2a30;
-  --line: #293941;
-  --line-soft: #203037;
-  --text: #eef5f3;
-  --muted: #9aabae;
-  --teal: #39d7bd;
-  --teal-dark: #164e49;
-  --yellow: #f3c65f;
-  --red: #ff756f;
-  --green: #70d6a3;
-  --blue: #72b7ff;
-  --radius: 15px;
-  --shadow: 0 24px 70px rgba(0, 0, 0, 0.24);
+  --bg: #f3f2ee;
+  --surface: #ffffff;
+  --surface-2: #f7f7f5;
+  --surface-3: #eceeea;
+  --input-bg: #ffffff;
+  --line: #cfd5d5;
+  --line-soft: #e1e5e3;
+  --text: #182126;
+  --muted: #66737a;
+  --teal: #e6532f;
+  --teal-dark: #a63720;
+  --yellow: #a46c00;
+  --red: #c83d36;
+  --green: #237b57;
+  --blue: #2d63b8;
+  --radius: 11px;
+  --shadow: 0 12px 32px rgba(28, 36, 39, 0.08);
 }
 
 * {
@@ -22,7 +23,7 @@
 }
 
 html {
-  min-width: 320px;
+  min-width: 0;
   background: var(--bg);
 }
 
@@ -30,9 +31,7 @@ body {
   margin: 0;
   overflow-x: hidden;
   color: var(--text);
-  background:
-    radial-gradient(circle at 90% -10%, rgba(57, 215, 189, 0.12), transparent 30rem),
-    linear-gradient(180deg, #0d1316 0%, var(--bg) 38rem);
+  background: var(--bg);
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
@@ -50,10 +49,18 @@ button {
   cursor: pointer;
 }
 
+button:focus-visible,
+a:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible {
+  outline: 3px solid rgba(230, 83, 47, 0.34);
+  outline-offset: 2px;
+}
+
 .app-shell {
-  width: min(1500px, calc(100% - 32px));
+  width: min(1280px, calc(100% - 40px));
   margin: 0 auto;
-  padding: 24px 0 80px;
+  padding: 18px 0 72px;
 }
 
 .topbar {
@@ -61,7 +68,8 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  padding: 8px 2px 24px;
+  padding: 6px 2px 17px;
+  border-bottom: 1px solid var(--line-soft);
 }
 
 .brand-lockup,
@@ -82,11 +90,11 @@ button {
   width: 48px;
   height: 48px;
   place-items: center;
-  border: 1px solid rgba(57, 215, 189, 0.45);
-  border-radius: 13px;
-  color: var(--teal);
-  background: linear-gradient(145deg, rgba(57, 215, 189, 0.17), rgba(57, 215, 189, 0.03));
-  box-shadow: inset 0 0 20px rgba(57, 215, 189, 0.08);
+  border: 0;
+  border-radius: 8px;
+  color: #ffffff;
+  background: var(--text);
+  box-shadow: inset 0 -4px 0 var(--teal);
   font-size: 14px;
   font-weight: 850;
   letter-spacing: 0.08em;
@@ -102,14 +110,14 @@ p {
 h1 {
   margin-bottom: 0;
   font-size: clamp(20px, 2.4vw, 30px);
-  letter-spacing: -0.035em;
+  letter-spacing: -0.025em;
 }
 
 h2 {
   margin-bottom: 8px;
-  font-size: clamp(26px, 3.4vw, 42px);
-  letter-spacing: -0.045em;
-  line-height: 1.04;
+  font-size: clamp(29px, 3.1vw, 40px);
+  letter-spacing: -0.035em;
+  line-height: 1.08;
 }
 
 h3 {
@@ -119,11 +127,12 @@ h3 {
 }
 
 .eyebrow {
-  margin-bottom: 4px;
+  margin-bottom: 3px;
   color: var(--teal);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.17em;
+  font-size: 11px;
+  font-weight: 720;
+  letter-spacing: 0.015em;
+  text-transform: none;
 }
 
 .system-status {
@@ -142,48 +151,50 @@ h3 {
 }
 
 .status-pill {
-  min-height: 29px;
-  padding: 4px 10px;
+  min-height: 28px;
+  padding: 4px 9px;
   border: 1px solid var(--line);
   border-radius: 999px;
   color: var(--muted);
-  background: rgba(23, 33, 38, 0.84);
+  background: var(--surface);
   font-size: 11px;
-  font-weight: 750;
+  font-weight: 680;
 }
 
 .status-pill.ok {
-  border-color: rgba(112, 214, 163, 0.34);
+  border-color: rgba(35, 123, 87, 0.3);
   color: var(--green);
-  background: rgba(112, 214, 163, 0.08);
+  background: #f2f8f5;
 }
 
 .status-pill.bad {
-  border-color: rgba(255, 117, 111, 0.35);
+  border-color: rgba(200, 61, 54, 0.28);
   color: var(--red);
-  background: rgba(255, 117, 111, 0.08);
+  background: #fff5f4;
 }
 
 .status-pill.running,
 .status-pill.pending {
-  border-color: rgba(243, 198, 95, 0.3);
+  border-color: rgba(164, 108, 0, 0.27);
   color: var(--yellow);
+  background: #fff9eb;
 }
 
 .safety-strip {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 11px 15px;
-  border: 1px solid rgba(243, 198, 95, 0.2);
-  border-radius: 12px;
-  background: rgba(243, 198, 95, 0.06);
+  margin-top: 14px;
+  padding: 9px 12px;
+  border: 1px solid #e4d5ad;
+  border-radius: 8px;
+  background: #fffaf0;
 }
 
 .safety-strip p {
   margin: 0;
-  color: #ddcea6;
-  font-size: 13px;
+  color: #6e5a27;
+  font-size: 12px;
 }
 
 .safety-icon {
@@ -191,22 +202,30 @@ h3 {
   font-size: 19px;
 }
 
+.drive-tab-active .safety-strip {
+  display: none;
+}
+
 .tabs {
   display: flex;
   gap: 4px;
-  margin: 26px 0 30px;
-  padding: 5px;
+  margin: 14px 0 22px;
+  padding: 0;
   overflow-x: auto;
-  border: 1px solid var(--line-soft);
-  border-radius: 13px;
-  background: rgba(15, 23, 26, 0.88);
+  overflow-y: hidden;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
 }
 
 .tab {
-  min-height: 42px;
-  padding: 8px 17px;
+  min-height: 44px;
+  margin-bottom: -1px;
+  padding: 8px 14px;
   border: 0;
-  border-radius: 9px;
+  border-bottom: 3px solid transparent;
+  border-radius: 0;
   color: var(--muted);
   background: transparent;
   font-size: 13px;
@@ -216,13 +235,14 @@ h3 {
 
 .tab:hover {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.035);
+  background: transparent;
 }
 
 .tab.active {
-  color: #071411;
-  background: var(--teal);
-  box-shadow: 0 7px 24px rgba(57, 215, 189, 0.16);
+  color: var(--text);
+  border-bottom-color: var(--teal);
+  background: transparent;
+  box-shadow: none;
 }
 
 .count-badge {
@@ -261,7 +281,7 @@ h3 {
   align-items: flex-end;
   justify-content: space-between;
   gap: 24px;
-  margin-bottom: 28px;
+  margin-bottom: 18px;
 }
 
 .section-heading > div:first-child {
@@ -276,10 +296,10 @@ h3 {
 
 .boundary-badge {
   padding: 8px 12px;
-  border: 1px solid rgba(243, 198, 95, 0.25);
-  border-radius: 10px;
+  border: 1px solid rgba(164, 108, 0, 0.25);
+  border-radius: 7px;
   color: var(--yellow);
-  background: rgba(243, 198, 95, 0.07);
+  background: #fff9eb;
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.03em;
@@ -302,9 +322,7 @@ h3 {
   padding: 21px;
   border: 1px solid var(--line-soft);
   border-radius: var(--radius);
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.018), transparent 45%),
-    rgba(17, 25, 29, 0.94);
+  background: var(--surface);
   box-shadow: var(--shadow);
 }
 
@@ -364,36 +382,37 @@ label {
   min-width: 0;
   flex-direction: column;
   gap: 6px;
-  color: #c9d4d4;
-  font-size: 11px;
-  font-weight: 720;
+  color: #49565d;
+  font-size: 12px;
+  font-weight: 680;
   letter-spacing: 0.015em;
 }
 
 label small {
-  color: #6f858a;
-  font-size: 10px;
+  color: var(--muted);
+  font-size: 11px;
   font-weight: 500;
 }
 
 input,
 select {
   width: 100%;
-  min-height: 41px;
-  padding: 8px 10px;
+  min-width: 0;
+  min-height: 46px;
+  padding: 9px 11px;
   border: 1px solid var(--line);
   border-radius: 9px;
   outline: none;
   color: var(--text);
-  background: #0d1518;
-  font-size: 13px;
+  background: var(--input-bg);
+  font-size: 14px;
   transition: border-color 130ms ease, box-shadow 130ms ease;
 }
 
 input:focus,
 select:focus {
-  border-color: rgba(57, 215, 189, 0.7);
-  box-shadow: 0 0 0 3px rgba(57, 215, 189, 0.1);
+  border-color: rgba(230, 83, 47, 0.8);
+  box-shadow: 0 0 0 3px rgba(230, 83, 47, 0.12);
 }
 
 input[type="range"] {
@@ -424,14 +443,14 @@ output {
 }
 
 .check-row {
-  min-height: 41px;
+  min-height: 44px;
   flex-direction: row;
   align-items: center;
   gap: 9px;
   padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 9px;
-  background: #0d1518;
+  background: var(--input-bg);
   font-weight: 620;
 }
 
@@ -453,22 +472,23 @@ output {
 button.primary,
 button.secondary,
 .row-action {
-  border-radius: 9px;
+  border-radius: 8px;
   font-weight: 780;
   transition: 140ms ease;
 }
 
 button.primary {
-  min-height: 42px;
-  padding: 9px 16px;
+  min-height: 48px;
+  padding: 10px 18px;
   border: 1px solid var(--teal);
-  color: #071411;
+  color: #ffffff;
   background: var(--teal);
 }
 
 button.primary:hover {
   transform: translateY(-1px);
-  background: #55e0c9;
+  border-color: #cc4324;
+  background: #cc4324;
 }
 
 button.primary:disabled {
@@ -478,11 +498,11 @@ button.primary:disabled {
 }
 
 button.secondary {
-  min-height: 38px;
+  min-height: 42px;
   padding: 8px 13px;
   border: 1px solid var(--line);
   color: var(--text);
-  background: var(--surface-2);
+  background: var(--surface);
 }
 
 button.secondary:hover,
@@ -911,6 +931,121 @@ button.secondary:hover,
   align-items: center;
 }
 
+.garage-bay {
+  position: relative;
+  display: grid;
+  min-height: 188px;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(260px, 1.1fr);
+  gap: 24px;
+  align-items: center;
+  overflow: hidden;
+  padding: 24px 28px;
+  border: 1px solid #d6d8d3;
+  border-radius: var(--radius);
+  color: #f8f8f5;
+  background: #20282c;
+  box-shadow: var(--shadow);
+}
+
+.garage-bay-art {
+  position: relative;
+  display: grid;
+  min-height: 140px;
+  place-items: center;
+  overflow: hidden;
+}
+
+.garage-bay-art::before {
+  position: absolute;
+  width: 82%;
+  height: 64%;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.07);
+  content: "";
+}
+
+.garage-bay-art svg {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 370px);
+  overflow: visible;
+  fill: var(--garage-car-color, #ec643f);
+  filter: drop-shadow(0 18px 15px rgba(0, 0, 0, 0.28));
+}
+
+.garage-bay-art svg path:nth-child(2) {
+  fill: #303b40;
+}
+
+.garage-bay-art svg circle {
+  fill: #121719;
+  stroke: #9ca4a5;
+  stroke-width: 5px;
+}
+
+.garage-bay-road {
+  position: absolute;
+  right: 0;
+  bottom: 7px;
+  left: 0;
+  height: 2px;
+  background: #6c7476;
+}
+
+.garage-bay-road::after {
+  position: absolute;
+  top: -1px;
+  right: 9%;
+  width: 18%;
+  height: 3px;
+  background: #f0c45f;
+  content: "";
+}
+
+.garage-bay-copy {
+  min-width: 0;
+}
+
+.garage-bay-copy .eyebrow {
+  color: #ff8a68;
+}
+
+.garage-bay-copy h3 {
+  margin-bottom: 6px;
+  color: #ffffff;
+  font-size: clamp(22px, 2.7vw, 31px);
+  letter-spacing: -0.035em;
+}
+
+.garage-bay-copy p:not(.eyebrow) {
+  margin: 0;
+  color: #b9c0c1;
+  font-size: 13px;
+}
+
+.garage-bay-meta {
+  position: absolute;
+  right: 28px;
+  bottom: 19px;
+  left: calc(45% + 24px);
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.garage-bay-meta span {
+  min-width: 0;
+  overflow: hidden;
+  padding: 6px 9px;
+  border: 1px solid #465156;
+  border-radius: 6px;
+  color: #d9dede;
+  background: #2a3438;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .drive-heading-badges {
   display: flex;
   flex-wrap: wrap;
@@ -919,9 +1054,9 @@ button.secondary:hover,
 }
 
 .drive-advisory-badge {
-  border-color: rgba(114, 183, 255, 0.34);
+  border-color: rgba(45, 99, 184, 0.27);
   color: var(--blue);
-  background: rgba(114, 183, 255, 0.08);
+  background: #f2f6fc;
 }
 
 .drive-console-layout {
@@ -948,7 +1083,7 @@ button.secondary:hover,
 
 body:not(.drive-immersive) .drive-heading,
 body:not(.drive-immersive) .drive-setup-column {
-  width: min(820px, 100%);
+  width: min(1080px, 100%);
   margin-right: auto;
   margin-left: auto;
 }
@@ -1157,6 +1292,18 @@ body:not(.drive-immersive) .drive-setup-column {
   top: 13px;
 }
 
+#drive-hud-session {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drive-hud-top > :not(#drive-hud-session) {
+  flex: 0 0 auto;
+}
+
 .drive-hud-bottom {
   bottom: 13px;
   justify-content: flex-start;
@@ -1200,6 +1347,18 @@ body:not(.drive-immersive) .drive-setup-column {
 .drive-recording-indicator.active {
   color: #ffd0cd;
   background: rgba(137, 21, 21, 0.72);
+}
+
+.drive-mode-indicator {
+  padding: 5px 8px;
+  border-radius: 999px;
+  color: #9de8d9;
+  background: rgba(16, 91, 79, 0.68);
+}
+
+.drive-mode-indicator.autopilot {
+  color: #d5e8ff;
+  background: rgba(38, 82, 133, 0.76);
 }
 
 .drive-focus-shield {
@@ -1434,29 +1593,49 @@ kbd {
 }
 
 .drive-setup-form {
-  padding: 19px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  padding: 22px;
+}
+
+.drive-setup-form > .card-heading,
+.drive-setup-form > .garage-world-group,
+.drive-setup-form > .drive-simple-toggles,
+.drive-setup-form > .drive-session-actions,
+.drive-setup-form > .drive-result-banner,
+.drive-setup-form > .drive-advanced,
+.drive-setup-form > .garage-research-shelf {
+  grid-column: 1 / -1;
+}
+
+.drive-setup-form > .card-heading {
+  margin-bottom: 0;
+  padding-bottom: 13px;
+  border-bottom: 1px solid var(--line-soft);
 }
 
 .garage-group {
   min-width: 0;
   margin: 0;
-  padding: 14px 0 0;
-  border: 0;
-  border-top: 1px solid var(--line-soft);
+  padding: 15px;
+  border: 1px solid var(--line-soft);
+  border-radius: 9px;
+  background: var(--surface-2);
 }
 
 .garage-group + .garage-group {
-  margin-top: 15px;
+  margin-top: 0;
 }
 
 .garage-group legend {
-  margin-bottom: 10px;
-  padding: 0;
-  color: var(--teal);
-  font-size: 10px;
-  font-weight: 850;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  margin-bottom: 9px;
+  padding: 0 5px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 720;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .garage-group select:disabled {
@@ -1465,31 +1644,96 @@ kbd {
   opacity: 0.72;
 }
 
+.garage-group [hidden] {
+  display: none !important;
+}
+
 .garage-worker-note {
   margin: 10px 0 0;
   padding: 9px 10px;
   border-radius: 8px;
-  color: #82969a;
-  background: rgba(255, 255, 255, 0.025);
-  font-size: 9px;
+  color: var(--muted);
+  background: #ecefeb;
+  font-size: 11px;
+}
+
+.garage-worker-note.ready {
+  color: var(--green);
+  background: #edf7f2;
+}
+
+.garage-control-mode {
+  display: grid;
+  gap: 7px;
+}
+
+.garage-field-label {
+  color: #49565d;
+  font-size: 12px;
+  font-weight: 680;
+}
+
+.drive-mode-selector {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.drive-mode-selector button {
+  display: grid;
+  min-height: 62px;
+  align-content: center;
+  gap: 4px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--muted);
+  background: var(--surface);
+  text-align: left;
+}
+
+.drive-mode-selector button.active {
+  border-color: rgba(230, 83, 47, 0.55);
+  color: var(--text);
+  background: #fff4ef;
+}
+
+.drive-mode-selector button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.drive-mode-selector strong,
+.drive-mode-selector small {
+  display: block;
+}
+
+.drive-mode-selector strong {
+  color: inherit;
+  font-size: 12px;
+}
+
+.drive-mode-selector small {
+  color: var(--muted);
+  font-size: 10px;
 }
 
 .drive-simple-toggles {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 7px;
-  margin-top: 16px;
+  margin-top: 0;
 }
 
 .drive-simple-toggle {
-  min-height: 72px;
+  min-height: 76px;
   flex-direction: row;
   align-items: flex-start;
   gap: 8px;
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 9px;
-  background: #0d1518;
+  background: var(--surface);
   cursor: pointer;
 }
 
@@ -1506,34 +1750,35 @@ kbd {
 
 .drive-simple-toggle strong {
   color: var(--text);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .drive-simple-toggle small {
   margin-top: 3px;
-  color: #788c90;
-  font-size: 8px;
+  color: var(--muted);
+  font-size: 10px;
   font-weight: 520;
   line-height: 1.3;
 }
 
 .drive-advanced {
-  margin-top: 15px;
+  margin-top: 0;
   padding-top: 13px;
   border-top: 1px solid var(--line-soft);
 }
 
 .drive-advanced > summary {
   cursor: pointer;
-  color: #a8b8ba;
-  font-size: 11px;
+  min-height: 44px;
+  color: var(--text);
+  font-size: 12px;
   font-weight: 720;
 }
 
 .drive-advanced > p {
   margin: 8px 0 12px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .drive-form-section {
@@ -1554,7 +1799,7 @@ kbd {
   display: grid;
   grid-template-columns: 1fr;
   gap: 8px;
-  margin-top: 18px;
+  margin-top: 0;
 }
 
 .drive-session-actions button {
@@ -1563,7 +1808,17 @@ kbd {
 
 .drive-session-actions button:disabled {
   cursor: not-allowed;
-  opacity: 0.4;
+  border-color: var(--line);
+  color: #7b858a;
+  background: #e7e9e6;
+  opacity: 1;
+}
+
+.drive-start-note {
+  margin: 0;
+  color: var(--red);
+  font-size: 11px;
+  text-align: center;
 }
 
 .drive-output-path {
@@ -1707,13 +1962,93 @@ kbd {
   box-shadow: none;
 }
 
+/* Daylight workshop theme. The live cockpit intentionally remains dark. */
+body:not(.drive-immersive) .step,
+body:not(.drive-immersive) .workflow-icon {
+  border-color: rgba(230, 83, 47, 0.24);
+  color: var(--teal);
+  background: #fff4ef;
+}
+
+body:not(.drive-immersive) .research-tabs {
+  margin-top: -4px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+
+body:not(.drive-immersive) .research-tab {
+  min-height: 44px;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+}
+
+body:not(.drive-immersive) .research-tab:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+
+body:not(.drive-immersive) .research-tab.active {
+  color: var(--text);
+  border-bottom-color: var(--teal);
+  background: transparent;
+}
+
+body:not(.drive-immersive) .evidence-counts,
+body:not(.drive-immersive) .drive-capability-list > div {
+  background: var(--surface-2);
+}
+
+body:not(.drive-immersive) .evidence-summary div,
+body:not(.drive-immersive) .drive-server-facts div,
+body:not(.drive-immersive) .drive-health-grid div,
+body:not(.drive-immersive) .session-table th {
+  background: #f4f5f3;
+}
+
+body:not(.drive-immersive) .session-row:hover,
+body:not(.drive-immersive) .session-row.selected {
+  background: #fff4ef;
+}
+
+body:not(.drive-immersive) .log-tab.active {
+  color: var(--teal-dark);
+  background: #fff4ef;
+}
+
+body:not(.drive-immersive) .toast {
+  color: var(--text);
+  background: var(--surface);
+}
+
+body:not(.drive-immersive) .toast.error {
+  color: var(--red);
+  background: #fff5f4;
+}
+
 body.drive-immersive {
+  --surface: #11191d;
+  --surface-2: #172126;
+  --surface-3: #1d2a30;
+  --input-bg: #0d1518;
+  --line: #293941;
+  --line-soft: #203037;
+  --text: #eef5f3;
+  --muted: #9aabae;
+  --teal: #f06b47;
+  --teal-dark: #a63720;
+  --yellow: #f3c65f;
+  --red: #ff756f;
+  --green: #70d6a3;
+  --blue: #72b7ff;
   overflow: hidden;
   background: #020405;
 }
 
 .drive-immersive .app-shell {
   width: 100%;
+  height: 100vh;
   height: 100dvh;
   margin: 0;
   padding: 0;
@@ -1745,12 +2080,31 @@ body.drive-immersive {
 .drive-immersive .drive-viewer-card {
   display: flex;
   width: 100%;
+  height: 100vh;
   height: 100dvh;
   flex-direction: column;
-  padding: 9px;
+  padding:
+    max(9px, env(safe-area-inset-top))
+    max(9px, env(safe-area-inset-right))
+    max(9px, env(safe-area-inset-bottom))
+    max(9px, env(safe-area-inset-left));
   border: 0;
   border-radius: 0;
   box-shadow: none;
+}
+
+.drive-immersive .drive-viewport {
+  background: #020405;
+}
+
+.drive-immersive .drive-viewport.focused {
+  border-color: var(--teal);
+  box-shadow: 0 0 0 2px rgba(240, 107, 71, 0.28);
+}
+
+.drive-immersive .drive-view-button.active {
+  color: #ffffff;
+  background: var(--teal);
 }
 
 .drive-immersive .drive-viewer-toolbar {
@@ -1783,11 +2137,27 @@ body.drive-immersive {
 }
 
 @media (any-pointer: coarse), (hover: none) {
+  body:not(.drive-immersive) button.secondary,
+  body:not(.drive-immersive) .row-action,
+  body:not(.drive-immersive) .log-tab,
+  body:not(.drive-immersive) .artifact-action-link,
+  body:not(.drive-immersive) .evidence-actions .primary,
+  body:not(.drive-immersive) summary {
+    min-height: 44px;
+  }
+
+  body:not(.drive-immersive) .row-action,
+  body:not(.drive-immersive) .log-tab,
+  body:not(.drive-immersive) .artifact-action-link {
+    display: inline-flex;
+    align-items: center;
+  }
+
   .drive-immersive .drive-touch-controls {
     position: absolute;
-    right: 15px;
-    bottom: 15px;
-    left: 15px;
+    right: max(15px, env(safe-area-inset-right));
+    bottom: max(15px, env(safe-area-inset-bottom));
+    left: max(15px, env(safe-area-inset-left));
     z-index: 5;
     display: flex;
     align-items: flex-end;
@@ -1831,8 +2201,8 @@ body.drive-immersive {
   .drive-touch-controls button.active {
     transform: scale(0.95);
     border-color: var(--teal);
-    color: #061310;
-    background: rgba(57, 215, 189, 0.92);
+    color: #ffffff;
+    background: rgba(240, 107, 71, 0.94);
   }
 
   .drive-touch-controls .touch-throttle {
@@ -1865,8 +2235,8 @@ body.drive-immersive {
 
 .toast {
   position: fixed;
-  right: 20px;
-  bottom: 20px;
+  right: max(20px, env(safe-area-inset-right));
+  bottom: max(20px, env(safe-area-inset-bottom));
   z-index: 20;
   max-width: min(420px, calc(100vw - 40px));
   padding: 12px 15px;
@@ -1928,9 +2298,17 @@ body.drive-immersive {
   }
 }
 
+@media (min-width: 900px) {
+  .garage-world-group .fields.two {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 780px) {
   .app-shell {
-    width: min(100% - 20px, 1500px);
+    width: 100%;
+    padding-right: max(10px, env(safe-area-inset-right));
+    padding-left: max(10px, env(safe-area-inset-left));
     padding-top: 12px;
   }
 
@@ -1938,6 +2316,59 @@ body.drive-immersive {
   .section-heading {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .topbar {
+    gap: 12px;
+    padding-bottom: 12px;
+  }
+
+  .brand-mark {
+    width: 42px;
+    height: 42px;
+  }
+
+  .system-status {
+    width: 100%;
+    flex-wrap: nowrap;
+    padding-bottom: 2px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .system-status::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tabs {
+    margin-top: 8px;
+    margin-bottom: 16px;
+  }
+
+  .drive-setup-form {
+    grid-template-columns: 1fr;
+    padding: 15px;
+  }
+
+  .garage-bay {
+    min-height: 160px;
+    grid-template-columns: minmax(180px, 0.72fr) minmax(230px, 1.28fr);
+    gap: 17px;
+    padding: 18px;
+  }
+
+  .garage-bay-art {
+    min-height: 118px;
+  }
+
+  .garage-bay-meta {
+    right: 18px;
+    bottom: 14px;
+    left: calc(42% + 17px);
+  }
+
+  .drive-setup-form > * {
+    grid-column: 1 !important;
   }
 
   .system-status {
@@ -2002,6 +2433,12 @@ body.drive-immersive {
     grid-template-columns: 1fr;
   }
 
+  .evidence-filters > *,
+  .form-grid > *,
+  .fields > * {
+    min-width: 0;
+  }
+
   .evidence-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2013,12 +2450,69 @@ body.drive-immersive {
 
   .tabs {
     position: sticky;
-    top: 0;
+    top: env(safe-area-inset-top);
     z-index: 10;
+    background: var(--bg);
+  }
+}
+
+@media (min-width: 600px) and (max-width: 780px) {
+  .drive-setup-form .fields.two {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 480px) {
+  .app-shell {
+    width: 100%;
+    padding-right: max(8px, env(safe-area-inset-right));
+    padding-left: max(8px, env(safe-area-inset-left));
+  }
+
+  .brand-lockup {
+    gap: 10px;
+  }
+
+  .brand-lockup .eyebrow {
+    display: none;
+  }
+
+  .system-status #jobs-status {
+    display: none;
+  }
+
+  .drive-heading-badges {
+    gap: 6px;
+  }
+
+  .garage-bay {
+    min-height: 142px;
+    grid-template-columns: minmax(112px, 0.62fr) minmax(0, 1.38fr);
+    gap: 12px;
+    padding: 13px;
+  }
+
+  .garage-bay-art {
+    min-height: 100px;
+  }
+
+  .garage-bay-copy h3 {
+    font-size: 19px;
+  }
+
+  .garage-bay-copy p:not(.eyebrow) {
+    font-size: 11px;
+  }
+
+  .garage-bay-meta {
+    position: static;
+    grid-column: 1 / -1;
+  }
+
+  .garage-bay-meta span {
+    flex: 1 1 0;
+  }
+
   .drive-view-actions button,
   .drive-frame-state,
   .drive-view-switch {
@@ -2041,6 +2535,89 @@ body.drive-immersive {
 
   .drive-simple-toggles {
     grid-template-columns: 1fr;
+  }
+
+  .drive-mode-selector {
+    grid-template-columns: 1fr;
+  }
+
+}
+
+@media (max-width: 780px),
+  (orientation: landscape) and (max-height: 500px) {
+  body.drive-tab-active:not(.drive-immersive) .app-shell {
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  }
+
+  body.drive-tab-active:not(.drive-immersive) .drive-session-actions {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 12;
+    padding:
+      10px
+      max(12px, env(safe-area-inset-right))
+      max(10px, env(safe-area-inset-bottom))
+      max(12px, env(safe-area-inset-left));
+    border-top: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 -8px 24px rgba(28, 36, 39, 0.09);
+  }
+
+  body.drive-tab-active:not(.drive-immersive) .drive-session-actions button {
+    width: min(100%, 520px);
+    margin: 0 auto;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+  body:not(.drive-immersive) .app-shell {
+    width: 100%;
+    padding-right: max(20px, env(safe-area-inset-right));
+    padding-left: max(20px, env(safe-area-inset-left));
+  }
+
+  .drive-immersive .drive-viewer-card {
+    padding-top: max(5px, env(safe-area-inset-top));
+    padding-bottom: max(5px, env(safe-area-inset-bottom));
+  }
+
+  .drive-immersive .drive-viewer-toolbar {
+    min-height: 38px;
+    padding-bottom: 5px;
+  }
+
+  .drive-immersive .drive-view-button,
+  .drive-immersive .drive-view-actions button {
+    min-height: 44px;
+    padding-top: 4px;
+    padding-bottom: 4px;
+  }
+
+  .drive-immersive .drive-hud-bottom > div:last-child {
+    display: none;
+  }
+
+  .drive-touch-controls button {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+  }
+
+  .drive-immersive .drive-hud-bottom {
+    bottom: 70px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
 

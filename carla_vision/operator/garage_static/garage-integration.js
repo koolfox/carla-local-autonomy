@@ -9,7 +9,7 @@
   }
 
   function selectedMode() {
-    return element("drive-control-mode")?.value || "manual";
+    return element("drive-garage-control-mode")?.value || "manual";
   }
 
   function isAutonomousMode(mode = selectedMode()) {
@@ -42,7 +42,7 @@
 
   function installModeControls() {
     const form = element("drive-start-form");
-    if (!form || element("drive-control-mode")) return;
+    if (!form || element("drive-garage-control-mode")) return;
     const carGroup = form.querySelector("fieldset.garage-group");
     const fieldset = document.createElement("fieldset");
     fieldset.className = "garage-group garage-drive-mode";
@@ -51,7 +51,7 @@
       <div class="fields two">
         <label>
           Control
-          <select id="drive-control-mode" required>
+          <select id="drive-garage-control-mode" required>
             <option value="manual">Manual</option>
           </select>
         </label>
@@ -111,14 +111,14 @@
       hudSession.insertAdjacentElement("afterend", badge);
     }
 
-    element("drive-control-mode").addEventListener("change", () => {
+    element("drive-garage-control-mode").addEventListener("change", () => {
       checkpointMode = "";
       syncModeUi(true);
     });
   }
 
   function syncModeOptions() {
-    const select = element("drive-control-mode");
+    const select = element("drive-garage-control-mode");
     const catalog = state.drive?.catalog;
     if (!select || !catalog) return;
     const current = select.value || "manual";
@@ -164,8 +164,15 @@
   function syncPopulationControls() {
     const active = driveIsActive();
     const capabilities = state.drive?.catalog?.capabilities || {};
+    const worker = typeof driveWorldCapabilities === "function"
+      ? driveWorldCapabilities()
+      : { nativeWorker: false, traffic: false, walkers: false };
+    const trafficAvailable = worker.traffic || capabilities.garage_traffic_population;
+    const walkersAvailable = worker.walkers || capabilities.garage_walker_population;
     const traffic = element("drive-traffic-choice");
     const walkers = element("drive-walkers-choice");
+    const trafficField = element("drive-traffic-field");
+    const walkersField = element("drive-walkers-field");
     populateCounts(traffic, [
       [0, "None"],
       [15, "Light · 15"],
@@ -178,11 +185,18 @@
       [25, "Medium · 25"],
       [40, "Busy · 40"],
     ]);
-    if (traffic) traffic.disabled = active || !capabilities.traffic_population;
-    if (walkers) walkers.disabled = active || !capabilities.walker_population;
+    if (trafficField) trafficField.hidden = !trafficAvailable;
+    if (walkersField) walkersField.hidden = !walkersAvailable;
+    if (traffic) traffic.disabled = active || !trafficAvailable;
+    if (walkers) walkers.disabled = active || !walkersAvailable;
     const note = document.querySelector(".garage-worker-note");
-    if (note && capabilities.pythonapi) {
-      note.textContent = "CARLA PythonAPI is available. Traffic and pedestrians are owned by this drive session and cleaned up when it ends.";
+    if (note && worker.nativeWorker) {
+      note.textContent = "World Worker is connected. Maps, routes, traffic and pedestrians are owned by this drive session and cleaned up when it ends.";
+    } else if (
+      note &&
+      (capabilities.garage_traffic_population || capabilities.garage_walker_population)
+    ) {
+      note.textContent = "Local CARLA PythonAPI is available. Garage traffic and pedestrians are owned by this drive session and cleaned up when it ends.";
     }
   }
 
@@ -191,10 +205,13 @@
     const mode = selectedMode();
     const autonomous = isAutonomousMode(mode);
     const modelMode = mode === "imitation" || mode === "voxel";
+    if (autonomous && typeof setDriveInitialControlMode === "function") {
+      setDriveInitialControlMode("manual");
+    }
     if (modelMode) syncCheckpointOptions(mode);
 
     const active = driveIsActive();
-    const control = element("drive-control-mode");
+    const control = element("drive-garage-control-mode");
     if (control) control.disabled = active;
     element("drive-behavior-wrap").hidden = !["behavior", "voxel"].includes(mode);
     element("drive-policy-checkpoint-wrap").hidden = !modelMode;
@@ -234,9 +251,10 @@
       detector.disabled = false;
     }
 
+    document.body.classList.toggle("garage-autonomy-selected", autonomous);
     document.body.classList.toggle("garage-autonomous", autonomous && driveIsRunning());
     const badge = element("drive-garage-mode-badge");
-    const liveMode = state.drive?.session?.control_mode || mode;
+    const liveMode = state.drive?.session?.garage_mode || mode;
     if (badge) badge.textContent = modeLabel(liveMode);
 
     const focus = element("drive-focus");
@@ -263,31 +281,24 @@
   function fullStartPayload() {
     const mode = selectedMode();
     const autonomous = isAutonomousMode(mode);
+    const base = driveStartPayload();
+    const workerOwnsWorld = driveWorldCapabilities().nativeWorker;
     return {
-      run_id: element("drive-run-id").value,
-      host: element("drive-host").value,
-      port: number("drive-port"),
-      vehicle_blueprint: element("drive-vehicle").value,
-      color: element("drive-color").value,
-      seed: number("drive-seed"),
-      weather_preset: element("drive-weather").value,
-      prop_preset: element("drive-props").value,
+      ...base,
+      traffic_count: workerOwnsWorld ? base.traffic_count : 0,
+      walker_count: workerOwnsWorld ? base.walker_count : 0,
+      initial_control_mode: autonomous ? "manual" : base.initial_control_mode,
       detector_enabled: autonomous ? false : checked("drive-detector-enabled"),
-      detector: element("drive-detector").value,
       weights: autonomous ? "" : element("drive-weights").value,
-      device: element("drive-device").value,
-      image_size: number("drive-image-size"),
-      confidence: number("drive-confidence"),
-      resolution: element("drive-resolution").value,
-      camera_fps: number("drive-camera-fps"),
-      camera_fov: number("drive-camera-fov"),
-      record_video: checked("drive-record-video"),
-      spectator_follow: checked("drive-spectator-follow"),
       control_mode: mode,
       behavior: element("drive-behavior").value,
       acknowledge_autonomy: autonomous && checked("drive-autonomy-ack"),
-      traffic_vehicles: Number(element("drive-traffic-choice")?.value || 0),
-      walkers: Number(element("drive-walkers-choice")?.value || 0),
+      traffic_vehicles: workerOwnsWorld
+        ? 0
+        : Number(element("drive-traffic-choice")?.value || 0),
+      walkers: workerOwnsWorld
+        ? 0
+        : Number(element("drive-walkers-choice")?.value || 0),
       tm_port: 8000,
       target_speed_kmh: Number(element("drive-target-speed").value || 35),
       policy_checkpoint: modelModeCheckpoint(mode),
@@ -314,7 +325,7 @@
       state.drive.inputFocused = false;
       renderDriveState();
       syncModeUi(true);
-      const mode = state.drive.session.control_mode || selectedMode();
+      const mode = state.drive.session.garage_mode || selectedMode();
       showToast(
         mode === "manual"
           ? "Drive is starting. Click the camera when it appears to take control."
@@ -330,7 +341,7 @@
   }
 
   function blockManualControlInAutonomy(event) {
-    const mode = state.drive?.session?.control_mode || selectedMode();
+    const mode = state.drive?.session?.garage_mode || selectedMode();
     if (!isAutonomousMode(mode) || !driveIsRunning()) return;
     event.preventDefault();
     event.stopImmediatePropagation();
@@ -478,6 +489,11 @@
       syncModeUi();
     }, 250);
   }
+
+  window.carlaGarageManualControlBlocked = () => {
+    const mode = state.drive?.session?.garage_mode || selectedMode();
+    return isAutonomousMode(mode) && driveIsRunning();
+  };
 
   if (document.readyState === "loading") {
     window.addEventListener("DOMContentLoaded", install, { once: true });

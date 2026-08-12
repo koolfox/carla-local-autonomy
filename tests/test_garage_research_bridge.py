@@ -6,6 +6,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from carla_vision.operator import garage_server
 from carla_vision.operator.garage_server import GARAGE_STATIC_ROOT, create_server
 
 STATIC_ROOT = Path(__file__).parents[1] / "carla_vision" / "operator" / "static"
@@ -20,7 +21,9 @@ def _get(url: str) -> tuple[int, str, str]:
         )
 
 
-def test_garage_server_preserves_base_operator_and_injects_only_additive_assets(tmp_path: Path) -> None:
+def test_garage_server_preserves_base_operator_and_injects_only_additive_assets(
+    tmp_path: Path,
+) -> None:
     (tmp_path / "models" / "imitation").mkdir(parents=True)
     (tmp_path / "models" / "imitation" / "best.pt").write_bytes(b"checkpoint")
     server = create_server(
@@ -42,13 +45,13 @@ def test_garage_server_preserves_base_operator_and_injects_only_additive_assets(
         assert content_type == "text/html"
         assert 'id="drive-start-form"' in html
         assert 'id="panel-tools"' in html
-        assert html.count('/static/garage-integration.js') == 1
-        assert html.count('/static/garage-research.js') == 1
-        assert html.count('/static/garage-integration.css') == 1
+        assert html.count("/static/garage-integration.js") == 1
+        assert html.count("/static/garage-research.js") == 1
+        assert html.count("/static/garage-integration.css") == 1
 
         _, javascript_type, javascript = _get(f"{root}/static/garage-integration.js")
         assert javascript_type in {"text/javascript", "application/javascript"}
-        assert "drive-control-mode" in javascript
+        assert "drive-garage-control-mode" in javascript
         assert "BehaviorAgent" in javascript
         assert "VOXEL PLANNER" in javascript
         assert 'startJob("verify"' in javascript
@@ -101,6 +104,73 @@ def test_garage_server_preserves_base_operator_and_injects_only_additive_assets(
         server.application.jobs.shutdown()
 
 
+def test_garage_server_propagates_world_worker_to_replacement_drive_manager(
+    tmp_path: Path,
+) -> None:
+    server = create_server(
+        workspace=tmp_path,
+        bind="127.0.0.1",
+        port=0,
+        sessions_root=tmp_path / "operator_sessions",
+        carla_host="127.0.0.1",
+        carla_port=65534,
+        world_worker_url="http://127.0.0.1:8766",
+        world_worker_token="test-token",
+    )
+    try:
+        assert server.application.world_worker is not None
+        assert server.application.drive._world_worker is server.application.world_worker
+    finally:
+        server.server_close()
+        server.application.jobs.shutdown()
+
+
+def test_garage_main_forwards_world_worker_cli_configuration(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeJobs:
+        def shutdown(self) -> None:
+            pass
+
+    class FakeServer:
+        server_address = ("127.0.0.1", 8765)
+        application = type("Application", (), {"jobs": FakeJobs()})()
+
+        def serve_forever(self, *, poll_interval: float) -> None:
+            assert poll_interval == 0.25
+
+        def shutdown(self) -> None:
+            pass
+
+        def server_close(self) -> None:
+            pass
+
+    def fake_create_server(**kwargs: object) -> FakeServer:
+        captured.update(kwargs)
+        return FakeServer()
+
+    monkeypatch.setenv("GARAGE_WORKER_TOKEN", "secret-token")
+    monkeypatch.setattr(garage_server, "create_server", fake_create_server)
+
+    result = garage_server.main(
+        [
+            "--workspace",
+            str(tmp_path),
+            "--world-worker-url",
+            "http://127.0.0.1:8766",
+            "--world-worker-token-env",
+            "GARAGE_WORKER_TOKEN",
+        ]
+    )
+
+    assert result == 0
+    assert captured["world_worker_url"] == "http://127.0.0.1:8766"
+    assert captured["world_worker_token"] == "secret-token"
+
+
 def test_bridge_assets_are_separate_from_existing_static_files() -> None:
     assert (GARAGE_STATIC_ROOT / "garage-integration.js").is_file()
     assert (GARAGE_STATIC_ROOT / "garage-research.js").is_file()
@@ -111,7 +181,7 @@ def test_bridge_assets_are_separate_from_existing_static_files() -> None:
     assert "garage-integration.js" not in base_html
     assert "garage-research.js" not in base_html
     assert "drive-research-actions" not in base_js
-    assert "drive-control-mode" not in base_js
+    assert "drive-garage-control-mode" not in base_js
 
 
 def test_unknown_extra_static_asset_is_still_rejected(tmp_path: Path) -> None:

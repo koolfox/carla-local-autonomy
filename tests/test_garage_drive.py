@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from carla_vision.operator import garage_drive
 from carla_vision.operator.drive_contracts import DriveInput
 from carla_vision.operator.garage_drive import GarageDriveSession, GarageDriveStartConfig
 from carla_vision.operator.garage_server import GarageOperatorDriveManager
@@ -49,12 +50,18 @@ def base_start(**overrides: object) -> dict[str, object]:
     return payload
 
 
-def config(workspace: Path, **overrides: object) -> GarageDriveStartConfig:
+def config(
+    workspace: Path,
+    *,
+    world_worker_configured: bool = False,
+    **overrides: object,
+) -> GarageDriveStartConfig:
     return GarageDriveStartConfig.from_mapping(
         base_start(**overrides),
         workspace=workspace,
         expected_host=CARLA_HOST,
         expected_port=CARLA_PORT,
+        world_worker_configured=world_worker_configured,
     )
 
 
@@ -97,7 +104,55 @@ def test_autonomous_modes_require_explicit_acknowledgement(tmp_path: Path) -> No
     assert cfg.model_output_actuated is False
 
 
-def test_model_modes_require_workspace_checkpoint_and_disable_detector_overlay(tmp_path: Path) -> None:
+def test_worker_runtime_mode_and_garage_mode_remain_distinct(tmp_path: Path) -> None:
+    cfg = config(
+        tmp_path,
+        world_worker_configured=True,
+        initial_control_mode="autopilot",
+        traffic_count=7,
+        walker_count=8,
+        traffic_vehicles=3,
+        walkers=4,
+    )
+    session = GarageDriveSession(cfg, workspace=tmp_path, world_worker=object())  # type: ignore[arg-type]
+
+    snapshot = session.snapshot()
+    manifest = cfg.manifest_config()
+
+    assert snapshot["control_mode"] == "autopilot"
+    assert snapshot["garage_mode"] == "manual"
+    assert manifest["control_mode"] == "world_worker_autopilot"
+    assert manifest["garage_mode"] == "manual"
+    assert manifest["traffic_count"] == 7
+    assert manifest["walker_count"] == 8
+    assert manifest["garage_traffic_vehicles"] == 3
+    assert manifest["garage_walkers"] == 4
+
+
+def test_garage_autonomy_rejects_worker_autopilot_ownership(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="World Worker autopilot owns control"):
+        config(
+            tmp_path,
+            world_worker_configured=True,
+            control_mode="behavior",
+            acknowledge_autonomy=True,
+            initial_control_mode="autopilot",
+        )
+
+    cfg = config(
+        tmp_path,
+        world_worker_configured=True,
+        control_mode="behavior",
+        acknowledge_autonomy=True,
+    )
+    session = GarageDriveSession(cfg, workspace=tmp_path, world_worker=object())  # type: ignore[arg-type]
+    with pytest.raises(RuntimeError, match="cannot take over"):
+        session.request_mode("autopilot")
+
+
+def test_model_modes_require_workspace_checkpoint_and_disable_detector_overlay(
+    tmp_path: Path,
+) -> None:
     models = tmp_path / "models"
     models.mkdir()
     (models / "detector.pt").write_bytes(b"detector")
@@ -144,7 +199,9 @@ def test_checkpoint_and_readiness_paths_cannot_escape_workspace(tmp_path: Path) 
         )
 
 
-def test_emergency_and_camera_staleness_fail_closed_before_policy_initialization(tmp_path: Path) -> None:
+def test_emergency_and_camera_staleness_fail_closed_before_policy_initialization(
+    tmp_path: Path,
+) -> None:
     cfg = config(tmp_path, control_mode="behavior", acknowledge_autonomy=True)
     session = GarageDriveSession(cfg, workspace=tmp_path)
 
@@ -192,3 +249,87 @@ def test_catalog_finds_nested_policy_checkpoints_without_exposing_environment_di
     assert ".venv/ignored.pt" not in catalog["policy_checkpoints"]
     modes = {row["id"]: row for row in catalog["control_modes"]}
     assert modes["manual"]["available"] is True
+
+
+def test_catalog_namespaces_garage_capabilities_without_overwriting_base(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(garage_drive, "_module_available", lambda _name: True)
+    manager = GarageOperatorDriveManager(
+        workspace=tmp_path,
+        carla_host=CARLA_HOST,
+        carla_port=CARLA_PORT,
+    )
+
+    capabilities = manager.catalog()["capabilities"]
+
+    assert capabilities["autopilot"] is False
+    assert capabilities["traffic_manager"] is False
+    assert capabilities["walkers"] is False
+    assert "pythonapi" not in capabilities
+    assert "behavior_agent" not in capabilities
+    assert capabilities["garage_behavior_drive"] is True
+    assert capabilities["garage_traffic_population"] is True
+    assert capabilities["garage_walker_population"] is True
+    assert capabilities["garage_imitation_drive"] is True
+    assert capabilities["garage_voxel_drive"] is True
+
+
+def test_manager_uses_ready_worker_and_falls_back_only_for_exact_defaults(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    created: list[object] = []
+
+    class FakeSession:
+        def __init__(self, cfg: object, *, workspace: Path, world_worker: object = None) -> None:
+            self.config = cfg
+            self.workspace = workspace
+            self.world_worker = world_worker
+            self.session_id = "garage-drive-test"
+            created.append(self)
+
+        def start(self) -> None:
+            pass
+
+        def snapshot(self) -> dict[str, object]:
+            return {"status": "running", "session_id": self.session_id}
+
+    class FakeWorker:
+        def __init__(self, *, ready: bool) -> None:
+            self.ready = ready
+
+        def health(self) -> dict[str, object]:
+            if not self.ready:
+                raise RuntimeError("offline")
+            return {"ready": True}
+
+        def catalog(self) -> dict[str, object]:
+            return {"catalog": {"capabilities": {}}}
+
+    monkeypatch.setattr(garage_drive, "GarageDriveSession", FakeSession)
+    monkeypatch.setattr(garage_drive, "_module_available", lambda _name: False)
+
+    ready_worker = FakeWorker(ready=True)
+    ready_manager = GarageOperatorDriveManager(
+        workspace=tmp_path,
+        carla_host=CARLA_HOST,
+        carla_port=CARLA_PORT,
+        world_worker=ready_worker,  # type: ignore[arg-type]
+    )
+    ready_manager.start(base_start(map_name="Town10HD_Opt", traffic_count=5))
+    assert created[-1].world_worker is ready_worker  # type: ignore[attr-defined]
+    assert created[-1].config.base.traffic_count == 5  # type: ignore[attr-defined]
+
+    unavailable_worker = FakeWorker(ready=False)
+    unavailable_manager = GarageOperatorDriveManager(
+        workspace=tmp_path,
+        carla_host=CARLA_HOST,
+        carla_port=CARLA_PORT,
+        world_worker=unavailable_worker,  # type: ignore[arg-type]
+    )
+    with pytest.raises(ValueError, match="configured World Worker is required"):
+        unavailable_manager.start(base_start(traffic_count=1))
+    unavailable_manager.start(base_start())
+    assert created[-1].world_worker is None  # type: ignore[attr-defined]

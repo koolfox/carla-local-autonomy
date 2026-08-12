@@ -2,8 +2,9 @@
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="color-scheme" content="dark">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="color-scheme" content="light">
+    <meta name="theme-color" content="#f3f2ee">
     <title>CARLA Vision Operator</title>
     <meta
       name="description"
@@ -11,13 +12,13 @@
     >
     <link rel="stylesheet" href="/static/app.css">
   </head>
-  <body>
+  <body class="drive-tab-active">
     <div class="app-shell">
       <header class="topbar">
         <div class="brand-lockup">
           <div class="brand-mark" aria-hidden="true">CV</div>
           <div>
-            <p class="eyebrow">DRIVE + RESEARCH</p>
+            <p class="eyebrow">Research driving console</p>
             <h1>CARLA Vision Operator</h1>
           </div>
         </div>
@@ -31,30 +32,32 @@
       <div class="safety-strip">
         <span class="safety-icon" aria-hidden="true">◎</span>
         <p>
-          AI can draw suggestions on the camera view, but it never steers or brakes.
-          The car stops automatically if this page loses driving focus.
+          Object detections are visual only; they never steer or brake. Manual driving
+          keeps its focus-loss brake, and simulator autopilot must be selected explicitly.
         </p>
       </div>
 
-      <nav class="tabs" aria-label="Operator sections">
-        <button class="tab active" data-tab="drive" type="button">Drive</button>
-        <button class="tab" data-tab="tools" type="button">Research tools</button>
+      <nav class="tabs" role="tablist" aria-label="Operator sections">
+        <button class="tab active" data-tab="drive" type="button" role="tab" aria-selected="true" aria-controls="panel-drive">Drive</button>
+        <button class="tab" data-tab="tools" type="button" role="tab" aria-selected="false" aria-controls="panel-tools">Research tools</button>
       </nav>
 
       <main>
-        <section id="panel-drive" class="panel active" aria-labelledby="drive-title">
+        <section id="panel-drive" class="panel active" role="tabpanel" aria-labelledby="drive-title">
           <div class="section-heading drive-heading">
             <div>
-              <p class="eyebrow">MANUAL DRIVE</p>
-              <h2 id="drive-title">Drive CARLA from this page</h2>
+              <p class="eyebrow">Garage</p>
+              <h2 id="drive-title">Choose your drive</h2>
               <p>
-                Pick a car, weather, and road scene. Start the drive, click the camera,
-                then use the keyboard like a simple driving game.
+                Pick a car, set the world, and hit the road. You can take control at
+                any time.
               </p>
             </div>
             <div class="drive-heading-badges">
               <span id="drive-status" class="status-pill neutral">idle</span>
-              <span class="boundary-badge drive-advisory-badge">AI suggestions only — you stay in control</span>
+              <span id="drive-advisory-badge" class="boundary-badge drive-advisory-badge">
+                Detections only — you drive
+              </span>
             </div>
           </div>
 
@@ -67,7 +70,7 @@
                       Camera
                     </button>
                     <button id="drive-view-overlay" class="drive-view-button active" type="button" aria-pressed="true">
-                      AI detections
+                      Detections
                     </button>
                   </div>
                   <div class="drive-view-actions">
@@ -95,6 +98,7 @@
                   </div>
                   <div class="drive-hud drive-hud-top">
                     <span id="drive-hud-session">NO SESSION</span>
+                    <span id="drive-hud-mode" class="drive-mode-indicator">MANUAL</span>
                     <span id="drive-hud-recording" class="drive-recording-indicator">REC OFF</span>
                   </div>
                   <div class="drive-hud drive-hud-bottom">
@@ -156,21 +160,46 @@
               </article>
 
               <div class="drive-model-boundary" role="note">
-                <strong>Human control only.</strong>
-                <span>AI boxes are visual hints. Leaving the camera or browser applies the brake.</span>
+                <strong id="drive-control-boundary-title">Human control.</strong>
+                <span id="drive-control-boundary-copy">
+                  AI boxes are visual hints. Leaving the camera or browser applies the brake.
+                </span>
               </div>
 
             </div>
 
             <aside class="drive-setup-column">
+              <section class="garage-bay" aria-labelledby="garage-bay-title">
+                <div class="garage-bay-art" aria-hidden="true">
+                  <span class="garage-bay-road"></span>
+                  <svg viewBox="0 0 320 120" focusable="false">
+                    <path
+                      d="M54 75 79 42c5-7 13-11 22-12l105-4c12 0 23 5 31 14l19 23 22 7c10 3 17 12 17 23v5H27v-6c0-9 6-16 15-18l12-3Z"
+                    />
+                    <path d="M93 43 82 64h64V38l-45 2c-3 0-6 1-8 3Zm68-6v27h74l-13-17c-6-7-14-11-23-11l-38 1Z" />
+                    <circle cx="83" cy="97" r="18" />
+                    <circle cx="243" cy="97" r="18" />
+                  </svg>
+                </div>
+                <div class="garage-bay-copy">
+                  <p class="eyebrow">Selected drive</p>
+                  <h3 id="garage-bay-title">Ready your car</h3>
+                  <p id="garage-bay-world">Choose a vehicle and the scene you want to explore.</p>
+                </div>
+                <div class="garage-bay-meta" aria-live="polite">
+                  <span id="garage-bay-car">No car selected</span>
+                  <span id="garage-bay-weather">Weather pending</span>
+                </div>
+              </section>
+
               <form id="drive-start-form" class="card drive-setup-form">
                 <div class="card-heading">
                   <div>
-                    <h3>Set up the drive</h3>
-                    <p>Pick the car and world, then start.</p>
+                    <h3>Car &amp; scene</h3>
+                    <p>Everything you need before leaving the garage.</p>
                   </div>
                 </div>
-                <fieldset class="garage-group">
+                <fieldset class="garage-group garage-car-group">
                   <legend>Car</legend>
                   <div class="fields two">
                     <label>
@@ -188,10 +217,10 @@
                   </div>
                 </fieldset>
 
-                <fieldset class="garage-group">
+                <fieldset class="garage-group garage-world-group">
                   <legend>World</legend>
                   <div class="fields two">
-                    <label>
+                    <label id="drive-map-field">
                       Map
                       <select id="drive-map-choice" disabled>
                         <option>Loading current map…</option>
@@ -203,16 +232,24 @@
                         <option value="">Loading weather…</option>
                       </select>
                     </label>
-                    <label>
-                      Traffic density
+                    <label id="drive-traffic-field" hidden>
+                      Traffic vehicles
                       <select id="drive-traffic-choice" disabled>
-                        <option>Simulator Worker required</option>
+                        <option value="0">No moving traffic</option>
+                        <option value="5">5 vehicles</option>
+                        <option value="10">10 vehicles</option>
+                        <option value="20">20 vehicles</option>
+                        <option value="40">40 vehicles</option>
                       </select>
                     </label>
-                    <label>
+                    <label id="drive-walkers-field" hidden>
                       Pedestrians
                       <select id="drive-walkers-choice" disabled>
-                        <option>Simulator Worker required</option>
+                        <option value="0">No pedestrians</option>
+                        <option value="5">5 pedestrians</option>
+                        <option value="10">10 pedestrians</option>
+                        <option value="20">20 pedestrians</option>
+                        <option value="40">40 pedestrians</option>
                       </select>
                     </label>
                     <label>
@@ -222,23 +259,53 @@
                       </select>
                       <small>Add fixed items such as cones, construction, or an accident scene.</small>
                     </label>
-                    <label>
-                      Starting point / route
+                    <label id="drive-route-field" hidden>
+                      Route
                       <select id="drive-starting-choice" disabled>
-                        <option>Random starting point · no route planned</option>
+                        <option value="free">Free drive · random road start</option>
+                        <option value="random_destination">Random road destination</option>
                       </select>
                     </label>
+                    <div id="drive-control-mode-field" class="garage-control-mode span-2" hidden>
+                      <span class="garage-field-label">Initial driving mode</span>
+                      <div
+                        id="drive-control-mode"
+                        class="drive-mode-selector"
+                        role="radiogroup"
+                        aria-label="Initial driving mode"
+                      >
+                        <button
+                          id="drive-mode-manual"
+                          class="active"
+                          type="button"
+                          data-drive-mode="manual"
+                          aria-pressed="true"
+                        >
+                          <strong>Manual</strong>
+                          <small>Keyboard or touch</small>
+                        </button>
+                        <button
+                          id="drive-mode-autopilot"
+                          type="button"
+                          data-drive-mode="autopilot"
+                          aria-pressed="false"
+                          disabled
+                        >
+                          <strong>Autopilot</strong>
+                          <small>Take control any time</small>
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  <p class="garage-worker-note">
-                    Connect Simulator Worker to change maps, add moving traffic or pedestrians,
-                    and plan a route. You can still drive freely now.
+                  <p id="drive-worker-note" class="garage-worker-note" aria-live="polite">
+                    Checking for a secure World Worker. Free manual driving remains available.
                   </p>
                 </fieldset>
 
                 <div class="drive-simple-toggles" aria-label="Drive options">
                   <label class="drive-simple-toggle">
                     <input id="drive-detector-enabled" type="checkbox" checked>
-                    <span><strong>AI overlay</strong><small>Show detected objects</small></span>
+                    <span><strong>Detection overlay</strong><small>Show detected objects</small></span>
                   </label>
                   <label class="drive-simple-toggle">
                     <input id="drive-record-video" type="checkbox" checked>
@@ -250,8 +317,9 @@
                   </label>
                 </div>
 
-                <div class="drive-session-actions">
+                <div id="drive-session-actions" class="drive-session-actions">
                   <button id="drive-start" class="primary" type="submit">Start Drive</button>
+                  <p id="drive-start-note" class="drive-start-note" aria-live="polite"></p>
                 </div>
                 <div id="drive-result-banner" class="drive-result-banner" hidden>
                   <div>
@@ -348,7 +416,7 @@
           </div>
         </section>
 
-        <section id="panel-tools" class="panel" aria-labelledby="tools-title">
+        <section id="panel-tools" class="panel" role="tabpanel" aria-labelledby="tools-title">
           <div class="section-heading research-tools-heading">
             <div>
               <p class="eyebrow">OPTIONAL WORKSPACE</p>
@@ -356,14 +424,14 @@
               <p>Plan scenes, run repeatable workflows, and inspect saved results.</p>
             </div>
           </div>
-          <nav class="research-tabs" aria-label="Research tools">
-            <button class="research-tab active" data-research-tab="live" type="button">Live capture</button>
-            <button class="research-tab" data-research-tab="situation" type="button">Scene builder</button>
-            <button class="research-tab" data-research-tab="workflows" type="button">Workflows</button>
-            <button class="research-tab" data-research-tab="evidence" type="button">
+          <nav class="research-tabs" role="tablist" aria-label="Research tools">
+            <button class="research-tab active" data-research-tab="live" type="button" role="tab" aria-selected="true" aria-controls="panel-live">Live capture</button>
+            <button class="research-tab" data-research-tab="situation" type="button" role="tab" aria-selected="false" aria-controls="panel-situation">Scene builder</button>
+            <button class="research-tab" data-research-tab="workflows" type="button" role="tab" aria-selected="false" aria-controls="panel-workflows">Workflows</button>
+            <button class="research-tab" data-research-tab="evidence" type="button" role="tab" aria-selected="false" aria-controls="panel-evidence">
               Saved results <span id="evidence-count" class="count-badge">0</span>
             </button>
-            <button class="research-tab" data-research-tab="sessions" type="button">
+            <button class="research-tab" data-research-tab="sessions" type="button" role="tab" aria-selected="false" aria-controls="panel-sessions">
               Activity <span id="session-count" class="count-badge">0</span>
             </button>
           </nav>
@@ -386,7 +454,7 @@
             </div>
           </details>
 
-        <section id="panel-live" class="research-panel active" aria-labelledby="live-title">
+        <section id="panel-live" class="research-panel active" role="tabpanel" aria-labelledby="live-title">
           <div class="section-heading">
             <div>
               <p class="eyebrow">FRONT MONOCULAR RGB</p>
@@ -571,7 +639,7 @@
           </form>
         </section>
 
-        <section id="panel-situation" class="research-panel" aria-labelledby="situation-title">
+        <section id="panel-situation" class="research-panel" role="tabpanel" aria-labelledby="situation-title">
           <div class="section-heading">
             <div>
               <p class="eyebrow">SCENARIO + SITUATION MODE</p>
@@ -741,7 +809,7 @@
           </article>
         </section>
 
-        <section id="panel-workflows" class="research-panel" aria-labelledby="workflow-title">
+        <section id="panel-workflows" class="research-panel" role="tabpanel" aria-labelledby="workflow-title">
           <div class="section-heading">
             <div>
               <p class="eyebrow">RECORD → REPLAY → TRAIN → VERIFY</p>
@@ -990,7 +1058,7 @@
           </div>
         </section>
 
-        <section id="panel-evidence" class="research-panel" aria-labelledby="evidence-title">
+        <section id="panel-evidence" class="research-panel" role="tabpanel" aria-labelledby="evidence-title">
           <div class="section-heading">
             <div>
               <p class="eyebrow">MANIFEST-DRIVEN EVIDENCE EXPLORER</p>
@@ -1088,7 +1156,7 @@
           </div>
         </section>
 
-        <section id="panel-sessions" class="research-panel" aria-labelledby="sessions-title">
+        <section id="panel-sessions" class="research-panel" role="tabpanel" aria-labelledby="sessions-title">
           <div class="section-heading">
             <div>
               <p class="eyebrow">OPERATOR SESSION LEDGER</p>

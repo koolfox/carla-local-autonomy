@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import json
 import mimetypes
+import os
+import re
 import secrets
 import sys
 import webbrowser
@@ -21,9 +23,11 @@ from .contracts import OperatorJobRequest
 from .drive import DriveSessionManager
 from .jobs import JobManager
 from .situations import PROP_PRESETS, WEATHER_PRESETS, SituationSpec, save_situation_suite
+from .world_worker_client import WorldWorkerClient
 
 STATIC_ROOT = Path(__file__).resolve().parent / "static"
 _LOCAL_BINDS = frozenset({"127.0.0.1", "::1", "localhost"})
+_ENVIRONMENT_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _INLINE_ARTIFACT_SUFFIXES = frozenset(
     {
         ".csv",
@@ -118,10 +122,12 @@ class OperatorApplication:
         sessions_root: str | Path,
         carla_host: str,
         carla_port: int,
+        world_worker: WorldWorkerClient | None = None,
     ) -> None:
         self.workspace = Path(workspace).expanduser().resolve(strict=True)
         self.carla_host = carla_host
         self.carla_port = carla_port
+        self.world_worker = world_worker
         self.token = secrets.token_urlsafe(24)
         self.jobs = JobManager(
             workspace=self.workspace,
@@ -131,6 +137,7 @@ class OperatorApplication:
             workspace=self.workspace,
             carla_host=self.carla_host,
             carla_port=self.carla_port,
+            world_worker=world_worker,
         )
 
     def bootstrap(self) -> dict[str, Any]:
@@ -636,6 +643,15 @@ class OperatorRequestHandler(BaseHTTPRequestHandler):
                     self.server.application.drive.weather(body),
                 )
                 return
+            if path == "/api/drive/mode":
+                body = self._body()
+                if not isinstance(body, Mapping):
+                    raise TypeError("drive mode request must be an object")
+                self._json(
+                    HTTPStatus.ACCEPTED,
+                    self.server.application.drive.mode(body),
+                )
+                return
             if path == "/api/drive/emergency-stop":
                 body = self._body()
                 if not isinstance(body, Mapping):
@@ -674,16 +690,26 @@ def create_server(
     sessions_root: str | Path = "operator_sessions",
     carla_host: str = "172.20.10.7",
     carla_port: int = 2000,
+    world_worker_url: str | None = None,
+    world_worker_token: str | None = None,
 ) -> OperatorHTTPServer:
     if bind not in _LOCAL_BINDS:
         raise ValueError("the operator UI is local-only; bind to 127.0.0.1, ::1, or localhost")
     if not 0 <= port <= 65535:
         raise ValueError("port must be in [0, 65535]")
+    if (world_worker_url is None) != (world_worker_token is None):
+        raise ValueError("World Worker URL and bearer token must be configured together")
+    world_worker = (
+        None
+        if world_worker_url is None or world_worker_token is None
+        else WorldWorkerClient(world_worker_url, world_worker_token)
+    )
     application = OperatorApplication(
         workspace=workspace,
         sessions_root=sessions_root,
         carla_host=carla_host,
         carla_port=carla_port,
+        world_worker=world_worker,
     )
     return OperatorHTTPServer((bind, port), application)
 
@@ -701,12 +727,34 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--sessions-root", default="operator_sessions")
     parser.add_argument("--carla-host", default="172.20.10.7")
     parser.add_argument("--carla-port", type=int, default=2000)
+    parser.add_argument("--world-worker-url")
+    parser.add_argument(
+        "--world-worker-token-env",
+        default="CARLA_WORLD_WORKER_TOKEN",
+        help="environment variable containing the World Worker bearer token",
+    )
     parser.add_argument("--open-browser", action="store_true")
     return parser.parse_args(argv)
 
 
+def resolve_world_worker_token(args: argparse.Namespace) -> str | None:
+    """Resolve the configured worker credential without exposing it to the browser."""
+
+    if args.world_worker_url is None:
+        return None
+    if not _ENVIRONMENT_NAME.fullmatch(args.world_worker_token_env):
+        raise ValueError("World Worker token environment variable name is invalid")
+    token = os.environ.get(args.world_worker_token_env)
+    if not token:
+        raise RuntimeError(
+            f"World Worker token environment variable {args.world_worker_token_env!r} is empty"
+        )
+    return token
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
+    world_worker_token = resolve_world_worker_token(args)
     server = create_server(
         workspace=args.workspace,
         bind=args.bind,
@@ -714,6 +762,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         sessions_root=args.sessions_root,
         carla_host=args.carla_host,
         carla_port=args.carla_port,
+        world_worker_url=args.world_worker_url,
+        world_worker_token=world_worker_token,
     )
     address, port = server.server_address[:2]
     display_host = "127.0.0.1" if address in {"0.0.0.0", "::"} else address
@@ -725,6 +775,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "url": url,
                 "workspace": str(Path(args.workspace).expanduser().resolve()),
                 "local_only": True,
+                "world_worker_configured": args.world_worker_url is not None,
             },
             ensure_ascii=False,
             indent=2,
@@ -751,4 +802,5 @@ __all__ = [
     "create_server",
     "main",
     "parse_args",
+    "resolve_world_worker_token",
 ]

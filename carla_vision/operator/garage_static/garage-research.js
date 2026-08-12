@@ -262,7 +262,10 @@
         kind: backendKind,
         parameters: {
           run_id: runId,
-          driver_label: state.drive?.session?.control_mode || "unknown",
+          driver_label:
+            state.drive?.session?.garage_mode ||
+            state.drive?.session?.control_mode ||
+            "unknown",
           duration: amount,
           dry_run: dryRun,
         },
