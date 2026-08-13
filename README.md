@@ -180,9 +180,10 @@ Research workspace
 ```
 
 Garage is the default. The live CARLA RGB stream fills the viewport, with a
-small status HUD, a bottom vehicle carousel, camera shortcuts, one setup drawer,
-and a single Start Drive action. The old dashboard header, tab bar, safety strip,
-and duplicate injected Garage assets are not part of the running game shell.
+small status HUD, a bottom vehicle carousel, camera shortcuts, setup and
+experiment drawers, and a single Start Drive action. The old dashboard header,
+tab bar, safety strip, and duplicate injected Garage assets are not part of the
+running game shell.
 
 The Research tools surface still contains:
 
@@ -238,6 +239,21 @@ The live Garage ports the CARLA `vehicle_gallery.py` orbit pattern through the
 offers Orbit, Front, Rear, Top, and Cockpit views. Its 720p stream, actual CARLA
 vehicle replacement, and bottom carousel are separate from the front camera used
 once Drive starts.
+
+The Experiments drawer turns the same Garage/Drive session into a small human
+evaluation protocol. It offers Free Drive, Manual Handling, Autopilot Takeover,
+Perception Review, Traffic Stress, and Adverse Weather presets. Presets only
+configure existing CARLA and recording controls; they do not add another model
+or silently actuate the vehicle. During a run the operator can mark an
+interesting moment, false detection, missed object, autopilot issue, or scene
+issue. Each marker is retained in `events.jsonl` with the experiment name,
+elapsed time, exact camera/detector sequence, control source, and telemetry.
+Marker totals and the experiment preset are also retained in the run summary.
+
+Traffic Manager Autopilot in these protocols remains CARLA's own baseline. The
+research contribution is the reproducible scene/perception/recording/evidence
+layer and the human evaluation record around that baseline, not a claim that
+CARLA's autopilot was implemented by this repository.
 
 The supplied `ue5-dev` PythonAPI tree currently targets CARLA 0.10.0. It is a
 design reference only for this project: the Windows bridge and the simulator must

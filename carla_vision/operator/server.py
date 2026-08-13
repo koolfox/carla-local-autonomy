@@ -674,6 +674,15 @@ class OperatorRequestHandler(BaseHTTPRequestHandler):
                     self.server.application.drive.mode(body),
                 )
                 return
+            if path == "/api/drive/mark":
+                body = self._body()
+                if not isinstance(body, Mapping):
+                    raise TypeError("drive human-marker request must be an object")
+                self._json(
+                    HTTPStatus.CREATED,
+                    self.server.application.drive.mark(body),
+                )
+                return
             if path == "/api/drive/emergency-stop":
                 body = self._body()
                 if not isinstance(body, Mapping):
@@ -793,7 +802,9 @@ def resolve_carla_host(host: str, port: int) -> str:
         raise RuntimeError(f"no CARLA server was discovered on local scopes: {scopes}")
     if len(servers) != 1:
         hosts = ", ".join(server["host"] for server in servers)
-        raise RuntimeError(f"multiple CARLA servers were discovered; choose one explicitly: {hosts}")
+        raise RuntimeError(
+            f"multiple CARLA servers were discovered; choose one explicitly: {hosts}"
+        )
     return str(servers[0]["host"])
 
 

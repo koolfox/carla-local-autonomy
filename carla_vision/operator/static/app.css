@@ -3277,9 +3277,9 @@ body:not(.research-mode) #panel-drive {
 .game-top-hud {
   position: fixed;
   z-index: 40;
-  top: max(18px, env(safe-area-inset-top));
-  right: max(18px, env(safe-area-inset-right));
-  left: max(18px, env(safe-area-inset-left));
+  top: max(20px, env(safe-area-inset-top));
+  right: max(24px, env(safe-area-inset-right));
+  left: max(24px, env(safe-area-inset-left));
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -3292,31 +3292,32 @@ body:not(.research-mode) #panel-drive {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 42px;
-  padding: 7px 10px;
-  border: 1px solid rgba(255, 255, 255, 0.17);
-  border-radius: 9px;
+  min-height: 48px;
+  padding: 7px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
   color: #fff;
-  background: rgba(12, 14, 16, 0.72);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
-  backdrop-filter: blur(12px);
+  background: rgba(10, 11, 13, 0.78);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(18px);
 }
 
 .game-identity > span {
   display: grid;
-  width: 27px;
-  height: 27px;
+  width: 32px;
+  height: 32px;
   place-items: center;
-  border-radius: 6px;
+  border-radius: 8px;
   color: #111;
-  background: #f4a340;
-  font-size: 11px;
-  font-weight: 800;
+  background: #f5a33b;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .game-identity strong {
   font-size: 13px;
-  letter-spacing: 0.08em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
 }
 
 .game-status .system-status {
@@ -3330,51 +3331,67 @@ body:not(.research-mode) #panel-drive {
 }
 
 .game-status .status-pill {
-  min-height: 28px;
+  min-height: 32px;
   border-color: rgba(255, 255, 255, 0.15);
   color: #fff;
   background: rgba(255, 255, 255, 0.08);
 }
 
+body:not(.drive-immersive) .game-status .drive-advisory-badge {
+  display: none;
+}
+
 .game-menu {
   position: fixed;
   z-index: 42;
-  top: max(76px, calc(env(safe-area-inset-top) + 68px));
-  right: max(18px, env(safe-area-inset-right));
-  display: grid;
-  gap: 8px;
+  top: max(82px, calc(env(safe-area-inset-top) + 72px));
+  right: max(24px, env(safe-area-inset-right));
+  display: flex;
+  gap: 6px;
+  padding: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 13px;
+  background: rgba(10, 11, 13, 0.78);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(18px);
 }
 
 .game-menu button {
-  display: grid;
-  width: 62px;
-  min-width: 62px;
-  min-height: 58px;
-  padding: 7px 5px;
+  display: flex;
+  width: auto;
+  min-width: 76px;
+  min-height: 44px;
+  padding: 8px 11px;
+  gap: 8px;
   place-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  align-items: center;
+  justify-content: center;
+  border: 0;
   border-radius: 9px;
   color: #fff;
-  background: rgba(12, 14, 16, 0.74);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-  backdrop-filter: blur(12px);
+  background: transparent;
+  box-shadow: none;
 }
 
 .game-menu button:hover,
 .game-menu button[aria-expanded="true"] {
-  border-color: #f4a340;
   color: #111;
-  background: #f4a340;
+  background: #f5a33b;
 }
 
-.game-menu button > span {
-  font-size: 20px;
-  line-height: 1;
+.game-menu button > svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .game-menu button small {
-  font-size: 10px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .game-drawer[hidden] {
@@ -3386,16 +3403,16 @@ body:not(.research-mode) #panel-drive {
   z-index: 80;
   top: 0;
   right: 0;
-  width: min(440px, 100vw);
+  width: min(420px, 100vw);
   height: 100vh;
   height: 100dvh;
-  padding: max(18px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right))
-    max(18px, env(safe-area-inset-bottom)) 18px;
+  padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right))
+    max(24px, env(safe-area-inset-bottom)) 24px;
   overflow: auto;
   color: #f5f5f2;
-  background: rgba(18, 20, 22, 0.96);
-  box-shadow: -24px 0 70px rgba(0, 0, 0, 0.42);
-  backdrop-filter: blur(18px);
+  background: rgba(19, 21, 24, 0.98);
+  box-shadow: -32px 0 90px rgba(0, 0, 0, 0.48);
+  backdrop-filter: blur(24px);
   overscroll-behavior: contain;
 }
 
@@ -3407,10 +3424,10 @@ body:not(.research-mode) #panel-drive {
   align-items: center;
   justify-content: space-between;
   gap: 18px;
-  margin: -4px -4px 18px;
-  padding: 4px 4px 14px;
+  margin: -6px -4px 22px;
+  padding: 6px 4px 18px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.13);
-  background: rgba(18, 20, 22, 0.96);
+  background: rgba(19, 21, 24, 0.98);
 }
 
 .game-drawer-heading > div {
@@ -3419,14 +3436,15 @@ body:not(.research-mode) #panel-drive {
 }
 
 .game-drawer-heading small {
-  color: #f4a340;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.13em;
+  color: #f5a33b;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
 }
 
 .game-drawer-heading strong {
-  font-size: 22px;
+  font-size: 24px;
+  font-weight: 700;
 }
 
 .game-drawer-heading button {
@@ -3456,7 +3474,7 @@ body:not(.research-mode) #panel-drive {
 .game-drawer .drive-setup-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 13px;
+  gap: 16px;
 }
 
 .game-drawer .card-heading {
@@ -3465,10 +3483,10 @@ body:not(.research-mode) #panel-drive {
 
 .game-drawer .garage-car-group {
   display: block;
-  padding: 14px;
+  padding: 16px;
   border-color: rgba(255, 255, 255, 0.14);
   color: #f5f5f2;
-  background: rgba(255, 255, 255, 0.045);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .game-drawer .garage-car-group .fields {
@@ -3500,10 +3518,11 @@ body:not(.research-mode) #panel-drive {
 .game-drawer input,
 .game-drawer select {
   min-width: 0;
-  min-height: 46px;
+  min-height: 50px;
   border-color: rgba(255, 255, 255, 0.16);
   color: #fff;
-  background: #282b2f;
+  border-radius: 9px;
+  background: #272a2e;
 }
 
 .game-drawer input[type="checkbox"] {
@@ -3511,9 +3530,36 @@ body:not(.research-mode) #panel-drive {
 }
 
 .game-drawer .drive-simple-toggle {
+  min-height: 64px;
+  padding: 13px 14px;
   border-color: rgba(255, 255, 255, 0.14);
   color: #f5f5f2;
   background: rgba(255, 255, 255, 0.055);
+}
+
+.game-drawer .drive-simple-toggles {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+.game-drawer .drive-simple-toggle {
+  display: flex;
+  min-height: 68px;
+  align-items: center;
+}
+
+.game-drawer .drive-simple-toggle input {
+  width: 20px;
+  height: 20px;
+  margin: 0 3px 0 0;
+}
+
+.game-drawer .drive-simple-toggle strong {
+  font-size: 13px;
+}
+
+.game-drawer .drive-simple-toggle small {
+  font-size: 11px;
 }
 
 .game-drawer .drive-simple-toggle strong {
@@ -3522,6 +3568,147 @@ body:not(.research-mode) #panel-drive {
 
 .game-drawer .drive-simple-toggle small {
   color: #aeb5bc;
+}
+
+.experiment-intro {
+  margin: 0 0 16px;
+  color: #b8c0c7;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.experiment-presets {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.experiment-presets button {
+  display: grid;
+  min-width: 0;
+  min-height: 86px;
+  padding: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 9px;
+  color: #f5f5f2;
+  background: rgba(255, 255, 255, 0.045);
+  text-align: left;
+}
+
+.experiment-presets button:hover:not(:disabled),
+.experiment-presets button.active {
+  border-color: #f4a340;
+  background: rgba(244, 163, 64, 0.13);
+}
+
+.experiment-presets button:disabled:not(.active) {
+  opacity: 0.42;
+}
+
+.experiment-presets strong,
+.experiment-presets small {
+  display: block;
+}
+
+.experiment-presets strong {
+  margin-bottom: 5px;
+  font-size: 14px;
+}
+
+.experiment-presets small {
+  color: #aeb5bc;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.experiment-current,
+.human-marker-panel {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 15px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.experiment-current > span,
+.human-marker-panel small,
+.human-marker-panel > div:first-child > span {
+  color: #aeb5bc;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.experiment-current p,
+.human-marker-panel p {
+  margin: 0;
+  color: #b8c0c7;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.human-marker-panel > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.human-marker-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.human-marker-grid button {
+  min-height: 46px;
+  padding: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  color: #fff;
+  background: #292d31;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.human-marker-grid .marker-interesting {
+  grid-column: 1 / -1;
+  border-color: rgba(244, 163, 64, 0.7);
+  color: #16110a;
+  background: #f4a340;
+}
+
+.human-marker-panel label {
+  display: grid;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.experiment-lab-link {
+  width: 100%;
+  min-height: 48px;
+  margin-top: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.17);
+  border-radius: 9px;
+  color: #f5f5f2;
+  background: transparent;
+}
+
+body.drive-immersive #game-experiments {
+  display: block;
+}
+
+body.drive-immersive #game-experiments[hidden] {
+  display: none;
+}
+
+body.drive-immersive #game-stage .drive-view-actions {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+
+body.drive-immersive #game-stage .drive-frame-state {
+  display: none;
 }
 
 .carla-discovery {
@@ -3621,61 +3808,115 @@ body:not(.research-mode) #panel-drive {
   inset: 0;
   gap: 12px;
   background:
-    linear-gradient(180deg, rgba(5, 6, 7, 0.14), rgba(5, 6, 7, 0.76)),
-    #16191c;
+    radial-gradient(circle at 50% 46%, rgba(255, 255, 255, 0.045), transparent 31%),
+    linear-gradient(180deg, #14171a, #090a0b);
+}
+
+#game-stage .garage-preview-fallback {
+  pointer-events: none;
+}
+
+#game-stage .garage-preview-fallback .garage-preview-mark {
+  opacity: 0.38;
 }
 
 #game-stage .garage-preview-fallback strong,
 #game-stage .garage-preview-loading strong {
-  font-size: clamp(23px, 4vw, 44px);
+  font-size: clamp(25px, 3.4vw, 42px);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+}
+
+#game-stage .garage-preview-fallback > span:last-child,
+#game-stage .garage-preview-loading > span:last-child {
+  font-size: clamp(13px, 1.3vw, 16px);
+}
+
+#game-stage .garage-preview-mark {
+  width: 74px;
+  height: 74px;
+  border-color: rgba(255, 255, 255, 0.15);
+  color: #f5a33b;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+#game-stage .garage-preview-mark svg {
+  width: 46px;
+  height: 46px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 #game-stage .garage-preview-toolbar {
   position: fixed;
   z-index: 31;
-  top: max(78px, calc(env(safe-area-inset-top) + 70px));
-  left: max(18px, env(safe-area-inset-left));
+  top: max(82px, calc(env(safe-area-inset-top) + 72px));
+  left: max(24px, env(safe-area-inset-left));
   display: flex;
   width: auto;
   justify-content: flex-start;
 }
 
 #game-stage .garage-preview-toggle {
-  min-height: 46px;
+  min-height: 48px;
+  padding-inline: 18px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 10px;
   color: #151515;
-  background: #f4a340;
-  font-weight: 800;
+  background: #f5a33b;
+  font-weight: 700;
 }
 
 #game-stage .garage-preview-status {
+  min-height: 48px;
+  padding-inline: 15px;
   color: #fff;
-  background: rgba(10, 12, 14, 0.72);
-  backdrop-filter: blur(10px);
+  background: rgba(10, 11, 13, 0.78);
+  backdrop-filter: blur(16px);
 }
 
 #game-stage .garage-preview-caption {
   position: fixed;
   z-index: 30;
   right: auto;
-  bottom: max(118px, calc(env(safe-area-inset-bottom) + 108px));
-  left: max(22px, env(safe-area-inset-left));
-  max-width: min(440px, calc(100vw - 44px));
+  bottom: max(124px, calc(env(safe-area-inset-bottom) + 114px));
+  left: max(28px, env(safe-area-inset-left));
+  max-width: min(520px, calc(100vw - 56px));
   padding: 0;
   text-shadow: 0 2px 16px rgba(0, 0, 0, 0.65);
 }
 
 #game-stage .garage-preview-caption h3 {
-  margin: 2px 0 3px;
+  margin: 2px 0 7px;
   color: #fff;
-  font-size: clamp(28px, 4vw, 54px);
-  line-height: 1;
+  font-size: clamp(38px, 5vw, 70px);
+  font-weight: 700;
+  letter-spacing: -0.055em;
+  line-height: 0.92;
+}
+
+#game-stage .garage-preview-caption .eyebrow {
+  color: #f5a33b;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
 }
 
 #game-stage .garage-preview-caption p,
 #game-stage .garage-bay-meta {
   color: rgba(255, 255, 255, 0.82);
+}
+
+#game-stage .garage-bay-meta span {
+  min-height: 34px;
+  padding: 7px 11px;
+  border-color: rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(10, 11, 13, 0.56);
+  font-size: 11px;
 }
 
 #game-stage .garage-camera-presets {
@@ -3717,18 +3958,18 @@ body.game-camera-menu-open #game-stage .garage-camera-presets:not([hidden]) {
 #game-stage .garage-carousel-shell {
   position: fixed;
   z-index: 35;
-  right: max(252px, calc(env(safe-area-inset-right) + 238px));
-  bottom: max(18px, env(safe-area-inset-bottom));
-  left: max(132px, calc(env(safe-area-inset-left) + 118px));
+  right: max(264px, calc(env(safe-area-inset-right) + 248px));
+  bottom: max(22px, env(safe-area-inset-bottom));
+  left: max(28px, env(safe-area-inset-left));
   width: auto;
   max-width: none;
   margin: 0;
-  padding: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 11px;
-  background: rgba(12, 14, 16, 0.76);
-  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.28);
-  backdrop-filter: blur(14px);
+  padding: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 13px;
+  background: rgba(10, 11, 13, 0.78);
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(18px);
 }
 
 #game-stage .garage-vehicle-carousel {
@@ -3740,25 +3981,26 @@ body.game-camera-menu-open #game-stage .garage-camera-presets:not([hidden]) {
 }
 
 #game-stage .garage-vehicle-card {
-  min-width: 170px;
-  min-height: 58px;
+  min-width: 176px;
+  min-height: 64px;
+  padding: 10px 14px;
   border-color: transparent;
-  border-radius: 8px;
+  border-radius: 9px;
   color: rgba(255, 255, 255, 0.75);
   background: rgba(255, 255, 255, 0.055);
 }
 
 #game-stage .garage-vehicle-card.active {
-  border-color: #f4a340;
+  border-color: rgba(245, 163, 59, 0.75);
   color: #fff;
-  background: rgba(244, 163, 64, 0.16);
+  background: rgba(245, 163, 59, 0.17);
   box-shadow: none;
 }
 
 #game-stage .garage-carousel-arrow {
-  min-width: 48px;
-  min-height: 48px;
-  border-radius: 8px;
+  min-width: 52px;
+  min-height: 52px;
+  border-radius: 9px;
   color: #fff;
   background: rgba(255, 255, 255, 0.08);
 }
@@ -3766,8 +4008,8 @@ body.game-camera-menu-open #game-stage .garage-camera-presets:not([hidden]) {
 .game-shell > .drive-session-actions {
   position: fixed;
   z-index: 44;
-  right: max(20px, env(safe-area-inset-right));
-  bottom: max(20px, env(safe-area-inset-bottom));
+  right: max(24px, env(safe-area-inset-right));
+  bottom: max(22px, env(safe-area-inset-bottom));
   width: auto;
   margin: 0;
   padding: 0;
@@ -3776,15 +4018,15 @@ body.game-camera-menu-open #game-stage .garage-camera-presets:not([hidden]) {
 }
 
 .game-shell > .drive-session-actions #drive-start {
-  min-width: 210px;
-  min-height: 64px;
+  min-width: 216px;
+  min-height: 66px;
   border: 0;
-  border-radius: 10px;
+  border-radius: 12px;
   color: #111;
-  background: #f4a340;
-  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.34);
+  background: #f5a33b;
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.34);
   font-size: 17px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .game-shell > .drive-session-actions #drive-start:disabled {
@@ -3904,10 +4146,23 @@ body.research-mode .research-tools-heading {
 }
 
 @media (max-width: 760px) {
+  .experiment-presets {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .experiment-presets button {
+    min-height: 68px;
+  }
+
   .game-top-hud {
     top: max(10px, env(safe-area-inset-top));
     right: max(10px, env(safe-area-inset-right));
     left: max(10px, env(safe-area-inset-left));
+  }
+
+  .game-status {
+    min-height: 44px;
+    padding: 5px 7px;
   }
 
   .game-identity {
@@ -3921,19 +4176,26 @@ body.research-mode .research-tools-heading {
   }
 
   .game-menu {
-    top: max(64px, calc(env(safe-area-inset-top) + 54px));
+    top: max(66px, calc(env(safe-area-inset-top) + 56px));
     right: max(10px, env(safe-area-inset-right));
-    grid-auto-flow: column;
+    gap: 3px;
+    padding: 4px;
   }
 
   .game-menu button {
-    width: 50px;
-    min-width: 50px;
+    width: 46px;
+    min-width: 46px;
     min-height: 48px;
+    padding: 7px;
   }
 
   .game-menu button small {
     display: none;
+  }
+
+  .game-menu button > svg {
+    width: 20px;
+    height: 20px;
   }
 
   #game-stage .garage-preview-toolbar {
@@ -3946,8 +4208,12 @@ body.research-mode .research-tools-heading {
   }
 
   #game-stage .garage-preview-caption {
-    bottom: max(100px, calc(env(safe-area-inset-bottom) + 92px));
+    bottom: max(104px, calc(env(safe-area-inset-bottom) + 96px));
     left: max(14px, env(safe-area-inset-left));
+  }
+
+  #game-stage .garage-preview-caption h3 {
+    font-size: clamp(34px, 11vw, 50px);
   }
 
   #game-stage .garage-preview-caption > p:not(.eyebrow),
@@ -3968,7 +4234,7 @@ body.research-mode .research-tools-heading {
   .game-shell > .drive-session-actions {
     position: fixed;
     right: max(14px, env(safe-area-inset-right));
-    bottom: max(88px, calc(env(safe-area-inset-bottom) + 78px));
+    bottom: max(94px, calc(env(safe-area-inset-bottom) + 84px));
     left: auto;
     width: auto;
     padding: 0;
@@ -3979,7 +4245,7 @@ body.research-mode .research-tools-heading {
 
   .game-shell > .drive-session-actions #drive-start {
     min-width: 154px;
-    min-height: 52px;
+    min-height: 54px;
   }
 
   #game-stage .garage-camera-presets {
@@ -4002,6 +4268,8 @@ body.research-mode .research-tools-heading {
 
   .game-drawer {
     width: 100vw;
+    padding-right: max(18px, env(safe-area-inset-right));
+    padding-left: max(18px, env(safe-area-inset-left));
   }
 
   body.research-mode .app-shell {

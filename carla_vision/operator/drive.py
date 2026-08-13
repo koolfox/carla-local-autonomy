@@ -37,7 +37,11 @@ from ..recording import AsyncVideoRecorder
 from ..watchdog import SafeActuator
 from .drive_contracts import DriveInput, DriveStartConfig, weather_payload
 from .situations import PROP_PRESETS, WEATHER_PRESETS
-from .world_worker_client import WorldWorkerClient, WorldWorkerScene
+from .world_worker_client import (
+    WorldWorkerCameraStream,
+    WorldWorkerClient,
+    WorldWorkerScene,
+)
 
 _ACTIVE = frozenset({"starting", "running", "stopping"})
 _TERMINAL = frozenset({"success", "failed"})
@@ -45,6 +49,15 @@ _BROWSER_LEASE_SECONDS = 0.40
 _CONTROL_PERIOD_SECONDS = 0.05
 _TELEMETRY_PERIOD_SECONDS = 0.20
 _WORKER_HEARTBEAT_SECONDS = 0.50
+HUMAN_MARKER_LABELS = frozenset(
+    {
+        "interesting",
+        "false_detection",
+        "missed_object",
+        "autopilot_issue",
+        "scene_issue",
+    }
+)
 
 
 def _utc_now() -> str:
@@ -73,7 +86,7 @@ def _validate_camera_attachment(camera: list[Any], vehicle_id: int) -> None:
         raise RuntimeError("spawned front camera is not attached to the ego vehicle")
 
 
-def _jpeg(image: np.ndarray, quality: int = 86) -> bytes:
+def _jpeg(image: np.ndarray, quality: int = 92) -> bytes:
     ok, encoded = cv2.imencode(
         ".jpg",
         image,
@@ -368,6 +381,7 @@ class DriveSession:
         self._frames_seen = 0
         self._manual_commands = 0
         self._deadman_commands = 0
+        self._marker_counts = {label: 0 for label in sorted(HUMAN_MARKER_LABELS)}
         self._cleanup_errors: list[str] = []
 
     def start(self) -> None:
@@ -428,6 +442,9 @@ class DriveSession:
                 "frames_seen": self._frames_seen,
                 "controls_written": self._controls_written,
                 "detections_written": self._detections_written,
+                "experiment_preset": self.config.experiment_preset,
+                "human_marker_counts": dict(self._marker_counts),
+                "human_markers_written": sum(self._marker_counts.values()),
                 "cleanup_errors": list(self._cleanup_errors),
             }
 
@@ -527,6 +544,41 @@ class DriveSession:
             if self._status != "running":
                 raise RuntimeError("weather can only change during a running drive")
             self._requested_weather = preset
+        return self.snapshot()
+
+    def mark_human_event(self, label: str, note: str | None = None) -> dict[str, Any]:
+        marker = str(label).strip()
+        if marker not in HUMAN_MARKER_LABELS:
+            raise ValueError(
+                "human marker label must be one of: " + ", ".join(sorted(HUMAN_MARKER_LABELS))
+            )
+        normalized_note = None if note is None else str(note).strip()
+        if normalized_note == "":
+            normalized_note = None
+        if normalized_note is not None and (
+            len(normalized_note) > 240
+            or any(character in normalized_note for character in "\x00\r\n")
+        ):
+            raise ValueError("human marker note must be at most 240 single-line characters")
+        with self._lock:
+            if self._status != "running":
+                raise RuntimeError("human moments can only be marked during a running drive")
+            event = {
+                "event": "human_moment_marked",
+                "at": _utc_now(),
+                "elapsed_seconds": time.monotonic() - self._started_monotonic,
+                "label": marker,
+                "note": normalized_note,
+                "experiment_preset": self.config.experiment_preset,
+                "control_mode": self._control_mode,
+                "control_source": self._control_source,
+                "raw_camera_sequence": self._raw_frame_sequence,
+                "detector_sequence": self._overlay_frame_sequence,
+                "telemetry": dict(self._telemetry),
+                "model_output_actuated": False,
+            }
+            self._marker_counts[marker] += 1
+            self._pending_events.append(event)
         return self.snapshot()
 
     def request_stop(self, reason: str = "operator_stop") -> dict[str, Any]:
@@ -783,7 +835,7 @@ class DriveSession:
 
     def _execute(self, tracker: RunArtifactTracker) -> None:
         rpc: CarlaRpc | None = None
-        stream: CarlaCameraStream | None = None
+        stream: CarlaCameraStream | WorldWorkerCameraStream | None = None
         actuator: SafeActuator | None = None
         perception: PerceptionWorker | None = None
         raw_recorder: AsyncVideoRecorder | None = None
@@ -891,25 +943,52 @@ class DriveSession:
                     owned_actor_ids.append((prop_id, f"prop:{blueprint}"))
                     self._prop_ids.append(prop_id)
 
-            camera = spawn_front_camera(
-                rpc,
-                vehicle_id,
-                width=self.config.width,
-                height=self.config.height,
-                sensor_tick=1.0 / self.config.camera_fps,
-                fov=self.config.camera_fov,
+            compressed_camera = bool(
+                self._world_worker is not None
+                and worker_scene is not None
+                and worker_scene.capabilities.get("compressed_camera_relay")
             )
-            camera_id = int(camera[0])
+            if compressed_camera:
+                assert self._world_worker is not None
+                assert worker_scene is not None
+                with self._worker_request_lock:
+                    camera_response = self._world_worker.start_camera(
+                        worker_scene,
+                        mode="drive",
+                        width=self.config.width,
+                        height=self.config.height,
+                        fps=self.config.camera_fps,
+                        fov=self.config.camera_fov,
+                    )
+                camera_payload = camera_response.get("camera")
+                if not isinstance(camera_payload, Mapping):
+                    raise RuntimeError("World Worker camera response is malformed")
+                camera_id = int(camera_payload["actor_id"])
+                stream = WorldWorkerCameraStream(
+                    self._world_worker,
+                    worker_scene,
+                    timeout=max(8.0, 4.0 / self.config.camera_fps),
+                )
+            else:
+                camera = spawn_front_camera(
+                    rpc,
+                    vehicle_id,
+                    width=self.config.width,
+                    height=self.config.height,
+                    sensor_tick=1.0 / self.config.camera_fps,
+                    fov=self.config.camera_fov,
+                )
+                camera_id = int(camera[0])
+                owned_actor_ids.append((camera_id, "camera"))
+                _validate_camera_attachment(camera, vehicle_id)
+                if not camera[5]:
+                    raise RuntimeError("spawned front camera did not expose a stream token")
+                stream = CarlaCameraStream(
+                    self.config.host,
+                    camera[5],
+                    timeout=max(8.0, 4.0 / self.config.camera_fps),
+                )
             self._camera_id = camera_id
-            owned_actor_ids.append((camera_id, "camera"))
-            _validate_camera_attachment(camera, vehicle_id)
-            if not camera[5]:
-                raise RuntimeError("spawned front camera did not expose a stream token")
-            stream = CarlaCameraStream(
-                self.config.host,
-                camera[5],
-                timeout=max(8.0, 4.0 / self.config.camera_fps),
-            )
             stream.wait_for_frame(timeout=10.0)
 
             if self._world_worker is None:
@@ -978,6 +1057,7 @@ class DriveSession:
                     "spawn_transform": spawn_transform,
                     "weather_preset": self.config.weather_preset,
                     "world_worker_scene_id": self._worker_scene_id,
+                    "camera_transport": ("worker_jpeg" if compressed_camera else "carla_raw_bgra"),
                     "control_mode": self._control_mode,
                     "model_output_actuated": False,
                 },
@@ -993,7 +1073,11 @@ class DriveSession:
                     last_camera_sequence = frame.sequence
                     last_camera_received = frame.received_monotonic
                     latest_raw = frame.bgr()
-                    self._cache_frame("raw", frame.sequence, _jpeg(latest_raw))
+                    source_jpeg = getattr(frame, "jpeg", None)
+                    browser_frame = (
+                        bytes(source_jpeg) if isinstance(source_jpeg, bytes) else _jpeg(latest_raw)
+                    )
+                    self._cache_frame("raw", frame.sequence, browser_frame)
                     self._frames_seen += 1
                     if raw_recorder is not None:
                         raw_recorder.submit(frame.sequence, latest_raw)
@@ -1459,6 +1543,9 @@ class DriveSession:
             "detections_written": self._detections_written,
             "manual_commands": self._manual_commands,
             "deadman_commands": self._deadman_commands,
+            "experiment_preset": self.config.experiment_preset,
+            "human_marker_counts": dict(self._marker_counts),
+            "human_markers_written": sum(self._marker_counts.values()),
             "model_output_actuated": False,
             "recording_requested": self.config.record_video,
             "stop_reason": self._stop_reason,
@@ -1702,6 +1789,22 @@ class DriveSessionManager:
         session_id = str(raw["session_id"]).strip()
         mode = str(raw["mode"]).strip()
         return self._require_session(session_id).request_mode(mode)
+
+    def mark(self, raw: Mapping[str, Any]) -> dict[str, Any]:
+        allowed = {"session_id", "label", "note"}
+        unknown = sorted(str(key) for key in raw if str(key) not in allowed)
+        if unknown:
+            raise ValueError(f"human marker request has unknown fields: {', '.join(unknown)}")
+        required = {"session_id", "label"}
+        missing = sorted(required - set(raw))
+        if missing:
+            raise ValueError("human marker request is missing fields: " + ", ".join(missing))
+        session_id = str(raw["session_id"]).strip()
+        label = str(raw["label"]).strip()
+        note = raw.get("note")
+        if note is not None and not isinstance(note, str):
+            raise TypeError("human marker note must be a string or null")
+        return self._require_session(session_id).mark_human_event(label, note)
 
     def stop(self, raw: Mapping[str, Any]) -> dict[str, Any]:
         session_id = self._session_id(raw)

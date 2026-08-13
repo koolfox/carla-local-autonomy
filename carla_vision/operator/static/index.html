@@ -31,6 +31,9 @@
                   </div>
                   <div class="drive-view-actions">
                     <span id="drive-frame-state" class="drive-frame-state">Waiting for a session</span>
+                    <button id="drive-experiment-toggle" class="secondary" type="button" aria-controls="game-experiments" aria-expanded="false">
+                      Experiment
+                    </button>
                     <button id="drive-focus" class="secondary" type="button">Take keyboard control</button>
                     <button id="drive-stop" class="drive-session-end" type="button" disabled>End Drive &amp; Save</button>
                     <button id="drive-emergency" class="emergency-button" type="button" disabled>
@@ -54,6 +57,7 @@
                   </div>
                   <div class="drive-hud drive-hud-top">
                     <span id="drive-hud-session">NO SESSION</span>
+                    <span id="drive-hud-experiment">FREE DRIVE</span>
                     <span id="drive-hud-mode" class="drive-mode-indicator">MANUAL</span>
                     <span id="drive-hud-recording" class="drive-recording-indicator">REC OFF</span>
                   </div>
@@ -132,9 +136,14 @@
                     draggable="false"
                   >
                   <div id="garage-preview-fallback" class="garage-preview-fallback">
-                    <span class="garage-preview-mark" aria-hidden="true">CV</span>
-                    <strong>Enter CARLA</strong>
-                    <span>Load the live world, choose a car, and start driving.</span>
+                    <span class="garage-preview-mark" aria-hidden="true">
+                      <svg viewBox="0 0 48 48" role="presentation">
+                        <circle cx="24" cy="24" r="17"></circle>
+                        <circle cx="24" cy="24" r="4"></circle>
+                        <path d="M8 23h32M24 28v13M12 14l12 14 12-14"></path>
+                      </svg>
+                    </span>
+                    <span class="visually-hidden">Garage camera is not active.</span>
                   </div>
                   <div id="garage-preview-loading" class="garage-preview-loading" hidden>
                     <span class="garage-preview-spinner" aria-hidden="true"></span>
@@ -151,9 +160,9 @@
                   ></div>
 
                   <div class="garage-preview-toolbar">
-                    <span id="garage-preview-status" class="garage-preview-status">Live CARLA off</span>
+                    <span id="garage-preview-status" class="garage-preview-status">Preview paused</span>
                     <button id="garage-preview-toggle" class="garage-preview-toggle" type="button">
-                      Enter garage
+                      Open preview
                     </button>
                   </div>
                   <div id="garage-camera-presets" class="garage-camera-presets" role="group" aria-label="Garage camera view" hidden>
@@ -167,11 +176,11 @@
                   <p id="garage-preview-error" class="garage-preview-error" role="alert" hidden></p>
 
                   <div class="garage-preview-caption">
-                    <p class="eyebrow">CARLA garage</p>
-                    <h3 id="garage-bay-title">Ready your car</h3>
+                    <p id="garage-bay-make" class="eyebrow">SELECTED VEHICLE</p>
+                    <h3 id="garage-bay-title">Choose your car</h3>
                     <p id="garage-bay-world">Choose a vehicle and the scene you want to explore.</p>
                     <div class="garage-bay-meta" aria-live="polite">
-                      <span id="garage-bay-car">No car selected</span>
+                      <span id="garage-bay-car">Factory paint</span>
                       <span id="garage-bay-weather">Weather pending</span>
                     </div>
                   </div>
@@ -217,13 +226,20 @@
 
             <nav id="game-menu" class="game-menu" aria-label="Game menu">
               <button type="button" data-game-drawer="settings" aria-controls="game-settings" aria-expanded="false">
-                <span aria-hidden="true">☰</span><small>Setup</small>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 5v4M6 15v4"></path></svg>
+                <small>Setup</small>
               </button>
               <button id="game-camera-toggle" type="button" aria-controls="garage-camera-presets" aria-expanded="false">
-                <span aria-hidden="true">◉</span><small>Camera</small>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"></path><circle cx="12" cy="13" r="3.5"></circle></svg>
+                <small>View</small>
+              </button>
+              <button type="button" data-game-drawer="experiments" aria-controls="game-experiments" aria-expanded="false">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3M8 15h8"></path></svg>
+                <small>Tests</small>
               </button>
               <button id="game-research-open" type="button" aria-controls="panel-tools">
-                <span aria-hidden="true">⌁</span><small>Research</small>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5zM8 8h8M8 12h3M8 16h8"></path></svg>
+                <small>Research</small>
               </button>
             </nav>
 
@@ -235,7 +251,7 @@
               hidden
             >
               <div class="game-drawer-heading">
-                <div><small>GARAGE SETUP</small><strong>Build your drive</strong></div>
+                <div><small>GARAGE</small><strong>Drive setup</strong></div>
                 <button type="button" data-game-close aria-label="Close settings">×</button>
               </div>
 
@@ -402,8 +418,9 @@
                     <label>
                       Camera resolution
                       <select id="drive-resolution">
-                        <option value="640x384">640 × 384 · faster</option>
-                        <option value="1280x720">1280 × 720 · sharper</option>
+                        <option value="1920x1080" selected>1920 × 1080 · high quality</option>
+                        <option value="1280x720">1280 × 720 · balanced</option>
+                        <option value="640x384">640 × 384 · low bandwidth</option>
                       </select>
                     </label>
                     <label>
@@ -460,6 +477,75 @@
                 </dl>
                 <p id="drive-error" class="drive-error" role="alert"></p>
               </details>
+            </aside>
+
+            <aside
+              id="game-experiments"
+              class="game-drawer experiment-drawer"
+              data-game-panel="experiments"
+              aria-label="Human experiments"
+              hidden
+            >
+              <div class="game-drawer-heading">
+                <div><small>HUMAN TESTING</small><strong>Choose an experiment</strong></div>
+                <button type="button" data-game-close aria-label="Close experiments">×</button>
+              </div>
+
+              <p class="experiment-intro">
+                These are simple presets for human evaluation. They use the same car,
+                world, recorder, detector, and CARLA controls already in this application.
+              </p>
+
+              <div id="experiment-presets" class="experiment-presets" role="radiogroup" aria-label="Drive experiment preset">
+                <button class="active" type="button" data-experiment-preset="free_drive" aria-pressed="true">
+                  <strong>Free drive</strong><small>Choose anything and explore.</small>
+                </button>
+                <button type="button" data-experiment-preset="manual_handling" aria-pressed="false">
+                  <strong>Manual handling</strong><small>Keyboard or touch, recording on.</small>
+                </button>
+                <button type="button" data-experiment-preset="autopilot_takeover" aria-pressed="false">
+                  <strong>Autopilot takeover</strong><small>Let CARLA drive, then intervene.</small>
+                </button>
+                <button type="button" data-experiment-preset="perception_review" aria-pressed="false">
+                  <strong>Perception review</strong><small>Drive with detections and mark mistakes.</small>
+                </button>
+                <button type="button" data-experiment-preset="traffic_stress" aria-pressed="false">
+                  <strong>Traffic stress</strong><small>Traffic, pedestrians, and construction.</small>
+                </button>
+                <button type="button" data-experiment-preset="adverse_weather" aria-pressed="false">
+                  <strong>Bad weather</strong><small>Heavy rain with detections and recording.</small>
+                </button>
+              </div>
+
+              <div class="experiment-current">
+                <span>Selected</span>
+                <strong id="experiment-current-title">Free drive</strong>
+                <p id="experiment-current-note">No fixed protocol. Explore the scene naturally.</p>
+              </div>
+
+              <section class="human-marker-panel" aria-labelledby="human-marker-title">
+                <div>
+                  <small>WHILE DRIVING</small>
+                  <strong id="human-marker-title">Mark what you notice</strong>
+                  <span id="human-marker-count">0 marked moments</span>
+                </div>
+                <div class="human-marker-grid">
+                  <button type="button" data-human-marker="false_detection">False detection</button>
+                  <button type="button" data-human-marker="missed_object">Missed object</button>
+                  <button type="button" data-human-marker="autopilot_issue">Autopilot issue</button>
+                  <button type="button" data-human-marker="scene_issue">Scene issue</button>
+                  <button class="marker-interesting" type="button" data-human-marker="interesting">Interesting moment</button>
+                </div>
+                <label>
+                  Optional note
+                  <input id="human-marker-note" maxlength="240" placeholder="Short note about this moment">
+                </label>
+                <p id="human-marker-help">Start a drive before marking moments.</p>
+              </section>
+
+              <button id="experiment-open-lab" class="experiment-lab-link" type="button">
+                Open offline workflows and saved results
+              </button>
             </aside>
 
             <div id="drive-session-actions" class="drive-session-actions">
@@ -574,8 +660,9 @@
                 <label>
                   Resolution
                   <select id="live-resolution" name="resolution">
-                    <option value="640x384">640 × 384 · fast</option>
-                    <option value="1280x720">1280 × 720 · source</option>
+                    <option value="1920x1080" selected>1920 × 1080 · high quality</option>
+                    <option value="1280x720">1280 × 720 · balanced</option>
+                    <option value="640x384">640 × 384 · low bandwidth</option>
                     <option value="1920x1080">1920 × 1080 · heavy</option>
                   </select>
                 </label>

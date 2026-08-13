@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+import time
 import urllib.request
 from collections.abc import Mapping
 from dataclasses import replace
@@ -39,9 +40,9 @@ def test_preview_config_is_strict_and_uses_authoritative_camera_defaults() -> No
     assert config.yaw == 325.0
     assert config.pitch == -10.0
     assert config.distance == 6.5
-    assert config.width == 1280
-    assert config.height == 720
-    assert config.fps == 12.0
+    assert config.width == 1920
+    assert config.height == 1080
+    assert config.fps == 10.0
     assert config.traffic_count == 15
     assert config.walker_count == 10
     assert config.prop_preset == "construction"
@@ -281,16 +282,18 @@ class _CleanupRpc:
 
 
 @pytest.mark.parametrize(
-    ("episode", "role", "destroyed"),
+    ("episode", "role", "worker_camera", "destroyed"),
     [
-        (10, "garage_preview", [30]),
-        (11, "garage_preview", []),
-        (10, "somebody_else", []),
+        (10, "garage_preview", False, [30]),
+        (11, "garage_preview", False, []),
+        (10, "somebody_else", False, []),
+        (10, "world_worker_camera", True, []),
     ],
 )
 def test_preview_cleanup_requires_same_episode_type_and_owned_role(
     episode: int,
     role: str,
+    worker_camera: bool,
     destroyed: list[int],
 ) -> None:
     worker = _CleanupWorker()
@@ -307,6 +310,7 @@ def test_preview_cleanup_requires_same_episode_type_and_owned_role(
         session._vehicle_id = 20
         session._camera_id = 30
         session._camera_type = "sensor.camera.rgb"
+        session._worker_camera = worker_camera
         session._rpc = rpc  # type: ignore[assignment]
         session._status = "running"
 
@@ -316,3 +320,136 @@ def test_preview_cleanup_requires_same_episode_type_and_owned_role(
     assert rpc.closed is True
     assert len(worker.stopped) == 1
     assert result["status"] == "stopped"
+
+
+def test_preview_uses_worker_jpeg_relay_without_raw_lan_camera(monkeypatch) -> None:
+    scene = replace(_scene(), capabilities={"compressed_camera_relay": True})
+
+    class Worker(_CleanupWorker):
+        camera_requests: list[dict[str, Any]]
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.camera_requests = []
+
+        def prepare_scene(self, payload: dict[str, Any]) -> WorldWorkerScene:
+            del payload
+            return scene
+
+        def start_camera(self, active: WorldWorkerScene, **payload: Any) -> dict[str, Any]:
+            assert active is scene
+            self.camera_requests.append(dict(payload))
+            return {"camera": {"actor_id": 30}}
+
+        def heartbeat(self, active: WorldWorkerScene) -> WorldWorkerScene:
+            return active
+
+    class Rpc:
+        closed = False
+
+        def value_call(self, method: str) -> str:
+            assert method == "version"
+            return "0.9.16"
+
+        def episode_id(self) -> int:
+            return 10
+
+        def actor(self, actor_id: int) -> list[Any]:
+            assert actor_id == 20
+            return [20, None, [1, "vehicle.tesla.model3", []]]
+
+        def actor_transform(self, actor_id: int, component: str) -> list[Any]:
+            assert (actor_id, component) == (20, "VehicleMesh")
+            return [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]
+
+        def destroy_actor(self, actor_id: int) -> None:
+            raise AssertionError(f"Worker-owned camera {actor_id} must not be raw-destroyed")
+
+        def close(self) -> None:
+            self.closed = True
+
+    class Frame:
+        sequence = 1
+        jpeg = b"\xff\xd8worker-jpeg\xff\xd9"
+
+    class Stream:
+        def __init__(self, *_: Any, **__: Any) -> None:
+            self.closed = threading.Event()
+            self.first = True
+
+        def wait_for_frame(self, after_sequence: int = -1, timeout: float = 5.0) -> Frame:
+            del after_sequence
+            if self.first:
+                self.first = False
+                return Frame()
+            self.closed.wait(min(timeout, 0.05))
+            raise TimeoutError
+
+        def close(self) -> None:
+            self.closed.set()
+
+    worker = Worker()
+    rpc = Rpc()
+    monkeypatch.setattr(
+        "carla_vision.operator.garage_preview.WorldWorkerCameraStream",
+        Stream,
+    )
+    monkeypatch.setattr(
+        "carla_vision.operator.garage_preview.spawn_unparented_rgb_camera",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("raw BGRA camera must not be spawned")
+        ),
+    )
+    session = GaragePreviewSession(
+        GaragePreviewConfig.from_mapping(preview_payload()),
+        carla_host="127.0.0.1",
+        carla_port=2000,
+        world_worker=worker,  # type: ignore[arg-type]
+        rpc_factory=lambda *_args, **_kwargs: rpc,  # type: ignore[arg-type]
+    )
+
+    started = session.start()
+    sequence, jpeg = session.frame()
+    time.sleep(0.01)
+    stopped = session.close()
+
+    assert started["active"] is True
+    assert (sequence, jpeg) == (1, Frame.jpeg)
+    assert worker.camera_requests[0]["mode"] == "garage"
+    assert worker.camera_requests[0]["width"] == 1920
+    assert stopped["status"] == "stopped"
+    assert rpc.closed is True
+
+
+def test_raw_fallback_keeps_last_frame_during_long_lan_pause(monkeypatch) -> None:
+    class PausedStream:
+        def wait_for_frame(self, *, after_sequence: int, timeout: float) -> None:
+            del after_sequence, timeout
+            raise TimeoutError
+
+    session = GaragePreviewSession(
+        GaragePreviewConfig.from_mapping(preview_payload()),
+        carla_host="127.0.0.1",
+        carla_port=2000,
+        world_worker=object(),  # type: ignore[arg-type]
+    )
+    with session._lock:
+        session._stream = PausedStream()  # type: ignore[assignment]
+        session._frame_sequence = 4
+        session._jpeg = b"last-good-frame"
+        session._status = "running"
+        session._worker_camera = False
+    monkeypatch.setattr(
+        "carla_vision.operator.garage_preview.time.monotonic",
+        lambda: 10_000.0,
+    )
+
+    thread = threading.Thread(target=session._frame_loop)
+    thread.start()
+    time.sleep(0.01)
+    session._frame_stop.set()
+    thread.join(timeout=1.0)
+
+    assert session._status == "running"
+    assert session._error is None
+    assert session._jpeg == b"last-good-frame"

@@ -15,6 +15,7 @@ import carla_vision.operator.drive as drive_module
 from carla_vision.operator.drive import DriveSession, DriveSessionManager
 from carla_vision.operator.drive_contracts import DriveInput, DriveStartConfig
 from carla_vision.operator.world_worker_client import (
+    WorldWorkerCameraFrame,
     WorldWorkerClient,
     WorldWorkerError,
     WorldWorkerScene,
@@ -137,6 +138,40 @@ class _RecordingWorkerHandler(BaseHTTPRequestHandler):
                 },
             )
             return
+        if self.path.endswith("/camera/frame.jpg"):
+            payload = b"\xff\xd8worker-jpeg\xff\xd9"
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Content-Length", str(len(payload)))
+            self.send_header("X-Camera-Sequence", "7")
+            self.send_header("X-CARLA-Frame", "314")
+            self.send_header("X-CARLA-Timestamp", "12.5")
+            self.send_header("X-Camera-Width", "1920")
+            self.send_header("X-Camera-Height", "1080")
+            self.send_header("X-Camera-FOV", "65")
+            self.send_header(
+                "X-Camera-Transform",
+                json.dumps(
+                    {
+                        "location": {"x": 1, "y": 2, "z": 3},
+                        "rotation": {"pitch": 4, "yaw": 5, "roll": 6},
+                    }
+                ),
+            )
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+        if self.path.endswith("/camera") or self.path.endswith("/camera_orbit"):
+            self._json(
+                HTTPStatus.OK,
+                {
+                    "schema_version": "1.0",
+                    "status": "running",
+                    "scene_id": "scene-test-1",
+                    "camera": {"actor_id": 91},
+                },
+            )
+            return
         status = "active"
         control_mode = "manual"
         if self.path.endswith("/mode"):
@@ -245,6 +280,34 @@ class WorldWorkerClientHttpTests(unittest.TestCase):
         self.assertEqual(raised.exception.status, 409)
         self.assertEqual(raised.exception.code, "scene_busy")
 
+    def test_camera_relay_uses_authenticated_jpeg_transport(self) -> None:
+        scene = WorldWorkerScene.from_response(_scene_payload())
+
+        started = self.client.start_camera(
+            scene,
+            mode="garage",
+            width=1920,
+            height=1080,
+            fps=10.0,
+            fov=65.0,
+        )
+        self.client.orbit_camera(scene, yaw=90.0, pitch=-8.0, distance=6.0)
+        frame = self.client.camera_frame(scene, after_sequence=-1, timeout=1.0)
+
+        self.assertEqual(started["camera"]["actor_id"], 91)
+        self.assertIsInstance(frame, WorldWorkerCameraFrame)
+        self.assertEqual((frame.sequence, frame.frame), (7, 314))
+        self.assertEqual((frame.width, frame.height, frame.fov), (1920, 1080, 65.0))
+        self.assertEqual(frame.transform, (1.0, 2.0, 3.0, 4.0, 5.0, 6.0))
+        self.assertEqual(frame.jpeg, b"\xff\xd8worker-jpeg\xff\xd9")
+        camera_requests = [row for row in self.server.requests if "/camera" in row["path"]]
+        self.assertEqual(len(camera_requests), 3)
+        self.assertTrue(
+            all(row["authorization"] == f"Bearer {WORKER_TOKEN}" for row in camera_requests)
+        )
+        self.assertEqual(camera_requests[0]["body"]["width"], 1920)
+        self.assertEqual(camera_requests[1]["body"]["yaw"], 90.0)
+
     def test_url_and_token_validation_rejects_unsafe_configuration(self) -> None:
         invalid = (
             ("ftp://worker:8766", "token"),
@@ -347,6 +410,7 @@ class _FakeWorker:
         self.reachable = reachable
         self.modes: list[str] = []
         self.controls: list[dict[str, Any]] = []
+        self.cameras: list[dict[str, Any]] = []
         self.events: list[str] = []
         self.stop_after_control: DriveSession | None = None
 
@@ -402,6 +466,12 @@ class _FakeWorker:
     def heartbeat(self, scene: WorldWorkerScene) -> WorldWorkerScene:
         self.events.append("worker_heartbeat")
         return scene
+
+    def start_camera(self, scene: WorldWorkerScene, **payload: Any) -> dict[str, Any]:
+        del scene
+        self.cameras.append(dict(payload))
+        self.events.append("camera_start")
+        return {"camera": {"actor_id": 91}}
 
     def stop_scene(self, scene: WorldWorkerScene) -> WorldWorkerScene:
         self.events.append("worker_stop")
@@ -654,7 +724,7 @@ class _ExecuteTracker:
 
 
 class WorkerExecuteOwnershipTests(unittest.TestCase):
-    def test_worker_path_never_owns_world_or_constructs_raw_actuator(self) -> None:
+    def test_worker_camera_path_avoids_raw_bgra_stream_and_raw_actuator(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             workspace = Path(temporary).resolve()
             config = DriveStartConfig.from_mapping(
@@ -671,6 +741,10 @@ class WorkerExecuteOwnershipTests(unittest.TestCase):
                 world_worker=worker,  # type: ignore[arg-type]
             )
             scene = WorldWorkerScene.from_response(_scene_payload(status="prepared"))
+            scene = replace(
+                scene,
+                capabilities={**scene.capabilities, "compressed_camera_relay": True},
+            )
             with session._lock:
                 session._worker_scene = scene
                 session._worker_scene_id = scene.scene_id
@@ -684,9 +758,15 @@ class WorkerExecuteOwnershipTests(unittest.TestCase):
                 mock.patch.object(
                     drive_module,
                     "spawn_front_camera",
-                    return_value=[91, 77, None, None, None, b"stream-token"],
+                    side_effect=AssertionError(
+                        "compressed Worker path must not open CARLA raw BGRA streaming"
+                    ),
                 ),
-                mock.patch.object(drive_module, "CarlaCameraStream", return_value=stream),
+                mock.patch.object(
+                    drive_module,
+                    "WorldWorkerCameraStream",
+                    return_value=stream,
+                ),
                 mock.patch.object(
                     drive_module,
                     "SafeActuator",
@@ -707,6 +787,8 @@ class WorkerExecuteOwnershipTests(unittest.TestCase):
 
             self.assertEqual(len(worker.controls), 1)
             self.assertEqual(worker.controls[0]["brake"], 1.0)
+            self.assertEqual(worker.cameras[0]["width"], 640)
+            self.assertEqual(worker.cameras[0]["mode"], "drive")
             self.assertNotIn("get_weather_parameters", rpc.calls)
             self.assertNotIn("set_weather_parameters", rpc.calls)
             self.assertLess(worker.events.index("worker_stop"), worker.events.index("camera_close"))

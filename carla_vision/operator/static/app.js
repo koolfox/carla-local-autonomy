@@ -43,6 +43,8 @@ const state = {
     lastSafetyStopAt: 0,
     lastTerminalSession: null,
     initialControlMode: "manual",
+    experimentPreset: "free_drive",
+    markerInFlight: false,
     modeTakeoverPromise: null,
     garage: {
       enabled: false,
@@ -63,6 +65,50 @@ const state = {
       cameraPreset: "orbit",
       pointer: null,
     },
+  },
+};
+
+const DRIVE_EXPERIMENTS = {
+  free_drive: {
+    title: "Free drive",
+    note: "No fixed protocol. Explore the scene naturally.",
+  },
+  manual_handling: {
+    title: "Manual handling",
+    note: "Drive by keyboard or touch. Video and controls are retained.",
+    mode: "manual",
+    record: true,
+  },
+  autopilot_takeover: {
+    title: "Autopilot takeover",
+    note: "CARLA Traffic Manager starts. Take control when intervention is needed.",
+    mode: "autopilot",
+    record: true,
+  },
+  perception_review: {
+    title: "Perception review",
+    note: "Review the live detector and mark false or missed objects.",
+    mode: "manual",
+    detector: true,
+    record: true,
+  },
+  traffic_stress: {
+    title: "Traffic stress",
+    note: "A busier construction scene for human handling and takeover tests.",
+    mode: "autopilot",
+    detector: true,
+    record: true,
+    traffic: "20",
+    walkers: "10",
+    props: "construction",
+  },
+  adverse_weather: {
+    title: "Bad weather",
+    note: "Heavy rain for visual review and human driving tests.",
+    mode: "manual",
+    detector: true,
+    record: true,
+    weather: "heavy-rain",
   },
 };
 
@@ -293,10 +339,11 @@ function closeGameDrawers() {
     button.setAttribute("aria-expanded", "false");
   }
   document.getElementById("game-camera-toggle")?.setAttribute("aria-expanded", "false");
+  document.getElementById("drive-experiment-toggle")?.setAttribute("aria-expanded", "false");
 }
 
 function openGameDrawer(name) {
-  if (driveIsActive() && name === "world") return;
+  if (driveIsActive() && name !== "experiments") return;
   let opened = false;
   for (const panel of document.querySelectorAll("[data-game-panel]")) {
     const active = panel.dataset.gamePanel === name;
@@ -307,6 +354,114 @@ function openGameDrawer(name) {
     button.setAttribute("aria-expanded", String(button.dataset.gameDrawer === name));
   }
   document.body.classList.toggle("game-drawer-open", opened);
+  document.getElementById("drive-experiment-toggle")?.setAttribute(
+    "aria-expanded",
+    String(name === "experiments" && opened),
+  );
+}
+
+function selectIfAvailable(id, value) {
+  const select = $(id);
+  if (!select || select.disabled) return false;
+  if (![...select.options].some((option) => option.value === String(value))) return false;
+  select.value = String(value);
+  select.dispatchEvent(new Event("change", { bubbles: true }));
+  return true;
+}
+
+function renderExperimentUi() {
+  const selected = DRIVE_EXPERIMENTS[state.drive.experimentPreset] || DRIVE_EXPERIMENTS.free_drive;
+  $("experiment-current-title").textContent = selected.title;
+  $("experiment-current-note").textContent = selected.note;
+  $("drive-hud-experiment").textContent = selected.title.toUpperCase();
+  for (const button of document.querySelectorAll("[data-experiment-preset]")) {
+    const active = button.dataset.experimentPreset === state.drive.experimentPreset;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+    button.disabled = driveIsActive();
+  }
+  const counts = state.drive.session?.human_marker_counts || {};
+  const count = Object.values(counts).reduce((total, value) => total + Number(value || 0), 0);
+  $("human-marker-count").textContent = `${count} marked moment${count === 1 ? "" : "s"}`;
+  const markingAvailable = driveIsRunning() && !state.drive.markerInFlight;
+  for (const button of document.querySelectorAll("[data-human-marker]")) {
+    button.disabled = !markingAvailable;
+  }
+  $("human-marker-note").disabled = !driveIsRunning();
+  $("human-marker-help").textContent = driveIsRunning()
+    ? "Markers retain the exact camera/detector sequence, control mode, telemetry, and optional note."
+    : "Start a drive before marking moments.";
+}
+
+function applyExperimentPreset(name) {
+  const preset = DRIVE_EXPERIMENTS[name];
+  if (!preset || driveIsActive()) return;
+  state.drive.experimentPreset = name;
+  if (preset.mode) {
+    if (preset.mode === "autopilot" && $("drive-mode-autopilot").disabled) {
+      showToast("This experiment needs the CARLA World Worker autopilot.", true);
+      state.drive.experimentPreset = "free_drive";
+      renderExperimentUi();
+      return;
+    }
+    setDriveInitialControlMode(preset.mode);
+  }
+  if (preset.detector !== undefined) {
+    $("drive-detector-enabled").checked = preset.detector;
+    updateDriveModelToggle();
+  }
+  if (preset.record !== undefined) $("drive-record-video").checked = preset.record;
+  if (preset.traffic) selectIfAvailable("drive-traffic-choice", preset.traffic);
+  if (preset.walkers) selectIfAvailable("drive-walkers-choice", preset.walkers);
+  if (preset.props) selectIfAvailable("drive-props", preset.props);
+  if (preset.weather) selectIfAvailable("drive-weather", preset.weather);
+  renderGarageBay();
+  renderExperimentUi();
+  showToast(`${preset.title} is ready. Review the scene, then start driving.`);
+}
+
+async function markHumanMoment(label) {
+  if (!driveIsRunning() || state.drive.markerInFlight) return;
+  state.drive.markerInFlight = true;
+  renderExperimentUi();
+  const note = $("human-marker-note").value.trim();
+  try {
+    const payload = await request("/api/drive/mark", {
+      method: "POST",
+      body: JSON.stringify({
+        session_id: driveSessionId(),
+        label,
+        note: note || null,
+      }),
+    });
+    state.drive.session = { ...state.drive.session, ...(payload.state || payload) };
+    $("human-marker-note").value = "";
+    showToast("Moment marked in this run.");
+  } catch (error) {
+    showToast(error.message, true);
+  } finally {
+    state.drive.markerInFlight = false;
+    renderExperimentUi();
+  }
+}
+
+function bindExperiments() {
+  for (const button of document.querySelectorAll("[data-experiment-preset]")) {
+    button.addEventListener("click", () => applyExperimentPreset(button.dataset.experimentPreset));
+  }
+  for (const button of document.querySelectorAll("[data-human-marker]")) {
+    button.addEventListener("click", () => void markHumanMoment(button.dataset.humanMarker));
+  }
+  $("drive-experiment-toggle").addEventListener("click", () => {
+    const panel = $("game-experiments");
+    if (!panel.hidden) closeGameDrawers();
+    else openGameDrawer("experiments");
+  });
+  $("experiment-open-lab").addEventListener("click", () => {
+    activateTab("tools");
+    activateResearchTool("workflows");
+  });
+  renderExperimentUi();
 }
 
 function bindGameShell() {
@@ -371,6 +526,8 @@ function installGameShell() {
     "drive-viewport",
     "drive-start-form",
     "drive-start",
+    "game-experiments",
+    "drive-experiment-toggle",
     "game-research-open",
     "game-back-to-drive",
   ];
@@ -681,22 +838,22 @@ function renderGaragePreviewUi() {
 
   const status = $("garage-preview-status");
   status.textContent = garage.busy
-    ? "Loading CARLA…"
+    ? "Loading…"
     : live
-      ? "● Live CARLA"
+      ? "● Live"
       : garage.failed
-        ? "Garage unavailable"
-        : "Live CARLA off";
+        ? "Preview unavailable"
+        : "Preview paused";
   status.classList.toggle("active", live);
 
   const toggle = $("garage-preview-toggle");
   toggle.textContent = garage.busy
-    ? "Please wait…"
+    ? "Loading…"
     : live
-      ? "Exit garage"
+      ? "Close preview"
       : garage.failed
         ? "Try again"
-        : "Enter garage";
+        : "Open preview";
   toggle.disabled = garage.busy || driveIsActive() || (!live && !available);
   toggle.title = !available && !live
     ? "Connect the World Worker and choose a CARLA vehicle first."
@@ -1135,6 +1292,10 @@ function renderDriveCapabilities() {
 
 function populateDriveCatalog(catalog) {
   state.drive.catalog = catalog;
+  const effectiveConnected = Boolean(catalog.connected || catalog.world_worker?.connected);
+  const carlaStatus = $("carla-status");
+  carlaStatus.textContent = effectiveConnected ? "CARLA · reachable" : "CARLA · offline";
+  carlaStatus.className = `status-pill ${effectiveConnected ? "ok" : "bad"}`;
   if (catalog.host) $("drive-host").value = catalog.host;
   if (catalog.port) $("drive-port").value = catalog.port;
   const currentMap = catalog.map || "";
@@ -1243,9 +1404,19 @@ function renderGarageBay() {
   const weather = selectedOptionLabel("drive-weather", "Weather pending");
   const map = selectedOptionLabel("drive-map-choice", "Current map");
   const scene = selectedOptionLabel("drive-props", "Open road");
-  $("garage-bay-car").textContent = vehicle;
+  const vehicleParts = vehicle.split(" · ");
+  $("garage-bay-make").textContent = vehicleParts.length > 1
+    ? vehicleParts[0].toUpperCase()
+    : "SELECTED VEHICLE";
+  $("garage-bay-title").textContent = vehicleParts.length > 1
+    ? vehicleParts.slice(1).join(" · ")
+    : vehicle;
+  const colorValue = $("drive-color").value;
+  $("garage-bay-car").textContent = colorValue
+    ? driveColorLabel(colorValue)
+    : "Factory paint";
   $("garage-bay-weather").textContent = weather;
-  $("garage-bay-world").textContent = `${map} · ${scene}`;
+  $("garage-bay-world").textContent = `${map}  /  ${scene}`;
   $("garage-world-summary").textContent = `${map} · ${weather}`;
   syncGarageVehicleCarousel();
   const color = $("drive-color").value.split(",").map(Number);
@@ -1263,6 +1434,9 @@ function renderGarageBay() {
 
 function renderDriveState() {
   const session = state.drive.session || { status: "idle" };
+  if (session.experiment_preset in DRIVE_EXPERIMENTS) {
+    state.drive.experimentPreset = session.experiment_preset;
+  }
   const statusName = session.status || "idle";
   const immersive = driveIsActive();
   const autopilotActive = driveIsRunning() && driveIsAutopilot();
@@ -1277,7 +1451,7 @@ function renderDriveState() {
     : state.drive.garage.active
       ? "garage"
       : "setup";
-  if (immersive) closeGameDrawers();
+  if (immersive && !$("game-settings").hidden) closeGameDrawers();
   document.title = immersive ? "Driving · CARLA Vision Operator" : "CARLA Vision Operator";
   const status = $("drive-status");
   status.textContent = {
@@ -1406,6 +1580,7 @@ function renderDriveState() {
         : "Waiting for a session";
 
   updateDriveConfigAvailability();
+  renderExperimentUi();
   if (driveIsRunning()) {
     scheduleDriveFrame(0);
   } else {
@@ -1579,6 +1754,16 @@ function renderDriveKeyState() {
   $("drive-viewport").classList.toggle("reversing", command.reverse);
 }
 
+function nextDriveControlSequence() {
+  // Control sequences must survive a page refresh and another open tab. A
+  // per-page counter restarted at zero and permanently lost to the session's
+  // previous value. Wall-clock microseconds keep later browser input newer,
+  // while the local increment preserves strict ordering within one millisecond.
+  const wallClockSequence = Date.now() * 1000 + Math.floor(performance.now() % 1 * 1000);
+  state.drive.sequence = Math.max(state.drive.sequence + 1, wallClockSequence);
+  return state.drive.sequence;
+}
+
 async function sendDriveControl({ safety = false, keepalive = false } = {}) {
   const sessionId = driveSessionId();
   if (!sessionId) return;
@@ -1596,7 +1781,7 @@ async function sendDriveControl({ safety = false, keepalive = false } = {}) {
     : currentDriveCommand();
   const payload = {
     session_id: sessionId,
-    sequence: ++state.drive.sequence,
+    sequence: nextDriveControlSequence(),
     ...command,
   };
   if (!safety) state.drive.controlInFlight = true;
@@ -1843,6 +2028,7 @@ function driveStartPayload() {
     walker_count: number("drive-walkers-choice"),
     route_mode: $("drive-starting-choice").value || "free",
     initial_control_mode: state.drive.initialControlMode,
+    experiment_preset: state.drive.experimentPreset,
     weather_preset: $("drive-weather").value,
     prop_preset: $("drive-props").value,
     detector_enabled: checked("drive-detector-enabled"),
@@ -2793,6 +2979,7 @@ async function initialize() {
   try {
     bindChrome();
     bindDriveConsole();
+    bindExperiments();
     bindLiveForm();
     bindSituationForms();
     bindWorkflowForms();
@@ -2808,6 +2995,9 @@ async function initialize() {
   try {
     await refreshDriveCatalog();
     await refreshGaragePreviewState();
+    if (garagePreviewAvailable() && !state.drive.garage.active) {
+      await configureGaragePreview();
+    }
     await refreshDriveState();
   } catch (error) {
     showToast(`Could not initialize Drive Console: ${error.message}`, true);

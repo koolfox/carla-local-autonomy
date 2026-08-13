@@ -26,6 +26,7 @@ from carla_vision.operator.server import create_server
 CARLA_HOST = "172.20.10.7"
 CARLA_PORT = 2000
 STATIC_ROOT = Path(__file__).parents[1] / "carla_vision" / "operator" / "static"
+DRIVE_SOURCE = Path(__file__).parents[1] / "carla_vision" / "operator" / "drive.py"
 
 
 class _StaticHtmlContractParser(HTMLParser):
@@ -175,6 +176,7 @@ class DriveStartConfigTests(_WorkspaceTestCase):
         self.assertEqual(config.prop_preset, "none")
         self.assertTrue(config.record_video)
         self.assertFalse(config.spectator_follow)
+        self.assertEqual(config.experiment_preset, "free_drive")
         self.assertFalse(config.manifest_config()["model_output_actuated"])
 
     def test_detector_can_be_disabled_without_resolving_weights(self) -> None:
@@ -182,6 +184,12 @@ class DriveStartConfigTests(_WorkspaceTestCase):
 
         self.assertIsNone(config.weights)
         self.assertFalse(config.detector_enabled)
+
+    def test_human_experiment_preset_is_retained_in_manifest(self) -> None:
+        config = self.config(experiment_preset="perception_review")
+
+        self.assertEqual(config.experiment_preset, "perception_review")
+        self.assertEqual(config.manifest_config()["experiment_preset"], "perception_review")
 
     def test_endpoint_must_equal_operator_endpoint(self) -> None:
         for field, value in (("host", "127.0.0.1"), ("port", 2001)):
@@ -217,6 +225,7 @@ class DriveStartConfigTests(_WorkspaceTestCase):
             ({"resolution": "640-by-384"}, "resolution"),
             ({"camera_fps": 0.0}, "camera_fps"),
             ({"detector_enabled": 1}, "detector_enabled"),
+            ({"experiment_preset": "make-something-up"}, "experiment_preset"),
         )
         for overrides, message in invalid_cases:
             with (
@@ -361,6 +370,31 @@ class DriveSessionControlTests(_WorkspaceTestCase):
         self.assertEqual(first_stop["status"], "stopping")
         self.assertEqual(second_stop["status"], "stopping")
         self.assertEqual(second_stop["stop_reason"], "operator_stop")
+
+    def test_human_moment_is_bounded_and_retained_with_frame_context(self) -> None:
+        session = self.session()
+        with session._lock:
+            session._status = "running"
+            session._raw_frame_sequence = 42
+            session._overlay_frame_sequence = 40
+            session._control_mode = "autopilot"
+            session._control_source = "worker_autopilot"
+
+        snapshot = session.mark_human_event("false_detection", "phantom car")
+
+        self.assertEqual(snapshot["human_markers_written"], 1)
+        self.assertEqual(snapshot["human_marker_counts"]["false_detection"], 1)
+        with session._lock:
+            event = session._pending_events[-1]
+        self.assertEqual(event["event"], "human_moment_marked")
+        self.assertEqual(event["raw_camera_sequence"], 42)
+        self.assertEqual(event["detector_sequence"], 40)
+        self.assertEqual(event["control_mode"], "autopilot")
+        self.assertEqual(event["note"], "phantom car")
+
+        for label, note in (("unknown", None), ("interesting", "x\nsecond line")):
+            with self.subTest(label=label, note=note), self.assertRaises(ValueError):
+                session.mark_human_event(label, note)
 
 
 class _FakeSession:
@@ -564,6 +598,50 @@ class StaticDriveConsoleContractTests(unittest.TestCase):
         self.assertGreater(len(literal_id_references), 100)
         self.assertEqual(sorted(literal_id_references - set(self.parser.ids)), [])
 
+    def test_drive_camera_defaults_to_1080p_source_quality(self) -> None:
+        tag, attributes = self.parser.elements["drive-resolution"]
+        self.assertEqual(tag, "select")
+        selected = re.search(
+            r'<option\s+value="([^"]+)"\s+selected>',
+            self.html[self.html.index('id="drive-resolution"') :],
+        )
+        self.assertIsNotNone(selected)
+        self.assertEqual(selected.group(1), "1920x1080")
+        self.assertIn("def _jpeg(image: np.ndarray, quality: int = 92)", DRIVE_SOURCE.read_text())
+
+    def test_human_experiments_are_in_context_and_markers_are_wired(self) -> None:
+        for element_id in (
+            "game-experiments",
+            "drive-experiment-toggle",
+            "experiment-presets",
+            "human-marker-count",
+            "human-marker-note",
+        ):
+            with self.subTest(element_id=element_id):
+                self.assertIn(element_id, self.parser.elements)
+        for preset in (
+            "free_drive",
+            "manual_handling",
+            "autopilot_takeover",
+            "perception_review",
+            "traffic_stress",
+            "adverse_weather",
+        ):
+            with self.subTest(preset=preset):
+                self.assertIn(f'data-experiment-preset="{preset}"', self.html)
+        for marker in (
+            "false_detection",
+            "missed_object",
+            "autopilot_issue",
+            "scene_issue",
+            "interesting",
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(f'data-human-marker="{marker}"', self.html)
+        self.assertIn('request("/api/drive/mark"', self.script)
+        self.assertIn("experiment_preset: state.drive.experimentPreset", self.script)
+        self.assertIn('openGameDrawer("experiments")', self.script)
+
     def test_touch_hud_mapping_pointer_lifecycle_and_responsive_visibility(self) -> None:
         expected_controls = {
             "drive-touch-left": "left",
@@ -635,6 +713,10 @@ class StaticDriveConsoleContractTests(unittest.TestCase):
             with self.subTest(hook=hook):
                 self.assertIn(hook, self.script)
 
+        self.assertIn("function nextDriveControlSequence()", self.script)
+        self.assertIn("Date.now() * 1000", self.script)
+        self.assertIn("sequence: nextDriveControlSequence()", self.script)
+
         self.assertRegex(
             self.script,
             re.compile(
@@ -649,6 +731,7 @@ class _FakeHttpDriveManager:
     def __init__(self) -> None:
         self.started: dict[str, Any] | None = None
         self.controls: list[dict[str, Any]] = []
+        self.markers: list[dict[str, Any]] = []
         self.shutdown_called = False
 
     def catalog(self) -> dict[str, Any]:
@@ -675,6 +758,10 @@ class _FakeHttpDriveManager:
 
     def emergency_stop(self, raw: dict[str, Any]) -> dict[str, Any]:
         return {"status": "running", "control_source": "emergency_stop", **raw}
+
+    def mark(self, raw: dict[str, Any]) -> dict[str, Any]:
+        self.markers.append(dict(raw))
+        return {"status": "running", "human_markers_written": len(self.markers)}
 
     def stop(self, raw: dict[str, Any]) -> dict[str, Any]:
         return {"status": "success", **raw}
@@ -747,6 +834,18 @@ class DriveHttpTests(_WorkspaceTestCase):
         self.assertEqual(status, 202)
         self.assertEqual(json.loads(body)["session_id"], "browser-http-test")
         self.assertEqual(self.fake.started, {"run_id": "browser-http-test"})
+
+        status, _, body = self.request(
+            "/api/drive/mark",
+            payload={
+                "session_id": "browser-http-test",
+                "label": "interesting",
+                "note": "human review",
+            },
+        )
+        self.assertEqual(status, 201)
+        self.assertEqual(json.loads(body)["human_markers_written"], 1)
+        self.assertEqual(self.fake.markers[0]["label"], "interesting")
 
     def test_drive_mutations_require_operator_token(self) -> None:
         with self.assertRaises(urllib.error.HTTPError) as caught:

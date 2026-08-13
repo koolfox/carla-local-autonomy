@@ -74,8 +74,44 @@ Research workspace
 
 The running game shell removes the former dashboard header, static warning strip,
 and top-level tab bar. Its only persistent controls are the status HUD, setup,
-camera, research, vehicle carousel, and Start Drive. The base Research tools
-surface and its five tabs remain intact.
+camera, experiments, research lab, vehicle carousel, and Start Drive. The base
+Research tools surface and its five tabs remain intact.
+
+## Human experiment layer
+
+The Experiments drawer is part of the fullscreen Garage/Drive surface. It does
+not start a separate job or introduce another AI controller. A preset applies a
+small, visible configuration to the existing controls:
+
+```text
+Free Drive
+Manual Handling
+Autopilot Takeover
+Perception Review
+Traffic Stress
+Adverse Weather
+```
+
+Unavailable capability-gated presets remain unavailable rather than silently
+falling back. For example, Autopilot Takeover requires World Worker autopilot.
+The selected preset is written to the Drive config and summary.
+
+While a Drive is running, the operator can retain one of five human observations:
+
+```text
+interesting
+false_detection
+missed_object
+autopilot_issue
+scene_issue
+```
+
+`POST /api/drive/mark` accepts the active session ID, one strict label, and an
+optional single-line note. The server—not the browser—adds elapsed time, current
+camera and detector sequence, command source, control mode, and telemetry before
+writing the event to `events.jsonl`. The summary retains label counts and the
+total number of human markers. These are observational annotations;
+`model_output_actuated` remains false for the marker itself.
 
 The Research tools surface currently has five tabs:
 
@@ -311,6 +347,10 @@ Drive output is retained under `runs/<run-id>/` through the existing Drive
 artifact tracker. Depending on enabled options and whether frames/results were
 produced, the run can include the manifest/config/summary, control/detection/event
 logs, latest JPEG frames, and raw/overlay MP4 recordings.
+
+For a human experiment, `config.json` records `experiment_preset`,
+`events.jsonl` stores every marked moment with exact run context, and
+`summary.json` stores `human_marker_counts` plus `human_markers_written`.
 
 Manual control logs are marked as browser/manual or fail-safe sources and record
 `model_output_actuated: false`. Autonomous Garage control logs include
