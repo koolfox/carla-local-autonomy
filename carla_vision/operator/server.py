@@ -9,6 +9,7 @@ import os
 import re
 import secrets
 import sys
+import threading
 import webbrowser
 from collections.abc import Mapping, Sequence
 from http import HTTPStatus
@@ -17,6 +18,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
+from ..discovery import discover_carla_servers
 from .catalog import RESEARCH_ROOTS, build_catalog
 from .commands import build_command_plan
 from .contracts import OperatorJobRequest
@@ -129,6 +131,7 @@ class OperatorApplication:
         self.carla_port = carla_port
         self.world_worker = world_worker
         self.token = secrets.token_urlsafe(24)
+        self._discovery_lock = threading.Lock()
         self.jobs = JobManager(
             workspace=self.workspace,
             sessions_root=sessions_root,
@@ -157,6 +160,19 @@ class OperatorApplication:
 
     def close(self) -> None:
         self.drive.shutdown()
+
+    def discover_carla(self, raw: Any) -> dict[str, Any]:
+        if not isinstance(raw, Mapping):
+            raise TypeError("CARLA discovery request must be an object")
+        if raw:
+            raise ValueError("CARLA discovery request does not accept parameters")
+        with self._discovery_lock:
+            result = discover_carla_servers(port=self.carla_port)
+        result["configured_host"] = self.carla_host
+        result["configured_match"] = any(
+            server["host"] == self.carla_host for server in result["servers"]
+        )
+        return result
 
     def save_situation(self, raw: Any) -> dict[str, Any]:
         if not isinstance(raw, Mapping):
@@ -610,6 +626,12 @@ class OperatorRequestHandler(BaseHTTPRequestHandler):
                     self.server.application.save_situation(self._body()),
                 )
                 return
+            if path == "/api/discovery/carla":
+                self._json(
+                    HTTPStatus.OK,
+                    self.server.application.discover_carla(self._body()),
+                )
+                return
             if path == "/api/jobs":
                 self._json(
                     HTTPStatus.ACCEPTED,
@@ -650,6 +672,15 @@ class OperatorRequestHandler(BaseHTTPRequestHandler):
                 self._json(
                     HTTPStatus.ACCEPTED,
                     self.server.application.drive.mode(body),
+                )
+                return
+            if path == "/api/drive/mark":
+                body = self._body()
+                if not isinstance(body, Mapping):
+                    raise TypeError("drive human-marker request must be an object")
+                self._json(
+                    HTTPStatus.CREATED,
+                    self.server.application.drive.mark(body),
                 )
                 return
             if path == "/api/drive/emergency-stop":
@@ -725,7 +756,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--bind", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--sessions-root", default="operator_sessions")
-    parser.add_argument("--carla-host", default="172.20.10.7")
+    parser.add_argument(
+        "--carla-host",
+        default="172.20.10.7",
+        help="CARLA server address, or 'auto' to discover one on the directly connected LAN",
+    )
     parser.add_argument("--carla-port", type=int, default=2000)
     parser.add_argument("--world-worker-url")
     parser.add_argument(
@@ -752,15 +787,37 @@ def resolve_world_worker_token(args: argparse.Namespace) -> str | None:
     return token
 
 
+def resolve_carla_host(host: str, port: int) -> str:
+    """Resolve an explicit host or require one unambiguous discovered server."""
+
+    value = str(host).strip()
+    if value.lower() != "auto":
+        if not value or any(character.isspace() for character in value):
+            raise ValueError("CARLA host must be a non-empty address or 'auto'")
+        return value
+    result = discover_carla_servers(port=int(port))
+    servers = result["servers"]
+    if not servers:
+        scopes = ", ".join(scope["network"] for scope in result["scopes"]) or "none"
+        raise RuntimeError(f"no CARLA server was discovered on local scopes: {scopes}")
+    if len(servers) != 1:
+        hosts = ", ".join(server["host"] for server in servers)
+        raise RuntimeError(
+            f"multiple CARLA servers were discovered; choose one explicitly: {hosts}"
+        )
+    return str(servers[0]["host"])
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     world_worker_token = resolve_world_worker_token(args)
+    carla_host = resolve_carla_host(args.carla_host, args.carla_port)
     server = create_server(
         workspace=args.workspace,
         bind=args.bind,
         port=args.port,
         sessions_root=args.sessions_root,
-        carla_host=args.carla_host,
+        carla_host=carla_host,
         carla_port=args.carla_port,
         world_worker_url=args.world_worker_url,
         world_worker_token=world_worker_token,
@@ -802,5 +859,6 @@ __all__ = [
     "create_server",
     "main",
     "parse_args",
+    "resolve_carla_host",
     "resolve_world_worker_token",
 ]

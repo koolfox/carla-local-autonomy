@@ -17,6 +17,16 @@ _RESOLUTION = re.compile(r"^(\d{3,4})x(\d{3,4})$")
 _MAP_NAME = re.compile(r"^[A-Za-z0-9_./-]{1,160}$")
 _CONTROL_MODES = frozenset({"manual", "autopilot"})
 _ROUTE_MODES = frozenset({"free", "random_destination"})
+EXPERIMENT_PRESETS = frozenset(
+    {
+        "free_drive",
+        "manual_handling",
+        "autopilot_takeover",
+        "perception_review",
+        "traffic_stress",
+        "adverse_weather",
+    }
+)
 _WORKER_FIELDS = frozenset(
     {
         "map_name",
@@ -110,6 +120,7 @@ class DriveStartConfig:
     walker_count: int = 0
     route_mode: str = "free"
     initial_control_mode: str = "manual"
+    experiment_preset: str = "free_drive"
     max_throttle: float = 0.55
 
     @classmethod
@@ -142,10 +153,11 @@ class DriveStartConfig:
             "camera_fov",
             "record_video",
             "spectator_follow",
+            "experiment_preset",
             *_WORKER_FIELDS,
         }
         _strict_keys(raw, allowed, "drive start request")
-        required = allowed - {"color"} - _WORKER_FIELDS
+        required = allowed - {"color", "experiment_preset"} - _WORKER_FIELDS
         missing = sorted(key for key in required if key not in raw)
         if missing:
             raise ValueError(f"drive start request is missing fields: {', '.join(missing)}")
@@ -212,6 +224,11 @@ class DriveStartConfig:
         initial_control_mode = str(raw.get("initial_control_mode", "manual")).strip()
         if initial_control_mode not in _CONTROL_MODES:
             raise ValueError("initial_control_mode must be manual or autopilot")
+        experiment_preset = str(raw.get("experiment_preset", "free_drive")).strip()
+        if experiment_preset not in EXPERIMENT_PRESETS:
+            raise ValueError(
+                "experiment_preset must be one of: " + ", ".join(sorted(EXPERIMENT_PRESETS))
+            )
         if not world_worker_configured:
             unsupported = []
             if map_name != "current":
@@ -256,6 +273,7 @@ class DriveStartConfig:
             walker_count=walker_count,
             route_mode=route_mode,
             initial_control_mode=initial_control_mode,
+            experiment_preset=experiment_preset,
         )
 
     def manifest_config(self) -> dict[str, Any]:
@@ -294,6 +312,7 @@ class DriveStartConfig:
             "walker_count": self.walker_count,
             "route_mode": self.route_mode,
             "initial_control_mode": self.initial_control_mode,
+            "experiment_preset": self.experiment_preset,
             "max_throttle": self.max_throttle,
         }
 

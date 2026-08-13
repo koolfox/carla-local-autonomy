@@ -5,12 +5,15 @@ import http.client
 import json
 import os
 import subprocess
+import tempfile
 import threading
 import unittest
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from carla_vision.native.world_worker import (
+    CompressedCameraRelay,
     SceneConfig,
     WorkerError,
     WorldWorker,
@@ -28,6 +31,52 @@ class FakeClock:
 
     def advance(self, seconds: float) -> None:
         self.value += seconds
+
+
+class CompressedCameraRelayTests(unittest.TestCase):
+    def test_relay_encodes_with_carla_and_retains_only_the_latest_jpeg(self) -> None:
+        class Sensor:
+            id = 71
+            callback: Any = None
+            stopped = False
+
+            def listen(self, callback: Any) -> None:
+                self.callback = callback
+
+            def stop(self) -> None:
+                self.stopped = True
+
+        class Image:
+            frame = 19
+            timestamp = 2.5
+            width = 1920
+            height = 1080
+            fov = 65.0
+            transform = FakeTransform(
+                FakeLocation(1.0, 2.0, 3.0),
+                FakeRotation(-4.0, 5.0, 6.0),
+            )
+
+            def save_to_disk(self, path: str) -> None:
+                Path(path).write_bytes(b"\xff\xd8worker-side-jpeg\xff\xd9")
+
+        root = Path(tempfile.mkdtemp(prefix="worker-camera-test-"))
+        sensor = Sensor()
+        relay = CompressedCameraRelay(sensor, temporary_root=root)
+        relay.listen()
+        assert sensor.callback is not None
+        sensor.callback(Image())
+
+        sequence, payload, metadata = relay.wait(-1, 0.2)
+        self.assertEqual(sequence, 0)
+        self.assertEqual(payload, b"\xff\xd8worker-side-jpeg\xff\xd9")
+        self.assertEqual(metadata["frame"], 19)
+        self.assertEqual(metadata["width"], 1920)
+        self.assertEqual(metadata["transform"]["location"]["x"], 1.0)
+
+        relay.close()
+        self.assertTrue(sensor.stopped)
+        self.assertFalse(root.exists())
 
 
 class FakeAttribute:
@@ -592,7 +641,9 @@ class WorldWorkerTest(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         command, options = calls[0]
         self.assertIn("--internal-map-load", command)
-        self.assertEqual(command[command.index("--target-map") + 1], "/Game/Carla/Maps/Town05/Town05")
+        self.assertEqual(
+            command[command.index("--target-map") + 1], "/Game/Carla/Maps/Town05/Town05"
+        )
         self.assertNotIn("CARLA_WORLD_WORKER_TOKEN", options["env"])
         self.assertTrue(options["check"] is False)
 

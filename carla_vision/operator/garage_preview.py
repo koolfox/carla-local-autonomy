@@ -10,6 +10,7 @@ from __future__ import annotations
 import math
 import re
 import threading
+import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -19,10 +20,15 @@ import cv2
 from ..bridge import (
     CarlaCameraStream,
     CarlaRpc,
+    garage_camera_preset_transform,
     garage_orbit_camera_transform,
     spawn_unparented_rgb_camera,
 )
-from .world_worker_client import WorldWorkerClient, WorldWorkerScene
+from .world_worker_client import (
+    WorldWorkerCameraStream,
+    WorldWorkerClient,
+    WorldWorkerScene,
+)
 
 _ACTIVE_DRIVE_STATES = frozenset({"starting", "running", "stopping"})
 _VEHICLE_BLUEPRINT = re.compile(r"^vehicle\.[A-Za-z0-9_.-]{1,150}$")
@@ -109,9 +115,9 @@ class GaragePreviewConfig:
     walker_count: int
     prop_preset: str
     spectator_mirror: bool = False
-    width: int = 960
-    height: int = 540
-    fps: float = 20.0
+    width: int = 1920
+    height: int = 1080
+    fps: float = 10.0
     fov: float = 65.0
     yaw: float = 325.0
     pitch: float = -10.0
@@ -164,13 +170,9 @@ class GaragePreviewConfig:
             traffic_count=_integer(
                 raw["traffic_count"], name="traffic_count", minimum=0, maximum=250
             ),
-            walker_count=_integer(
-                raw["walker_count"], name="walker_count", minimum=0, maximum=250
-            ),
+            walker_count=_integer(raw["walker_count"], name="walker_count", minimum=0, maximum=250),
             prop_preset=prop_preset,
-            spectator_mirror=_boolean(
-                raw.get("spectator_mirror", False), name="spectator_mirror"
-            ),
+            spectator_mirror=_boolean(raw.get("spectator_mirror", False), name="spectator_mirror"),
         )
 
 
@@ -180,18 +182,26 @@ class GarageOrbitRequest:
     yaw: float
     pitch: float
     distance: float
+    preset: str = "orbit"
 
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any]) -> "GarageOrbitRequest":
-        fields = {"sequence", "yaw", "pitch", "distance"}
-        _strict_keys(raw, allowed=fields, required=fields, name="Garage orbit request")
+        fields = {"sequence", "yaw", "pitch", "distance", "preset"}
+        _strict_keys(
+            raw,
+            allowed=fields,
+            required={"sequence", "yaw", "pitch", "distance"},
+            name="Garage orbit request",
+        )
+        preset = str(raw.get("preset", "orbit")).strip().lower()
+        if preset not in {"orbit", "front", "rear", "top", "cockpit"}:
+            raise ValueError("preset must be orbit, front, rear, top, or cockpit")
         return cls(
-            sequence=_integer(
-                raw["sequence"], name="sequence", minimum=0, maximum=2**63 - 1
-            ),
+            sequence=_integer(raw["sequence"], name="sequence", minimum=0, maximum=2**63 - 1),
             yaw=_number(raw["yaw"], name="yaw") % 360.0,
             pitch=min(15.0, max(-25.0, _number(raw["pitch"], name="pitch"))),
             distance=min(10.0, max(3.5, _number(raw["distance"], name="distance"))),
+            preset=preset,
         )
 
 
@@ -224,7 +234,11 @@ class GaragePreviewSession:
         self._frame_thread: threading.Thread | None = None
         self._scene: WorldWorkerScene | None = None
         self._rpc: CarlaRpc | None = None
-        self._stream: CarlaCameraStream | None = None
+        self._stream: CarlaCameraStream | WorldWorkerCameraStream | None = None
+        self._worker_camera = False
+        self._camera_transport = "pending"
+        self._camera_width = config.width
+        self._camera_height = config.height
         self._episode_id: int | None = None
         self._vehicle_id: int | None = None
         self._camera_id: int | None = None
@@ -238,6 +252,7 @@ class GaragePreviewSession:
         self._yaw = config.yaw
         self._pitch = config.pitch
         self._distance = config.distance
+        self._camera_preset = "orbit"
         self._last_orbit_sequence = -1
         self._frame_sequence = -1
         self._jpeg: bytes | None = None
@@ -264,7 +279,9 @@ class GaragePreviewSession:
                         }
                     )
                 if scene.ego_actor_id is None or scene.episode_id is None:
-                    raise RuntimeError("World Worker prepared Garage preview without an ego episode")
+                    raise RuntimeError(
+                        "World Worker prepared Garage preview without an ego episode"
+                    )
                 with self._lock:
                     self._scene = scene
                     self._episode_id = scene.episode_id
@@ -283,7 +300,9 @@ class GaragePreviewSession:
                     raise RuntimeError("Garage preview camera episode does not match World Worker")
                 vehicle = rpc.actor(scene.ego_actor_id)
                 if vehicle is None or not str(vehicle[2][1]).startswith("vehicle."):
-                    raise RuntimeError("World Worker Garage preview ego did not verify as a vehicle")
+                    raise RuntimeError(
+                        "World Worker Garage preview ego did not verify as a vehicle"
+                    )
                 vehicle_transform = rpc.actor_transform(scene.ego_actor_id, "VehicleMesh")
                 camera_transform = garage_orbit_camera_transform(
                     vehicle_transform,
@@ -291,33 +310,78 @@ class GaragePreviewSession:
                     pitch_degrees=self._pitch,
                     distance=self._distance,
                 )
-                camera = spawn_unparented_rgb_camera(
-                    rpc,
-                    camera_transform,
-                    role_name="garage_preview",
-                    width=self.config.width,
-                    height=self.config.height,
-                    sensor_tick=1.0 / self.config.fps,
-                    fov=self.config.fov,
-                )
-                if not isinstance(camera, list) or len(camera) < 6 or not camera[5]:
-                    raise RuntimeError("Garage preview camera did not expose a stream token")
-                camera_id = int(camera[0])
+                worker_camera = bool(scene.capabilities.get("compressed_camera_relay"))
+                if worker_camera:
+                    camera_response = self.world_worker.start_camera(
+                        scene,
+                        mode="garage",
+                        width=self.config.width,
+                        height=self.config.height,
+                        fps=self.config.fps,
+                        fov=self.config.fov,
+                        yaw=self._yaw,
+                        pitch=self._pitch,
+                        distance=self._distance,
+                    )
+                    camera_payload = camera_response.get("camera")
+                    if not isinstance(camera_payload, Mapping):
+                        raise RuntimeError("World Worker camera response is malformed")
+                    camera_id = int(camera_payload["actor_id"])
+                    stream = WorldWorkerCameraStream(
+                        self.world_worker,
+                        scene,
+                        timeout=max(8.0, 4.0 / self.config.fps),
+                    )
+                else:
+                    # An older Worker leaves the camera on CARLA's raw BGRA
+                    # stream. Cap only that compatibility lane so the first
+                    # frame can cross an ordinary LAN; upgraded Workers retain
+                    # the requested 1080p worker-side JPEG relay.
+                    raw_width = min(self.config.width, 960)
+                    raw_height = min(self.config.height, 540)
+                    camera = spawn_unparented_rgb_camera(
+                        rpc,
+                        camera_transform,
+                        role_name="garage_preview",
+                        width=raw_width,
+                        height=raw_height,
+                        sensor_tick=1.0 / self.config.fps,
+                        fov=self.config.fov,
+                    )
+                    if not isinstance(camera, list) or len(camera) < 6 or not camera[5]:
+                        raise RuntimeError("Garage preview camera did not expose a stream token")
+                    camera_id = int(camera[0])
+                    verified_camera = rpc.actor(camera_id)
+                    if verified_camera is None:
+                        raise RuntimeError("Garage preview camera could not be verified")
+                    camera_type = str(verified_camera[2][1])
+                    if camera_type != "sensor.camera.rgb":
+                        raise RuntimeError(
+                            f"Garage preview actor {camera_id} has unexpected type {camera_type!r}"
+                        )
+                    camera_role = _serialized_actor_attribute(verified_camera, "role_name")
+                    if camera_role != "garage_preview":
+                        raise RuntimeError("Garage preview camera role_name could not be verified")
+                    stream = self._stream_factory(
+                        self.carla_host,
+                        camera[5],
+                        timeout=max(8.0, 4.0 / self.config.fps),
+                    )
                 with self._lock:
                     self._camera_id = camera_id
                     self._camera_type = "sensor.camera.rgb"
-                verified_camera = rpc.actor(camera_id)
-                if verified_camera is None:
-                    raise RuntimeError("Garage preview camera could not be verified")
-                camera_type = str(verified_camera[2][1])
-                if camera_type != "sensor.camera.rgb":
-                    raise RuntimeError(
-                        f"Garage preview actor {camera_id} has unexpected type {camera_type!r}"
+                    self._worker_camera = worker_camera
+                    self._camera_transport = (
+                        "worker_jpeg" if worker_camera else "carla_raw_bgra_fallback"
                     )
-                camera_role = _serialized_actor_attribute(verified_camera, "role_name")
-                if camera_role != "garage_preview":
-                    raise RuntimeError("Garage preview camera role_name could not be verified")
-                if self.config.spectator_mirror:
+                    self._camera_width = self.config.width if worker_camera else raw_width
+                    self._camera_height = self.config.height if worker_camera else raw_height
+                # Town*_Opt can stream tiles around the spectator. Until the
+                # Worker-side camera relay is deployed, keep the server view at
+                # the Garage camera so the raw sensor's tile remains loaded.
+                # The exact previous spectator transform is restored on close.
+                mirror_spectator = self.config.spectator_mirror or not worker_camera
+                if mirror_spectator:
                     try:
                         spectator = rpc.spectator()
                         spectator_id = int(spectator[0])
@@ -329,13 +393,8 @@ class GaragePreviewSession:
                             self._spectator_mirror_active = True
                     except Exception as error:
                         self._cleanup_errors.append(f"spectator preview setup: {error}")
-                stream = self._stream_factory(
-                    self.carla_host,
-                    camera[5],
-                    timeout=max(8.0, 4.0 / self.config.fps),
-                )
                 self._stream = stream
-                frame = stream.wait_for_frame(timeout=10.0)
+                frame = stream.wait_for_frame(timeout=20.0)
                 self._cache_frame(frame)
                 self._start_frame_pump()
                 with self._lock:
@@ -358,6 +417,7 @@ class GaragePreviewSession:
                 "yaw": self._yaw,
                 "pitch": self._pitch,
                 "distance": self._distance,
+                "camera_preset": self._camera_preset,
                 "error": self._error,
                 "cleanup_errors": list(self._cleanup_errors),
                 "map": None if self._scene is None else self._scene.map_name,
@@ -366,6 +426,8 @@ class GaragePreviewSession:
                 "color": self.config.color,
                 "vehicle_id": self._vehicle_id,
                 "camera_id": self._camera_id,
+                "camera_transport": self._camera_transport,
+                "camera_resolution": f"{self._camera_width}x{self._camera_height}",
                 "traffic_count": self.config.traffic_count,
                 "walker_count": self.config.walker_count,
                 "prop_preset": self.config.prop_preset,
@@ -388,9 +450,11 @@ class GaragePreviewSession:
     def wait_for_frame(self, after_sequence: int, *, timeout: float = 5.0) -> tuple[int, bytes]:
         with self._frame_condition:
             ready = self._frame_condition.wait_for(
-                lambda: self._frame_sequence > after_sequence
-                or self._closed
-                or self._status == "failed",
+                lambda: (
+                    self._frame_sequence > after_sequence
+                    or self._closed
+                    or self._status == "failed"
+                ),
                 timeout=timeout,
             )
             if not ready:
@@ -410,30 +474,45 @@ class GaragePreviewSession:
                 episode_id = self._episode_id
                 vehicle_id = self._vehicle_id
                 camera_id = self._camera_id
+                worker_camera = self._worker_camera
             if rpc is None or episode_id is None or vehicle_id is None or camera_id is None:
                 raise RuntimeError("Garage preview actors are not ready")
             if rpc.episode_id() != episode_id:
                 raise RuntimeError("CARLA episode changed while Garage preview was active")
-            camera = rpc.actor(camera_id)
-            if (
-                camera is None
-                or str(camera[2][1]) != "sensor.camera.rgb"
-                or _serialized_actor_attribute(camera, "role_name") != "garage_preview"
-            ):
-                raise RuntimeError("Garage preview camera ownership could not be verified")
             vehicle_transform = rpc.actor_transform(vehicle_id, "VehicleMesh")
-            transform = garage_orbit_camera_transform(
+            transform = garage_camera_preset_transform(
                 vehicle_transform,
+                request.preset,
                 azimuth_degrees=request.yaw,
                 pitch_degrees=request.pitch,
                 distance=request.distance,
             )
-            rpc.set_actor_transform(camera_id, transform)
+            if worker_camera:
+                with self._worker_request_lock:
+                    scene = self._scene
+                    if scene is None:
+                        raise RuntimeError("Garage preview Worker scene is not ready")
+                    self.world_worker.orbit_camera(
+                        scene,
+                        yaw=request.yaw,
+                        pitch=request.pitch,
+                        distance=request.distance,
+                    )
+            else:
+                camera = rpc.actor(camera_id)
+                if (
+                    camera is None
+                    or str(camera[2][1]) != "sensor.camera.rgb"
+                    or _serialized_actor_attribute(camera, "role_name") != "garage_preview"
+                ):
+                    raise RuntimeError("Garage preview camera ownership could not be verified")
+                rpc.set_actor_transform(camera_id, transform)
             with self._lock:
                 self._last_orbit_sequence = request.sequence
                 self._yaw = request.yaw
                 self._pitch = request.pitch
                 self._distance = request.distance
+                self._camera_preset = request.preset
                 spectator_id = self._spectator_id
                 spectator_active = self._spectator_mirror_active
             if spectator_id is not None and spectator_active:
@@ -457,7 +536,11 @@ class GaragePreviewSession:
         self._heartbeat_thread.start()
 
     def _cache_frame(self, frame: Any) -> None:
-        payload = _jpeg(frame.bgr())
+        # The Garage is a visual selection surface, not a detector transport.
+        # Preserve CARLA texture/detail instead of applying the old aggressive
+        # JPEG compression before the frame fills a desktop or tablet screen.
+        jpeg = getattr(frame, "jpeg", None)
+        payload = bytes(jpeg) if isinstance(jpeg, bytes) else _jpeg(frame.bgr(), quality=94)
         with self._frame_condition:
             if frame.sequence > self._frame_sequence:
                 self._frame_sequence = frame.sequence
@@ -473,6 +556,8 @@ class GaragePreviewSession:
         self._frame_thread.start()
 
     def _frame_loop(self) -> None:
+        last_frame_at = time.monotonic()
+        stale_after = max(5.0, 20.0 / self.config.fps)
         while not self._frame_stop.is_set():
             with self._lock:
                 stream = self._stream
@@ -486,8 +571,23 @@ class GaragePreviewSession:
                     timeout=max(1.0, 4.0 / self.config.fps),
                 )
                 self._cache_frame(frame)
+                last_frame_at = time.monotonic()
             except TimeoutError:
-                continue
+                # The legacy raw-BGRA stream can pause for many seconds on a
+                # loaded remote CARLA host. Keep the last valid Garage frame
+                # visible and continue waiting; only the new worker-side JPEG
+                # transport has a bounded freshness contract.
+                if not self._worker_camera or time.monotonic() - last_frame_at < stale_after:
+                    continue
+                error = TimeoutError(
+                    f"no Garage camera frame arrived for {stale_after:.1f} seconds"
+                )
+                with self._frame_condition:
+                    self._error = f"Garage preview camera failed: {error}"
+                    self._status = "failed"
+                    self._frame_condition.notify_all()
+                self.close(reason="camera_stale")
+                return
             except BaseException as error:
                 if self._frame_stop.is_set():
                     return
@@ -530,6 +630,7 @@ class GaragePreviewSession:
                 episode_id = self._episode_id
                 camera_id = self._camera_id
                 camera_type = self._camera_type
+                worker_camera = self._worker_camera
                 spectator_id = self._spectator_id
                 spectator_transform = self._spectator_transform
             self._heartbeat_stop.set()
@@ -554,7 +655,7 @@ class GaragePreviewSession:
                 except Exception as error:
                     same_episode = False
                     self._cleanup_errors.append(f"episode cleanup check: {error}")
-                if same_episode and camera_id is not None:
+                if same_episode and camera_id is not None and not worker_camera:
                     try:
                         actor = rpc.actor(camera_id)
                         if actor is not None:
@@ -573,7 +674,7 @@ class GaragePreviewSession:
                                 rpc.destroy_actor(camera_id)
                     except Exception as error:
                         self._cleanup_errors.append(f"destroy camera {camera_id}: {error}")
-                elif camera_id is not None:
+                elif camera_id is not None and not worker_camera:
                     self._cleanup_errors.append(
                         "episode changed; skipped Garage preview camera destruction"
                     )
@@ -598,8 +699,7 @@ class GaragePreviewSession:
                         with self._lock:
                             self._scene = stopped
                         self._cleanup_errors.extend(
-                            f"World Worker cleanup: {error}"
-                            for error in stopped.cleanup_errors
+                            f"World Worker cleanup: {error}" for error in stopped.cleanup_errors
                         )
                     except Exception as error:
                         self._cleanup_errors.append(f"World Worker stop ({reason}): {error}")

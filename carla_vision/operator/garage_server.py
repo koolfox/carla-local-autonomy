@@ -1,9 +1,8 @@
-"""Additive Garage integration for the existing local operator server.
+"""Garage APIs and lifecycle integration for the local operator server.
 
-The base operator application, HTTP routes, browser Drive engine, research jobs,
-and artifact APIs remain intact. This wrapper swaps in the additive Garage
-drive manager, adds one allow-listed research-job endpoint, and injects
-same-origin JavaScript/CSS without rewriting the existing static application.
+The base operator application owns the single canonical browser shell and static
+assets. This wrapper adds the Garage drive manager, preview, and allow-listed
+research-job endpoint without changing how the shell itself is served.
 """
 
 from __future__ import annotations
@@ -22,36 +21,9 @@ from .garage_drive import GarageDriveSessionManager
 from .garage_preview import GaragePreviewManager
 from .garage_research import GarageResearchRequest, build_garage_research_plan
 
-GARAGE_STATIC_ROOT = Path(__file__).resolve().parent / "garage_static"
-_GARAGE_SCRIPT = "/static/garage-integration.js"
-_GARAGE_RESEARCH_SCRIPT = "/static/garage-research.js"
-_GARAGE_STYLE = "/static/garage-integration.css"
 _LIVE_RESEARCH_KINDS = frozenset(
     {"voxel_capture", "voxel_flow_capture", "voxel_shadow", "closed_loop_evaluate"}
 )
-
-
-def _injected_index() -> bytes:
-    source = (base.STATIC_ROOT / "index.html").read_text(encoding="utf-8")
-    assets = (_GARAGE_SCRIPT, _GARAGE_RESEARCH_SCRIPT, _GARAGE_STYLE)
-    if any(asset in source for asset in assets):
-        raise RuntimeError("garage integration assets are already present in the base index")
-    if "</head>" not in source or "</body>" not in source:
-        raise RuntimeError("operator index is missing expected head/body boundaries")
-    source = source.replace(
-        "</head>",
-        f'    <link rel="stylesheet" href="{_GARAGE_STYLE}">\n  </head>',
-        1,
-    )
-    source = source.replace(
-        "</body>",
-        (
-            f'    <script src="{_GARAGE_SCRIPT}" defer></script>\n'
-            f'    <script src="{_GARAGE_RESEARCH_SCRIPT}" defer></script>\n  </body>'
-        ),
-        1,
-    )
-    return source.encode("utf-8")
 
 
 def _validate_research_runtime(
@@ -69,27 +41,11 @@ def _validate_research_runtime(
 
 
 class GarageOperatorRequestHandler(base.OperatorRequestHandler):
-    """Serve the base operator app plus additive Garage routes/assets."""
+    """Serve Garage APIs and delegate the canonical shell to the base handler."""
 
     def do_GET(self) -> None:
         try:
             path = urlparse(self.path).path
-            if path == "/":
-                self._bytes(
-                    HTTPStatus.OK,
-                    _injected_index(),
-                    content_type="text/html; charset=utf-8",
-                )
-                return
-            if path == _GARAGE_SCRIPT:
-                self._file(GARAGE_STATIC_ROOT / "garage-integration.js", cache="no-cache")
-                return
-            if path == _GARAGE_RESEARCH_SCRIPT:
-                self._file(GARAGE_STATIC_ROOT / "garage-research.js", cache="no-cache")
-                return
-            if path == _GARAGE_STYLE:
-                self._file(GARAGE_STATIC_ROOT / "garage-integration.css", cache="no-cache")
-                return
             if path == "/api/garage/preview/state":
                 self._json(HTTPStatus.OK, self.server.application.preview.state())
                 return
@@ -304,12 +260,13 @@ def create_server(
 def main(argv: Sequence[str] | None = None) -> int:
     args = base.parse_args(argv)
     world_worker_token = base.resolve_world_worker_token(args)
+    carla_host = base.resolve_carla_host(args.carla_host, args.carla_port)
     server = create_server(
         workspace=args.workspace,
         bind=args.bind,
         port=args.port,
         sessions_root=args.sessions_root,
-        carla_host=args.carla_host,
+        carla_host=carla_host,
         carla_port=args.carla_port,
         world_worker_url=args.world_worker_url,
         world_worker_token=world_worker_token,
@@ -348,7 +305,6 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 __all__ = [
-    "GARAGE_STATIC_ROOT",
     "GarageOperatorDriveManager",
     "GarageOperatorRequestHandler",
     "create_server",

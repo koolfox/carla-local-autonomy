@@ -100,26 +100,27 @@ class GarageVisualContractTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.html = (STATIC_ROOT / "index.html").read_text(encoding="utf-8")
         cls.styles = (STATIC_ROOT / "app.css").read_text(encoding="utf-8")
+        cls.script = (STATIC_ROOT / "app.js").read_text(encoding="utf-8")
         cls.parser = _GarageDocumentParser()
         cls.parser.feed(cls.html)
 
-    def test_page_declares_light_chrome_and_edge_to_edge_safe_area_support(self) -> None:
+    def test_page_declares_game_chrome_and_edge_to_edge_safe_area_support(self) -> None:
         viewport_tokens = {
             token.strip() for token in self.parser.metas["viewport"].split(",")
         }
         self.assertIn("width=device-width", viewport_tokens)
         self.assertIn("initial-scale=1", viewport_tokens)
         self.assertIn("viewport-fit=cover", viewport_tokens)
-        self.assertEqual(self.parser.metas["color-scheme"], "light")
-        self.assertRegex(self.parser.metas["theme-color"], r"^#[0-9a-fA-F]{6}$")
+        self.assertEqual(self.parser.metas["color-scheme"], "dark light")
+        self.assertEqual(self.parser.metas["theme-color"], "#070809")
 
         root_theme = _balanced_block(self.styles, ":root")
         self.assertGreater(_lightness(_property(root_theme, "--bg")), 220)
         self.assertGreater(_lightness(_property(root_theme, "--surface")), 220)
 
     def test_tab_controls_expose_aria_state_and_control_real_tabpanels(self) -> None:
-        self.assertGreaterEqual(self.parser.tablist_count, 2)
-        self.assertGreaterEqual(len(self.parser.tabs), 7)
+        self.assertEqual(self.parser.tablist_count, 1)
+        self.assertGreaterEqual(len(self.parser.tabs), 5)
 
         for tab in self.parser.tabs:
             controlled_id = tab.get("aria-controls")
@@ -143,31 +144,22 @@ class GarageVisualContractTests(unittest.TestCase):
         self.assertIn("env(safe-area-inset-right)", mobile_shell)
         self.assertIn("env(safe-area-inset-left)", mobile_shell)
 
-        adaptive_action = _balanced_block(self.styles, "@media (max-width: 780px),")
-        sticky_action = _balanced_block(
-            adaptive_action,
-            "body.drive-tab-active:not(.drive-immersive) .drive-session-actions",
-        )
+        mobile = _balanced_block(self.styles, "@media (max-width: 760px)")
+        sticky_action = _balanced_block(mobile, ".game-shell > .drive-session-actions")
         for edge in ("right", "bottom", "left"):
             with self.subTest(sticky_edge=edge):
-                self.assertIn(f"env(safe-area-inset-{edge})", sticky_action)
+                if edge == "left":
+                    self.assertEqual(_property(sticky_action, edge), "auto")
+                else:
+                    self.assertIn(f"env(safe-area-inset-{edge})", sticky_action)
 
     def test_mobile_sticky_action_and_tablet_form_remain_structurally_responsive(self) -> None:
-        adaptive_action = _balanced_block(self.styles, "@media (max-width: 780px),")
-        sticky_action = _balanced_block(
-            adaptive_action,
-            "body.drive-tab-active:not(.drive-immersive) .drive-session-actions",
-        )
+        adaptive_action = _balanced_block(self.styles, "@media (max-width: 760px)")
+        sticky_action = _balanced_block(adaptive_action, ".game-shell > .drive-session-actions")
         self.assertEqual(_property(sticky_action, "position"), "fixed")
-        self.assertEqual(_property(sticky_action, "bottom"), "0")
-        self.assertEqual(_property(sticky_action, "left"), "0")
-        self.assertEqual(_property(sticky_action, "right"), "0")
-
-        mobile_shell = _balanced_block(
-            adaptive_action,
-            "body.drive-tab-active:not(.drive-immersive) .app-shell",
-        )
-        self.assertIn("safe-area-inset-bottom", _property(mobile_shell, "padding-bottom"))
+        self.assertIn("safe-area-inset-bottom", _property(sticky_action, "bottom"))
+        self.assertEqual(_property(sticky_action, "left"), "auto")
+        self.assertIn("safe-area-inset-right", _property(sticky_action, "right"))
 
         tablet = _balanced_block(
             self.styles,
@@ -232,6 +224,46 @@ class GarageVisualContractTests(unittest.TestCase):
         )
         self.assertEqual(duplicate_ids, [])
         self.assertEqual(self.parser.nested_forms, [])
+
+    def test_drive_is_a_static_fullscreen_stage_instead_of_dashboard_chrome(self) -> None:
+        for element_id in (
+            "game-shell",
+            "game-stage",
+            "game-menu",
+            "game-settings",
+            "garage-preview",
+            "drive-viewport",
+        ):
+            with self.subTest(element_id=element_id):
+                self.assertIn(element_id, self.parser.elements)
+        self.assertNotIn('class="topbar"', self.html)
+        self.assertNotIn('class="safety-strip"', self.html)
+        self.assertNotIn('class="tabs"', self.html)
+        self.assertIn("game shell is missing required elements", self.script)
+
+        shell = _selector_block(self.styles, ".game-shell", ".game-stage")
+        self.assertEqual(_property(shell, "position"), "absolute")
+        self.assertEqual(_property(shell, "inset"), "0")
+        self.assertIn("100dvh", self.styles)
+
+    def test_game_controls_are_sparse_overlays_with_touch_safe_areas(self) -> None:
+        for selector in (".game-top-hud", ".game-menu", ".game-drawer"):
+            with self.subTest(selector=selector):
+                block = _selector_block(self.styles, selector)
+                self.assertEqual(_property(block, "position"), "fixed")
+                self.assertIn("safe-area-inset", block)
+
+        mobile = _balanced_block(self.styles, "@media (max-width: 760px)")
+        self.assertIn(".game-menu", mobile)
+        self.assertIn(".garage-carousel-shell", mobile)
+        self.assertIn(".game-drawer", mobile)
+
+    def test_camera_and_carousel_contracts_include_real_game_views(self) -> None:
+        self.assertIn('data-garage-camera="cockpit"', self.html)
+        self.assertIn('cockpit: { yaw: 0, pitch: 0, distance: 4 }', self.script)
+        self.assertIn("preset: garage.cameraPreset", self.script)
+        self.assertIn("syncGarageVehicleCarousel({ reveal: true });", self.script)
+        self.assertEqual(self.script.count('request("/api/drive/start"'), 1)
 
 
 if __name__ == "__main__":

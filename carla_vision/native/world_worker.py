@@ -28,6 +28,7 @@ import re
 import secrets
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -55,7 +56,10 @@ _VEHICLE_BLUEPRINT = re.compile(r"^vehicle\.[A-Za-z0-9_.-]{1,150}$")
 _COLOR = re.compile(r"^\d{1,3},\d{1,3},\d{1,3}$")
 _SCENE_PATH = re.compile(
     r"^/v1/scenes/(?P<scene_id>[A-Za-z0-9_-]{16,128})/"
-    r"(?P<action>start|heartbeat|control|mode|weather|stop)$"
+    r"(?P<action>start|heartbeat|control|mode|weather|camera|camera_orbit|stop)$"
+)
+_CAMERA_FRAME_PATH = re.compile(
+    r"^/v1/scenes/(?P<scene_id>[A-Za-z0-9_-]{16,128})/camera/frame\.jpg$"
 )
 _ACTIVE_SCENE_STATES = frozenset({"prepared", "running", "stopping"})
 _ROUTE_MODES = frozenset({"free", "random_destination"})
@@ -484,6 +488,161 @@ class OwnedActor:
     role_name: str | None = None
 
 
+@dataclass(frozen=True)
+class CompressedCameraConfig:
+    mode: str
+    width: int
+    height: int
+    fps: float
+    fov: float
+    yaw: float = 325.0
+    pitch: float = -10.0
+    distance: float = 6.5
+
+    @classmethod
+    def from_mapping(cls, raw: Mapping[str, Any]) -> Self:
+        allowed = {
+            "lease_token",
+            "mode",
+            "width",
+            "height",
+            "fps",
+            "fov",
+            "yaw",
+            "pitch",
+            "distance",
+        }
+        _strict_keys(
+            raw,
+            allowed=allowed,
+            required={"lease_token", "mode", "width", "height", "fps", "fov"},
+            name="compressed camera request",
+        )
+        mode = str(raw["mode"]).strip()
+        if mode not in {"garage", "drive"}:
+            raise WorkerError(
+                HTTPStatus.BAD_REQUEST, "invalid_field", "camera mode must be garage or drive"
+            )
+        width = _integer(raw["width"], "width", 320, 1920)
+        height = _integer(raw["height"], "height", 180, 1080)
+        fps = _number(raw["fps"], "fps", 1.0, 30.0)
+        fov = _number(raw["fov"], "fov", 30.0, 150.0)
+        yaw = _number(raw.get("yaw", 325.0), "yaw", -3600.0, 3600.0)
+        pitch = _number(raw.get("pitch", -10.0), "pitch", -25.0, 15.0)
+        distance = _number(raw.get("distance", 6.5), "distance", 3.5, 10.0)
+        return cls(
+            mode=mode,
+            width=width,
+            height=height,
+            fps=fps,
+            fov=fov,
+            yaw=yaw,
+            pitch=pitch,
+            distance=distance,
+        )
+
+
+class CompressedCameraRelay:
+    """Encode CARLA RGB frames beside the simulator before they cross the LAN."""
+
+    def __init__(self, sensor: Any, *, temporary_root: Path) -> None:
+        self.sensor = sensor
+        self.temporary_root = temporary_root
+        self._condition = threading.Condition()
+        self._encode_lock = threading.Lock()
+        self._closed = False
+        self._sequence = -1
+        self._jpeg: bytes | None = None
+        self._metadata: dict[str, Any] = {}
+        self._error: str | None = None
+
+    def listen(self) -> None:
+        self.sensor.listen(self._on_image)
+
+    def _on_image(self, image: Any) -> None:
+        if self._closed or not self._encode_lock.acquire(blocking=False):
+            return
+        path = self.temporary_root / f"frame-{int(getattr(image, 'frame', 0))}.jpg"
+        try:
+            saved = image.save_to_disk(str(path))
+            candidate = Path(saved) if isinstance(saved, str) and saved else path
+            payload = candidate.read_bytes()
+            if not payload.startswith(b"\xff\xd8") or not payload.endswith(b"\xff\xd9"):
+                raise RuntimeError("CARLA did not produce a valid JPEG frame")
+            transform = getattr(image, "transform", None)
+            metadata = {
+                "frame": int(getattr(image, "frame", 0)),
+                "timestamp": float(getattr(image, "timestamp", 0.0)),
+                "width": int(getattr(image, "width", 0)),
+                "height": int(getattr(image, "height", 0)),
+                "fov": float(getattr(image, "fov", 0.0)),
+                "transform": None if transform is None else _json_transform(transform),
+            }
+            with self._condition:
+                self._sequence += 1
+                self._jpeg = payload
+                self._metadata = metadata
+                self._condition.notify_all()
+        except Exception as error:
+            with self._condition:
+                self._error = f"{type(error).__name__}: {error}"
+                self._condition.notify_all()
+        finally:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            self._encode_lock.release()
+
+    def wait(self, after_sequence: int, timeout: float) -> tuple[int, bytes, dict[str, Any]]:
+        deadline = time.monotonic() + timeout
+        with self._condition:
+            while not self._closed and self._sequence <= after_sequence and self._error is None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0.0:
+                    raise WorkerError(
+                        HTTPStatus.REQUEST_TIMEOUT,
+                        "camera_timeout",
+                        "timed out waiting for a compressed camera frame",
+                    )
+                self._condition.wait(remaining)
+            if self._error is not None:
+                raise WorkerError(
+                    HTTPStatus.SERVICE_UNAVAILABLE, "camera_encode_failed", self._error
+                )
+            if self._closed or self._jpeg is None:
+                raise WorkerError(
+                    HTTPStatus.CONFLICT, "camera_inactive", "compressed camera is not active"
+                )
+            return self._sequence, self._jpeg, dict(self._metadata)
+
+    def snapshot(self) -> dict[str, Any]:
+        with self._condition:
+            return {
+                "actor_id": int(self.sensor.id),
+                "sequence": self._sequence,
+                "error": self._error,
+                **self._metadata,
+            }
+
+    def close(self) -> None:
+        with self._condition:
+            if self._closed:
+                return
+            self._closed = True
+            self._condition.notify_all()
+        try:
+            self.sensor.stop()
+        except Exception:
+            pass
+        try:
+            for path in self.temporary_root.iterdir():
+                path.unlink(missing_ok=True)
+            self.temporary_root.rmdir()
+        except OSError:
+            pass
+
+
 @dataclass
 class SceneLease:
     scene_id: str
@@ -516,6 +675,7 @@ class SceneLease:
     stop_reason: str | None = None
     cleanup_guard_passed: bool | None = None
     cleanup_errors: list[str] = field(default_factory=list)
+    camera_relay: CompressedCameraRelay | None = None
 
 
 class WorldWorker:
@@ -680,9 +840,7 @@ class WorldWorker:
         returncode = int(getattr(completed, "returncode", 1))
         if returncode == 0:
             return "isolated map loader completed"
-        stderr = str(getattr(completed, "stderr", "")).strip().replace("\r", " ").replace(
-            "\n", " "
-        )
+        stderr = str(getattr(completed, "stderr", "")).strip().replace("\r", " ").replace("\n", " ")
         if len(stderr) > 800:
             stderr = stderr[-800:]
         detail = f"isolated map loader exited with code {returncode}"
@@ -748,6 +906,7 @@ class WorldWorker:
             "lease": True,
             "manual_deadman": True,
             "asynchronous_world": True,
+            "compressed_camera_relay": True,
         }
 
     @staticmethod
@@ -1622,6 +1781,148 @@ class WorldWorker:
         scene.deadman_active = True
         scene.last_control_at = self._clock()
 
+    def _garage_camera_transform(
+        self,
+        ego: Any,
+        *,
+        yaw: float,
+        pitch: float,
+        distance: float,
+    ) -> Any:
+        assert self._carla is not None
+        vehicle = ego.get_transform()
+        bearing = math.radians(float(vehicle.rotation.yaw) + yaw)
+        pitch_radians = math.radians(pitch)
+        horizontal = distance * math.cos(pitch_radians)
+        target_z = float(vehicle.location.z) + 0.9
+        location = self._carla.Location(
+            x=float(vehicle.location.x) + horizontal * math.cos(bearing),
+            y=float(vehicle.location.y) + horizontal * math.sin(bearing),
+            z=target_z - distance * math.sin(pitch_radians),
+        )
+        rotation = self._carla.Rotation(
+            pitch=pitch,
+            yaw=float(vehicle.rotation.yaw) + yaw + 180.0,
+            roll=0.0,
+        )
+        return self._carla.Transform(location, rotation)
+
+    def camera(self, scene_id: str, raw: Mapping[str, Any]) -> dict[str, Any]:
+        config = CompressedCameraConfig.from_mapping(raw)
+        lease_token = _text(raw["lease_token"], "lease_token", maximum=256)
+        with self._lock:
+            scene = self._require_scene(scene_id, lease_token)
+            if scene.camera_relay is not None:
+                raise WorkerError(
+                    HTTPStatus.CONFLICT,
+                    "camera_already_active",
+                    "compressed camera is already active for this scene",
+                )
+            assert self._carla is not None
+            blueprint = scene.world.get_blueprint_library().find("sensor.camera.rgb")
+            attributes = {
+                "role_name": "world_worker_camera",
+                "image_size_x": str(config.width),
+                "image_size_y": str(config.height),
+                "sensor_tick": str(1.0 / config.fps),
+                "fov": str(config.fov),
+                "motion_blur_intensity": "0.0",
+                "motion_blur_max_distortion": "0.0",
+                "enable_postprocess_effects": "true",
+                "gamma": "2.2",
+            }
+            for name, value in attributes.items():
+                if blueprint.has_attribute(name):
+                    blueprint.set_attribute(name, value)
+            if config.mode == "garage":
+                transform = self._garage_camera_transform(
+                    scene.ego,
+                    yaw=config.yaw,
+                    pitch=config.pitch,
+                    distance=config.distance,
+                )
+                sensor = scene.world.spawn_actor(blueprint, transform)
+            else:
+                transform = self._carla.Transform(
+                    self._carla.Location(x=1.5, y=0.0, z=1.7),
+                    self._carla.Rotation(pitch=0.0, yaw=0.0, roll=0.0),
+                )
+                sensor = scene.world.spawn_actor(blueprint, transform, attach_to=scene.ego)
+            owned = OwnedActor(
+                actor=sensor,
+                actor_id=int(sensor.id),
+                type_id=str(sensor.type_id),
+                kind="compressed_camera",
+                role_name="world_worker_camera",
+            )
+            scene.owned_actors.append(owned)
+            temporary_root = Path(tempfile.mkdtemp(prefix="carla-world-camera-"))
+            relay = CompressedCameraRelay(sensor, temporary_root=temporary_root)
+            scene.camera_relay = relay
+            relay.listen()
+            self._refresh_lease(scene)
+            return {
+                "schema_version": SCHEMA_VERSION,
+                "status": "starting",
+                "scene_id": scene.scene_id,
+                "camera": {
+                    "actor_id": int(sensor.id),
+                    "mode": config.mode,
+                    "width": config.width,
+                    "height": config.height,
+                    "fps": config.fps,
+                    "fov": config.fov,
+                },
+            }
+
+    def camera_orbit(self, scene_id: str, raw: Mapping[str, Any]) -> dict[str, Any]:
+        allowed = {"lease_token", "yaw", "pitch", "distance"}
+        lease_token = self._lease_token(raw, allowed=allowed)
+        _strict_keys(raw, allowed=allowed, required=allowed, name="camera orbit request")
+        yaw = _number(raw["yaw"], "yaw", -3600.0, 3600.0)
+        pitch = _number(raw["pitch"], "pitch", -25.0, 15.0)
+        distance = _number(raw["distance"], "distance", 3.5, 10.0)
+        with self._lock:
+            scene = self._require_scene(scene_id, lease_token)
+            relay = scene.camera_relay
+            if relay is None:
+                raise WorkerError(
+                    HTTPStatus.CONFLICT, "camera_inactive", "compressed camera is not active"
+                )
+            relay.sensor.set_transform(
+                self._garage_camera_transform(
+                    scene.ego,
+                    yaw=yaw,
+                    pitch=pitch,
+                    distance=distance,
+                )
+            )
+            self._refresh_lease(scene)
+            return {
+                "schema_version": SCHEMA_VERSION,
+                "status": "running",
+                "scene_id": scene.scene_id,
+                "camera": relay.snapshot(),
+            }
+
+    def camera_frame(
+        self,
+        scene_id: str,
+        lease_token: str,
+        *,
+        after_sequence: int,
+        timeout: float,
+    ) -> tuple[int, bytes, dict[str, Any]]:
+        with self._lock:
+            scene = self._require_scene(scene_id, lease_token)
+            relay = scene.camera_relay
+            if relay is None:
+                raise WorkerError(
+                    HTTPStatus.NOT_FOUND, "camera_inactive", "compressed camera is not active"
+                )
+            self._refresh_lease(scene)
+        return relay.wait(after_sequence, timeout)
+
     def start(self, scene_id: str, raw: Mapping[str, Any]) -> dict[str, Any]:
         lease_token = self._lease_token(raw, allowed={"lease_token"})
         with self._lock:
@@ -1806,6 +2107,7 @@ class WorldWorker:
             "stop_reason": scene.stop_reason,
             "cleanup_guard_passed": scene.cleanup_guard_passed,
             "cleanup_errors": list(scene.cleanup_errors),
+            "camera": None if scene.camera_relay is None else scene.camera_relay.snapshot(),
             "capabilities": self._capabilities(scene.client),
         }
 
@@ -1864,6 +2166,9 @@ class WorldWorker:
     def _cleanup_resources(self, scene: SceneLease, *, reason: str) -> dict[str, Any]:
         scene.status = "stopping"
         scene.stop_reason = reason
+        if scene.camera_relay is not None:
+            scene.camera_relay.close()
+            scene.camera_relay = None
         try:
             current_world = scene.client.get_world()
             same_episode = self._episode_marker(current_world) == scene.episode_marker
@@ -2005,6 +2310,25 @@ class WorldWorkerRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_jpeg(self, sequence: int, payload: bytes, metadata: Mapping[str, Any]) -> None:
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "image/jpeg")
+        self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Camera-Sequence", str(sequence))
+        self.send_header("X-CARLA-Frame", str(metadata.get("frame", 0)))
+        self.send_header("X-CARLA-Timestamp", str(metadata.get("timestamp", 0.0)))
+        self.send_header("X-Camera-Width", str(metadata.get("width", 0)))
+        self.send_header("X-Camera-Height", str(metadata.get("height", 0)))
+        self.send_header("X-Camera-FOV", str(metadata.get("fov", 0.0)))
+        self.send_header(
+            "X-Camera-Transform",
+            json.dumps(metadata.get("transform"), separators=(",", ":")),
+        )
+        self.end_headers()
+        self.wfile.write(payload)
+
     def _error(self, error: WorkerError) -> None:
         self._send_json(
             error.status,
@@ -2076,7 +2400,32 @@ class WorldWorkerRequestHandler(BaseHTTPRequestHandler):
                     "query_not_supported",
                     "query strings are not supported",
                 )
-            if parsed.path == "/v1/health":
+            camera_match = _CAMERA_FRAME_PATH.fullmatch(parsed.path)
+            if camera_match is not None:
+                lease_token = self.headers.get("X-Scene-Lease", "")
+                try:
+                    after_sequence = int(self.headers.get("X-Camera-After", "-1"))
+                    timeout = float(self.headers.get("X-Camera-Timeout", "5"))
+                except ValueError as error:
+                    raise WorkerError(
+                        HTTPStatus.BAD_REQUEST,
+                        "invalid_camera_header",
+                        "camera sequence and timeout headers must be numeric",
+                    ) from error
+                if after_sequence < -1 or not 0.1 <= timeout <= 15.0:
+                    raise WorkerError(
+                        HTTPStatus.BAD_REQUEST,
+                        "invalid_camera_header",
+                        "camera after must be >= -1 and timeout must be in [0.1, 15]",
+                    )
+                sequence, payload, metadata = self.server.worker.camera_frame(
+                    camera_match.group("scene_id"),
+                    lease_token,
+                    after_sequence=after_sequence,
+                    timeout=timeout,
+                )
+                self._send_jpeg(sequence, payload, metadata)
+            elif parsed.path == "/v1/health":
                 self._send_json(HTTPStatus.OK, self.server.worker.health())
             elif parsed.path == "/v1/catalog":
                 self._send_json(HTTPStatus.OK, self.server.worker.catalog())

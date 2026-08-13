@@ -11,14 +11,17 @@ from __future__ import annotations
 import json
 import math
 import socket
+import threading
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass
+from http import HTTPStatus
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlsplit, urlunsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
-_MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+_MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 _SCENE_PREPARE_KEYS = frozenset(
     {
         "map_name",
@@ -59,6 +62,107 @@ class WorldWorkerError(RuntimeError):
         super().__init__(message)
         self.status = status
         self.code = code
+
+
+@dataclass(frozen=True)
+class WorldWorkerCameraFrame:
+    sequence: int
+    frame: int
+    timestamp: float
+    received_monotonic: float
+    width: int
+    height: int
+    fov: float
+    transform: tuple[float, float, float, float, float, float]
+    jpeg: bytes
+
+    def bgr(self) -> Any:
+        import cv2
+        import numpy as np
+
+        decoded = cv2.imdecode(np.frombuffer(self.jpeg, dtype=np.uint8), cv2.IMREAD_COLOR)
+        if decoded is None:
+            raise WorldWorkerError("World Worker camera returned an invalid JPEG")
+        return decoded
+
+
+class WorldWorkerCameraStream:
+    """Newest-frame long-poll reader for the worker-side JPEG camera relay."""
+
+    def __init__(
+        self,
+        client: "WorldWorkerClient",
+        scene: "WorldWorkerScene",
+        *,
+        timeout: float = 5.0,
+    ) -> None:
+        self.client = client
+        self.scene = scene
+        self.timeout = float(timeout)
+        self._condition = threading.Condition()
+        self._latest: WorldWorkerCameraFrame | None = None
+        self._error: BaseException | None = None
+        self._closed = False
+        self._thread = threading.Thread(
+            target=self._run,
+            name=f"world-worker-camera-{scene.scene_id}",
+            daemon=True,
+        )
+        self._thread.start()
+
+    def _run(self) -> None:
+        sequence = -1
+        try:
+            while not self._closed:
+                frame = self.client.camera_frame(
+                    self.scene,
+                    after_sequence=sequence,
+                    timeout=self.timeout,
+                )
+                sequence = frame.sequence
+                with self._condition:
+                    self._latest = frame
+                    self._condition.notify_all()
+        except BaseException as error:
+            if not self._closed:
+                with self._condition:
+                    self._error = error
+                    self._condition.notify_all()
+
+    def latest(self) -> WorldWorkerCameraFrame | None:
+        with self._condition:
+            if self._error is not None:
+                raise WorldWorkerError(f"compressed camera stream failed: {self._error}")
+            return self._latest
+
+    def wait_for_frame(
+        self,
+        after_sequence: int = -1,
+        timeout: float = 5.0,
+    ) -> WorldWorkerCameraFrame:
+        deadline = time.monotonic() + timeout
+        with self._condition:
+            while True:
+                if self._error is not None:
+                    raise WorldWorkerError(f"compressed camera stream failed: {self._error}")
+                if self._latest is not None and self._latest.sequence > after_sequence:
+                    return self._latest
+                remaining = deadline - time.monotonic()
+                if remaining <= 0.0:
+                    raise TimeoutError("timed out waiting for a compressed camera frame")
+                self._condition.wait(remaining)
+
+    def close(self) -> None:
+        self._closed = True
+        with self._condition:
+            self._condition.notify_all()
+        self._thread.join(timeout=self.timeout + 1.0)
+
+    def __enter__(self) -> "WorldWorkerCameraStream":
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.close()
 
 
 class _RejectRedirects(HTTPRedirectHandler):
@@ -323,6 +427,125 @@ class WorldWorkerClient:
             {"lease_token": scene.lease_token, "weather_preset": preset},
         )
 
+    def start_camera(
+        self,
+        scene: WorldWorkerScene,
+        *,
+        mode: str,
+        width: int,
+        height: int,
+        fps: float,
+        fov: float,
+        yaw: float = 325.0,
+        pitch: float = -10.0,
+        distance: float = 6.5,
+    ) -> dict[str, Any]:
+        if mode not in {"garage", "drive"}:
+            raise ValueError("camera mode must be garage or drive")
+        scene_id = quote(scene.scene_id, safe="")
+        return self._request(
+            "POST",
+            f"/v1/scenes/{scene_id}/camera",
+            {
+                "lease_token": scene.lease_token,
+                "mode": mode,
+                "width": int(width),
+                "height": int(height),
+                "fps": float(fps),
+                "fov": float(fov),
+                "yaw": float(yaw),
+                "pitch": float(pitch),
+                "distance": float(distance),
+            },
+        )
+
+    def orbit_camera(
+        self,
+        scene: WorldWorkerScene,
+        *,
+        yaw: float,
+        pitch: float,
+        distance: float,
+    ) -> dict[str, Any]:
+        scene_id = quote(scene.scene_id, safe="")
+        return self._request(
+            "POST",
+            f"/v1/scenes/{scene_id}/camera_orbit",
+            {
+                "lease_token": scene.lease_token,
+                "yaw": float(yaw),
+                "pitch": float(pitch),
+                "distance": float(distance),
+            },
+        )
+
+    def camera_frame(
+        self,
+        scene: WorldWorkerScene,
+        *,
+        after_sequence: int,
+        timeout: float,
+    ) -> WorldWorkerCameraFrame:
+        scene_id = quote(scene.scene_id, safe="")
+        request = Request(
+            f"{self.base_url}/v1/scenes/{scene_id}/camera/frame.jpg",
+            headers={
+                "Accept": "image/jpeg",
+                "Authorization": f"Bearer {self._bearer_token}",
+                "X-Scene-Lease": scene.lease_token,
+                "X-Camera-After": str(int(after_sequence)),
+                "X-Camera-Timeout": str(float(timeout)),
+            },
+            method="GET",
+        )
+        try:
+            with self._opener.open(request, timeout=float(timeout) + 2.0) as response:
+                raw = response.read(_MAX_RESPONSE_BYTES + 1)
+                headers = response.headers
+                status = int(response.status)
+        except HTTPError as error:
+            body = error.read(_MAX_RESPONSE_BYTES + 1)
+            parsed = self._decode(body, status=error.code, allow_error=True)
+            error_body = parsed.get("error")
+            message = (
+                str(error_body.get("message", error.reason))
+                if isinstance(error_body, Mapping)
+                else str(error.reason)
+            )
+            raise WorldWorkerError(message, status=error.code) from error
+        except (URLError, TimeoutError, socket.timeout, OSError) as error:
+            reason = getattr(error, "reason", error)
+            raise WorldWorkerError(f"World Worker camera is unreachable: {reason}") from error
+        if status != HTTPStatus.OK or len(raw) > _MAX_RESPONSE_BYTES:
+            raise WorldWorkerError("World Worker camera response is invalid", status=status)
+        if not raw.startswith(b"\xff\xd8") or not raw.endswith(b"\xff\xd9"):
+            raise WorldWorkerError("World Worker camera response is not JPEG", status=status)
+        try:
+            transform_payload = json.loads(headers.get("X-Camera-Transform", "null"))
+            location = transform_payload["location"]
+            rotation = transform_payload["rotation"]
+            transform = (
+                float(location["x"]),
+                float(location["y"]),
+                float(location["z"]),
+                float(rotation["pitch"]),
+                float(rotation["yaw"]),
+                float(rotation["roll"]),
+            )
+            return WorldWorkerCameraFrame(
+                sequence=int(headers["X-Camera-Sequence"]),
+                frame=int(headers["X-CARLA-Frame"]),
+                timestamp=float(headers["X-CARLA-Timestamp"]),
+                received_monotonic=time.monotonic(),
+                width=int(headers["X-Camera-Width"]),
+                height=int(headers["X-Camera-Height"]),
+                fov=float(headers["X-Camera-FOV"]),
+                transform=transform,
+                jpeg=raw,
+            )
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+            raise WorldWorkerError("World Worker camera metadata is invalid") from error
+
     def stop_scene(self, scene: WorldWorkerScene) -> WorldWorkerScene:
         return self._scene_request(scene, "stop", {"lease_token": scene.lease_token})
 
@@ -433,4 +656,10 @@ class WorldWorkerClient:
         return payload
 
 
-__all__ = ["WorldWorkerClient", "WorldWorkerError", "WorldWorkerScene"]
+__all__ = [
+    "WorldWorkerCameraFrame",
+    "WorldWorkerCameraStream",
+    "WorldWorkerClient",
+    "WorldWorkerError",
+    "WorldWorkerScene",
+]

@@ -48,9 +48,7 @@ jobs:
           tests/test_garage_research_bridge.py
 
       - name: Check Garage browser JavaScript syntax
-        run: |
-          node --check carla_vision/operator/garage_static/garage-integration.js
-          node --check carla_vision/operator/garage_static/garage-research.js
+        run: node --check carla_vision/operator/static/app.js
 
       - name: Run Garage and Drive Console regression tests
         run: >-
