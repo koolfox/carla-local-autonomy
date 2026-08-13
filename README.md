@@ -72,14 +72,16 @@ behavior as separate claims.
 - standalone checksum-indexed reproduction bundles containing a deterministic
   source archive, file inventory, source manifests, lockfiles, environment
   envelope, and tokenized rerun commands;
-- imitation-policy training and a browser Garage Imitation drive mode;
+- imitation-policy training and an internal Garage Imitation runtime path;
 - temporal RGB-only voxel occupancy/flow training plus privileged voxel/flow
   teacher capture;
 - voxel shadow planning, benchmarking, readiness checks, and opt-in actuation;
 - closed-loop driving evaluation and evaluation summaries;
-- a local Garage/Cockpit flow with Manual, BehaviorAgent, Imitation, and Voxel
-  control modes, plus PythonAPI-owned traffic/walkers when available; and
-- direct saved-run handoff from Drive to inspection, analysis, and verification.
+- a local Garage/Cockpit flow with browser Manual and World Worker Traffic
+  Manager Autopilot, plus internal BehaviorAgent/Imitation/Voxel runtime paths;
+  and
+- retained Drive outputs that can be selected by the existing inspection,
+  analysis, and verification workflows.
 
 The base `carla-vision --control vision` mode remains intentionally unavailable.
 Its detector/shadow policy path is advisory. Garage autonomous modes and the
@@ -127,6 +129,7 @@ carla-verify-shadow
 carla-shadow-matrix
 carla-verify-shadow-matrix
 carla-operator-ui
+carla-discover
 carla-local-drive
 carla-voxel-test
 carla-voxel-flow-capture
@@ -149,17 +152,37 @@ Start the current local Garage/Operator server:
 uv run carla-operator-ui --open-browser
 ```
 
+On a new LAN, discover the simulator before starting the Operator:
+
+```bash
+uv run carla-discover
+uv run carla-operator-ui --carla-host auto --open-browser
+```
+
+Discovery inspects only active, directly connected RFC1918 IPv4 interfaces,
+bounds large networks to the local `/24`, ignores tunnels/link-local adapters,
+probes the configured CARLA port, and then validates candidates with read-only
+CARLA `version` and `get_map_info` RPC calls. An open non-CARLA port is not
+reported. The same action is available under Advanced settings in the Garage.
+It reports the address but does not mutate the simulator or silently retarget an
+already running Operator. World Worker discovery/configuration remains separate.
+
 `carla-operator-ui` resolves to `carla_vision.operator.garage_server:main`.
 The server is local-only and accepts only loopback bind names/addresses. The
-Garage layer reuses the existing Operator server, Drive engine, job manager,
-research catalog, and artifact APIs; it does not replace them.
+Garage reuses the existing Operator server, Drive engine, job manager, research
+catalog, and artifact APIs behind one canonical browser shell.
 
-The browser still has two top-level surfaces:
+The browser has two deliberately separate surfaces:
 
 ```text
-Drive
-Research tools
+Fullscreen Garage / Drive
+Research workspace
 ```
+
+Garage is the default. The live CARLA RGB stream fills the viewport, with a
+small status HUD, a bottom vehicle carousel, camera shortcuts, one setup drawer,
+and a single Start Drive action. The old dashboard header, tab bar, safety strip,
+and duplicate injected Garage assets are not part of the running game shell.
 
 The Research tools surface still contains:
 
@@ -202,41 +225,33 @@ closed_loop_evaluate
 
 Neither command layer accepts an arbitrary browser-provided shell command.
 
-### Garage Drive modes
+### Fullscreen Garage controls
 
-The current Drive catalog exposes four modes:
+The main game shell currently exposes browser Manual control and, when the World
+Worker advertises it, CARLA Traffic Manager Autopilot with manual takeover. Map,
+weather, traffic, pedestrians, props, and free/random-destination route options
+are capability-gated in the setup drawer. Owned actors are cleaned up with the
+existing scene lease and episode guards.
 
-| Mode | Code-visible availability | Control owner |
-|---|---|---|
-| Manual | always | browser keyboard/touch |
-| BehaviorAgent | CARLA PythonAPI + BehaviorAgent importable | BehaviorAgent |
-| Imitation | CARLA PythonAPI importable | RGB + speed imitation policy |
-| Voxel Planner | CARLA PythonAPI + BehaviorAgent importable | BehaviorAgent longitudinal + supervised voxel steering |
+The live Garage ports the CARLA `vehicle_gallery.py` orbit pattern through the
+0.9.16-compatible bridge and
+offers Orbit, Front, Rear, Top, and Cockpit views. Its 720p stream, actual CARLA
+vehicle replacement, and bottom carousel are separate from the front camera used
+once Drive starts.
 
-Autonomous modes require explicit operator acknowledgement. Browser manual
-control is rejected while autonomy owns the session. Emergency Brake is checked
-before autonomous policy execution, and setup/camera/policy failures use
-service-brake fail-closed behavior.
+The supplied `ue5-dev` PythonAPI tree currently targets CARLA 0.10.0. It is a
+design reference only for this project: the Windows bridge and the simulator must
+continue to use matching CARLA 0.9.16 PythonAPI/client/server binaries.
 
-Imitation and Voxel Drive start require a workspace-contained `.pt`, `.pth`, or
-`.ckpt` file. The Garage recursively discovers checkpoint **candidates** by
-suffix and applies filename preferences in the browser; this does not prove a
-file is compatible with the selected runtime. Compatibility is only established
-when the runtime can load/use the checkpoint.
+BehaviorAgent, Imitation, and Voxel implementations remain in the research/runtime
+code, but the cleaned main shell does not silently inject their former secondary
+selector. They must not be presented as game modes until their acknowledgement,
+checkpoint, and control-owner UI is integrated into the canonical shell.
 
-Traffic and walker population controls become available when the official CARLA
-PythonAPI is importable. Garage-created Traffic Manager vehicles, walkers, and
-walker controllers are tracked and destroyed during Garage cleanup.
-
-Manual Drive starts from a seeded CARLA spawn point and has no planned route.
-There is no operator-selectable Garage route UI. BehaviorAgent mode internally
-chooses CARLA spawn-point destinations and calls `BehaviorAgent.set_destination()`;
-Voxel mode embeds the same BehaviorAgent baseline and therefore also uses that
-internal destination handling.
-
-After a successful Drive save, the Garage can open the exact run in Saved
-results, launch the existing analysis workflow, or launch the existing recursive
-verification workflow.
+The nine Garage-specific research job plans remain strict backend API/runtime
+contracts. They are not exposed as buttons in the cleaned game shell; the base
+Research workspace continues to expose its maintained capture, workflow,
+inspection, analysis, and verification jobs.
 
 ### Research tools retained from the base Operator
 
@@ -263,18 +278,8 @@ Activity remains backed by tracked `operator_sessions/` objects containing the
 validated request, resolved command plan, status, stdout/stderr logs, and
 manifest/provenance when produced.
 
-See [Operator UI](docs/operator_ui.md) for the current control ownership,
-research-job contracts, known UI wording inconsistency, and validation boundary.
-
-### Current browser wording caveat
-
-The Garage is injected onto an older manual-only Drive page. During autonomous
-Drive, Garage CSS hides the lower `Human control only` boundary and adds a live
-mode badge/note, but some top-level static copy still says `MANUAL DRIVE`,
-`AI suggestions only — you stay in control`, and `AI ... never steers or
-brakes`. Those labels are stale/misleading for Behavior/Imitation/Voxel sessions.
-The actual control source is the live Garage mode/session metadata and applied
-control log, not those static labels.
+See [Operator UI](docs/operator_ui.md) for current control ownership,
+research-job contracts, and the validation boundary.
 
 ## Live RT-DETR
 

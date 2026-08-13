@@ -39,15 +39,15 @@ def test_preview_config_is_strict_and_uses_authoritative_camera_defaults() -> No
     assert config.yaw == 325.0
     assert config.pitch == -10.0
     assert config.distance == 6.5
-    assert config.fps == 20.0
+    assert config.width == 1280
+    assert config.height == 720
+    assert config.fps == 12.0
     assert config.traffic_count == 15
     assert config.walker_count == 10
     assert config.prop_preset == "construction"
     assert config.spectator_mirror is False
 
-    mirrored = GaragePreviewConfig.from_mapping(
-        preview_payload(spectator_mirror=True)
-    )
+    mirrored = GaragePreviewConfig.from_mapping(preview_payload(spectator_mirror=True))
     assert mirrored.spectator_mirror is True
 
     with pytest.raises(ValueError, match="unknown fields"):
@@ -67,6 +67,29 @@ def test_orbit_contract_normalizes_yaw_and_clamps_bounded_camera_controls() -> N
     assert request.yaw == 350.0
     assert request.pitch == -25.0
     assert request.distance == 10.0
+    assert request.preset == "orbit"
+
+    cockpit = GarageOrbitRequest.from_mapping(
+        {
+            "sequence": 10,
+            "yaw": 0,
+            "pitch": 0,
+            "distance": 6,
+            "preset": "cockpit",
+        }
+    )
+    assert cockpit.preset == "cockpit"
+
+    with pytest.raises(ValueError, match="preset must be"):
+        GarageOrbitRequest.from_mapping(
+            {
+                "sequence": 10,
+                "yaw": 0,
+                "pitch": 0,
+                "distance": 6,
+                "preset": "cinematic",
+            }
+        )
 
     with pytest.raises(ValueError, match="unknown fields"):
         GarageOrbitRequest.from_mapping(

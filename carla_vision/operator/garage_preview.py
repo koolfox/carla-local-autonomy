@@ -19,6 +19,7 @@ import cv2
 from ..bridge import (
     CarlaCameraStream,
     CarlaRpc,
+    garage_camera_preset_transform,
     garage_orbit_camera_transform,
     spawn_unparented_rgb_camera,
 )
@@ -109,9 +110,9 @@ class GaragePreviewConfig:
     walker_count: int
     prop_preset: str
     spectator_mirror: bool = False
-    width: int = 960
-    height: int = 540
-    fps: float = 20.0
+    width: int = 1280
+    height: int = 720
+    fps: float = 12.0
     fov: float = 65.0
     yaw: float = 325.0
     pitch: float = -10.0
@@ -164,13 +165,9 @@ class GaragePreviewConfig:
             traffic_count=_integer(
                 raw["traffic_count"], name="traffic_count", minimum=0, maximum=250
             ),
-            walker_count=_integer(
-                raw["walker_count"], name="walker_count", minimum=0, maximum=250
-            ),
+            walker_count=_integer(raw["walker_count"], name="walker_count", minimum=0, maximum=250),
             prop_preset=prop_preset,
-            spectator_mirror=_boolean(
-                raw.get("spectator_mirror", False), name="spectator_mirror"
-            ),
+            spectator_mirror=_boolean(raw.get("spectator_mirror", False), name="spectator_mirror"),
         )
 
 
@@ -180,18 +177,26 @@ class GarageOrbitRequest:
     yaw: float
     pitch: float
     distance: float
+    preset: str = "orbit"
 
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any]) -> "GarageOrbitRequest":
-        fields = {"sequence", "yaw", "pitch", "distance"}
-        _strict_keys(raw, allowed=fields, required=fields, name="Garage orbit request")
+        fields = {"sequence", "yaw", "pitch", "distance", "preset"}
+        _strict_keys(
+            raw,
+            allowed=fields,
+            required={"sequence", "yaw", "pitch", "distance"},
+            name="Garage orbit request",
+        )
+        preset = str(raw.get("preset", "orbit")).strip().lower()
+        if preset not in {"orbit", "front", "rear", "top", "cockpit"}:
+            raise ValueError("preset must be orbit, front, rear, top, or cockpit")
         return cls(
-            sequence=_integer(
-                raw["sequence"], name="sequence", minimum=0, maximum=2**63 - 1
-            ),
+            sequence=_integer(raw["sequence"], name="sequence", minimum=0, maximum=2**63 - 1),
             yaw=_number(raw["yaw"], name="yaw") % 360.0,
             pitch=min(15.0, max(-25.0, _number(raw["pitch"], name="pitch"))),
             distance=min(10.0, max(3.5, _number(raw["distance"], name="distance"))),
+            preset=preset,
         )
 
 
@@ -238,6 +243,7 @@ class GaragePreviewSession:
         self._yaw = config.yaw
         self._pitch = config.pitch
         self._distance = config.distance
+        self._camera_preset = "orbit"
         self._last_orbit_sequence = -1
         self._frame_sequence = -1
         self._jpeg: bytes | None = None
@@ -264,7 +270,9 @@ class GaragePreviewSession:
                         }
                     )
                 if scene.ego_actor_id is None or scene.episode_id is None:
-                    raise RuntimeError("World Worker prepared Garage preview without an ego episode")
+                    raise RuntimeError(
+                        "World Worker prepared Garage preview without an ego episode"
+                    )
                 with self._lock:
                     self._scene = scene
                     self._episode_id = scene.episode_id
@@ -283,7 +291,9 @@ class GaragePreviewSession:
                     raise RuntimeError("Garage preview camera episode does not match World Worker")
                 vehicle = rpc.actor(scene.ego_actor_id)
                 if vehicle is None or not str(vehicle[2][1]).startswith("vehicle."):
-                    raise RuntimeError("World Worker Garage preview ego did not verify as a vehicle")
+                    raise RuntimeError(
+                        "World Worker Garage preview ego did not verify as a vehicle"
+                    )
                 vehicle_transform = rpc.actor_transform(scene.ego_actor_id, "VehicleMesh")
                 camera_transform = garage_orbit_camera_transform(
                     vehicle_transform,
@@ -358,6 +368,7 @@ class GaragePreviewSession:
                 "yaw": self._yaw,
                 "pitch": self._pitch,
                 "distance": self._distance,
+                "camera_preset": self._camera_preset,
                 "error": self._error,
                 "cleanup_errors": list(self._cleanup_errors),
                 "map": None if self._scene is None else self._scene.map_name,
@@ -388,9 +399,11 @@ class GaragePreviewSession:
     def wait_for_frame(self, after_sequence: int, *, timeout: float = 5.0) -> tuple[int, bytes]:
         with self._frame_condition:
             ready = self._frame_condition.wait_for(
-                lambda: self._frame_sequence > after_sequence
-                or self._closed
-                or self._status == "failed",
+                lambda: (
+                    self._frame_sequence > after_sequence
+                    or self._closed
+                    or self._status == "failed"
+                ),
                 timeout=timeout,
             )
             if not ready:
@@ -422,8 +435,9 @@ class GaragePreviewSession:
             ):
                 raise RuntimeError("Garage preview camera ownership could not be verified")
             vehicle_transform = rpc.actor_transform(vehicle_id, "VehicleMesh")
-            transform = garage_orbit_camera_transform(
+            transform = garage_camera_preset_transform(
                 vehicle_transform,
+                request.preset,
                 azimuth_degrees=request.yaw,
                 pitch_degrees=request.pitch,
                 distance=request.distance,
@@ -434,6 +448,7 @@ class GaragePreviewSession:
                 self._yaw = request.yaw
                 self._pitch = request.pitch
                 self._distance = request.distance
+                self._camera_preset = request.preset
                 spectator_id = self._spectator_id
                 spectator_active = self._spectator_mirror_active
             if spectator_id is not None and spectator_active:
@@ -457,7 +472,7 @@ class GaragePreviewSession:
         self._heartbeat_thread.start()
 
     def _cache_frame(self, frame: Any) -> None:
-        payload = _jpeg(frame.bgr())
+        payload = _jpeg(frame.bgr(), quality=82)
         with self._frame_condition:
             if frame.sequence > self._frame_sequence:
                 self._frame_sequence = frame.sequence
@@ -598,8 +613,7 @@ class GaragePreviewSession:
                         with self._lock:
                             self._scene = stopped
                         self._cleanup_errors.extend(
-                            f"World Worker cleanup: {error}"
-                            for error in stopped.cleanup_errors
+                            f"World Worker cleanup: {error}" for error in stopped.cleanup_errors
                         )
                     except Exception as error:
                         self._cleanup_errors.append(f"World Worker stop ({reason}): {error}")

@@ -271,6 +271,8 @@ function activateTab(name) {
     releaseDriveControl("Drive console hidden");
   }
   document.body.classList.toggle("drive-tab-active", name === "drive");
+  document.body.classList.toggle("research-mode", name !== "drive");
+  closeGameDrawers();
   for (const tab of document.querySelectorAll(".tab")) {
     const active = tab.dataset.tab === name;
     tab.classList.toggle("active", active);
@@ -281,6 +283,73 @@ function activateTab(name) {
   }
 }
 
+function closeGameDrawers() {
+  document.body.classList.remove("game-drawer-open");
+  document.body.classList.remove("game-camera-menu-open");
+  for (const panel of document.querySelectorAll("[data-game-panel]")) {
+    panel.hidden = true;
+  }
+  for (const button of document.querySelectorAll("[data-game-drawer]")) {
+    button.setAttribute("aria-expanded", "false");
+  }
+  document.getElementById("game-camera-toggle")?.setAttribute("aria-expanded", "false");
+}
+
+function openGameDrawer(name) {
+  if (driveIsActive() && name === "world") return;
+  let opened = false;
+  for (const panel of document.querySelectorAll("[data-game-panel]")) {
+    const active = panel.dataset.gamePanel === name;
+    panel.hidden = !active;
+    opened ||= active;
+  }
+  for (const button of document.querySelectorAll("[data-game-drawer]")) {
+    button.setAttribute("aria-expanded", String(button.dataset.gameDrawer === name));
+  }
+  document.body.classList.toggle("game-drawer-open", opened);
+}
+
+function bindGameShell() {
+  for (const button of document.querySelectorAll("[data-game-drawer]")) {
+    button.setAttribute("aria-expanded", "false");
+    button.addEventListener("click", () => {
+      const panel = document.querySelector(
+        `[data-game-panel="${button.dataset.gameDrawer}"]`,
+      );
+      if (panel && !panel.hidden) closeGameDrawers();
+      else openGameDrawer(button.dataset.gameDrawer);
+    });
+  }
+  for (const button of document.querySelectorAll("[data-game-close]")) {
+    button.addEventListener("click", closeGameDrawers);
+  }
+  document.getElementById("game-research-open")?.addEventListener(
+    "click",
+    () => activateTab("tools"),
+  );
+  document.getElementById("game-back-to-drive")?.addEventListener(
+    "click",
+    () => activateTab("drive"),
+  );
+  document.getElementById("game-camera-toggle")?.addEventListener("click", (event) => {
+    const button = event.currentTarget;
+    const open = !document.body.classList.contains("game-camera-menu-open");
+    closeGameDrawers();
+    document.body.classList.toggle("game-camera-menu-open", open);
+    button.setAttribute("aria-expanded", String(open));
+  });
+  window.addEventListener("keydown", (event) => {
+    const gameOverlayOpen =
+      document.body.classList.contains("game-drawer-open") ||
+      document.body.classList.contains("game-camera-menu-open");
+    if (event.key !== "Escape" || !gameOverlayOpen) {
+      return;
+    }
+    event.preventDefault();
+    closeGameDrawers();
+  });
+}
+
 function activateResearchTool(name) {
   for (const tab of document.querySelectorAll(".research-tab")) {
     const active = tab.dataset.researchTab === name;
@@ -289,6 +358,25 @@ function activateResearchTool(name) {
   }
   for (const panel of document.querySelectorAll(".research-panel")) {
     panel.classList.toggle("active", panel.id === `panel-${name}`);
+  }
+}
+
+function installGameShell() {
+  const requiredIds = [
+    "game-shell",
+    "game-stage",
+    "game-menu",
+    "game-settings",
+    "garage-preview",
+    "drive-viewport",
+    "drive-start-form",
+    "drive-start",
+    "game-research-open",
+    "game-back-to-drive",
+  ];
+  const missing = requiredIds.filter((id) => !document.getElementById(id));
+  if (missing.length) {
+    throw new Error(`game shell is missing required elements: ${missing.join(", ")}`);
   }
 }
 
@@ -336,8 +424,8 @@ function driveIsAutopilot() {
 }
 
 function driveExtensionBlocksManualControl() {
-  const blocker = window.carlaGarageManualControlBlocked;
-  return typeof blocker === "function" && blocker();
+  const mode = String(state.drive.session?.garage_mode || "manual").toLowerCase();
+  return driveIsRunning() && ["behavior", "imitation", "voxel"].includes(mode);
 }
 
 function driveSessionId() {
@@ -446,6 +534,7 @@ const GARAGE_CAMERA_PRESETS = Object.freeze({
   front: { yaw: 0, pitch: -8, distance: 6 },
   rear: { yaw: 180, pitch: -8, distance: 6 },
   top: { yaw: 325, pitch: -25, distance: 8 },
+  cockpit: { yaw: 0, pitch: 0, distance: 4 },
 });
 
 function garagePreviewPayload() {
@@ -472,6 +561,71 @@ function garagePreviewAvailable() {
     driveWorldCapabilities().nativeWorker &&
     $("drive-vehicle").value,
   );
+}
+
+function renderCarlaDiscovery(payload) {
+  const results = $("carla-discovery-results");
+  const note = $("carla-discovery-note");
+  const servers = Array.isArray(payload.servers) ? payload.servers : [];
+  results.replaceChildren();
+  if (!servers.length) {
+    const scopes = (payload.scopes || []).map((scope) => scope.network).join(", ");
+    note.textContent = `No CARLA RPC server found on ${scopes || "a private LAN"}.`;
+    return;
+  }
+  for (const server of servers) {
+    const row = document.createElement("div");
+    row.className = "carla-discovery-result";
+    const summary = document.createElement("span");
+    const address = document.createElement("strong");
+    address.textContent = `${server.host}:${server.port}`;
+    const facts = document.createElement("small");
+    facts.textContent = `CARLA ${server.version} · ${server.map}`;
+    summary.append(address, facts);
+    const copy = document.createElement("button");
+    copy.type = "button";
+    copy.className = "row-action";
+    copy.textContent = "Copy host option";
+    copy.addEventListener("click", async () => {
+      const option = `--carla-host ${server.host}`;
+      try {
+        await navigator.clipboard.writeText(option);
+        showToast(`Copied ${option}`);
+      } catch (_error) {
+        showToast(option);
+      }
+    });
+    row.append(summary, copy);
+    results.append(row);
+  }
+  note.textContent = payload.configured_match
+    ? "The running Operator already targets this CARLA server."
+    : servers.length === 1
+      ? `Found CARLA at ${servers[0].host}. Restart with --carla-host ${servers[0].host}, or use --carla-host auto next time.`
+      : "More than one CARLA server was found. Restart the Operator with the host you want.";
+}
+
+async function discoverCarla() {
+  const button = $("carla-discover");
+  const note = $("carla-discovery-note");
+  button.disabled = true;
+  button.textContent = "Scanning local LAN…";
+  note.textContent = "Checking port 2000, then validating candidates with read-only CARLA RPC.";
+  try {
+    const payload = await request("/api/discovery/carla", {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    renderCarlaDiscovery(payload);
+    const count = Array.isArray(payload.servers) ? payload.servers.length : 0;
+    showToast(count ? `Found ${count} CARLA server${count === 1 ? "" : "s"}.` : "No CARLA server found.", !count);
+  } catch (error) {
+    note.textContent = error.message;
+    showToast(error.message, true);
+  } finally {
+    button.disabled = false;
+    button.textContent = "Find CARLA on this network";
+  }
 }
 
 function garagePreviewIsActive(payload) {
@@ -512,6 +666,7 @@ function renderGaragePreviewUi() {
   const garage = state.drive.garage;
   const available = garagePreviewAvailable();
   const live = garage.enabled && garage.active;
+  if (!driveIsActive()) document.body.dataset.gamePhase = live ? "garage" : "setup";
   const interactive = live && !garage.busy;
   const preview = $("garage-preview");
   preview.classList.toggle("live", live);
@@ -682,6 +837,7 @@ async function sendGarageOrbit() {
         yaw: garage.yaw,
         pitch: garage.pitch,
         distance: garage.distance,
+        preset: garage.cameraPreset,
       }),
     });
   } catch (error) {
@@ -717,16 +873,20 @@ function selectGarageVehicle(value, { focus = false } = {}) {
   syncGarageVehicleCarousel({ focus: true });
 }
 
-function syncGarageVehicleCarousel({ focus = false } = {}) {
+function syncGarageVehicleCarousel({ focus = false, reveal = false } = {}) {
   const selected = $("drive-vehicle").value;
   for (const card of document.querySelectorAll("[data-garage-vehicle]")) {
     const active = card.dataset.garageVehicle === selected;
     card.classList.toggle("active", active);
     card.setAttribute("aria-selected", String(active));
     card.tabIndex = active ? 0 : -1;
-    if (active && focus) {
-      card.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
-      card.focus({ preventScroll: true });
+    if (active && (focus || reveal)) {
+      card.scrollIntoView({
+        behavior: focus ? "smooth" : "auto",
+        block: "nearest",
+        inline: "center",
+      });
+      if (focus) card.focus({ preventScroll: true });
     }
   }
 }
@@ -767,7 +927,7 @@ function renderGarageVehicleCarousel() {
     carousel.append(button);
   }
   document.body.classList.add("garage-carousel-ready");
-  syncGarageVehicleCarousel();
+  syncGarageVehicleCarousel({ reveal: true });
 }
 
 function moveGarageVehicle(direction) {
@@ -1112,6 +1272,12 @@ function renderDriveState() {
     $("drive-viewport").classList.remove("focused");
   }
   document.body.classList.toggle("drive-immersive", immersive);
+  document.body.dataset.gamePhase = immersive
+    ? "drive"
+    : state.drive.garage.active
+      ? "garage"
+      : "setup";
+  if (immersive) closeGameDrawers();
   document.title = immersive ? "Driving · CARLA Vision Operator" : "CARLA Vision Operator";
   const status = $("drive-status");
   status.textContent = {
@@ -1782,6 +1948,7 @@ function bindDriveConsole() {
   $("drive-run-id").value = generatedId("drive");
   updateRange("drive-confidence", "drive-confidence-value", 2);
   $("drive-start-form").addEventListener("submit", startDrive);
+  $("carla-discover").addEventListener("click", () => void discoverCarla());
   $("drive-stop").addEventListener("click", stopDrive);
   $("drive-emergency").addEventListener("click", emergencyStopDrive);
   $("drive-focus").addEventListener("click", focusDriveControl);
@@ -2594,6 +2761,8 @@ async function refreshJobs() {
 }
 
 function bindChrome() {
+  installGameShell();
+  bindGameShell();
   for (const tab of document.querySelectorAll(".tab")) {
     tab.addEventListener("click", () => activateTab(tab.dataset.tab));
   }
@@ -2621,11 +2790,16 @@ function bindChrome() {
 }
 
 async function initialize() {
-  bindChrome();
-  bindDriveConsole();
-  bindLiveForm();
-  bindSituationForms();
-  bindWorkflowForms();
+  try {
+    bindChrome();
+    bindDriveConsole();
+    bindLiveForm();
+    bindSituationForms();
+    bindWorkflowForms();
+  } catch (error) {
+    showToast(`Could not bind operator controls: ${error.message}`, true);
+    throw error;
+  }
   try {
     await refreshBootstrap();
   } catch (error) {

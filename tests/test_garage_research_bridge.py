@@ -7,7 +7,7 @@ import urllib.request
 from pathlib import Path
 
 from carla_vision.operator import garage_server
-from carla_vision.operator.garage_server import GARAGE_STATIC_ROOT, create_server
+from carla_vision.operator.garage_server import create_server
 
 STATIC_ROOT = Path(__file__).parents[1] / "carla_vision" / "operator" / "static"
 
@@ -21,7 +21,7 @@ def _get(url: str) -> tuple[int, str, str]:
         )
 
 
-def test_garage_server_preserves_base_operator_and_injects_only_additive_assets(
+def test_garage_server_serves_single_canonical_static_shell(
     tmp_path: Path,
 ) -> None:
     (tmp_path / "models" / "imitation").mkdir(parents=True)
@@ -43,53 +43,23 @@ def test_garage_server_preserves_base_operator_and_injects_only_additive_assets(
         status, content_type, html = _get(f"{root}/")
         assert status == 200
         assert content_type == "text/html"
+        assert html == (STATIC_ROOT / "index.html").read_text(encoding="utf-8")
         assert 'id="drive-start-form"' in html
         assert 'id="panel-tools"' in html
-        assert html.count("/static/garage-integration.js") == 1
-        assert html.count("/static/garage-research.js") == 1
-        assert html.count("/static/garage-integration.css") == 1
-
-        _, javascript_type, javascript = _get(f"{root}/static/garage-integration.js")
-        assert javascript_type in {"text/javascript", "application/javascript"}
-        assert "drive-garage-control-mode" in javascript
-        assert "BehaviorAgent" in javascript
-        assert "VOXEL PLANNER" in javascript
-        assert 'startJob("verify"' in javascript
-        assert 'startJob("analyze"' in javascript
-        assert "refreshBootstrap()" in javascript
-        assert "selectEvidence(path)" in javascript
-        assert "/api/drive/control" not in javascript
-        assert "apply_control" not in javascript
-
-        _, research_type, research = _get(f"{root}/static/garage-research.js")
-        assert research_type in {"text/javascript", "application/javascript"}
-        for workflow in (
-            "teacher_capture",
-            "imitation_train",
-            "voxel_capture",
-            "voxel_flow_capture",
-            "voxel_train",
-            "voxel_flow_train",
-            "voxel_shadow",
-            "voxel_benchmark",
-            "closed_loop_evaluate",
-        ):
-            assert workflow in research
-        assert "/api/garage/jobs" in research
-        assert "apply_control" not in research
-        assert "shell" not in research.lower()
-
-        _, css_type, css = _get(f"{root}/static/garage-integration.css")
-        assert css_type == "text/css"
-        assert ".drive-research-actions" in css
-        assert ".garage-drive-mode" in css
-        assert ".garage-research-launcher" in css
-        assert "body.garage-autonomous" in css
+        assert html.count("/static/app.css") == 1
+        assert html.count("/static/app.js") == 1
+        assert "garage-integration" not in html
+        assert "garage-research.js" not in html
 
         _, base_js_type, base_js = _get(f"{root}/static/app.js")
         assert base_js_type in {"text/javascript", "application/javascript"}
+        assert base_js == (STATIC_ROOT / "app.js").read_text(encoding="utf-8")
         assert 'request("/api/drive/start"' in base_js
         assert 'request("/api/drive/control"' in base_js
+
+        _, base_css_type, base_css = _get(f"{root}/static/app.css")
+        assert base_css_type == "text/css"
+        assert base_css == (STATIC_ROOT / "app.css").read_text(encoding="utf-8")
 
         _, catalog_type, catalog_text = _get(f"{root}/api/drive/catalog")
         assert catalog_type == "application/json"
@@ -171,20 +141,7 @@ def test_garage_main_forwards_world_worker_cli_configuration(
     assert captured["world_worker_token"] == "secret-token"
 
 
-def test_bridge_assets_are_separate_from_existing_static_files() -> None:
-    assert (GARAGE_STATIC_ROOT / "garage-integration.js").is_file()
-    assert (GARAGE_STATIC_ROOT / "garage-research.js").is_file()
-    assert (GARAGE_STATIC_ROOT / "garage-integration.css").is_file()
-
-    base_html = (STATIC_ROOT / "index.html").read_text(encoding="utf-8")
-    base_js = (STATIC_ROOT / "app.js").read_text(encoding="utf-8")
-    assert "garage-integration.js" not in base_html
-    assert "garage-research.js" not in base_html
-    assert "drive-research-actions" not in base_js
-    assert "drive-garage-control-mode" not in base_js
-
-
-def test_unknown_extra_static_asset_is_still_rejected(tmp_path: Path) -> None:
+def test_noncanonical_static_assets_are_rejected(tmp_path: Path) -> None:
     server = create_server(
         workspace=tmp_path,
         bind="127.0.0.1",
@@ -197,13 +154,21 @@ def test_unknown_extra_static_asset_is_still_rejected(tmp_path: Path) -> None:
     thread.start()
     try:
         host, port = server.server_address[:2]
-        with urllib.request.urlopen(
-            f"http://{host}:{port}/static/not-allowed.js",
-            timeout=3.0,
+        for asset in (
+            "garage-integration.js",
+            "garage-research.js",
+            "garage-integration.css",
+            "not-allowed.js",
         ):
-            raise AssertionError("unknown static asset unexpectedly succeeded")
-    except urllib.error.HTTPError as error:
-        assert error.code == 404
+            try:
+                urllib.request.urlopen(
+                    f"http://{host}:{port}/static/{asset}",
+                    timeout=3.0,
+                )
+            except urllib.error.HTTPError as error:
+                assert error.code == 404
+            else:
+                raise AssertionError(f"noncanonical static asset unexpectedly served: {asset}")
     finally:
         server.shutdown()
         thread.join(timeout=3.0)

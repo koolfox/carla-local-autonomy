@@ -59,11 +59,14 @@ class _StaticHtmlContractParser(HTMLParser):
             self._details_stack.append(details_id)
 
         if tag in {"button", "input", "select", "textarea"} and element_id is not None:
+            associated_form = attributes.get("form")
+            if associated_form is None and self._form_stack:
+                associated_form = self._form_stack[-1]
             self.controls.append(
                 {
                     "id": element_id,
                     "tag": tag,
-                    "form": self._form_stack[-1] if self._form_stack else None,
+                    "form": associated_form,
                     "details": tuple(self._details_stack),
                 }
             )

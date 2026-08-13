@@ -3,8 +3,8 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="color-scheme" content="light">
-    <meta name="theme-color" content="#f3f2ee">
+    <meta name="color-scheme" content="dark light">
+    <meta name="theme-color" content="#070809">
     <title>CARLA Vision Operator</title>
     <meta
       name="description"
@@ -14,55 +14,11 @@
   </head>
   <body class="drive-tab-active">
     <div class="app-shell">
-      <header class="topbar">
-        <div class="brand-lockup">
-          <div class="brand-mark" aria-hidden="true">CV</div>
-          <div>
-            <p class="eyebrow">Research driving console</p>
-            <h1>CARLA Vision Operator</h1>
-          </div>
-        </div>
-        <div class="system-status" aria-label="System status">
-          <span id="carla-status" class="status-pill pending">CARLA · checking</span>
-          <span id="pythonapi-status" class="status-pill pending">Research tools · checking</span>
-          <span id="jobs-status" class="status-pill neutral">0 active jobs</span>
-        </div>
-      </header>
-
-      <div class="safety-strip">
-        <span class="safety-icon" aria-hidden="true">◎</span>
-        <p>
-          Object detections are visual only; they never steer or brake. Manual driving
-          keeps its focus-loss brake, and simulator autopilot must be selected explicitly.
-        </p>
-      </div>
-
-      <nav class="tabs" role="tablist" aria-label="Operator sections">
-        <button class="tab active" data-tab="drive" type="button" role="tab" aria-selected="true" aria-controls="panel-drive">Drive</button>
-        <button class="tab" data-tab="tools" type="button" role="tab" aria-selected="false" aria-controls="panel-tools">Research tools</button>
-      </nav>
-
       <main>
-        <section id="panel-drive" class="panel active" role="tabpanel" aria-labelledby="drive-title">
-          <div class="section-heading drive-heading">
-            <div>
-              <p class="eyebrow">Garage</p>
-              <h2 id="drive-title">Choose your drive</h2>
-              <p>
-                Pick a car, set the world, and hit the road. You can take control at
-                any time.
-              </p>
-            </div>
-            <div class="drive-heading-badges">
-              <span id="drive-status" class="status-pill neutral">idle</span>
-              <span id="drive-advisory-badge" class="boundary-badge drive-advisory-badge">
-                Detections only — you drive
-              </span>
-            </div>
-          </div>
-
-          <div class="drive-console-layout">
-            <div class="drive-stage-column">
+        <section id="panel-drive" class="panel active" aria-label="CARLA Garage and Drive">
+          <div id="game-shell" class="game-shell">
+            <div id="game-stage" class="game-stage">
+              <div class="drive-stage-column">
               <article class="card drive-viewer-card">
                 <div class="drive-viewer-toolbar">
                   <div class="drive-view-switch" role="group" aria-label="Camera view">
@@ -168,7 +124,6 @@
 
             </div>
 
-            <aside class="drive-setup-column">
               <section id="garage-preview" class="garage-bay" aria-labelledby="garage-bay-title">
                 <div class="garage-preview-media">
                   <img
@@ -178,8 +133,8 @@
                   >
                   <div id="garage-preview-fallback" class="garage-preview-fallback">
                     <span class="garage-preview-mark" aria-hidden="true">CV</span>
-                    <strong>See the real CARLA world</strong>
-                    <span>Open a temporary garage to inspect the car, map, ground, and weather.</span>
+                    <strong>Enter CARLA</strong>
+                    <span>Load the live world, choose a car, and start driving.</span>
                   </div>
                   <div id="garage-preview-loading" class="garage-preview-loading" hidden>
                     <span class="garage-preview-spinner" aria-hidden="true"></span>
@@ -206,6 +161,7 @@
                     <button type="button" data-garage-camera="front" aria-pressed="false">Front</button>
                     <button type="button" data-garage-camera="rear" aria-pressed="false">Rear</button>
                     <button type="button" data-garage-camera="top" aria-pressed="false">Top</button>
+                    <button type="button" data-garage-camera="cockpit" aria-pressed="false">Cockpit</button>
                   </div>
                   <button id="garage-orbit-reset" class="garage-orbit-reset" type="button" hidden>Reset</button>
                   <p id="garage-preview-error" class="garage-preview-error" role="alert" hidden></p>
@@ -238,6 +194,50 @@
                   <button id="garage-vehicle-next" class="garage-carousel-arrow" type="button" aria-label="Next vehicle">&#8250;</button>
                 </div>
               </section>
+
+            </div>
+
+            <div class="game-top-hud">
+              <div class="game-identity">
+                <span aria-hidden="true">CV</span>
+                <strong>CARLA DRIVE</strong>
+              </div>
+              <div class="game-status" aria-label="System and drive status">
+                <div class="system-status" aria-label="System status">
+                  <span id="carla-status" class="status-pill pending">CARLA · checking</span>
+                  <span id="pythonapi-status" class="status-pill pending">Research tools · checking</span>
+                  <span id="jobs-status" class="status-pill neutral">0 active jobs</span>
+                </div>
+                <span id="drive-status" class="status-pill neutral">idle</span>
+                <span id="drive-advisory-badge" class="boundary-badge drive-advisory-badge">
+                  Detections only — you drive
+                </span>
+              </div>
+            </div>
+
+            <nav id="game-menu" class="game-menu" aria-label="Game menu">
+              <button type="button" data-game-drawer="settings" aria-controls="game-settings" aria-expanded="false">
+                <span aria-hidden="true">☰</span><small>Setup</small>
+              </button>
+              <button id="game-camera-toggle" type="button" aria-controls="garage-camera-presets" aria-expanded="false">
+                <span aria-hidden="true">◉</span><small>Camera</small>
+              </button>
+              <button id="game-research-open" type="button" aria-controls="panel-tools">
+                <span aria-hidden="true">⌁</span><small>Research</small>
+              </button>
+            </nav>
+
+            <aside
+              id="game-settings"
+              class="game-drawer"
+              data-game-panel="settings"
+              aria-label="Drive setup"
+              hidden
+            >
+              <div class="game-drawer-heading">
+                <div><small>GARAGE SETUP</small><strong>Build your drive</strong></div>
+                <button type="button" data-game-close aria-label="Close settings">×</button>
+              </div>
 
               <form id="drive-start-form" class="card drive-setup-form">
                 <div class="card-heading">
@@ -370,20 +370,6 @@
                   </label>
                 </div>
 
-                <div id="drive-session-actions" class="drive-session-actions">
-                  <button id="drive-start" class="primary" type="submit">Start Drive</button>
-                  <p id="drive-start-note" class="drive-start-note" aria-live="polite"></p>
-                </div>
-                <div id="drive-result-banner" class="drive-result-banner" hidden>
-                  <div>
-                    <strong>Run saved</strong>
-                    <p id="drive-output-path" class="drive-output-path" aria-live="polite">
-                      Saved output will appear here.
-                    </p>
-                  </div>
-                  <button id="drive-start-another" class="primary" type="submit">Start another drive</button>
-                </div>
-
                 <details id="drive-advanced-settings" class="drive-advanced">
                   <summary>Advanced settings</summary>
                   <p>Change these only when a study needs a specific technical setup.</p>
@@ -400,6 +386,15 @@
                       CARLA port
                       <input id="drive-port" type="number" value="2000" min="1" max="65535" required>
                     </label>
+                    <div class="carla-discovery span-2">
+                      <button id="carla-discover" class="secondary" type="button">
+                        Find CARLA on this network
+                      </button>
+                      <p id="carla-discovery-note" aria-live="polite">
+                        Scans only directly connected private LANs and validates CARLA RPC.
+                      </p>
+                      <div id="carla-discovery-results" class="carla-discovery-results"></div>
+                    </div>
                     <label class="span-2">
                       Random starting-point seed
                       <input id="drive-seed" type="number" value="20260809" min="0" step="1" required>
@@ -466,11 +461,37 @@
                 <p id="drive-error" class="drive-error" role="alert"></p>
               </details>
             </aside>
+
+            <div id="drive-session-actions" class="drive-session-actions">
+              <button id="drive-start" class="primary" type="submit" form="drive-start-form">
+                Start Drive
+              </button>
+              <p id="drive-start-note" class="drive-start-note" aria-live="polite"></p>
+            </div>
+            <div id="drive-result-banner" class="drive-result-banner" hidden>
+              <div>
+                <strong>Run saved</strong>
+                <p id="drive-output-path" class="drive-output-path" aria-live="polite">
+                  Saved output will appear here.
+                </p>
+              </div>
+              <button
+                id="drive-start-another"
+                class="primary"
+                type="submit"
+                form="drive-start-form"
+              >
+                Start another drive
+              </button>
+            </div>
           </div>
         </section>
 
         <section id="panel-tools" class="panel" role="tabpanel" aria-labelledby="tools-title">
           <div class="section-heading research-tools-heading">
+            <button id="game-back-to-drive" class="secondary game-back-button" type="button">
+              Back to Garage
+            </button>
             <div>
               <p class="eyebrow">OPTIONAL WORKSPACE</p>
               <h2 id="tools-title">Research tools</h2>
