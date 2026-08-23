@@ -96,7 +96,7 @@ def load_local_env(path: Path) -> dict[str, str]:
         key, raw_value = line.split("=", 1)
         key = key.strip()
         if key in _RUNTIME_ONLY_KEYS:
-            raise ValueError(f"{key} is runtime state and cannot be configured in .env.local")
+            continue
         if key not in _SUPPORTED_KEYS:
             raise ValueError(f"unsupported .env.local key: {key!r}")
         if key in values:
