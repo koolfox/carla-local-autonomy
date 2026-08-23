@@ -26,6 +26,7 @@ def test_local_env_loads_connection_secret_and_detector_default(tmp_path: Path) 
                 "CARLA_HOST='192.168.1.108'",
                 "CARLA_PORT='2000'",
                 "detector.enabled=true",
+                "overlay_frame_sequence=1",
             ]
         ),
     )
@@ -89,11 +90,14 @@ def test_detector_default_rewrites_only_the_checkbox_state() -> None:
     assert "<div>stable</div>" in enabled
 
 
-def test_runtime_state_is_rejected_as_configuration(tmp_path: Path) -> None:
-    write_env(tmp_path, "overlay_frame_sequence=1\n")
+def test_runtime_state_is_ignored_as_configuration(tmp_path: Path) -> None:
+    write_env(tmp_path, "overlay_frame_sequence=1\nCARLA_PORT=2000\n")
 
-    with pytest.raises(ValueError, match="runtime state"):
-        load_local_env(tmp_path / ".env.local")
+    values = load_local_env(tmp_path / ".env.local")
+
+    assert values == {"CARLA_PORT": "2000"}
+    plan = prepare_launch([], cwd=tmp_path, environ={})
+    assert base.parse_args(plan.argv).carla_port == 2000
 
 
 def test_markdown_world_worker_url_is_rejected(tmp_path: Path) -> None:
