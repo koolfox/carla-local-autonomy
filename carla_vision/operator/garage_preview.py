@@ -11,6 +11,7 @@ import math
 import re
 import threading
 import time
+from collections import deque
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -37,6 +38,12 @@ _PRESET_NAME = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
 _COLOR = re.compile(r"^\d{1,3},\d{1,3},\d{1,3}$")
 _HEARTBEAT_SECONDS = 2.0
 _EXPECTED_CARLA_VERSION = "0.9.16"
+_CAMERA_PROFILES: dict[str, tuple[int, int, float]] = {
+    "balanced": (1280, 720, 30.0),
+    "high-refresh": (1280, 720, 60.0),
+    "detail": (1920, 1080, 30.0),
+    "compatibility": (640, 384, 10.0),
+}
 
 
 def _strict_keys(
@@ -115,9 +122,10 @@ class GaragePreviewConfig:
     walker_count: int
     prop_preset: str
     spectator_mirror: bool = False
-    width: int = 1920
-    height: int = 1080
-    fps: float = 10.0
+    width: int = 1280
+    height: int = 720
+    fps: float = 30.0
+    profile: str = "balanced"
     fov: float = 65.0
     yaw: float = 325.0
     pitch: float = -10.0
@@ -125,7 +133,7 @@ class GaragePreviewConfig:
 
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any]) -> "GaragePreviewConfig":
-        allowed = {
+        required = {
             "map_name",
             "weather_preset",
             "vehicle_blueprint",
@@ -134,9 +142,8 @@ class GaragePreviewConfig:
             "traffic_count",
             "walker_count",
             "prop_preset",
-            "spectator_mirror",
         }
-        required = allowed - {"spectator_mirror"}
+        allowed = required | {"spectator_mirror", "profile"}
         _strict_keys(raw, allowed=allowed, required=required, name="Garage preview request")
 
         map_name = str(raw["map_name"]).strip()
@@ -161,6 +168,13 @@ class GaragePreviewConfig:
         if not _PRESET_NAME.fullmatch(prop_preset):
             raise ValueError("prop_preset must be a bounded preset identifier")
 
+        profile = str(raw.get("profile", "balanced")).strip().lower()
+        try:
+            width, height, fps = _CAMERA_PROFILES[profile]
+        except KeyError as error:
+            choices = ", ".join(_CAMERA_PROFILES)
+            raise ValueError(f"profile must be one of {choices}") from error
+
         return cls(
             map_name=map_name,
             weather_preset=weather,
@@ -173,6 +187,10 @@ class GaragePreviewConfig:
             walker_count=_integer(raw["walker_count"], name="walker_count", minimum=0, maximum=250),
             prop_preset=prop_preset,
             spectator_mirror=_boolean(raw.get("spectator_mirror", False), name="spectator_mirror"),
+            width=width,
+            height=height,
+            fps=fps,
+            profile=profile,
         )
 
 
@@ -256,6 +274,8 @@ class GaragePreviewSession:
         self._last_orbit_sequence = -1
         self._frame_sequence = -1
         self._jpeg: bytes | None = None
+        self._frame_received_monotonic: float | None = None
+        self._frame_arrivals: deque[float] = deque(maxlen=300)
         self._closed = False
 
     def start(self) -> dict[str, Any]:
@@ -332,11 +352,17 @@ class GaragePreviewSession:
                         scene,
                         timeout=max(8.0, 4.0 / self.config.fps),
                     )
+                    camera_transport = str(getattr(stream, "transport", "worker_jpeg_long_poll"))
                 else:
+                    if self.config.profile != "compatibility":
+                        raise RuntimeError(
+                            "the selected Garage video profile requires the persistent "
+                            "compressed World Worker camera; use Compatibility mode"
+                        )
                     # An older Worker leaves the camera on CARLA's raw BGRA
                     # stream. Cap only that compatibility lane so the first
                     # frame can cross an ordinary LAN; upgraded Workers retain
-                    # the requested 1080p worker-side JPEG relay.
+                    # the selected worker-side compressed camera profile.
                     raw_width = min(self.config.width, 960)
                     raw_height = min(self.config.height, 540)
                     camera = spawn_unparented_rgb_camera(
@@ -367,13 +393,12 @@ class GaragePreviewSession:
                         camera[5],
                         timeout=max(8.0, 4.0 / self.config.fps),
                     )
+                    camera_transport = "carla_raw_bgra_fallback"
                 with self._lock:
                     self._camera_id = camera_id
                     self._camera_type = "sensor.camera.rgb"
                     self._worker_camera = worker_camera
-                    self._camera_transport = (
-                        "worker_jpeg" if worker_camera else "carla_raw_bgra_fallback"
-                    )
+                    self._camera_transport = camera_transport
                     self._camera_width = self.config.width if worker_camera else raw_width
                     self._camera_height = self.config.height if worker_camera else raw_height
                 # Town*_Opt can stream tiles around the spectator. Until the
@@ -409,6 +434,26 @@ class GaragePreviewSession:
 
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
+            source_fps = 0.0
+            if len(self._frame_arrivals) >= 2:
+                elapsed = self._frame_arrivals[-1] - self._frame_arrivals[0]
+                if elapsed > 0.0:
+                    source_fps = (len(self._frame_arrivals) - 1) / elapsed
+            frame_age = (
+                None
+                if self._frame_received_monotonic is None
+                else max(0.0, time.monotonic() - self._frame_received_monotonic)
+            )
+            stale_after = max(0.25, 3.0 / self.config.fps)
+            stream = {
+                "transport": self._camera_transport,
+                "profile": self.config.profile,
+                "resolution": f"{self._camera_width}x{self._camera_height}",
+                "target_fps": self.config.fps,
+                "source_fps": round(source_fps, 1),
+                "frame_age_seconds": None if frame_age is None else round(frame_age, 3),
+                "stale": frame_age is None or frame_age > stale_after,
+            }
             return {
                 "schema_version": "1.0",
                 "status": self._status,
@@ -428,6 +473,12 @@ class GaragePreviewSession:
                 "camera_id": self._camera_id,
                 "camera_transport": self._camera_transport,
                 "camera_resolution": f"{self._camera_width}x{self._camera_height}",
+                "camera_profile": self.config.profile,
+                "camera_target_fps": self.config.fps,
+                "camera_source_fps": stream["source_fps"],
+                "camera_frame_age_seconds": stream["frame_age_seconds"],
+                "camera_stale": stream["stale"],
+                "stream": stream,
                 "traffic_count": self.config.traffic_count,
                 "walker_count": self.config.walker_count,
                 "prop_preset": self.config.prop_preset,
@@ -545,6 +596,9 @@ class GaragePreviewSession:
             if frame.sequence > self._frame_sequence:
                 self._frame_sequence = frame.sequence
                 self._jpeg = payload
+                received = time.monotonic()
+                self._frame_received_monotonic = received
+                self._frame_arrivals.append(received)
                 self._frame_condition.notify_all()
 
     def _start_frame_pump(self) -> None:

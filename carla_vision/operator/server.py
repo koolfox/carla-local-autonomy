@@ -566,6 +566,10 @@ class OperatorRequestHandler(BaseHTTPRequestHandler):
                     extra_headers={"X-Drive-Frame-Sequence": str(sequence)},
                 )
                 return
+            if path == "/api/drive/stream.mjpg":
+                view = parse_qs(parsed.query).get("view", ["raw"])[0]
+                self._drive_stream(view)
+                return
             if path == "/api/evidence":
                 raw = parse_qs(parsed.query).get("path", [""])[0]
                 self._json(
@@ -609,6 +613,54 @@ class OperatorRequestHandler(BaseHTTPRequestHandler):
             raise FileNotFoundError("route not found")
         except BaseException as error:
             self._error(error)
+
+    def _drive_stream(self, view: str) -> None:
+        """Relay cached newest frames over one persistent browser response."""
+
+        if view not in {"raw", "overlay"}:
+            raise ValueError("drive frame view must be raw or overlay")
+        sequence, payload = self.server.application.drive.wait_for_frame(
+            view,
+            -1,
+            timeout=10.0,
+        )
+        boundary = "carla-drive"
+        self.send_response(HTTPStatus.OK)
+        self.send_header(
+            "Content-Type",
+            f"multipart/x-mixed-replace; boundary={boundary}",
+        )
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Content-Security-Policy", _APPLICATION_CSP)
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.close_connection = True
+        try:
+            while True:
+                header = (
+                    f"--{boundary}\r\n"
+                    "Content-Type: image/jpeg\r\n"
+                    f"Content-Length: {len(payload)}\r\n"
+                    f"X-Drive-Frame-Sequence: {sequence}\r\n\r\n"
+                ).encode("ascii")
+                self.wfile.write(header)
+                self.wfile.write(payload)
+                self.wfile.write(b"\r\n")
+                self.wfile.flush()
+                try:
+                    sequence, payload = self.server.application.drive.wait_for_frame(
+                        view,
+                        sequence,
+                        timeout=5.0,
+                    )
+                except TimeoutError:
+                    continue
+        except (BrokenPipeError, ConnectionResetError, EOFError, OSError):
+            return
 
     def do_POST(self) -> None:
         try:

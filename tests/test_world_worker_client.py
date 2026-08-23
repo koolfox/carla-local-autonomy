@@ -16,6 +16,7 @@ from carla_vision.operator.drive import DriveSession, DriveSessionManager
 from carla_vision.operator.drive_contracts import DriveInput, DriveStartConfig
 from carla_vision.operator.world_worker_client import (
     WorldWorkerCameraFrame,
+    WorldWorkerCameraStream,
     WorldWorkerClient,
     WorldWorkerError,
     WorldWorkerScene,
@@ -103,6 +104,7 @@ class _RecordingWorkerHandler(BaseHTTPRequestHandler):
                 "method": self.command,
                 "path": self.path,
                 "authorization": self.headers.get("Authorization"),
+                "scene_lease": self.headers.get("X-Scene-Lease"),
                 "body": body,
             }
         )
@@ -137,6 +139,38 @@ class _RecordingWorkerHandler(BaseHTTPRequestHandler):
                     "capabilities": {"map_reload": True, "autopilot": True},
                 },
             )
+            return
+        if self.path.endswith("/camera/stream.mjpg"):
+            self.send_response(HTTPStatus.OK)
+            self.send_header(
+                "Content-Type",
+                "multipart/x-mixed-replace; boundary=carla-frame",
+            )
+            self.send_header("Connection", "close")
+            self.end_headers()
+            transform = json.dumps(
+                {
+                    "location": {"x": 1, "y": 2, "z": 3},
+                    "rotation": {"pitch": 4, "yaw": 5, "roll": 6},
+                },
+                separators=(",", ":"),
+            )
+            for sequence in (7, 8):
+                payload = b"\xff\xd8worker-stream-jpeg\xff\xd9"
+                header = (
+                    "--carla-frame\r\n"
+                    "Content-Type: image/jpeg\r\n"
+                    f"Content-Length: {len(payload)}\r\n"
+                    f"X-CARLA-Sequence: {sequence}\r\n"
+                    f"X-CARLA-Frame: {314 + sequence}\r\n"
+                    f"X-CARLA-Timestamp: {12.5 + sequence}\r\n"
+                    "X-Camera-Width: 1280\r\n"
+                    "X-Camera-Height: 720\r\n"
+                    "X-Camera-FOV: 90\r\n"
+                    f"X-Camera-Transform: {transform}\r\n\r\n"
+                ).encode("ascii")
+                self.wfile.write(header + payload + b"\r\n")
+            self.wfile.write(b"--carla-frame--\r\n")
             return
         if self.path.endswith("/camera/frame.jpg"):
             payload = b"\xff\xd8worker-jpeg\xff\xd9"
@@ -307,6 +341,110 @@ class WorldWorkerClientHttpTests(unittest.TestCase):
         )
         self.assertEqual(camera_requests[0]["body"]["width"], 1920)
         self.assertEqual(camera_requests[1]["body"]["yaw"], 90.0)
+
+    def test_persistent_camera_stream_uses_one_authenticated_multipart_response(self) -> None:
+        payload = _scene_payload()
+        payload["scene"]["capabilities"]["persistent_mjpeg_camera_relay"] = True
+        scene = WorldWorkerScene.from_response(payload)
+
+        frames = list(self.client.camera_frames(scene, timeout=1.0))
+
+        self.assertEqual([frame.sequence for frame in frames], [7, 8])
+        self.assertEqual([(frame.width, frame.height) for frame in frames], [(1280, 720)] * 2)
+        self.assertTrue(all(frame.jpeg.startswith(b"\xff\xd8") for frame in frames))
+        stream_requests = [
+            row for row in self.server.requests if row["path"].endswith("/camera/stream.mjpg")
+        ]
+        self.assertEqual(len(stream_requests), 1)
+        self.assertEqual(stream_requests[0]["authorization"], f"Bearer {WORKER_TOKEN}")
+        self.assertEqual(stream_requests[0]["scene_lease"], "scene-lease-secret")
+
+    def test_persistent_camera_reader_falls_back_to_legacy_long_poll(self) -> None:
+        payload = _scene_payload()
+        payload["scene"]["capabilities"]["persistent_mjpeg_camera_relay"] = True
+        scene = WorldWorkerScene.from_response(payload)
+
+        class RollingUpgradeClient:
+            persistent_calls = 0
+            long_poll_calls = 0
+
+            def camera_frames(self, scene: WorldWorkerScene, *, timeout: float) -> Any:
+                del scene, timeout
+                self.persistent_calls += 1
+                raise WorldWorkerError("stream endpoint is still rolling out", status=404)
+
+            def camera_frame(
+                self,
+                scene: WorldWorkerScene,
+                *,
+                after_sequence: int,
+                timeout: float,
+            ) -> WorldWorkerCameraFrame:
+                del scene, after_sequence, timeout
+                self.long_poll_calls += 1
+                return WorldWorkerCameraFrame(
+                    sequence=1,
+                    frame=2,
+                    timestamp=3.0,
+                    received_monotonic=4.0,
+                    width=1280,
+                    height=720,
+                    fov=90.0,
+                    transform=(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+                    jpeg=b"\xff\xd8fallback\xff\xd9",
+                )
+
+        client = RollingUpgradeClient()
+        stream = WorldWorkerCameraStream(client, scene, timeout=0.1)  # type: ignore[arg-type]
+        try:
+            frame = stream.wait_for_frame(timeout=1.0)
+            self.assertEqual(frame.sequence, 1)
+            self.assertEqual(stream.transport, "worker_jpeg_long_poll_fallback")
+            self.assertEqual(client.persistent_calls, 1)
+            self.assertGreaterEqual(client.long_poll_calls, 1)
+        finally:
+            stream.close()
+
+    def test_persistent_camera_reader_reconnects_after_temporary_worker_timeout(self) -> None:
+        payload = _scene_payload()
+        payload["scene"]["capabilities"]["persistent_mjpeg_camera_relay"] = True
+        scene = WorldWorkerScene.from_response(payload)
+
+        class TemporarilyStalledClient:
+            persistent_calls = 0
+            long_poll_calls = 0
+
+            def camera_frames(self, scene: WorldWorkerScene, *, timeout: float) -> Any:
+                del scene, timeout
+                self.persistent_calls += 1
+                if self.persistent_calls == 1:
+                    raise WorldWorkerError("temporary camera timeout", status=504)
+                yield WorldWorkerCameraFrame(
+                    sequence=9,
+                    frame=10,
+                    timestamp=11.0,
+                    received_monotonic=12.0,
+                    width=1280,
+                    height=720,
+                    fov=90.0,
+                    transform=(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+                    jpeg=b"\xff\xd8reconnected\xff\xd9",
+                )
+
+            def camera_frame(self, *_: Any, **__: Any) -> WorldWorkerCameraFrame:
+                self.long_poll_calls += 1
+                raise AssertionError("temporary MJPEG failures must not use long-poll")
+
+        client = TemporarilyStalledClient()
+        stream = WorldWorkerCameraStream(client, scene, timeout=0.1)  # type: ignore[arg-type]
+        try:
+            frame = stream.wait_for_frame(timeout=1.0)
+            self.assertEqual(frame.sequence, 9)
+            self.assertEqual(stream.transport, "worker_mjpeg")
+            self.assertGreaterEqual(client.persistent_calls, 2)
+            self.assertEqual(client.long_poll_calls, 0)
+        finally:
+            stream.close()
 
     def test_url_and_token_validation_rejects_unsafe_configuration(self) -> None:
         invalid = (
@@ -578,6 +716,21 @@ class WorkerManagerTests(unittest.TestCase):
         session = _CapturedSession.instances[-1]
         self.assertIs(session.world_worker, worker)
         self.assertTrue(session.config.world_worker_enabled)
+
+    def test_missing_compressed_camera_capabilities_force_compatibility_profile(self) -> None:
+        manager = self.manager(_FakeWorker())
+
+        manager.start(
+            _start_payload(
+                resolution="1280x720",
+                camera_fps=60.0,
+                detector_enabled=False,
+                weights="",
+            )
+        )
+
+        config = _CapturedSession.instances[-1].config
+        self.assertEqual((config.width, config.height, config.camera_fps), (640, 384, 10.0))
 
 
 class WorkerModeArbitrationTests(unittest.TestCase):

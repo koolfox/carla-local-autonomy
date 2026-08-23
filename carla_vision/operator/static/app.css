@@ -1349,6 +1349,19 @@ body:not(.drive-immersive) .drive-setup-column {
   background: rgba(137, 21, 21, 0.72);
 }
 
+.drive-stream-indicator {
+  padding: 5px 8px;
+  border-radius: 999px;
+  color: #a9f0dd;
+  background: rgba(12, 82, 68, 0.72);
+  font-variant-numeric: tabular-nums;
+}
+
+.drive-stream-indicator.stale {
+  color: #ffd4a8;
+  background: rgba(130, 63, 13, 0.78);
+}
+
 .drive-mode-indicator {
   padding: 5px 8px;
   border-radius: 999px;
@@ -1601,6 +1614,7 @@ kbd {
 
 .drive-setup-form > .card-heading,
 .drive-setup-form > .garage-world-group,
+.drive-setup-form > .drive-video-profile,
 .drive-setup-form > .drive-simple-toggles,
 .drive-setup-form > .drive-session-actions,
 .drive-setup-form > .drive-result-banner,
@@ -1723,6 +1737,32 @@ kbd {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 7px;
   margin-top: 0;
+}
+
+.drive-video-profile {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+}
+
+.drive-video-profile > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.drive-video-profile > small {
+  grid-column: 2;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .drive-simple-toggle {
@@ -2849,6 +2889,11 @@ body.drive-immersive {
 
 .garage-preview-status.active {
   color: #d7ffe9;
+}
+
+.garage-preview-status.stale {
+  color: #ffd3a5;
+  border-color: rgba(255, 166, 86, 0.52);
 }
 
 .garage-preview-toggle {

@@ -40,8 +40,8 @@ official PythonAPI                         RT-DETR / YOLO / recorder
 
 The Windows World Worker is intentionally thin. It owns official-PythonAPI
 operations such as map reload, weather, Traffic Manager, pedestrians, props,
-and simulator-side JPEG relay. It does not install Torch, Ultralytics, or the
-research environment.
+and the persistent in-memory MJPEG relay. It does not install Torch,
+Ultralytics, or the research environment.
 
 The research computer owns the UI, detector inference, video recording,
 artifacts, datasets, and reports.
@@ -94,9 +94,16 @@ $env:CARLA_WORLD_WORKER_TOKEN = "replace-with-a-new-random-secret"
   --traffic-manager-port 8000
 ```
 
-The Worker file is standalone and imports only the standard library plus the
-official `carla` module. Running it by file path avoids installing this project
-or its ML dependencies on the CARLA computer.
+The Worker file is standalone. Map/control operations import only the standard
+library plus the official `carla` module. Live camera encoding lazily requires
+two camera-only runtime packages in the same Worker interpreter:
+
+```powershell
+.\.worker-venv\Scripts\python.exe -m pip install numpy opencv-python-headless
+```
+
+Running the Worker by file path still avoids installing this project, Torch,
+Ultralytics, or the research environment on the CARLA computer.
 
 Restrict inbound TCP 8766 in Windows Firewall to the research computer's LAN
 address. Never expose the Worker to the public internet.
@@ -134,6 +141,21 @@ The console opens at:
 ```text
 http://127.0.0.1:8765/
 ```
+
+## Remote camera performance
+
+The default release profile is `1280 x 720 @ 30 FPS`. `1280 x 720 @ 60 FPS` is
+selectable, but it remains a live-unverified candidate until the real Windows
+CARLA host and LAN pass the fixed acceptance matrix. Camera frames are JPEG
+encoded in memory beside CARLA and forwarded through persistent MJPEG streams;
+the normal browser path does not write per-frame temporary files or issue one
+HTTP request per frame.
+
+The live MJPEG feed is for driving feedback. Training data must come from the
+synchronized native dataset-capture workflow; dropped/newest-only preview frames
+and review MP4s are not canonical training samples. See
+[docs/realtime_streaming.md](docs/realtime_streaming.md) for exact profiles,
+measurements, hard pass/fail thresholds, and the H.264/WebRTC fallback decision.
 
 ## Garage and Drive
 
@@ -247,10 +269,12 @@ Before tagging a release, perform one real LAN session that verifies:
 - weather, traffic, pedestrians, and each fixed prop preset;
 - Garage vehicle replacement and all camera views;
 - ten minutes of manual driving and TM-autopilot takeover;
-- 1080p raw and annotated recording without truncated duration;
-- detector latency/FPS and frame-age summaries; and
+- the 720p30 remote-stream rows A-D in the real-time acceptance matrix;
+- raw and annotated review recording without truncated duration;
+- detector latency/FPS, source FPS, frame-age, and Worker-encode summaries; and
 - `carla-verify` success on the retained run.
 
 Detailed contracts remain in [docs/architecture.md](docs/architecture.md),
 [docs/operator_ui.md](docs/operator_ui.md), and
-[docs/artifact_policy.md](docs/artifact_policy.md).
+[docs/artifact_policy.md](docs/artifact_policy.md). Remote-video acceptance is
+defined in [docs/realtime_streaming.md](docs/realtime_streaming.md).

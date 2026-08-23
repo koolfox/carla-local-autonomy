@@ -28,7 +28,6 @@ import re
 import secrets
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -61,6 +60,11 @@ _SCENE_PATH = re.compile(
 _CAMERA_FRAME_PATH = re.compile(
     r"^/v1/scenes/(?P<scene_id>[A-Za-z0-9_-]{16,128})/camera/frame\.jpg$"
 )
+_CAMERA_STREAM_PATH = re.compile(
+    r"^/v1/scenes/(?P<scene_id>[A-Za-z0-9_-]{16,128})/camera/stream\.mjpg$"
+)
+_MJPEG_BOUNDARY = "carla-frame"
+_JPEG_QUALITY = 90
 _ACTIVE_SCENE_STATES = frozenset({"prepared", "running", "stopping"})
 _ROUTE_MODES = frozenset({"free", "random_destination"})
 _CONTROL_MODES = frozenset({"manual", "autopilot"})
@@ -525,7 +529,7 @@ class CompressedCameraConfig:
             )
         width = _integer(raw["width"], "width", 320, 1920)
         height = _integer(raw["height"], "height", 180, 1080)
-        fps = _number(raw["fps"], "fps", 1.0, 30.0)
+        fps = _number(raw["fps"], "fps", 1.0, 60.0)
         fov = _number(raw["fov"], "fov", 30.0, 150.0)
         yaw = _number(raw.get("yaw", 325.0), "yaw", -3600.0, 3600.0)
         pitch = _number(raw.get("pitch", -10.0), "pitch", -25.0, 15.0)
@@ -542,57 +546,183 @@ class CompressedCameraConfig:
         )
 
 
-class CompressedCameraRelay:
-    """Encode CARLA RGB frames beside the simulator before they cross the LAN."""
+def _camera_encoder_modules_present() -> bool:
+    """Report whether the optional in-memory encoder looks importable.
 
-    def __init__(self, sensor: Any, *, temporary_root: Path) -> None:
+    The actual import remains lazy because the standalone worker must still
+    start, serve health, and manage non-camera scenes with only CARLA's
+    official PythonAPI installed.
+    """
+
+    try:
+        return all(importlib.util.find_spec(name) is not None for name in ("numpy", "cv2"))
+    except (ImportError, AttributeError, ValueError):
+        return False
+
+
+def _load_in_memory_jpeg_encoder() -> Callable[[Any, int], bytes]:
+    """Load NumPy/OpenCV only when a compressed camera is requested."""
+
+    try:
+        numpy = importlib.import_module("numpy")
+        cv2 = importlib.import_module("cv2")
+    except (ImportError, OSError) as error:
+        raise WorkerError(
+            HTTPStatus.SERVICE_UNAVAILABLE,
+            "camera_encoder_unavailable",
+            "in-memory camera streaming requires numpy and OpenCV on the CARLA host; "
+            "install them in the Worker interpreter with "
+            "'python -m pip install numpy opencv-python-headless'",
+        ) from error
+
+    def encode(image: Any, quality: int) -> bytes:
+        width = int(getattr(image, "width", 0))
+        height = int(getattr(image, "height", 0))
+        if width <= 0 or height <= 0:
+            raise RuntimeError("CARLA camera image has invalid dimensions")
+        raw_data = getattr(image, "raw_data", None)
+        if raw_data is None:
+            raise RuntimeError("CARLA camera image does not expose raw_data")
+        pixels = numpy.frombuffer(raw_data, dtype=numpy.uint8)
+        expected = width * height * 4
+        if int(pixels.size) != expected:
+            raise RuntimeError(
+                f"CARLA BGRA buffer has {int(pixels.size)} bytes; expected {expected}"
+            )
+        # CARLA emits BGRA. OpenCV's JPEG encoder needs BGR, so dropping alpha
+        # is sufficient and avoids an extra color-conversion allocation.
+        bgr = pixels.reshape((height, width, 4))[:, :, :3]
+        options = [int(cv2.IMWRITE_JPEG_QUALITY), int(quality)]
+        ok, encoded = cv2.imencode(".jpg", bgr, options)
+        if not ok:
+            raise RuntimeError("OpenCV could not encode the CARLA frame as JPEG")
+        payload = encoded.tobytes()
+        if not payload.startswith(b"\xff\xd8") or not payload.endswith(b"\xff\xd9"):
+            raise RuntimeError("OpenCV produced an invalid JPEG frame")
+        return payload
+
+    return encode
+
+
+class CompressedCameraRelay:
+    """Keep only the newest in-memory JPEG produced beside the simulator."""
+
+    def __init__(
+        self,
+        sensor: Any,
+        *,
+        jpeg_encoder: Callable[[Any, int], bytes],
+        jpeg_quality: int = _JPEG_QUALITY,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
         self.sensor = sensor
-        self.temporary_root = temporary_root
+        self._jpeg_encoder = jpeg_encoder
+        self._jpeg_quality = int(jpeg_quality)
+        self._clock = clock
         self._condition = threading.Condition()
-        self._encode_lock = threading.Lock()
         self._closed = False
+        self._pending_image: Any | None = None
+        self._encoder_thread: threading.Thread | None = None
         self._sequence = -1
         self._jpeg: bytes | None = None
         self._metadata: dict[str, Any] = {}
         self._error: str | None = None
+        self._frames_received = 0
+        self._frames_encoded = 0
+        self._frames_dropped_pending = 0
+        self._frames_replaced = 0
+        self._encoded_bytes_total = 0
+        self._encode_seconds_total = 0.0
+        self._encode_completed_at: list[float] = []
 
     def listen(self) -> None:
-        self.sensor.listen(self._on_image)
+        with self._condition:
+            if self._closed:
+                raise RuntimeError("cannot listen on a closed camera relay")
+            if self._encoder_thread is not None:
+                raise RuntimeError("camera relay is already listening")
+            encoder_thread = threading.Thread(
+                target=self._encode_loop,
+                name=f"carla-camera-encoder-{int(self.sensor.id)}",
+                daemon=True,
+            )
+            self._encoder_thread = encoder_thread
+        try:
+            self.sensor.listen(self._on_image)
+            encoder_thread.start()
+        except BaseException:
+            with self._condition:
+                self._closed = True
+                self._pending_image = None
+                self._encoder_thread = None
+                self._condition.notify_all()
+            try:
+                self.sensor.stop()
+            except Exception:
+                pass
+            if encoder_thread.is_alive():
+                encoder_thread.join(timeout=2.0)
+            raise
 
     def _on_image(self, image: Any) -> None:
-        if self._closed or not self._encode_lock.acquire(blocking=False):
-            return
-        path = self.temporary_root / f"frame-{int(getattr(image, 'frame', 0))}.jpg"
-        try:
-            saved = image.save_to_disk(str(path))
-            candidate = Path(saved) if isinstance(saved, str) and saved else path
-            payload = candidate.read_bytes()
-            if not payload.startswith(b"\xff\xd8") or not payload.endswith(b"\xff\xd9"):
-                raise RuntimeError("CARLA did not produce a valid JPEG frame")
-            transform = getattr(image, "transform", None)
-            metadata = {
-                "frame": int(getattr(image, "frame", 0)),
-                "timestamp": float(getattr(image, "timestamp", 0.0)),
-                "width": int(getattr(image, "width", 0)),
-                "height": int(getattr(image, "height", 0)),
-                "fov": float(getattr(image, "fov", 0.0)),
-                "transform": None if transform is None else _json_transform(transform),
-            }
+        with self._condition:
+            if self._closed:
+                return
+            self._frames_received += 1
+            if self._pending_image is not None:
+                self._frames_dropped_pending += 1
+            self._pending_image = image
+            self._condition.notify_all()
+
+    def _encode_loop(self) -> None:
+        while True:
             with self._condition:
-                self._sequence += 1
-                self._jpeg = payload
-                self._metadata = metadata
-                self._condition.notify_all()
-        except Exception as error:
-            with self._condition:
-                self._error = f"{type(error).__name__}: {error}"
-                self._condition.notify_all()
-        finally:
+                if self._closed:
+                    return
+                while not self._closed and self._pending_image is None:
+                    self._condition.wait()
+                if self._closed:
+                    return
+                image = self._pending_image
+                self._pending_image = None
+
+            started_at = self._clock()
             try:
-                path.unlink(missing_ok=True)
-            except OSError:
-                pass
-            self._encode_lock.release()
+                payload = self._jpeg_encoder(image, self._jpeg_quality)
+                completed_at = self._clock()
+                encode_seconds = max(0.0, completed_at - started_at)
+                transform = getattr(image, "transform", None)
+                metadata = {
+                    "frame": int(getattr(image, "frame", 0)),
+                    "timestamp": float(getattr(image, "timestamp", 0.0)),
+                    "width": int(getattr(image, "width", 0)),
+                    "height": int(getattr(image, "height", 0)),
+                    "fov": float(getattr(image, "fov", 0.0)),
+                    "transform": None if transform is None else _json_transform(transform),
+                }
+                with self._condition:
+                    if self._closed:
+                        return
+                    self._sequence += 1
+                    if self._jpeg is not None:
+                        self._frames_replaced += 1
+                    self._jpeg = payload
+                    self._metadata = metadata
+                    self._error = None
+                    self._frames_encoded += 1
+                    self._encoded_bytes_total += len(payload)
+                    self._encode_seconds_total += encode_seconds
+                    self._encode_completed_at.append(completed_at)
+                    cutoff = completed_at - 5.0
+                    while (
+                        len(self._encode_completed_at) > 2 and self._encode_completed_at[0] < cutoff
+                    ):
+                        self._encode_completed_at.pop(0)
+                    self._condition.notify_all()
+            except Exception as error:
+                with self._condition:
+                    self._error = f"{type(error).__name__}: {error}"
+                    self._condition.notify_all()
 
     def wait(self, after_sequence: int, timeout: float) -> tuple[int, bytes, dict[str, Any]]:
         deadline = time.monotonic() + timeout
@@ -618,10 +748,30 @@ class CompressedCameraRelay:
 
     def snapshot(self) -> dict[str, Any]:
         with self._condition:
+            completion_times = self._encode_completed_at
+            actual_fps = 0.0
+            if len(completion_times) >= 2:
+                elapsed = completion_times[-1] - completion_times[0]
+                if elapsed > 0.0:
+                    actual_fps = (len(completion_times) - 1) / elapsed
+            average_encode_ms = 0.0
+            if self._frames_encoded:
+                average_encode_ms = self._encode_seconds_total * 1000.0 / self._frames_encoded
             return {
                 "actor_id": int(self.sensor.id),
                 "sequence": self._sequence,
                 "error": self._error,
+                "telemetry": {
+                    "jpeg_quality": self._jpeg_quality,
+                    "frames_received": self._frames_received,
+                    "frames_encoded": self._frames_encoded,
+                    "frames_dropped_pending": self._frames_dropped_pending,
+                    "frames_replaced": self._frames_replaced,
+                    "encoded_bytes_total": self._encoded_bytes_total,
+                    "latest_jpeg_bytes": 0 if self._jpeg is None else len(self._jpeg),
+                    "average_encode_ms": round(average_encode_ms, 3),
+                    "actual_fps_5s": round(actual_fps, 3),
+                },
                 **self._metadata,
             }
 
@@ -630,17 +780,15 @@ class CompressedCameraRelay:
             if self._closed:
                 return
             self._closed = True
+            self._pending_image = None
             self._condition.notify_all()
         try:
             self.sensor.stop()
         except Exception:
             pass
-        try:
-            for path in self.temporary_root.iterdir():
-                path.unlink(missing_ok=True)
-            self.temporary_root.rmdir()
-        except OSError:
-            pass
+        encoder_thread = self._encoder_thread
+        if encoder_thread is not None and encoder_thread is not threading.current_thread():
+            encoder_thread.join(timeout=2.0)
 
 
 @dataclass
@@ -893,6 +1041,7 @@ class WorldWorker:
         # report capabilities. The actual post-reload instance is validated
         # in ``prepare`` before a random route is planned.
         random_route = client is not None and self._planner_factory() is not None
+        in_memory_encoder = _camera_encoder_modules_present()
         return {
             "map_reload": True,
             "weather": True,
@@ -906,7 +1055,13 @@ class WorldWorker:
             "lease": True,
             "manual_deadman": True,
             "asynchronous_world": True,
-            "compressed_camera_relay": True,
+            # High-resolution remote video must never fall back silently to
+            # CARLA's raw BGRA stream.  Advertise the compressed lanes only
+            # when this exact Worker interpreter can load its encoder.
+            "compressed_camera_relay": in_memory_encoder,
+            "persistent_mjpeg_camera_relay": in_memory_encoder,
+            "in_memory_jpeg_encoder_available": in_memory_encoder,
+            "camera_60_fps": in_memory_encoder,
         }
 
     @staticmethod
@@ -1818,6 +1973,9 @@ class WorldWorker:
                     "camera_already_active",
                     "compressed camera is already active for this scene",
                 )
+            # Resolve the optional encoder before spawning an actor so a
+            # missing or broken OpenCV installation cannot leak a CARLA sensor.
+            jpeg_encoder = _load_in_memory_jpeg_encoder()
             assert self._carla is not None
             blueprint = scene.world.get_blueprint_library().find("sensor.camera.rgb")
             attributes = {
@@ -1856,10 +2014,27 @@ class WorldWorker:
                 role_name="world_worker_camera",
             )
             scene.owned_actors.append(owned)
-            temporary_root = Path(tempfile.mkdtemp(prefix="carla-world-camera-"))
-            relay = CompressedCameraRelay(sensor, temporary_root=temporary_root)
+            # Preserve detail at 30 FPS; the high-refresh profile trades a
+            # small amount of JPEG quality for encode time and LAN headroom.
+            jpeg_quality = 85 if config.fps > 30.0 else _JPEG_QUALITY
+            relay = CompressedCameraRelay(
+                sensor,
+                jpeg_encoder=jpeg_encoder,
+                jpeg_quality=jpeg_quality,
+            )
             scene.camera_relay = relay
-            relay.listen()
+            try:
+                relay.listen()
+            except BaseException as error:
+                scene.camera_relay = None
+                relay.close()
+                try:
+                    self._destroy_owned_actor(scene.world, owned)
+                except BaseException as cleanup_error:
+                    error.add_note(f"camera activation rollback failed: {cleanup_error}")
+                else:
+                    scene.owned_actors.remove(owned)
+                raise
             self._refresh_lease(scene)
             return {
                 "schema_version": SCHEMA_VERSION,
@@ -2317,6 +2492,7 @@ class WorldWorkerRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Camera-Sequence", str(sequence))
+        self.send_header("X-CARLA-Sequence", str(sequence))
         self.send_header("X-CARLA-Frame", str(metadata.get("frame", 0)))
         self.send_header("X-CARLA-Timestamp", str(metadata.get("timestamp", 0.0)))
         self.send_header("X-Camera-Width", str(metadata.get("width", 0)))
@@ -2328,6 +2504,68 @@ class WorldWorkerRequestHandler(BaseHTTPRequestHandler):
         )
         self.end_headers()
         self.wfile.write(payload)
+
+    @staticmethod
+    def _mjpeg_part(sequence: int, payload: bytes, metadata: Mapping[str, Any]) -> bytes:
+        transform = json.dumps(metadata.get("transform"), separators=(",", ":"))
+        headers = (
+            f"--{_MJPEG_BOUNDARY}\r\n"
+            "Content-Type: image/jpeg\r\n"
+            f"Content-Length: {len(payload)}\r\n"
+            f"X-CARLA-Sequence: {sequence}\r\n"
+            f"X-Camera-Sequence: {sequence}\r\n"
+            f"X-CARLA-Frame: {metadata.get('frame', 0)}\r\n"
+            f"X-CARLA-Timestamp: {metadata.get('timestamp', 0.0)}\r\n"
+            f"X-Camera-Width: {metadata.get('width', 0)}\r\n"
+            f"X-Camera-Height: {metadata.get('height', 0)}\r\n"
+            f"X-Camera-FOV: {metadata.get('fov', 0.0)}\r\n"
+            f"X-Camera-Transform: {transform}\r\n"
+            "\r\n"
+        ).encode("ascii")
+        return headers + payload + b"\r\n"
+
+    def _send_mjpeg(self, scene_id: str, lease_token: str) -> None:
+        # Fetch one frame before committing HTTP headers, so invalid scene
+        # credentials and startup encoder errors retain the normal JSON error
+        # envelope.
+        sequence, payload, metadata = self.server.worker.camera_frame(
+            scene_id,
+            lease_token,
+            after_sequence=-1,
+            timeout=5.0,
+        )
+        self.send_response(HTTPStatus.OK)
+        self.send_header(
+            "Content-Type",
+            f"multipart/x-mixed-replace; boundary={_MJPEG_BOUNDARY}",
+        )
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.close_connection = True
+
+        while True:
+            try:
+                self.wfile.write(self._mjpeg_part(sequence, payload, metadata))
+                self.wfile.flush()
+                while True:
+                    try:
+                        sequence, payload, metadata = self.server.worker.camera_frame(
+                            scene_id,
+                            lease_token,
+                            after_sequence=sequence,
+                            timeout=5.0,
+                        )
+                        break
+                    except WorkerError as error:
+                        # A temporary CARLA stall must not tear down a long-lived
+                        # stream. All other scene/lease failures end it cleanly.
+                        if error.code != "camera_timeout":
+                            return
+            except (BrokenPipeError, ConnectionResetError, TimeoutError, OSError):
+                return
 
     def _error(self, error: WorkerError) -> None:
         self._send_json(
@@ -2425,6 +2663,11 @@ class WorldWorkerRequestHandler(BaseHTTPRequestHandler):
                     timeout=timeout,
                 )
                 self._send_jpeg(sequence, payload, metadata)
+            elif (stream_match := _CAMERA_STREAM_PATH.fullmatch(parsed.path)) is not None:
+                self._send_mjpeg(
+                    stream_match.group("scene_id"),
+                    self.headers.get("X-Scene-Lease", ""),
+                )
             elif parsed.path == "/v1/health":
                 self._send_json(HTTPStatus.OK, self.server.worker.health())
             elif parsed.path == "/v1/catalog":

@@ -40,6 +40,9 @@ def test_world_worker_is_a_single_stdlib_only_script() -> None:
     assert import_roots <= sys.stdlib_module_names
     assert 'import_module("carla")' in source
     assert 'import_module("agents.navigation.global_route_planner")' in source
+    assert 'import_module("numpy")' in source
+    assert 'import_module("cv2")' in source
+    assert "save_to_disk" not in source
 
 
 def test_exact_world_worker_file_runs_help_in_isolation(tmp_path: Path) -> None:

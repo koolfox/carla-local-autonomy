@@ -137,6 +137,32 @@ For model-controlled modes, the Garage code attaches a separate CARLA RGB sensor
 for policy input. That sensor is distinct from the browser JPEG stream and from
 the optional browser detector overlay.
 
+### Real-time browser transport
+
+The canonical remote path uses two persistent MJPEG hops: the World Worker
+encodes CARLA BGRA frames to JPEG in memory on Windows, and the Operator relays
+newest frames continuously to the browser. Garage uses
+`/api/garage/preview/stream.mjpg`; Drive uses
+`/api/drive/stream.mjpg?view=raw|overlay`. The older `frame.jpg` routes remain
+compatibility/diagnostic endpoints and are not the normal browser loop.
+
+The UI production profile is 1280 x 720 at 30 FPS. A 60 FPS selection is
+available at 1280 x 720, but is not a verified performance claim until it passes
+the real Windows/LAN matrix. The source stream is independent of model cadence:
+RT-DETR may update the overlay more slowly without lowering the raw camera rate.
+
+Operator Drive state reports the requested FPS, recent source/overlay FPS,
+frame age, stale state, transport, and resolution. Garage preview state reports
+the equivalent source-stream fields without overlay FPS. The Worker scene
+camera snapshot reports received/encoded/dropped frame counts, average encode
+time, recent encoder FPS, JPEG size, and total encoded bytes. These measurements
+and hard release thresholds are defined in
+[`realtime_streaming.md`](realtime_streaming.md).
+
+The browser stream is not a training-data source. It is newest-only and lossy by
+design. Review MP4s remain Drive artifacts; synchronized RGB/label collection
+remains a separate native dataset workflow.
+
 ## Garage runtime control modes
 
 Production advertises only `manual` plus World Worker Traffic Manager

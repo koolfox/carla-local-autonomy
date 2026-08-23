@@ -185,6 +185,13 @@ class DriveStartConfigTests(_WorkspaceTestCase):
         self.assertIsNone(config.weights)
         self.assertFalse(config.detector_enabled)
 
+    def test_camera_contract_accepts_60_fps_but_rejects_higher_rates(self) -> None:
+        config = self.config(camera_fps=60.0)
+
+        self.assertEqual(config.camera_fps, 60.0)
+        with self.assertRaisesRegex(ValueError, "camera_fps"):
+            self.config(camera_fps=60.1)
+
     def test_human_experiment_preset_is_retained_in_manifest(self) -> None:
         config = self.config(experiment_preset="perception_review")
 
@@ -396,6 +403,21 @@ class DriveSessionControlTests(_WorkspaceTestCase):
             with self.subTest(label=label, note=note), self.assertRaises(ValueError):
                 session.mark_human_event(label, note)
 
+    def test_persistent_stream_waits_for_new_frames_and_reports_fps_and_age(self) -> None:
+        session = self.session()
+        session._cache_frame("raw", 10, b"first")
+        session._cache_frame("raw", 11, b"second")
+
+        sequence, payload = session.wait_for_frame("raw", after_sequence=10, timeout=0.1)
+        stream = session.snapshot()["stream"]
+
+        self.assertEqual((sequence, payload), (11, b"second"))
+        self.assertGreater(stream["source_fps"], 0.0)
+        self.assertFalse(stream["stale"])
+        self.assertTrue(stream["raw_video_model_independent"])
+        with self.assertRaisesRegex(TimeoutError, "timed out"):
+            session.wait_for_frame("raw", after_sequence=11, timeout=0.01)
+
 
 class _FakeSession:
     def __init__(self, config: DriveStartConfig, *, workspace: Path) -> None:
@@ -540,6 +562,7 @@ class StaticDriveConsoleContractTests(unittest.TestCase):
         direct_primary_configuration = {
             "drive-vehicle",
             "drive-color",
+            "drive-camera-profile",
             "drive-detector-enabled",
             "drive-record-video",
             "drive-spectator-follow",
@@ -598,7 +621,7 @@ class StaticDriveConsoleContractTests(unittest.TestCase):
         self.assertGreater(len(literal_id_references), 100)
         self.assertEqual(sorted(literal_id_references - set(self.parser.ids)), [])
 
-    def test_drive_camera_defaults_to_1080p_source_quality(self) -> None:
+    def test_drive_camera_defaults_to_balanced_profile_with_60_fps_available(self) -> None:
         tag, attributes = self.parser.elements["drive-resolution"]
         self.assertEqual(tag, "select")
         selected = re.search(
@@ -606,8 +629,32 @@ class StaticDriveConsoleContractTests(unittest.TestCase):
             self.html[self.html.index('id="drive-resolution"') :],
         )
         self.assertIsNotNone(selected)
-        self.assertEqual(selected.group(1), "1920x1080")
+        self.assertEqual(selected.group(1), "1280x720")
+        profile = self.html[self.html.index('id="drive-camera-profile"') :]
+        self.assertRegex(profile, r'value="balanced"\s+selected')
+        self.assertIn('value="high-refresh"', profile)
+        fps_tag, fps_attributes = self.parser.elements["drive-camera-fps"]
+        self.assertEqual(fps_tag, "input")
+        self.assertEqual(fps_attributes.get("value"), "30")
+        self.assertEqual(fps_attributes.get("max"), "60")
         self.assertIn("def _jpeg(image: np.ndarray, quality: int = 92)", DRIVE_SOURCE.read_text())
+
+    def test_browser_uses_one_persistent_drive_stream_without_frame_polling(self) -> None:
+        self.assertIn("/api/drive/stream.mjpg", self.script)
+        self.assertNotIn("/api/drive/frame.jpg", self.script)
+        self.assertNotIn("refreshDriveFrame", self.script)
+
+    def test_high_bandwidth_profiles_require_the_compressed_worker_capabilities(self) -> None:
+        for capability in (
+            "compressed_camera_relay",
+            "persistent_mjpeg_camera_relay",
+            "in_memory_jpeg_encoder_available",
+            "camera_60_fps",
+        ):
+            self.assertIn(capability, self.script)
+        self.assertIn("option.disabled", self.script)
+        self.assertIn('select.value = "compatibility"', self.script)
+        self.assertIn("Compatibility mode is enforced", self.script)
 
     def test_human_experiments_are_in_context_and_markers_are_wired(self) -> None:
         for element_id in (
@@ -745,6 +792,19 @@ class _FakeHttpDriveManager:
             raise ValueError("fake only serves raw")
         return 7, b"fake-jpeg"
 
+    def wait_for_frame(
+        self,
+        view: str,
+        after_sequence: int,
+        timeout: float,
+    ) -> tuple[int, bytes]:
+        del timeout
+        if view != "raw":
+            raise ValueError("fake only serves raw")
+        if after_sequence >= 7:
+            raise EOFError("fake stream ended")
+        return 7, b"fake-jpeg"
+
     def start(self, raw: dict[str, Any]) -> dict[str, Any]:
         self.started = dict(raw)
         return {"status": "starting", "session_id": str(raw["run_id"])}
@@ -846,6 +906,17 @@ class DriveHttpTests(_WorkspaceTestCase):
         self.assertEqual(status, 201)
         self.assertEqual(json.loads(body)["human_markers_written"], 1)
         self.assertEqual(self.fake.markers[0]["label"], "interesting")
+
+    def test_drive_mjpeg_route_streams_multipart_without_serial_polling(self) -> None:
+        status, headers, body = self.request("/api/drive/stream.mjpg?view=raw")
+
+        self.assertEqual(status, 200)
+        self.assertEqual(
+            headers["Content-Type"],
+            "multipart/x-mixed-replace; boundary=carla-drive",
+        )
+        self.assertIn(b"X-Drive-Frame-Sequence: 7", body)
+        self.assertIn(b"fake-jpeg", body)
 
     def test_drive_mutations_require_operator_token(self) -> None:
         with self.assertRaises(urllib.error.HTTPError) as caught:

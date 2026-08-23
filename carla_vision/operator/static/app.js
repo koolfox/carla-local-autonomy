@@ -12,7 +12,7 @@ const state = {
   drive: {
     catalog: null,
     session: { status: "idle" },
-    view: "overlay",
+    view: "raw",
     inputFocused: false,
     keys: {
       forward: false,
@@ -37,8 +37,9 @@ const state = {
     controlPending: false,
     controlFailed: false,
     stateInFlight: false,
-    frameLoading: false,
-    frameTimer: null,
+    streamKey: "",
+    streamReady: false,
+    streamRetryTimer: null,
     pollFailed: false,
     lastSafetyStopAt: 0,
     lastTerminalSession: null,
@@ -64,8 +65,20 @@ const state = {
       distance: 6.5,
       cameraPreset: "orbit",
       pointer: null,
+      stream: {
+        source_fps: 0,
+        frame_age_seconds: null,
+        stale: true,
+      },
     },
   },
+};
+
+const DRIVE_CAMERA_PROFILES = {
+  balanced: { resolution: "1280x720", fps: 30 },
+  "high-refresh": { resolution: "1280x720", fps: 60 },
+  detail: { resolution: "1920x1080", fps: 30 },
+  compatibility: { resolution: "640x384", fps: 10 },
 };
 
 const DRIVE_EXPERIMENTS = {
@@ -618,8 +631,16 @@ function driveCapabilityValue(capabilities, keys) {
 function driveWorldCapabilities() {
   const capabilities = state.drive.catalog?.capabilities || {};
   const nativeWorker = driveCapabilityValue(capabilities, ["native_worker"]);
+  const compressedCamera =
+    nativeWorker &&
+    driveCapabilityValue(capabilities, ["compressed_camera_relay"]) &&
+    driveCapabilityValue(capabilities, ["persistent_mjpeg_camera_relay"]) &&
+    driveCapabilityValue(capabilities, ["in_memory_jpeg_encoder_available"]);
   return {
     nativeWorker,
+    compressedCamera,
+    camera60:
+      compressedCamera && driveCapabilityValue(capabilities, ["camera_60_fps"]),
     mapReload:
       nativeWorker &&
       driveCapabilityValue(capabilities, ["map_reload", "world_reload", "native_world_reload"]),
@@ -705,6 +726,7 @@ function garagePreviewPayload() {
     walker_count: Number($("drive-walkers-choice")?.value || 0),
     prop_preset: $("drive-props").value || "none",
     spectator_mirror: checked("drive-spectator-follow"),
+    profile: $("drive-camera-profile").value,
   };
 }
 
@@ -837,14 +859,19 @@ function renderGaragePreviewUi() {
   $("garage-orbit-hint").hidden = !interactive;
 
   const status = $("garage-preview-status");
+  const sourceFps = Number(garage.stream?.source_fps || 0);
+  const streamStale = live && Boolean(garage.stream?.stale);
   status.textContent = garage.busy
     ? "Loading…"
     : live
-      ? "● Live"
+      ? streamStale
+        ? "● Live · stream stale"
+        : `● Live · ${sourceFps.toFixed(1)} FPS`
       : garage.failed
         ? "Preview unavailable"
         : "Preview paused";
   status.classList.toggle("active", live);
+  status.classList.toggle("stale", streamStale);
 
   const toggle = $("garage-preview-toggle");
   toggle.textContent = garage.busy
@@ -878,6 +905,7 @@ async function refreshGaragePreviewState({ quiet = true } = {}) {
     const payload = await request("/api/garage/preview/state");
     const active = garagePreviewIsActive(payload);
     state.drive.garage.active = active;
+    state.drive.garage.stream = payload.stream || state.drive.garage.stream;
     if (active) {
       state.drive.garage.enabled = true;
       if (!$("garage-preview-frame").getAttribute("src")) loadGarageLiveStream();
@@ -904,12 +932,13 @@ async function configureGaragePreview({ announce = false } = {}) {
     "CARLA is placing the selected car in the world.",
   );
   try {
-    await request("/api/garage/preview/configure", {
+    const configured = await request("/api/garage/preview/configure", {
       method: "POST",
       body: JSON.stringify(payload),
     });
     state.drive.garage.configKey = key;
     state.drive.garage.active = true;
+    state.drive.garage.stream = configured.stream || state.drive.garage.stream;
     Object.assign(state.drive.garage, GARAGE_DEFAULT_ORBIT);
     state.drive.garage.sequence = 0;
     setGarageCameraPreset("orbit");
@@ -1350,13 +1379,52 @@ async function refreshDriveCatalog() {
 
 function updateDriveModelToggle() {
   const enabled = checked("drive-detector-enabled");
-  setDriveView(enabled ? "overlay" : "raw");
+  if (!enabled) setDriveView("raw");
   updateDriveConfigAvailability();
+}
+
+function applyDriveCameraProfile() {
+  const profile = DRIVE_CAMERA_PROFILES[$("drive-camera-profile").value];
+  if (!profile || driveIsActive()) return;
+  $("drive-resolution").value = profile.resolution;
+  $("drive-camera-fps").value = String(profile.fps);
+}
+
+function configureDriveCameraProfiles() {
+  const select = $("drive-camera-profile");
+  const note = $("drive-camera-profile-note");
+  if (!state.drive.catalog) {
+    note.textContent = "Checking the compressed camera relay…";
+    return;
+  }
+  const capabilities = driveWorldCapabilities();
+  for (const option of select.options) {
+    const needsRelay = option.value !== "compatibility";
+    const needsSixty = option.value === "high-refresh";
+    option.disabled =
+      (needsRelay && !capabilities.compressedCamera) ||
+      (needsSixty && !capabilities.camera60);
+    option.title = option.disabled
+      ? needsSixty && capabilities.compressedCamera
+        ? "The connected World Worker does not advertise 60 FPS camera support."
+        : "This profile requires the persistent in-memory compressed camera relay."
+      : "";
+  }
+  if (select.selectedOptions[0]?.disabled) {
+    select.value = "compatibility";
+    applyDriveCameraProfile();
+  }
+  note.textContent = capabilities.compressedCamera
+    ? capabilities.camera60
+      ? "Persistent Worker camera ready. High refresh is available for live testing."
+      : "Persistent Worker camera ready. High refresh is unavailable on this Worker."
+    : "Compatibility mode is enforced to avoid sending raw high-resolution frames over the LAN.";
 }
 
 function updateDriveConfigAvailability() {
   const active = driveIsActive();
   const detectorEnabled = checked("drive-detector-enabled");
+  configureDriveCameraProfiles();
   const lockIds = [
     "drive-run-id",
     "drive-host",
@@ -1364,6 +1432,7 @@ function updateDriveConfigAvailability() {
     "drive-vehicle",
     "drive-seed",
     "drive-props",
+    "drive-camera-profile",
     "drive-resolution",
     "drive-camera-fps",
     "drive-camera-fov",
@@ -1497,6 +1566,24 @@ function renderDriveState() {
   const recordingBadge = $("drive-hud-recording");
   recordingBadge.textContent = recording ? "● REC" : "REC OFF";
   recordingBadge.classList.toggle("active", recording);
+  const stream = session.stream || {};
+  const sourceFps = Number(stream.source_fps || 0);
+  const sourceAge = stream.frame_age_seconds == null
+    ? Number.NaN
+    : Number(stream.frame_age_seconds);
+  const streamStale = driveIsRunning() && Boolean(stream.stale);
+  const streamBadge = $("drive-hud-stream");
+  streamBadge.textContent = driveIsRunning()
+    ? streamStale
+      ? "STREAM STALE"
+      : `STREAM ${sourceFps.toFixed(1)} FPS`
+    : "STREAM —";
+  streamBadge.classList.toggle("stale", streamStale);
+  $("drive-stream-health").textContent = driveIsRunning()
+    ? `${stream.resolution || "camera"} · ${sourceFps.toFixed(1)} FPS · ${
+        Number.isFinite(sourceAge) ? `${Math.round(sourceAge * 1000)} ms` : "waiting"
+      }`
+    : "waiting";
 
   const deadman = $("drive-deadman");
   if (autopilotActive) {
@@ -1571,8 +1658,17 @@ function renderDriveState() {
     state.drive.view === "overlay"
       ? session.overlay_frame_sequence
       : session.raw_frame_sequence;
+  const viewFps = Number(
+    state.drive.view === "overlay" ? stream.overlay_fps || 0 : stream.source_fps || 0,
+  );
+  const selectedAge = state.drive.view === "overlay"
+    ? stream.overlay_age_seconds
+    : stream.frame_age_seconds;
+  const viewAge = selectedAge == null ? Number.NaN : Number(selectedAge);
   $("drive-frame-state").textContent = driveIsRunning()
-    ? `${state.drive.view === "overlay" ? "Detections" : "Camera"} · frame ${sequence ?? "—"}`
+    ? `${state.drive.view === "overlay" ? "Detections" : "Camera"} · ${viewFps.toFixed(1)} FPS · ${
+        Number.isFinite(viewAge) ? `${Math.round(viewAge * 1000)} ms` : "waiting"
+      } · frame ${sequence ?? "—"}`
     : statusName === "starting"
       ? "Starting camera stream…"
       : statusName === "stopping"
@@ -1582,10 +1678,9 @@ function renderDriveState() {
   updateDriveConfigAvailability();
   renderExperimentUi();
   if (driveIsRunning()) {
-    scheduleDriveFrame(0);
+    connectDriveStream();
   } else {
-    state.drive.frameLoading = false;
-    window.clearTimeout(state.drive.frameTimer);
+    disconnectDriveStream();
   }
 
   if (["success", "failed"].includes(statusName) && driveSessionId()) {
@@ -1627,51 +1722,58 @@ async function refreshDriveState() {
 }
 
 function setDriveView(view) {
-  state.drive.view = view === "overlay" ? "overlay" : "raw";
+  const nextView = view === "overlay" ? "overlay" : "raw";
+  if (nextView !== state.drive.view) disconnectDriveStream();
+  state.drive.view = nextView;
   for (const candidate of ["raw", "overlay"]) {
     const button = $(`drive-view-${candidate}`);
     const active = candidate === state.drive.view;
     button.classList.toggle("active", active);
     button.setAttribute("aria-pressed", String(active));
   }
-  state.drive.frameLoading = false;
-  window.clearTimeout(state.drive.frameTimer);
   renderDriveState();
 }
 
-function scheduleDriveFrame(delay = 80) {
-  if (!driveIsRunning()) return;
-  window.clearTimeout(state.drive.frameTimer);
-  state.drive.frameTimer = window.setTimeout(refreshDriveFrame, delay);
+function disconnectDriveStream() {
+  window.clearTimeout(state.drive.streamRetryTimer);
+  state.drive.streamRetryTimer = null;
+  state.drive.streamKey = "";
+  state.drive.streamReady = false;
+  const frame = $("drive-frame");
+  frame.onload = null;
+  frame.onerror = null;
+  frame.removeAttribute("src");
+  frame.style.display = "none";
+  $("drive-empty").style.display = "flex";
 }
 
-function refreshDriveFrame() {
-  if (
-    !driveIsRunning() ||
-    state.drive.frameLoading ||
-    !$("panel-drive").classList.contains("active")
-  ) {
-    scheduleDriveFrame(120);
-    return;
-  }
-  state.drive.frameLoading = true;
-  const requestedView = state.drive.view;
-  const candidate = new Image();
-  candidate.onload = () => {
-    state.drive.frameLoading = false;
-    if (driveIsRunning() && requestedView === state.drive.view) {
-      const frame = $("drive-frame");
-      frame.src = candidate.src;
-      frame.style.display = "block";
-      $("drive-empty").style.display = "none";
-    }
-    scheduleDriveFrame(65);
+function connectDriveStream() {
+  if (!driveIsRunning() || !$("panel-drive").classList.contains("active")) return;
+  const key = `${driveSessionId()}:${state.drive.view}`;
+  const frame = $("drive-frame");
+  if (state.drive.streamKey === key && frame.getAttribute("src")) return;
+  window.clearTimeout(state.drive.streamRetryTimer);
+  state.drive.streamRetryTimer = null;
+  state.drive.streamKey = key;
+  state.drive.streamReady = false;
+  frame.onload = () => {
+    if (state.drive.streamKey !== key) return;
+    state.drive.streamReady = true;
+    frame.style.display = "block";
+    $("drive-empty").style.display = "none";
   };
-  candidate.onerror = () => {
-    state.drive.frameLoading = false;
-    scheduleDriveFrame(220);
+  frame.onerror = () => {
+    if (state.drive.streamKey !== key || !driveIsRunning()) return;
+    state.drive.streamKey = "";
+    state.drive.streamReady = false;
+    frame.removeAttribute("src");
+    frame.style.display = "none";
+    $("drive-empty").style.display = "flex";
+    state.drive.streamRetryTimer = window.setTimeout(connectDriveStream, 1200);
   };
-  candidate.src = `/api/drive/frame.jpg?view=${encodeURIComponent(requestedView)}&t=${Date.now()}`;
+  frame.src = `/api/drive/stream.mjpg?view=${encodeURIComponent(state.drive.view)}&session=${encodeURIComponent(
+    driveSessionId(),
+  )}&t=${Date.now()}`;
 }
 
 function clearDriveKeys() {
@@ -2133,6 +2235,7 @@ async function changeDriveWeather() {
 function bindDriveConsole() {
   $("drive-run-id").value = generatedId("drive");
   updateRange("drive-confidence", "drive-confidence-value", 2);
+  applyDriveCameraProfile();
   $("drive-start-form").addEventListener("submit", startDrive);
   $("carla-discover").addEventListener("click", () => void discoverCarla());
   $("drive-stop").addEventListener("click", stopDrive);
@@ -2158,6 +2261,10 @@ function bindDriveConsole() {
   }
   $("drive-detector").addEventListener("change", selectPreferredDriveWeight);
   $("drive-detector-enabled").addEventListener("change", updateDriveModelToggle);
+  $("drive-camera-profile").addEventListener("change", () => {
+    applyDriveCameraProfile();
+    scheduleGarageConfigure();
+  });
   $("drive-weather").addEventListener("change", changeDriveWeather);
   for (const button of document.querySelectorAll("[data-drive-mode]")) {
     button.addEventListener("click", () => setDriveInitialControlMode(button.dataset.driveMode));
