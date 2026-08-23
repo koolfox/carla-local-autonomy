@@ -13,7 +13,7 @@ import math
 import socket
 import threading
 import time
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from http import HTTPStatus
 from typing import Any
@@ -87,7 +87,12 @@ class WorldWorkerCameraFrame:
 
 
 class WorldWorkerCameraStream:
-    """Newest-frame long-poll reader for the worker-side JPEG camera relay."""
+    """Newest-frame reader for the worker-side persistent MJPEG relay.
+
+    New workers expose one authenticated multipart response, avoiding an HTTP
+    request/response round trip for every camera frame.  Older workers retain
+    the long-poll endpoint, which remains an automatic compatibility fallback.
+    """
 
     def __init__(
         self,
@@ -103,6 +108,11 @@ class WorldWorkerCameraStream:
         self._latest: WorldWorkerCameraFrame | None = None
         self._error: BaseException | None = None
         self._closed = False
+        self.transport = (
+            "worker_mjpeg"
+            if bool(scene.capabilities.get("persistent_mjpeg_camera_relay"))
+            else "worker_jpeg_long_poll"
+        )
         self._thread = threading.Thread(
             target=self._run,
             name=f"world-worker-camera-{scene.scene_id}",
@@ -113,21 +123,76 @@ class WorldWorkerCameraStream:
     def _run(self) -> None:
         sequence = -1
         try:
+            if self.transport == "worker_mjpeg":
+                failures = 0
+                while not self._closed:
+                    try:
+                        for frame in self.client.camera_frames(
+                            self.scene,
+                            timeout=self.timeout,
+                        ):
+                            if self._closed:
+                                return
+                            failures = 0
+                            if frame.sequence <= sequence:
+                                continue
+                            sequence = frame.sequence
+                            self._publish(frame)
+                        if self._closed:
+                            return
+                        raise EOFError("persistent camera stream ended")
+                    except WorldWorkerError as error:
+                        if error.status in {
+                            HTTPStatus.NOT_FOUND,
+                            HTTPStatus.METHOD_NOT_ALLOWED,
+                            HTTPStatus.NOT_IMPLEMENTED,
+                        }:
+                            # Only a Worker that explicitly lacks the endpoint
+                            # may use the compatibility long-poll lane. A CARLA
+                            # stall or network timeout must reconnect MJPEG.
+                            self.transport = "worker_jpeg_long_poll_fallback"
+                            break
+                        if (
+                            error.status is not None
+                            and error.status < HTTPStatus.INTERNAL_SERVER_ERROR
+                            and error.status
+                            not in {HTTPStatus.REQUEST_TIMEOUT, HTTPStatus.TOO_MANY_REQUESTS}
+                        ):
+                            raise
+                        failures += 1
+                        if failures >= 5:
+                            raise
+                    except (EOFError, TimeoutError, OSError):
+                        failures += 1
+                        if failures >= 5:
+                            raise
+
+                    retry_seconds = min(2.0, 0.25 * (2 ** (failures - 1)))
+                    with self._condition:
+                        if self._closed:
+                            return
+                        self._condition.wait(retry_seconds)
             while not self._closed:
                 frame = self.client.camera_frame(
                     self.scene,
                     after_sequence=sequence,
                     timeout=self.timeout,
                 )
+                if frame.sequence <= sequence:
+                    time.sleep(0.01)
+                    continue
                 sequence = frame.sequence
-                with self._condition:
-                    self._latest = frame
-                    self._condition.notify_all()
+                self._publish(frame)
         except BaseException as error:
             if not self._closed:
                 with self._condition:
                     self._error = error
                     self._condition.notify_all()
+
+    def _publish(self, frame: WorldWorkerCameraFrame) -> None:
+        with self._condition:
+            self._latest = frame
+            self._condition.notify_all()
 
     def latest(self) -> WorldWorkerCameraFrame | None:
         with self._condition:
@@ -518,10 +583,153 @@ class WorldWorkerClient:
             raise WorldWorkerError(f"World Worker camera is unreachable: {reason}") from error
         if status != HTTPStatus.OK or len(raw) > _MAX_RESPONSE_BYTES:
             raise WorldWorkerError("World Worker camera response is invalid", status=status)
+        return self._camera_frame_from_headers(raw, headers, status=status)
+
+    def camera_frames(
+        self,
+        scene: WorldWorkerScene,
+        *,
+        timeout: float,
+    ) -> Iterator[WorldWorkerCameraFrame]:
+        """Yield authenticated newest-only frames from one MJPEG response."""
+
+        scene_id = quote(scene.scene_id, safe="")
+        request = Request(
+            f"{self.base_url}/v1/scenes/{scene_id}/camera/stream.mjpg",
+            headers={
+                "Accept": "multipart/x-mixed-replace",
+                "Authorization": f"Bearer {self._bearer_token}",
+                "X-Scene-Lease": scene.lease_token,
+            },
+            method="GET",
+        )
+        try:
+            with self._opener.open(request, timeout=float(timeout) + 2.0) as response:
+                status = int(response.status)
+                if status != HTTPStatus.OK:
+                    raise WorldWorkerError(
+                        f"World Worker camera stream returned HTTP {status}",
+                        status=status,
+                    )
+                boundary = self._mjpeg_boundary(response.headers.get("Content-Type", ""))
+                while True:
+                    marker = response.readline(256)
+                    if marker == b"":
+                        return
+                    if len(marker) > 255:
+                        raise WorldWorkerError("World Worker camera boundary is invalid")
+                    marker = marker.rstrip(b"\r\n")
+                    if not marker:
+                        continue
+                    if marker == b"--" + boundary + b"--":
+                        return
+                    if marker != b"--" + boundary:
+                        raise WorldWorkerError("World Worker camera boundary is invalid")
+
+                    part_headers: dict[str, str] = {}
+                    for _ in range(32):
+                        line = response.readline(8193)
+                        if not line:
+                            raise WorldWorkerError("World Worker camera part ended early")
+                        if len(line) > 8192:
+                            raise WorldWorkerError("World Worker camera header is too large")
+                        if line in {b"\r\n", b"\n"}:
+                            break
+                        try:
+                            name, value = line.decode("ascii").rstrip("\r\n").split(":", 1)
+                        except (UnicodeError, ValueError) as error:
+                            raise WorldWorkerError(
+                                "World Worker camera header is invalid"
+                            ) from error
+                        normalized = name.strip().lower()
+                        if not normalized or normalized in part_headers:
+                            raise WorldWorkerError("World Worker camera header is invalid")
+                        part_headers[normalized] = value.strip()
+                    else:
+                        raise WorldWorkerError("World Worker camera part has too many headers")
+
+                    if part_headers.get("content-type", "").lower() != "image/jpeg":
+                        raise WorldWorkerError("World Worker camera part is not JPEG")
+                    try:
+                        length = int(part_headers["content-length"])
+                    except (KeyError, ValueError) as error:
+                        raise WorldWorkerError(
+                            "World Worker camera content length is invalid"
+                        ) from error
+                    if not 0 < length <= _MAX_RESPONSE_BYTES:
+                        raise WorldWorkerError("World Worker camera frame exceeds the size limit")
+                    raw = self._read_exact(response, length)
+                    if self._read_exact(response, 2) != b"\r\n":
+                        raise WorldWorkerError("World Worker camera part terminator is invalid")
+                    yield self._camera_frame_from_headers(raw, part_headers, status=status)
+        except HTTPError as error:
+            body = error.read(_MAX_RESPONSE_BYTES + 1)
+            parsed = self._decode(body, status=error.code, allow_error=True)
+            error_body = parsed.get("error")
+            message = (
+                str(error_body.get("message", error.reason))
+                if isinstance(error_body, Mapping)
+                else str(error.reason)
+            )
+            raise WorldWorkerError(message, status=error.code) from error
+        except (URLError, TimeoutError, socket.timeout, OSError) as error:
+            reason = getattr(error, "reason", error)
+            raise WorldWorkerError(
+                f"World Worker camera stream is unreachable: {reason}"
+            ) from error
+
+    @staticmethod
+    def _read_exact(stream: Any, length: int) -> bytes:
+        chunks: list[bytes] = []
+        remaining = length
+        while remaining:
+            chunk = stream.read(remaining)
+            if not chunk:
+                raise WorldWorkerError("World Worker camera part ended early")
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        return b"".join(chunks)
+
+    @staticmethod
+    def _mjpeg_boundary(content_type: str) -> bytes:
+        pieces = [piece.strip() for piece in str(content_type).split(";")]
+        if not pieces or pieces[0].lower() != "multipart/x-mixed-replace":
+            raise WorldWorkerError("World Worker camera stream has an invalid content type")
+        raw_boundary = next(
+            (
+                piece.split("=", 1)[1].strip().strip('"')
+                for piece in pieces[1:]
+                if piece.lower().startswith("boundary=")
+            ),
+            "",
+        )
+        if (
+            not raw_boundary
+            or len(raw_boundary) > 70
+            or any(
+                character not in "-_0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                for character in raw_boundary
+            )
+        ):
+            raise WorldWorkerError("World Worker camera stream boundary is invalid")
+        return raw_boundary.encode("ascii")
+
+    @staticmethod
+    def _camera_frame_from_headers(
+        raw: bytes,
+        headers: Mapping[str, Any],
+        *,
+        status: int,
+    ) -> WorldWorkerCameraFrame:
         if not raw.startswith(b"\xff\xd8") or not raw.endswith(b"\xff\xd9"):
             raise WorldWorkerError("World Worker camera response is not JPEG", status=status)
+
+        def header(name: str) -> Any:
+            direct = headers.get(name)
+            return direct if direct is not None else headers.get(name.lower())
+
         try:
-            transform_payload = json.loads(headers.get("X-Camera-Transform", "null"))
+            transform_payload = json.loads(header("X-Camera-Transform"))
             location = transform_payload["location"]
             rotation = transform_payload["rotation"]
             transform = (
@@ -532,14 +740,17 @@ class WorldWorkerClient:
                 float(rotation["yaw"]),
                 float(rotation["roll"]),
             )
+            sequence = header("X-Camera-Sequence")
+            if sequence is None:
+                sequence = header("X-CARLA-Sequence")
             return WorldWorkerCameraFrame(
-                sequence=int(headers["X-Camera-Sequence"]),
-                frame=int(headers["X-CARLA-Frame"]),
-                timestamp=float(headers["X-CARLA-Timestamp"]),
+                sequence=int(sequence),
+                frame=int(header("X-CARLA-Frame")),
+                timestamp=float(header("X-CARLA-Timestamp")),
                 received_monotonic=time.monotonic(),
-                width=int(headers["X-Camera-Width"]),
-                height=int(headers["X-Camera-Height"]),
-                fov=float(headers["X-Camera-FOV"]),
+                width=int(header("X-Camera-Width")),
+                height=int(header("X-Camera-Height")),
+                fov=float(header("X-Camera-FOV")),
                 transform=transform,
                 jpeg=raw,
             )

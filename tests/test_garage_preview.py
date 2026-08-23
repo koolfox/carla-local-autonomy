@@ -40,9 +40,10 @@ def test_preview_config_is_strict_and_uses_authoritative_camera_defaults() -> No
     assert config.yaw == 325.0
     assert config.pitch == -10.0
     assert config.distance == 6.5
-    assert config.width == 1920
-    assert config.height == 1080
-    assert config.fps == 10.0
+    assert config.width == 1280
+    assert config.height == 720
+    assert config.fps == 30.0
+    assert config.profile == "balanced"
     assert config.traffic_count == 15
     assert config.walker_count == 10
     assert config.prop_preset == "construction"
@@ -57,6 +58,32 @@ def test_preview_config_is_strict_and_uses_authoritative_camera_defaults() -> No
         raw = preview_payload()
         raw.pop("traffic_count")
         GaragePreviewConfig.from_mapping(raw)
+
+
+@pytest.mark.parametrize(
+    ("profile", "width", "height", "fps"),
+    [
+        ("balanced", 1280, 720, 30.0),
+        ("high-refresh", 1280, 720, 60.0),
+        ("detail", 1920, 1080, 30.0),
+        ("compatibility", 640, 384, 10.0),
+    ],
+)
+def test_preview_config_maps_bounded_camera_profiles(
+    profile: str,
+    width: int,
+    height: int,
+    fps: float,
+) -> None:
+    config = GaragePreviewConfig.from_mapping(preview_payload(profile=profile))
+
+    assert (config.width, config.height, config.fps) == (width, height, fps)
+    assert config.profile == profile
+
+    with pytest.raises(ValueError, match="profile must be one of"):
+        GaragePreviewConfig.from_mapping(preview_payload(profile="unbounded"))
+    with pytest.raises(ValueError, match="unknown fields"):
+        GaragePreviewConfig.from_mapping(preview_payload(fps=60))
 
 
 def test_orbit_contract_normalizes_yaw_and_clamps_bounded_camera_controls() -> None:
@@ -373,6 +400,8 @@ def test_preview_uses_worker_jpeg_relay_without_raw_lan_camera(monkeypatch) -> N
         jpeg = b"\xff\xd8worker-jpeg\xff\xd9"
 
     class Stream:
+        transport = "worker_mjpeg"
+
         def __init__(self, *_: Any, **__: Any) -> None:
             self.closed = threading.Event()
             self.first = True
@@ -401,7 +430,7 @@ def test_preview_uses_worker_jpeg_relay_without_raw_lan_camera(monkeypatch) -> N
         ),
     )
     session = GaragePreviewSession(
-        GaragePreviewConfig.from_mapping(preview_payload()),
+        GaragePreviewConfig.from_mapping(preview_payload(profile="high-refresh")),
         carla_host="127.0.0.1",
         carla_port=2000,
         world_worker=worker,  # type: ignore[arg-type]
@@ -416,7 +445,15 @@ def test_preview_uses_worker_jpeg_relay_without_raw_lan_camera(monkeypatch) -> N
     assert started["active"] is True
     assert (sequence, jpeg) == (1, Frame.jpeg)
     assert worker.camera_requests[0]["mode"] == "garage"
-    assert worker.camera_requests[0]["width"] == 1920
+    assert worker.camera_requests[0]["width"] == 1280
+    assert worker.camera_requests[0]["height"] == 720
+    assert worker.camera_requests[0]["fps"] == 60.0
+    assert started["camera_profile"] == "high-refresh"
+    assert started["camera_target_fps"] == 60.0
+    assert started["camera_resolution"] == "1280x720"
+    assert started["camera_transport"] == "worker_mjpeg"
+    assert started["stream"]["source_fps"] == 0.0
+    assert started["stream"]["stale"] is False
     assert stopped["status"] == "stopped"
     assert rpc.closed is True
 

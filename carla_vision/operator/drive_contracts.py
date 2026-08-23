@@ -263,7 +263,7 @@ class DriveStartConfig:
             confidence=_number(raw["confidence"], "confidence", 0.0, 1.0),
             width=width,
             height=height,
-            camera_fps=_number(raw["camera_fps"], "camera_fps", 1.0, 20.0),
+            camera_fps=_number(raw["camera_fps"], "camera_fps", 1.0, 60.0),
             camera_fov=_number(raw["camera_fov"], "camera_fov", 30.0, 150.0),
             record_video=_boolean(raw["record_video"], "record_video"),
             spectator_follow=_boolean(raw["spectator_follow"], "spectator_follow"),

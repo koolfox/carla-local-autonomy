@@ -22,10 +22,10 @@
               <article class="card drive-viewer-card">
                 <div class="drive-viewer-toolbar">
                   <div class="drive-view-switch" role="group" aria-label="Camera view">
-                    <button id="drive-view-raw" class="drive-view-button" type="button" aria-pressed="false">
+                    <button id="drive-view-raw" class="drive-view-button active" type="button" aria-pressed="true">
                       Camera
                     </button>
-                    <button id="drive-view-overlay" class="drive-view-button active" type="button" aria-pressed="true">
+                    <button id="drive-view-overlay" class="drive-view-button" type="button" aria-pressed="false">
                       Detections
                     </button>
                   </div>
@@ -60,6 +60,7 @@
                     <span id="drive-hud-experiment">FREE DRIVE</span>
                     <span id="drive-hud-mode" class="drive-mode-indicator">MANUAL</span>
                     <span id="drive-hud-recording" class="drive-recording-indicator">REC OFF</span>
+                    <span id="drive-hud-stream" class="drive-stream-indicator">STREAM —</span>
                   </div>
                   <div class="drive-hud drive-hud-bottom">
                     <div>
@@ -371,14 +372,25 @@
                 </fieldset>
                 </details>
 
+                <label class="drive-video-profile">
+                  <span>Video quality</span>
+                  <select id="drive-camera-profile">
+                    <option value="balanced" selected>Balanced · 720p at 30 FPS</option>
+                    <option value="high-refresh">High refresh · 720p at 60 FPS</option>
+                    <option value="detail">Detail · 1080p at 30 FPS</option>
+                    <option value="compatibility">Compatibility · 640 × 384 at 10 FPS</option>
+                  </select>
+                  <small id="drive-camera-profile-note">Checking the compressed camera relay…</small>
+                </label>
+
                 <div class="drive-simple-toggles" aria-label="Drive options">
                   <label class="drive-simple-toggle">
-                    <input id="drive-detector-enabled" type="checkbox" checked>
+                    <input id="drive-detector-enabled" type="checkbox">
                     <span><strong>Detection overlay</strong><small>Show detected objects</small></span>
                   </label>
                   <label class="drive-simple-toggle">
                     <input id="drive-record-video" type="checkbox" checked>
-                    <span><strong>Record</strong><small>Save both camera views</small></span>
+                    <span><strong>Record</strong><small>Save the drive and optional AI view</small></span>
                   </label>
                   <label class="drive-simple-toggle">
                     <input id="drive-spectator-follow" type="checkbox">
@@ -415,17 +427,17 @@
                       Random starting-point seed
                       <input id="drive-seed" type="number" value="20260809" min="0" step="1" required>
                     </label>
-                    <label>
+                    <label hidden>
                       Camera resolution
                       <select id="drive-resolution">
-                        <option value="1920x1080" selected>1920 × 1080 · high quality</option>
-                        <option value="1280x720">1280 × 720 · balanced</option>
+                        <option value="1280x720" selected>1280 × 720 · realtime</option>
+                        <option value="1920x1080">1920 × 1080 · high quality</option>
                         <option value="640x384">640 × 384 · low bandwidth</option>
                       </select>
                     </label>
-                    <label>
+                    <label hidden>
                       Frames per second
-                      <input id="drive-camera-fps" type="number" value="10" min="1" max="20" step="1">
+                      <input id="drive-camera-fps" type="number" value="30" min="1" max="60" step="1">
                     </label>
                     <label>
                       Camera field of view
@@ -474,6 +486,7 @@
                   <div><dt>Steer</dt><dd id="drive-telemetry-steer">0%</dd></div>
                   <div><dt>Brake</dt><dd id="drive-telemetry-brake">0%</dd></div>
                   <div><dt>AI model</dt><dd id="drive-detector-state">off</dd></div>
+                  <div><dt>Video stream</dt><dd id="drive-stream-health">waiting</dd></div>
                 </dl>
                 <p id="drive-error" class="drive-error" role="alert"></p>
               </details>

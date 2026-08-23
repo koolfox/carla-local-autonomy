@@ -12,7 +12,9 @@ import math
 import random
 import threading
 import time
+from collections import deque
 from collections.abc import Callable, Mapping
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, TextIO
@@ -49,6 +51,9 @@ _BROWSER_LEASE_SECONDS = 0.40
 _CONTROL_PERIOD_SECONDS = 0.05
 _TELEMETRY_PERIOD_SECONDS = 0.20
 _WORKER_HEARTBEAT_SECONDS = 0.50
+# CARLA's native camera transport is uncompressed BGRA. Keep that legacy
+# fallback near 100 Mbit/s; higher profiles require the Worker-side encoder.
+_MAX_RAW_CAMERA_BYTES_PER_SECOND = 12 * 1024 * 1024
 HUMAN_MARKER_LABELS = frozenset(
     {
         "interesting",
@@ -356,6 +361,15 @@ class DriveSession:
         self._overlay_jpeg: bytes | None = None
         self._raw_frame_sequence = -1
         self._overlay_frame_sequence = -1
+        self._frame_received_monotonic: dict[str, float | None] = {
+            "raw": None,
+            "overlay": None,
+        }
+        self._frame_arrivals: dict[str, deque[float]] = {
+            "raw": deque(maxlen=180),
+            "overlay": deque(maxlen=180),
+        }
+        self._camera_transport = "pending"
         self._telemetry = {
             "speed": 0.0,
             "gear": 0,
@@ -399,6 +413,7 @@ class DriveSession:
                 if self._last_input is None
                 else max(0.0, time.monotonic() - self._last_input[1])
             )
+            stream = self._stream_snapshot(now)
             return {
                 "schema_version": "1.0",
                 "status": self._status,
@@ -439,6 +454,7 @@ class DriveSession:
                 "stop_reason": self._stop_reason,
                 "raw_frame_sequence": self._raw_frame_sequence,
                 "overlay_frame_sequence": self._overlay_frame_sequence,
+                "stream": stream,
                 "frames_seen": self._frames_seen,
                 "controls_written": self._controls_written,
                 "detections_written": self._detections_written,
@@ -602,6 +618,61 @@ class DriveSession:
                 raise FileNotFoundError(f"{view} drive frame is not ready")
             return sequence, payload
 
+    def wait_for_frame(
+        self,
+        view: str,
+        after_sequence: int = -1,
+        timeout: float = 5.0,
+    ) -> tuple[int, bytes]:
+        if view not in {"raw", "overlay"}:
+            raise ValueError("drive frame view must be raw or overlay")
+        deadline = time.monotonic() + float(timeout)
+        with self._frame_condition:
+            while True:
+                if view == "raw":
+                    sequence, payload = self._raw_frame_sequence, self._raw_jpeg
+                else:
+                    sequence, payload = self._overlay_frame_sequence, self._overlay_jpeg
+                if payload is not None and sequence > after_sequence:
+                    return sequence, payload
+                if self._status in _TERMINAL:
+                    raise EOFError("drive camera stream ended")
+                remaining = deadline - time.monotonic()
+                if remaining <= 0.0:
+                    raise TimeoutError(f"timed out waiting for a {view} drive frame")
+                self._frame_condition.wait(remaining)
+
+    def _stream_metrics(self, view: str, now: float) -> dict[str, float | bool | None]:
+        arrivals = self._frame_arrivals[view]
+        received = self._frame_received_monotonic[view]
+        fps = 0.0
+        if len(arrivals) >= 2:
+            elapsed = arrivals[-1] - arrivals[0]
+            if elapsed > 0.0:
+                fps = (len(arrivals) - 1) / elapsed
+        age = None if received is None else max(0.0, now - received)
+        stale_after = max(0.25, 3.0 / self.config.camera_fps)
+        return {
+            "fps": round(fps, 1),
+            "age_seconds": None if age is None else round(age, 3),
+            "stale": age is None or age > stale_after,
+        }
+
+    def _stream_snapshot(self, now: float) -> dict[str, Any]:
+        raw_stream = self._stream_metrics("raw", now)
+        overlay_stream = self._stream_metrics("overlay", now)
+        return {
+            "transport": self._camera_transport,
+            "resolution": f"{self.config.width}x{self.config.height}",
+            "target_fps": self.config.camera_fps,
+            "source_fps": raw_stream["fps"],
+            "frame_age_seconds": raw_stream["age_seconds"],
+            "stale": raw_stream["stale"],
+            "overlay_fps": overlay_stream["fps"],
+            "overlay_age_seconds": overlay_stream["age_seconds"],
+            "raw_video_model_independent": True,
+        }
+
     def _set_status(self, status: str) -> None:
         with self._lock:
             self._status = status
@@ -614,6 +685,9 @@ class DriveSession:
             else:
                 self._overlay_frame_sequence = sequence
                 self._overlay_jpeg = payload
+            received = time.monotonic()
+            self._frame_received_monotonic[view] = received
+            self._frame_arrivals[view].append(received)
             self._frame_condition.notify_all()
 
     def _record_mode_change(self, previous: str, current: str, reason: str) -> None:
@@ -852,6 +926,7 @@ class DriveSession:
         spectator_transform: list[Any] | None = None
         spectator_follow_active = False
         latest_raw: np.ndarray | None = None
+        latest_raw_jpeg: bytes | None = None
         latest_overlay: np.ndarray | None = None
         last_camera_sequence = -1
         last_result_sequence = -1
@@ -948,6 +1023,22 @@ class DriveSession:
                 and worker_scene is not None
                 and worker_scene.capabilities.get("compressed_camera_relay")
             )
+            persistent_camera = bool(
+                compressed_camera
+                and worker_scene is not None
+                and worker_scene.capabilities.get("persistent_mjpeg_camera_relay")
+            )
+            raw_camera_bytes_per_second = (
+                self.config.width * self.config.height * 4 * self.config.camera_fps
+            )
+            if (
+                not compressed_camera
+                and raw_camera_bytes_per_second > _MAX_RAW_CAMERA_BYTES_PER_SECOND
+            ):
+                raise RuntimeError(
+                    "the selected video profile requires the persistent compressed "
+                    "World Worker camera; use Compatibility 640x384 at 10 FPS"
+                )
             if compressed_camera:
                 assert self._world_worker is not None
                 assert worker_scene is not None
@@ -969,6 +1060,11 @@ class DriveSession:
                     worker_scene,
                     timeout=max(8.0, 4.0 / self.config.camera_fps),
                 )
+                self._camera_transport = getattr(
+                    stream,
+                    "transport",
+                    "worker_mjpeg" if persistent_camera else "worker_jpeg_long_poll",
+                )
             else:
                 camera = spawn_front_camera(
                     rpc,
@@ -988,6 +1084,7 @@ class DriveSession:
                     camera[5],
                     timeout=max(8.0, 4.0 / self.config.camera_fps),
                 )
+                self._camera_transport = "carla_raw_bgra"
             self._camera_id = camera_id
             stream.wait_for_frame(timeout=10.0)
 
@@ -1057,7 +1154,13 @@ class DriveSession:
                     "spawn_transform": spawn_transform,
                     "weather_preset": self.config.weather_preset,
                     "world_worker_scene_id": self._worker_scene_id,
-                    "camera_transport": ("worker_jpeg" if compressed_camera else "carla_raw_bgra"),
+                    "camera_transport": (
+                        "worker_mjpeg"
+                        if persistent_camera
+                        else "worker_jpeg"
+                        if compressed_camera
+                        else "carla_raw_bgra"
+                    ),
                     "control_mode": self._control_mode,
                     "model_output_actuated": False,
                 },
@@ -1070,16 +1173,33 @@ class DriveSession:
                 now = time.monotonic()
                 frame = stream.latest()
                 if frame is not None and frame.sequence > last_camera_sequence:
+                    if isinstance(stream, WorldWorkerCameraStream):
+                        self._camera_transport = getattr(
+                            stream,
+                            "transport",
+                            self._camera_transport,
+                        )
                     last_camera_sequence = frame.sequence
                     last_camera_received = frame.received_monotonic
-                    latest_raw = frame.bgr()
                     source_jpeg = getattr(frame, "jpeg", None)
-                    browser_frame = (
-                        bytes(source_jpeg) if isinstance(source_jpeg, bytes) else _jpeg(latest_raw)
-                    )
-                    self._cache_frame("raw", frame.sequence, browser_frame)
-                    self._frames_seen += 1
-                    if raw_recorder is not None:
+                    if isinstance(source_jpeg, bytes):
+                        # The Worker already encoded this frame beside CARLA.
+                        # Publish the zero-copy browser lane before optional
+                        # recording decode work so review-video generation does
+                        # not add glass-to-glass latency to this frame.
+                        browser_frame = bytes(source_jpeg)
+                        latest_raw_jpeg = browser_frame
+                        self._cache_frame("raw", frame.sequence, browser_frame)
+                        self._frames_seen += 1
+                        if raw_recorder is not None:
+                            latest_raw = frame.bgr()
+                    else:
+                        latest_raw = frame.bgr()
+                        browser_frame = _jpeg(latest_raw)
+                        latest_raw_jpeg = browser_frame
+                        self._cache_frame("raw", frame.sequence, browser_frame)
+                        self._frames_seen += 1
+                    if raw_recorder is not None and latest_raw is not None:
                         raw_recorder.submit(frame.sequence, latest_raw)
                     if perception is not None and not detector_failed:
                         try:
@@ -1348,6 +1468,7 @@ class DriveSession:
                 raw_video_path=raw_video_path,
                 overlay_video_path=overlay_video_path,
                 latest_raw=latest_raw,
+                latest_raw_jpeg=latest_raw_jpeg,
                 latest_overlay=latest_overlay,
             )
 
@@ -1361,6 +1482,7 @@ class DriveSession:
         raw_video_path: Path,
         overlay_video_path: Path,
         latest_raw: np.ndarray | None,
+        latest_raw_jpeg: bytes | None,
         latest_overlay: np.ndarray | None,
     ) -> None:
         for path, role in (
@@ -1381,10 +1503,12 @@ class DriveSession:
             except Exception as error:
                 self._cleanup_errors.append(f"register {role}: {error}")
 
-        if latest_raw is not None:
+        if latest_raw_jpeg is not None or latest_raw is not None:
             try:
                 latest_raw_path = tracker.artifact_path("latest-raw.jpg")
-                if not cv2.imwrite(str(latest_raw_path), latest_raw):
+                if latest_raw_jpeg is not None:
+                    latest_raw_path.write_bytes(latest_raw_jpeg)
+                elif latest_raw is not None and not cv2.imwrite(str(latest_raw_path), latest_raw):
                     raise RuntimeError("OpenCV did not write latest raw frame")
                 tracker.register_artifact(latest_raw_path, role="latest_raw_drive_frame")
             except Exception as error:
@@ -1509,6 +1633,7 @@ class DriveSession:
         summary_path = tracker.artifact_path("summary.json")
         with self._lock:
             mode_history = [dict(item) for item in self._mode_history]
+            stream = self._stream_snapshot(time.monotonic())
         summary = {
             "schema_version": "1.0",
             "object_type": "interactive_drive_session_summary",
@@ -1539,6 +1664,7 @@ class DriveSession:
             "walker_count_actual": self._walker_count_actual,
             "duration_seconds": time.monotonic() - self._started_monotonic,
             "frames_seen": self._frames_seen,
+            "stream": stream,
             "controls_written": self._controls_written,
             "detections_written": self._detections_written,
             "manual_commands": self._manual_commands,
@@ -1704,11 +1830,17 @@ class DriveSessionManager:
 
     def start(self, raw: Mapping[str, Any]) -> dict[str, Any]:
         active_world_worker: WorldWorkerClient | None = None
+        camera_capabilities: Mapping[str, Any] = {}
         if self._world_worker is not None:
             try:
                 health = self._world_worker.health()
                 if not _world_worker_health_ready(health):
                     raise RuntimeError("World Worker reports that CARLA is unavailable")
+                worker_catalog = self._world_worker.catalog()
+                raw_capabilities = worker_catalog.get("capabilities", {})
+                if not isinstance(raw_capabilities, Mapping):
+                    raise RuntimeError("World Worker camera capabilities are malformed")
+                camera_capabilities = raw_capabilities
             except Exception:
                 # A configured but unreachable worker must not silently claim
                 # world features. Exact legacy defaults may still drive through
@@ -1724,6 +1856,18 @@ class DriveSessionManager:
             expected_port=self.carla_port,
             world_worker_configured=active_world_worker is not None,
         )
+        compressed_relay = active_world_worker is not None and all(
+            bool(camera_capabilities.get(key))
+            for key in (
+                "compressed_camera_relay",
+                "persistent_mjpeg_camera_relay",
+                "in_memory_jpeg_encoder_available",
+            )
+        )
+        if not compressed_relay:
+            config = replace(config, width=640, height=384, camera_fps=10.0)
+        elif config.camera_fps > 30.0 and not bool(camera_capabilities.get("camera_60_fps")):
+            config = replace(config, camera_fps=30.0)
         with self._lock:
             if self._session is not None and self._session.snapshot()["status"] in _ACTIVE:
                 raise RuntimeError("another interactive drive session is already active")
@@ -1819,6 +1963,18 @@ class DriveSessionManager:
         if session is None:
             raise FileNotFoundError("no interactive drive session exists")
         return session.frame(view)
+
+    def wait_for_frame(
+        self,
+        view: str,
+        after_sequence: int = -1,
+        timeout: float = 5.0,
+    ) -> tuple[int, bytes]:
+        with self._lock:
+            session = self._session
+        if session is None:
+            raise FileNotFoundError("no interactive drive session exists")
+        return session.wait_for_frame(view, after_sequence, timeout)
 
     def shutdown(self) -> None:
         with self._lock:

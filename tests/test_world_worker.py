@@ -5,14 +5,14 @@ import http.client
 import json
 import os
 import subprocess
-import tempfile
 import threading
 import unittest
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
+from unittest import mock
 
 from carla_vision.native.world_worker import (
+    CompressedCameraConfig,
     CompressedCameraRelay,
     SceneConfig,
     WorkerError,
@@ -34,7 +34,7 @@ class FakeClock:
 
 
 class CompressedCameraRelayTests(unittest.TestCase):
-    def test_relay_encodes_with_carla_and_retains_only_the_latest_jpeg(self) -> None:
+    def test_relay_encodes_in_memory_and_retains_only_the_latest_jpeg(self) -> None:
         class Sensor:
             id = 71
             callback: Any = None
@@ -47,36 +47,101 @@ class CompressedCameraRelayTests(unittest.TestCase):
                 self.stopped = True
 
         class Image:
-            frame = 19
-            timestamp = 2.5
             width = 1920
             height = 1080
             fov = 65.0
+            raw_data = b"unused-by-injected-test-encoder"
             transform = FakeTransform(
                 FakeLocation(1.0, 2.0, 3.0),
                 FakeRotation(-4.0, 5.0, 6.0),
             )
 
-            def save_to_disk(self, path: str) -> None:
-                Path(path).write_bytes(b"\xff\xd8worker-side-jpeg\xff\xd9")
+            def __init__(self, frame: int) -> None:
+                self.frame = frame
+                self.timestamp = frame / 10.0
 
-        root = Path(tempfile.mkdtemp(prefix="worker-camera-test-"))
+            def save_to_disk(self, path: str) -> None:
+                raise AssertionError(f"disk encoding must not be used: {path}")
+
+        clock = FakeClock()
+        first_started = threading.Event()
+        release_first = threading.Event()
+
+        def encode(image: Image, quality: int) -> bytes:
+            self.assertEqual(quality, 90)
+            if image.frame == 19:
+                first_started.set()
+                self.assertTrue(release_first.wait(1.0))
+            clock.advance(0.02)
+            return b"\xff\xd8frame-" + str(image.frame).encode("ascii") + b"\xff\xd9"
+
         sensor = Sensor()
-        relay = CompressedCameraRelay(sensor, temporary_root=root)
+        relay = CompressedCameraRelay(sensor, jpeg_encoder=encode, clock=clock)
         relay.listen()
         assert sensor.callback is not None
-        sensor.callback(Image())
+        sensor.callback(Image(19))
+        self.assertTrue(first_started.wait(1.0))
+        sensor.callback(Image(20))
+        sensor.callback(Image(21))
+        release_first.set()
 
-        sequence, payload, metadata = relay.wait(-1, 0.2)
-        self.assertEqual(sequence, 0)
-        self.assertEqual(payload, b"\xff\xd8worker-side-jpeg\xff\xd9")
-        self.assertEqual(metadata["frame"], 19)
+        sequence, payload, metadata = relay.wait(0, 1.0)
+        self.assertEqual(sequence, 1)
+        self.assertEqual(payload, b"\xff\xd8frame-21\xff\xd9")
+        self.assertEqual(metadata["frame"], 21)
         self.assertEqual(metadata["width"], 1920)
         self.assertEqual(metadata["transform"]["location"]["x"], 1.0)
+        telemetry = relay.snapshot()["telemetry"]
+        self.assertEqual(telemetry["frames_received"], 3)
+        self.assertEqual(telemetry["frames_encoded"], 2)
+        self.assertEqual(telemetry["frames_dropped_pending"], 1)
+        self.assertEqual(telemetry["frames_replaced"], 1)
+        self.assertEqual(telemetry["average_encode_ms"], 20.0)
+        self.assertEqual(telemetry["actual_fps_5s"], 50.0)
+        self.assertEqual(
+            telemetry["encoded_bytes_total"],
+            len(b"\xff\xd8frame-19\xff\xd9") + len(b"\xff\xd8frame-21\xff\xd9"),
+        )
 
         relay.close()
         self.assertTrue(sensor.stopped)
-        self.assertFalse(root.exists())
+
+    def test_compressed_camera_accepts_sixty_fps_and_rejects_more(self) -> None:
+        payload = {
+            "lease_token": "lease",
+            "mode": "drive",
+            "width": 1280,
+            "height": 720,
+            "fps": 60.0,
+            "fov": 90.0,
+        }
+        self.assertEqual(CompressedCameraConfig.from_mapping(payload).fps, 60.0)
+        with self.assertRaisesRegex(WorkerError, r"\[1.0, 60.0\]"):
+            CompressedCameraConfig.from_mapping({**payload, "fps": 60.1})
+
+    def test_listen_failure_stops_sensor_and_closes_relay(self) -> None:
+        class Sensor:
+            id = 72
+            stopped = False
+
+            def listen(self, callback: Any) -> None:
+                del callback
+                raise RuntimeError("sensor callback registration failed")
+
+            def stop(self) -> None:
+                self.stopped = True
+
+        sensor = Sensor()
+        relay = CompressedCameraRelay(
+            sensor,
+            jpeg_encoder=lambda image, quality: b"",
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "registration failed"):
+            relay.listen()
+
+        self.assertTrue(sensor.stopped)
+        relay.close()
 
 
 class FakeAttribute:
@@ -526,6 +591,59 @@ class WorldWorkerTest(unittest.TestCase):
         self.assertTrue(catalog["capabilities"]["asynchronous_world"])
         self.assertEqual(catalog["carla"]["current_map"], "Town10HD_Opt")
 
+    def test_camera_activation_failure_rolls_back_owned_sensor(self) -> None:
+        self.library.blueprints["sensor.camera.rgb"] = FakeBlueprint(
+            "sensor.camera.rgb",
+            {"role_name": FakeAttribute("")},
+        )
+
+        class FailingSensor(FakeActor):
+            def listen(self, callback: Any) -> None:
+                del callback
+                raise RuntimeError("listen failed")
+
+        def spawn_actor(
+            blueprint: FakeBlueprint,
+            transform: FakeTransform,
+            attach_to: FakeActor | None = None,
+        ) -> FakeActor:
+            del attach_to
+            sensor = FailingSensor(
+                self.world,
+                self.world.next_actor_id,
+                blueprint,
+                transform,
+            )
+            self.world.next_actor_id += 1
+            self.world.actors[sensor.id] = sensor
+            return sensor
+
+        self.world.spawn_actor = spawn_actor  # type: ignore[attr-defined]
+        prepared = self.worker.prepare({})
+        scene_id, lease_token = self.lease(prepared)
+        before_ids = set(self.world.actors)
+        with (
+            mock.patch(
+                "carla_vision.native.world_worker._load_in_memory_jpeg_encoder",
+                return_value=lambda image, quality: b"",
+            ),
+            self.assertRaisesRegex(RuntimeError, "listen failed"),
+        ):
+            self.worker.camera(
+                scene_id,
+                {
+                    "lease_token": lease_token,
+                    "mode": "drive",
+                    "width": 1280,
+                    "height": 720,
+                    "fps": 30.0,
+                    "fov": 90.0,
+                },
+            )
+
+        self.assertEqual(set(self.world.actors), before_ids)
+        self.assertIsNone(self.worker.current_scene()["scene"]["camera"])
+
     def test_manual_deadman_lease_cleanup_and_owned_props(self) -> None:
         original_weather = self.world.weather
         prepared = self.worker.prepare(
@@ -849,6 +967,82 @@ class WorldWorkerTest(unittest.TestCase):
         invalid = json.loads(response.read())
         self.assertEqual(response.status, 400)
         self.assertEqual(invalid["error"]["code"], "unknown_fields")
+        connection.close()
+
+    def test_http_mjpeg_stream_is_authenticated_persistent_and_newest_only(self) -> None:
+        class StreamingWorker:
+            def __init__(self) -> None:
+                self.after_sequences: list[int] = []
+
+            def camera_frame(
+                self,
+                scene_id: str,
+                lease_token: str,
+                *,
+                after_sequence: int,
+                timeout: float,
+            ) -> tuple[int, bytes, dict[str, Any]]:
+                self.assert_contract(scene_id, lease_token, timeout)
+                self.after_sequences.append(after_sequence)
+                sequence = len(self.after_sequences) - 1
+                if sequence >= 2:
+                    raise WorkerError(409, "camera_inactive", "test stream complete")
+                return (
+                    sequence,
+                    b"\xff\xd8" + str(sequence).encode("ascii") + b"\xff\xd9",
+                    {
+                        "frame": 100 + sequence,
+                        "timestamp": 1.25 + sequence,
+                        "width": 1280,
+                        "height": 720,
+                        "fov": 90.0,
+                        "transform": {"location": {"x": float(sequence)}},
+                    },
+                )
+
+            @staticmethod
+            def assert_contract(scene_id: str, lease_token: str, timeout: float) -> None:
+                if scene_id != "scene_1234567890" or lease_token != "lease-secret":
+                    raise AssertionError("handler did not forward scene credentials")
+                if timeout != 5.0:
+                    raise AssertionError("handler used an unexpected stream wait timeout")
+
+        token = "test-token-that-is-long-enough"
+        worker = StreamingWorker()
+        server = create_server(
+            bind="127.0.0.1",
+            port=0,
+            token=token,
+            worker=worker,  # type: ignore[arg-type]
+        )
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        host, port = server.server_address[:2]
+
+        connection = http.client.HTTPConnection(host, port, timeout=3)
+        connection.request(
+            "GET",
+            "/v1/scenes/scene_1234567890/camera/stream.mjpg",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "X-Scene-Lease": "lease-secret",
+            },
+        )
+        response = connection.getresponse()
+        body = response.read()
+        self.assertEqual(response.status, 200)
+        self.assertEqual(
+            response.getheader("Content-Type"),
+            "multipart/x-mixed-replace; boundary=carla-frame",
+        )
+        self.assertEqual(body.count(b"--carla-frame\r\n"), 2)
+        self.assertIn(b"X-CARLA-Sequence: 0\r\n", body)
+        self.assertIn(b'X-Camera-Transform: {"location":{"x":1.0}}\r\n', body)
+        self.assertIn(b"\xff\xd80\xff\xd9", body)
+        self.assertIn(b"\xff\xd81\xff\xd9", body)
+        self.assertEqual(worker.after_sequences, [-1, 0, 1])
         connection.close()
 
     def test_non_loopback_server_requires_explicit_flag_and_strong_token(self) -> None:
