@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Self
 
 EVALUATION_CONFIG_SCHEMA_VERSION = "1.0"
+EVALUATION_RUN_SCHEMA_VERSION = "1.0"
 _ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
 

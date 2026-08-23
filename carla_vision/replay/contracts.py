@@ -12,6 +12,7 @@ from typing import Any, Self
 from ..contracts import DetectorConfig
 
 REPLAY_CONFIG_SCHEMA_VERSION = "1.0"
+REPLAY_RUN_SCHEMA_VERSION = "1.0"
 _ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9.-]{0,127}$")
 _BUILTIN_BACKENDS = frozenset({"rtdetr", "yolo"})
 

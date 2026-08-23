@@ -4,14 +4,25 @@ version = "0.9.0"
 description = "A model-neutral, artifact-first CARLA monocular-vision research framework."
 requires-python = ">=3.11,<3.14"
 dependencies = [
-  "matplotlib>=3.9",
   "msgpack>=1.1",
   "numpy>=1.26",
   "opencv-python>=4.10",
   "psutil>=5.9",
+]
+
+[project.optional-dependencies]
+vision = [
+  "torch>=2.4",
+  "ultralytics>=8.4",
+]
+research = [
+  "matplotlib>=3.9",
   "pycocotools>=2.0.10",
   "torch>=2.4",
   "ultralytics>=8.4",
+]
+experimental = [
+  "torch>=2.4",
 ]
 
 [project.scripts]
@@ -44,18 +55,6 @@ carla-shadow-matrix = "carla_vision.shadow.matrix:main"
 carla-verify-shadow-matrix = "carla_vision.shadow.verified:main"
 carla-operator-ui = "carla_vision.operator.garage_server:main"
 carla-discover = "carla_vision.discovery:main"
-carla-local-drive = "carla_vision.voxel.local_drive_actuation:main"
-carla-voxel-test = "carla_vision.voxel.capture:main"
-carla-voxel-flow-capture = "carla_vision.voxel.flow_capture:main"
-carla-train-voxel = "carla_vision.voxel.training.runner:main"
-carla-train-voxel-flow = "carla_vision.voxel.training.flow_runner:main"
-carla-voxel-shadow = "carla_vision.voxel.shadow:main"
-carla-benchmark-voxel = "carla_vision.voxel.benchmark:main"
-carla-build-voxel-readiness-evidence = "carla_vision.voxel.evidence_builder:main"
-carla-verify-voxel-actuation-readiness = "carla_vision.voxel.actuation_gate:main"
-carla-train-imitation = "carla_vision.imitation.runner:main"
-carla-evaluate-drive = "carla_vision.closed_loop_cli:main"
-carla-summarize-drive-evaluations = "carla_vision.closed_loop_report:main"
 
 [dependency-groups]
 dev = [
@@ -68,7 +67,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["carla_vision", "carla_yolo"]
+packages = ["carla_vision"]
 
 [tool.ruff]
 line-length = 100

@@ -16,9 +16,11 @@ from typing import Any
 from ..artifacts import RunArtifactTracker, fingerprint_file
 from ..dataset.verified import load_verified_dataset
 from ..verification import verify_research_object
-from .contracts import ModelReleaseConfig, load_model_release_config
-
-MODEL_RELEASE_SCHEMA_VERSION = "1.0"
+from .contracts import (
+    MODEL_RELEASE_SCHEMA_VERSION,
+    ModelReleaseConfig,
+    load_model_release_config,
+)
 
 
 def _atomic_write_text(path: Path, payload: str) -> None:

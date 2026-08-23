@@ -54,6 +54,7 @@ def config(
     workspace: Path,
     *,
     world_worker_configured: bool = False,
+    experimental_enabled: bool = True,
     **overrides: object,
 ) -> GarageDriveStartConfig:
     return GarageDriveStartConfig.from_mapping(
@@ -62,6 +63,7 @@ def config(
         expected_host=CARLA_HOST,
         expected_port=CARLA_PORT,
         world_worker_configured=world_worker_configured,
+        experimental_enabled=experimental_enabled,
     )
 
 
@@ -93,6 +95,16 @@ def test_manual_mode_keeps_existing_browser_contract_without_pythonapi(tmp_path:
     assert command.throttle == pytest.approx(0.4)
     assert command.steer == pytest.approx(-0.2)
     assert session._garage_context is None
+
+
+def test_experimental_control_modes_are_disabled_by_default(tmp_path: Path) -> None:
+    with pytest.raises(PermissionError, match="--enable-experimental"):
+        GarageDriveStartConfig.from_mapping(
+            base_start(control_mode="behavior", acknowledge_autonomy=True),
+            workspace=tmp_path,
+            expected_host=CARLA_HOST,
+            expected_port=CARLA_PORT,
+        )
 
 
 def test_autonomous_modes_require_explicit_acknowledgement(tmp_path: Path) -> None:
@@ -242,6 +254,7 @@ def test_catalog_finds_nested_policy_checkpoints_without_exposing_environment_di
         workspace=tmp_path,
         carla_host=CARLA_HOST,
         carla_port=CARLA_PORT,
+        experimental_enabled=True,
     )
     catalog = manager.catalog()
 
@@ -260,6 +273,7 @@ def test_catalog_namespaces_garage_capabilities_without_overwriting_base(
         workspace=tmp_path,
         carla_host=CARLA_HOST,
         carla_port=CARLA_PORT,
+        experimental_enabled=True,
     )
 
     capabilities = manager.catalog()["capabilities"]
@@ -274,6 +288,29 @@ def test_catalog_namespaces_garage_capabilities_without_overwriting_base(
     assert capabilities["garage_walker_population"] is True
     assert capabilities["garage_imitation_drive"] is True
     assert capabilities["garage_voxel_drive"] is True
+
+
+def test_production_catalog_and_start_hide_experimental_autonomy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(garage_drive, "_module_available", lambda _name: True)
+    manager = GarageOperatorDriveManager(
+        workspace=tmp_path,
+        carla_host=CARLA_HOST,
+        carla_port=CARLA_PORT,
+    )
+
+    catalog = manager.catalog()
+
+    assert catalog["control_modes"] == [{"id": "manual", "label": "Manual", "available": True}]
+    assert catalog["capabilities"]["garage_experimental"] is False
+    assert "garage_behavior_drive" not in catalog["capabilities"]
+    assert "garage_imitation_drive" not in catalog["capabilities"]
+    assert "garage_voxel_drive" not in catalog["capabilities"]
+    assert "policy_checkpoints" not in catalog
+    with pytest.raises(PermissionError, match="--enable-experimental"):
+        manager.start(base_start(control_mode="behavior", acknowledge_autonomy=True))
 
 
 def test_manager_uses_ready_worker_and_falls_back_only_for_exact_defaults(
@@ -318,9 +355,16 @@ def test_manager_uses_ready_worker_and_falls_back_only_for_exact_defaults(
         carla_port=CARLA_PORT,
         world_worker=ready_worker,  # type: ignore[arg-type]
     )
-    ready_manager.start(base_start(map_name="Town10HD_Opt", traffic_count=5))
+    ready_manager.start(
+        base_start(
+            map_name="Town10HD_Opt",
+            traffic_count=5,
+            initial_control_mode="autopilot",
+        )
+    )
     assert created[-1].world_worker is ready_worker  # type: ignore[attr-defined]
     assert created[-1].config.base.traffic_count == 5  # type: ignore[attr-defined]
+    assert created[-1].config.base.initial_control_mode == "autopilot"  # type: ignore[attr-defined]
 
     unavailable_worker = FakeWorker(ready=False)
     unavailable_manager = GarageOperatorDriveManager(

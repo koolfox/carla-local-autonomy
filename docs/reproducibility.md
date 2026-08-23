@@ -104,14 +104,14 @@ Build and verify a bundle with:
 
 ```bash
 uv run carla-build-reproduction \
-  --config configs/reproduction/framework_development_bundle_v1.json \
+  --config path/to/reproduction-config.json \
   --bundles-root bundles
 
 uv run carla-verify-reproduction \
-  bundles/bundle-framework-development-20260726-v001
+  bundles/<bundle-id>
 
 uv run carla-verify \
-  bundles/bundle-framework-development-20260726-v001 \
+  bundles/<bundle-id> \
   --reject-unregistered
 ```
 
@@ -187,7 +187,7 @@ confirmatory thesis result.
 
 ## 7. Retained development evidence
 
-`bundle-framework-development-20260726-v001` contains:
+Each generated bundle contains:
 
 - 10 recursively verified source research objects;
 - 143 source files and their canonical inventory;

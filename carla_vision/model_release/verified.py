@@ -11,8 +11,7 @@ from typing import Any
 from ..artifacts import fingerprint_file
 from ..contracts import DetectorConfig
 from ..verification import ArtifactIntegrityError, verify_research_object
-from .contracts import ModelReleaseConfig
-from .package import MODEL_RELEASE_SCHEMA_VERSION
+from .contracts import MODEL_RELEASE_SCHEMA_VERSION, ModelReleaseConfig
 
 
 class ModelIntegrityError(RuntimeError):

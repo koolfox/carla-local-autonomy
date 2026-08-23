@@ -331,26 +331,5 @@ class NativeHostGateTests(unittest.TestCase):
                     preflight_path=preflight_path,
                 )
 
-    def test_current_not_ready_preflight_cannot_authorize_collection(self) -> None:
-        kit_root = REPOSITORY_ROOT / "native_kits" / "native-host-kit-pilot-20260727-v001"
-        if not kit_root.is_dir():
-            self.skipTest("retained development native host kit is absent")
-        preflight_path = REPOSITORY_ROOT / "runs" / "native-preflight-pilot-20260726-v1"
-        if not preflight_path.is_dir():
-            self.skipTest("retained development native preflight is absent")
-        with tempfile.TemporaryDirectory() as temporary:
-            extraction = Path(temporary)
-            with zipfile.ZipFile(
-                kit_root / "payload" / "native-host-kit.zip",
-                "r",
-            ) as archive:
-                archive.extract("kit-plan.json", extraction)
-            with self.assertRaisesRegex(NativeHostGateError, "not ready"):
-                validate_ready_preflight(
-                    kit_plan_path=extraction / "kit-plan.json",
-                    preflight_path=preflight_path,
-                )
-
-
 if __name__ == "__main__":
     unittest.main()

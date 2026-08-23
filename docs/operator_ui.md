@@ -139,7 +139,9 @@ the optional browser detector overlay.
 
 ## Garage runtime control modes
 
-The Garage backend defines four internal Drive control modes:
+Production advertises only `manual` plus World Worker Traffic Manager
+autopilot. Three retained research implementations are available only when the
+server is started with `--enable-experimental`:
 
 ```text
 manual
@@ -148,10 +150,9 @@ imitation
 voxel
 ```
 
-The canonical fullscreen browser currently exposes only Manual and, when the
-World Worker advertises it, Traffic Manager Autopilot. Behavior, Imitation, and
-Voxel are retained runtime paths, not selectable game-shell modes. Their former
-injected selector was deliberately removed with the duplicate Garage assets.
+Behavior, Imitation, and Voxel are retained runtime paths, not production
+game-shell modes. Their checkpoints and capabilities are not advertised by a
+normal server process.
 
 ### Manual
 
@@ -524,7 +525,8 @@ termination through the job manager.
 
 # Garage-specific research job API
 
-`garage_research.py` accepts exactly these nine additional Garage research kinds:
+When `--enable-experimental` is active, `garage_research.py` accepts exactly
+these nine additional Garage research kinds:
 
 ```text
 teacher_capture
@@ -538,7 +540,8 @@ voxel_benchmark
 closed_loop_evaluate
 ```
 
-The request schema rejects unknown kinds/parameters. Each kind maps to a fixed
+Without that flag, `/api/garage/jobs` rejects every request. The request schema
+rejects unknown kinds/parameters. Each enabled kind maps to a fixed
 internal project module; a caller cannot provide an arbitrary shell command or
 Python module name. These allow-listed plans remain available through the
 Garage backend contract, but the cleaned canonical browser does not render the
@@ -662,12 +665,13 @@ This observer plan must not be confused with the active Drive controller. Its
 purpose is to observe/retain driving metrics while another Drive control mode
 owns the ego.
 
-# Relationship to `carla-local-drive`
+# Relationship to the retained local-drive module
 
-The installed local-drive CLI is separate from the browser Garage entrypoint:
+The voxel local-drive implementation remains in source for experimental
+reproduction but is no longer installed as a production CLI entrypoint:
 
 ```text
-carla-local-drive = carla_vision.voxel.local_drive_actuation:main
+python -m carla_vision.voxel.local_drive_actuation
 ```
 
 The local-drive voxel actuation path is opt-in and has its own acknowledgement,

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Self
 
 MODEL_RELEASE_CONFIG_SCHEMA_VERSION = "1.0"
+MODEL_RELEASE_SCHEMA_VERSION = "1.0"
 _ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9.-]{0,127}$")
 _PLACEHOLDER_PATTERN = re.compile(r"(?i)\b(?:unknown|tbd|todo|replace(?:-me)?|unlicensed)\b")
 

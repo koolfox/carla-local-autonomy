@@ -13,7 +13,12 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from carla_vision.discovery import DiscoveryScope, discover_carla_servers, local_ipv4_scopes
-from carla_vision.operator.server import create_server, resolve_carla_host
+from carla_vision.operator.server import (
+    create_server,
+    parse_args,
+    resolve_carla_host,
+    resolve_world_worker_url,
+)
 
 
 class LocalScopeTests(unittest.TestCase):
@@ -94,6 +99,16 @@ class LocalScopeTests(unittest.TestCase):
 
 
 class DiscoveryTests(unittest.TestCase):
+    def test_operator_discovers_carla_by_default(self) -> None:
+        self.assertEqual(parse_args([]).carla_host, "auto")
+
+    def test_world_worker_auto_tracks_the_discovered_carla_host(self) -> None:
+        self.assertEqual(
+            resolve_world_worker_url("auto", "192.168.1.101", 8766),
+            "http://192.168.1.101:8766",
+        )
+        self.assertIsNone(resolve_world_worker_url(None, "192.168.1.101", 8766))
+
     def test_validates_open_port_with_carla_rpc_before_reporting_server(self) -> None:
         class FakeRpc:
             def __init__(self, host: str, port: int, timeout: float) -> None:

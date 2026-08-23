@@ -12,9 +12,8 @@ from typing import Any
 from ..artifacts import fingerprint_file
 from ..dataset.verified import VerifiedDataset, load_verified_dataset
 from ..verification import ArtifactIntegrityError, verify_research_object
-from .contracts import EvaluationConfig
+from .contracts import EVALUATION_RUN_SCHEMA_VERSION, EvaluationConfig
 from .metrics import operating_metrics
-from .runner import EVALUATION_RUN_SCHEMA_VERSION
 
 
 class EvaluationIntegrityError(RuntimeError):

@@ -30,7 +30,7 @@ from ..detectors.factory import create_detector
 from ..model_release.verified import load_verified_model
 from ..scenarios.seeds import derive_seed_bundle
 from .coco import CocoEvaluation, evaluate_coco
-from .contracts import EvaluationConfig, load_evaluation_config
+from .contracts import EVALUATION_RUN_SCHEMA_VERSION, EvaluationConfig, load_evaluation_config
 from .metrics import (
     OperatingMetrics,
     bootstrap_episode_metrics,
@@ -38,8 +38,6 @@ from .metrics import (
     operating_metrics,
     stratified_metrics,
 )
-
-EVALUATION_RUN_SCHEMA_VERSION = "1.0"
 
 
 def _atomic_write_text(path: Path, payload: str) -> None:

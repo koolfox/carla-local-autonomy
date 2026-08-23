@@ -14,5 +14,9 @@ models/
 output/
 reports/
 runs/
+bundles/
+native_kits/
+operator_sessions/
+.env.local
 /CARLA PY.zip
 /git.zip

@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core:
+    name: Operator core
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+
+      - name: Install lean operator profile
+        run: uv sync --group dev --frozen
+
+      - name: Lint source and tests
+        run: uv run ruff check carla_vision tests
+
+      - name: Check browser JavaScript syntax
+        run: node --check carla_vision/operator/static/app.js
+
+      - name: Run operator regression tests
+        run: >-
+          uv run pytest -q
+          tests/test_bridge.py
+          tests/test_discovery.py
+          tests/test_drive_console.py
+          tests/test_garage_drive.py
+          tests/test_garage_preview.py
+          tests/test_garage_research.py
+          tests/test_garage_research_bridge.py
+          tests/test_garage_visual_contract.py
+          tests/test_operator.py
+          tests/test_recording.py
+          tests/test_runtime.py
+          tests/test_standalone_world_bridge.py
+          tests/test_world_worker.py
+          tests/test_world_worker_client.py
+          tests/test_world_worker_ui.py
+
+      - name: Check production entry points
+        run: |
+          uv run carla-operator-ui --help
+          uv run carla-discover --help
+          uv run carla-vision --help
+
+  full-suite:
+    name: Research and experimental suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+
+      - name: Install every supported profile
+        run: uv sync --all-extras --all-groups --frozen
+
+      - name: Run complete test suite
+        run: uv run pytest -q

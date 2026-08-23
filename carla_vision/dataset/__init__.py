@@ -1,4 +1,6 @@
-"""Offline dataset helpers for CARLA teacher labels."""
+"""Offline dataset contracts with plotting-heavy QA loaded on demand."""
+
+from typing import Any
 
 from .instance_labels import InstanceLabel, decode_instance_bgra, extract_instance_labels
 from .ontology import (
@@ -10,7 +12,6 @@ from .ontology import (
     DetectorCategory,
     detector_category_for_tag,
 )
-from .qa import DatasetAuditError, audit_dataset
 from .sync import ExactFramePairer, SynchronizedFramePair
 from .verified import DatasetIntegrityError, VerifiedDataset, load_verified_dataset
 from .writer import DATASET_PARTITIONS, AuxiliaryArtifact, DatasetSample, DatasetWriter
@@ -38,3 +39,11 @@ __all__ = [
     "load_verified_dataset",
     "audit_dataset",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    if name in {"DatasetAuditError", "audit_dataset"}:
+        from . import qa
+
+        return getattr(qa, name)
+    raise AttributeError(name)

@@ -758,15 +758,26 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--sessions-root", default="operator_sessions")
     parser.add_argument(
         "--carla-host",
-        default="172.20.10.7",
+        default="auto",
         help="CARLA server address, or 'auto' to discover one on the directly connected LAN",
     )
     parser.add_argument("--carla-port", type=int, default=2000)
     parser.add_argument("--world-worker-url")
     parser.add_argument(
+        "--world-worker-port",
+        type=int,
+        default=8766,
+        help="World Worker port used when --world-worker-url=auto",
+    )
+    parser.add_argument(
         "--world-worker-token-env",
         default="CARLA_WORLD_WORKER_TOKEN",
         help="environment variable containing the World Worker bearer token",
+    )
+    parser.add_argument(
+        "--enable-experimental",
+        action="store_true",
+        help="enable opt-in research autonomy and experimental Garage jobs",
     )
     parser.add_argument("--open-browser", action="store_true")
     return parser.parse_args(argv)
@@ -808,10 +819,30 @@ def resolve_carla_host(host: str, port: int) -> str:
     return str(servers[0]["host"])
 
 
+def resolve_world_worker_url(value: str | None, carla_host: str, port: int) -> str | None:
+    """Resolve ``auto`` to the Worker colocated with the discovered CARLA host."""
+
+    if value is None:
+        return None
+    raw = str(value).strip()
+    if not raw:
+        raise ValueError("World Worker URL must not be empty")
+    if raw.lower() != "auto":
+        return raw
+    if isinstance(port, bool) or not 1 <= int(port) <= 65535:
+        raise ValueError("World Worker port must be in [1, 65535]")
+    return f"http://{carla_host}:{int(port)}"
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
-    world_worker_token = resolve_world_worker_token(args)
     carla_host = resolve_carla_host(args.carla_host, args.carla_port)
+    world_worker_url = resolve_world_worker_url(
+        args.world_worker_url,
+        carla_host,
+        args.world_worker_port,
+    )
+    world_worker_token = resolve_world_worker_token(args)
     server = create_server(
         workspace=args.workspace,
         bind=args.bind,
@@ -819,7 +850,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         sessions_root=args.sessions_root,
         carla_host=carla_host,
         carla_port=args.carla_port,
-        world_worker_url=args.world_worker_url,
+        world_worker_url=world_worker_url,
         world_worker_token=world_worker_token,
     )
     address, port = server.server_address[:2]
