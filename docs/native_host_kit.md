@@ -1,9 +1,10 @@
 # Portable Native-Host Kit
 
-Status: implementation complete; real CARLA execution intentionally deferred  
-Kit: `native-host-kit-pilot-20260727-v003`  
-Target: CPython 3.12, Windows/Linux x86-64, CARLA 0.9.16  
-Scope: one Town10HD train episode, 50 front-RGB/instance pairs
+Status: on-demand research artifact
+
+Target: CPython 3.12, Windows/Linux x86-64, CARLA 0.9.16
+
+Scope: configured native RGB/instance collection plan
 
 ## Deliverable
 
@@ -11,29 +12,12 @@ Transfer this file to the machine that can import the official CARLA
 PythonAPI:
 
 ```text
-native_kits/native-host-kit-pilot-20260727-v003/payload/native-host-kit.zip
+native_kits/<kit-id>/payload/native-host-kit.zip
 ```
 
-SHA-256:
-
-```text
-185779504f5d789f6dd83eba76728814797512ba854ba63b2957547d3d7c377b
-```
-
-The outer research object is at
-`native_kits/native-host-kit-pilot-20260727-v003`. Its manifest SHA-256 is:
-
-```text
-ec0b81358d93aa2edf71e58c6b272d7f3fcb696121356bb1ba8526c01e939165
-```
-
-The 1.3 MiB ZIP contains 114 files, including 95 project Python files, the
-verified scenario plan, an internal checksum index, two platform-named
-requirements locks, and equivalent PowerShell/shell scripts. Both lock files
-have SHA-256
-`ceaef5c27bbaa0091cc8de17181eaf86600bba21da8ed60be0d2dbbf2d83be17`;
-all 14 packages are pinned with hashes, including six official CARLA wheel
-hashes.
+Build a new immutable kit ID from the current source and verify the generated
+manifest before transfer. Generated kits are intentionally ignored by Git and
+belong in release or artifact storage.
 
 The kit contains no CARLA server, model weights, secret, previous Dataset, or
 full thesis scenario plan.

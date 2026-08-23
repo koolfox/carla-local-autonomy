@@ -137,6 +137,11 @@ class GarageOperatorRequestHandler(base.OperatorRequestHandler):
                 return
             if not isinstance(body, Mapping):
                 raise TypeError("Garage research request must be an object")
+            if not self.server.application.experimental_enabled:
+                raise PermissionError(
+                    "Garage research jobs are experimental and disabled; "
+                    "restart the Garage server with --enable-experimental to opt in"
+                )
             request = GarageResearchRequest.from_mapping(body)
             application = self.server.application
             _validate_research_runtime(request, application.drive.state())
@@ -176,6 +181,8 @@ class GarageOperatorDriveManager(GarageDriveSessionManager):
 
     def catalog(self) -> dict[str, Any]:
         payload = super().catalog()
+        if not self.experimental_enabled:
+            return payload
         checkpoints: list[str] = []
         ignored_roots = {".git", ".venv", "__pycache__", "node_modules"}
         for suffix in ("*.pt", "*.pth", "*.ckpt"):
@@ -197,6 +204,7 @@ class GarageOperatorApplication(base.OperatorApplication):
     """Base operator state plus the mutually-exclusive real Garage preview."""
 
     preview: GaragePreviewManager
+    experimental_enabled: bool
 
     def close(self) -> None:
         preview = getattr(self, "preview", None)
@@ -215,6 +223,7 @@ def create_server(
     carla_port: int = 2000,
     world_worker_url: str | None = None,
     world_worker_token: str | None = None,
+    enable_experimental: bool = False,
 ) -> base.OperatorHTTPServer:
     """Create the normal operator server and add Garage-only extensions."""
 
@@ -236,11 +245,13 @@ def create_server(
         carla_port=int(carla_port),
         world_worker=world_worker,
     )
+    application.experimental_enabled = bool(enable_experimental)
     drive = GarageOperatorDriveManager(
         workspace=application.workspace,
         carla_host=application.carla_host,
         carla_port=application.carla_port,
         world_worker=application.world_worker,
+        experimental_enabled=application.experimental_enabled,
     )
     application.drive = drive
     world_mode_lock = threading.RLock()
@@ -259,8 +270,13 @@ def create_server(
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = base.parse_args(argv)
-    world_worker_token = base.resolve_world_worker_token(args)
     carla_host = base.resolve_carla_host(args.carla_host, args.carla_port)
+    world_worker_url = base.resolve_world_worker_url(
+        args.world_worker_url,
+        carla_host,
+        args.world_worker_port,
+    )
+    world_worker_token = base.resolve_world_worker_token(args)
     server = create_server(
         workspace=args.workspace,
         bind=args.bind,
@@ -268,8 +284,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         sessions_root=args.sessions_root,
         carla_host=carla_host,
         carla_port=args.carla_port,
-        world_worker_url=args.world_worker_url,
+        world_worker_url=world_worker_url,
         world_worker_token=world_worker_token,
+        enable_experimental=args.enable_experimental,
     )
     address, port = server.server_address[:2]
     display_host = "127.0.0.1" if address in {"0.0.0.0", "::"} else address
@@ -281,10 +298,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "url": url,
                 "workspace": str(Path(args.workspace).expanduser().resolve()),
                 "local_only": True,
-                "world_worker_configured": args.world_worker_url is not None,
-                "garage_research_bridge": True,
+                "world_worker_configured": world_worker_url is not None,
+                "garage_research_bridge": args.enable_experimental,
                 "garage_drive_modes": True,
-                "garage_research_jobs": True,
+                "garage_research_jobs": args.enable_experimental,
+                "experimental_enabled": args.enable_experimental,
             },
             ensure_ascii=False,
             indent=2,

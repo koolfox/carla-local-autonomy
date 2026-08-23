@@ -36,7 +36,7 @@ API path.
 
 Prepare one Linux or Windows machine that:
 
-1. can reach CARLA at `172.20.10.7:2000`;
+1. can reach the configured CARLA 0.9.16 endpoint;
 2. has a Python version accepted by this project and by the exact CARLA 0.9.16
    wheel/egg;
 3. can import `carla` and reports client version `0.9.16`;
@@ -48,23 +48,22 @@ Prepare one Linux or Windows machine that:
 The API can be installed in the environment or supplied as a directory,
 wheel, or egg through `--carla-python-api`/`PYTHONPATH`.
 
-The current immutable handoff is:
+Build and transfer the current handoff as an on-demand artifact:
 
 ```text
-native_kits/native-host-kit-pilot-20260727-v003/payload/native-host-kit.zip
+native_kits/<kit-id>/payload/native-host-kit.zip
 ```
 
-It carries the exact project source required by this workflow, so cloning the
-whole repository is unnecessary. It targets CPython 3.12 on Windows/Linux
-x86-64. Follow [Portable native-host kit](native_host_kit.md) for extraction,
-bootstrap, the two preflights, guarded collection, and transfer.
+It carries the exact project source required by this workflow. Follow
+[Portable native-host kit](native_host_kit.md) for extraction, bootstrap, the
+two preflights, guarded collection, and transfer.
 
 ## 3. Non-destructive preflight
 
 Run these before stopping any live demo:
 
 ```bash
-uv sync --all-groups
+uv sync --extra research --group dev
 
 uv run python -c \
   "import carla; print(carla.__file__); print(carla.__version__)"

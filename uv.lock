@@ -13,13 +13,24 @@ name = "carla-vision-research"
 version = "0.9.0"
 source = { editable = "." }
 dependencies = [
-    { name = "matplotlib" },
     { name = "msgpack" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "opencv-python" },
     { name = "psutil" },
+]
+
+[package.optional-dependencies]
+experimental = [
+    { name = "torch" },
+]
+research = [
+    { name = "matplotlib" },
     { name = "pycocotools" },
+    { name = "torch" },
+    { name = "ultralytics" },
+]
+vision = [
     { name = "torch" },
     { name = "ultralytics" },
 ]
@@ -32,15 +43,19 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "matplotlib", specifier = ">=3.9" },
+    { name = "matplotlib", marker = "extra == 'research'", specifier = ">=3.9" },
     { name = "msgpack", specifier = ">=1.1" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "opencv-python", specifier = ">=4.10" },
     { name = "psutil", specifier = ">=5.9" },
-    { name = "pycocotools", specifier = ">=2.0.10" },
-    { name = "torch", specifier = ">=2.4" },
-    { name = "ultralytics", specifier = ">=8.4" },
+    { name = "pycocotools", marker = "extra == 'research'", specifier = ">=2.0.10" },
+    { name = "torch", marker = "extra == 'experimental'", specifier = ">=2.4" },
+    { name = "torch", marker = "extra == 'research'", specifier = ">=2.4" },
+    { name = "torch", marker = "extra == 'vision'", specifier = ">=2.4" },
+    { name = "ultralytics", marker = "extra == 'research'", specifier = ">=8.4" },
+    { name = "ultralytics", marker = "extra == 'vision'", specifier = ">=8.4" },
 ]
+provides-extras = ["vision", "research", "experimental"]
 
 [package.metadata.requires-dev]
 dev = [

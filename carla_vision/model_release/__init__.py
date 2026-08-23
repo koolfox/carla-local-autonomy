@@ -1,11 +1,13 @@
-"""Immutable detector-model package contracts, promotion, and verification."""
+"""Immutable model contracts with packaging dependencies loaded on demand."""
+
+from typing import Any
 
 from .contracts import (
     MODEL_RELEASE_CONFIG_SCHEMA_VERSION,
+    MODEL_RELEASE_SCHEMA_VERSION,
     ModelReleaseConfig,
     load_model_release_config,
 )
-from .package import MODEL_RELEASE_SCHEMA_VERSION, package_model
 from .verified import ModelIntegrityError, VerifiedModel, load_verified_model
 
 __all__ = [
@@ -18,3 +20,11 @@ __all__ = [
     "load_verified_model",
     "package_model",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    if name == "package_model":
+        from . import package
+
+        return getattr(package, name)
+    raise AttributeError(name)

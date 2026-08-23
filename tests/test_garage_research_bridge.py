@@ -65,8 +65,9 @@ def test_garage_server_serves_single_canonical_static_shell(
         assert catalog_type == "application/json"
         catalog = json.loads(catalog_text)
         modes = {row["id"] for row in catalog["control_modes"]}
-        assert modes == {"manual", "behavior", "imitation", "voxel"}
-        assert "models/imitation/best.pt" in catalog["policy_checkpoints"]
+        assert modes == {"manual"}
+        assert catalog["capabilities"]["garage_experimental"] is False
+        assert "policy_checkpoints" not in catalog
     finally:
         server.shutdown()
         thread.join(timeout=3.0)
@@ -90,6 +91,7 @@ def test_garage_server_propagates_world_worker_to_replacement_drive_manager(
     try:
         assert server.application.world_worker is not None
         assert server.application.drive._world_worker is server.application.world_worker
+        assert server.application.experimental_enabled is False
     finally:
         server.server_close()
         server.application.jobs.shutdown()
@@ -129,16 +131,88 @@ def test_garage_main_forwards_world_worker_cli_configuration(
         [
             "--workspace",
             str(tmp_path),
+            "--carla-host",
+            "127.0.0.1",
             "--world-worker-url",
             "http://127.0.0.1:8766",
             "--world-worker-token-env",
             "GARAGE_WORKER_TOKEN",
+            "--enable-experimental",
         ]
     )
 
     assert result == 0
     assert captured["world_worker_url"] == "http://127.0.0.1:8766"
     assert captured["world_worker_token"] == "secret-token"
+    assert captured["enable_experimental"] is True
+
+
+def test_experimental_opt_in_advertises_modes_and_checkpoints(tmp_path: Path) -> None:
+    (tmp_path / "models").mkdir()
+    (tmp_path / "models" / "policy.pt").write_bytes(b"checkpoint")
+    server = create_server(
+        workspace=tmp_path,
+        bind="127.0.0.1",
+        port=0,
+        sessions_root=tmp_path / "operator_sessions",
+        carla_host="127.0.0.1",
+        carla_port=65534,
+        enable_experimental=True,
+    )
+    try:
+        catalog = server.application.drive.catalog()
+        assert {row["id"] for row in catalog["control_modes"]} == {
+            "manual",
+            "behavior",
+            "imitation",
+            "voxel",
+        }
+        assert catalog["capabilities"]["garage_experimental"] is True
+        assert "models/policy.pt" in catalog["policy_checkpoints"]
+    finally:
+        server.server_close()
+        server.application.jobs.shutdown()
+
+
+def test_production_server_rejects_research_jobs(tmp_path: Path) -> None:
+    server = create_server(
+        workspace=tmp_path,
+        bind="127.0.0.1",
+        port=0,
+        sessions_root=tmp_path / "operator_sessions",
+        carla_host="127.0.0.1",
+        carla_port=65534,
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        host, port = server.server_address[:2]
+        payload = json.dumps(
+            {"schema_version": "1.0", "kind": "closed_loop_evaluate", "parameters": {}}
+        ).encode("utf-8")
+        request = urllib.request.Request(
+            f"http://{host}:{port}/api/garage/jobs",
+            data=payload,
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "X-Operator-Token": server.application.token,
+            },
+        )
+        try:
+            urllib.request.urlopen(request, timeout=3.0)
+        except urllib.error.HTTPError as error:
+            assert error.code == 409
+            response = json.loads(error.read().decode("utf-8"))
+            assert response["error"]["type"] == "PermissionError"
+            assert "--enable-experimental" in response["error"]["message"]
+        else:
+            raise AssertionError("production server accepted an experimental research job")
+    finally:
+        server.shutdown()
+        thread.join(timeout=3.0)
+        server.server_close()
+        server.application.jobs.shutdown()
 
 
 def test_noncanonical_static_assets_are_rejected(tmp_path: Path) -> None:

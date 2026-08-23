@@ -40,8 +40,10 @@ from .drive import (
 from .drive_contracts import DriveInput, DriveStartConfig
 from .world_worker_client import WorldWorkerClient
 
-_CONTROL_MODES = frozenset({"manual", "behavior", "imitation", "voxel"})
-_AUTONOMOUS_MODES = _CONTROL_MODES - {"manual"}
+_PRODUCTION_CONTROL_MODES = frozenset({"manual"})
+_EXPERIMENTAL_CONTROL_MODES = frozenset({"behavior", "imitation", "voxel"})
+_CONTROL_MODES = _PRODUCTION_CONTROL_MODES | _EXPERIMENTAL_CONTROL_MODES
+_AUTONOMOUS_MODES = _EXPERIMENTAL_CONTROL_MODES
 _IMITATION_FACTORY = "carla_vision.imitation.predictor:create_driver"
 _VOXEL_FACTORY = "carla_vision.voxel.model_examples.temporal_flow:create_predictor"
 
@@ -129,6 +131,7 @@ class GarageDriveStartConfig:
         expected_host: str,
         expected_port: int,
         world_worker_configured: bool = False,
+        experimental_enabled: bool = False,
     ) -> "GarageDriveStartConfig":
         extra = {
             "control_mode",
@@ -156,6 +159,11 @@ class GarageDriveStartConfig:
         mode = str(raw.get("control_mode", "manual")).strip().lower()
         if mode not in _CONTROL_MODES:
             raise ValueError(f"control_mode must be one of {', '.join(sorted(_CONTROL_MODES))}")
+        if mode in _EXPERIMENTAL_CONTROL_MODES and not experimental_enabled:
+            raise PermissionError(
+                f"control mode {mode!r} is experimental and disabled; "
+                "restart the Garage server with --enable-experimental to opt in"
+            )
         if mode in _AUTONOMOUS_MODES and base.detector_enabled:
             base = replace(base, detector_enabled=False, weights=None)
         behavior = str(raw.get("behavior", "normal")).strip().lower()
@@ -1089,6 +1097,10 @@ def _module_available(name: str) -> bool:
 class GarageDriveSessionManager(DriveSessionManager):
     """One-session manager that accepts the additive Garage drive contract."""
 
+    def __init__(self, *, experimental_enabled: bool = False, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.experimental_enabled = bool(experimental_enabled)
+
     def catalog(self) -> dict[str, Any]:
         payload = super().catalog()
         pythonapi = _module_available("carla")
@@ -1096,27 +1108,35 @@ class GarageDriveSessionManager(DriveSessionManager):
         capabilities = payload.setdefault("capabilities", {})
         capabilities.update(
             {
-                "garage_behavior_drive": pythonapi and behavior_agent,
                 "garage_traffic_population": pythonapi,
                 "garage_walker_population": pythonapi,
-                "garage_imitation_drive": pythonapi,
-                "garage_voxel_drive": pythonapi and behavior_agent,
+                "garage_experimental": self.experimental_enabled,
             }
         )
-        payload["control_modes"] = [
-            {"id": "manual", "label": "Manual", "available": True},
-            {
-                "id": "behavior",
-                "label": "BehaviorAgent",
-                "available": pythonapi and behavior_agent,
-            },
-            {"id": "imitation", "label": "Imitation model", "available": pythonapi},
-            {
-                "id": "voxel",
-                "label": "Voxel planner",
-                "available": pythonapi and behavior_agent,
-            },
-        ]
+        payload["control_modes"] = [{"id": "manual", "label": "Manual", "available": True}]
+        if self.experimental_enabled:
+            capabilities.update(
+                {
+                    "garage_behavior_drive": pythonapi and behavior_agent,
+                    "garage_imitation_drive": pythonapi,
+                    "garage_voxel_drive": pythonapi and behavior_agent,
+                }
+            )
+            payload["control_modes"].extend(
+                [
+                    {
+                        "id": "behavior",
+                        "label": "BehaviorAgent",
+                        "available": pythonapi and behavior_agent,
+                    },
+                    {"id": "imitation", "label": "Imitation model", "available": pythonapi},
+                    {
+                        "id": "voxel",
+                        "label": "Voxel planner",
+                        "available": pythonapi and behavior_agent,
+                    },
+                ]
+            )
         return payload
 
     def start(self, raw: Mapping[str, Any]) -> dict[str, Any]:
@@ -1136,6 +1156,7 @@ class GarageDriveSessionManager(DriveSessionManager):
             expected_host=self.carla_host,
             expected_port=self.carla_port,
             world_worker_configured=active_world_worker is not None,
+            experimental_enabled=self.experimental_enabled,
         )
         catalog = self.catalog()
         modes = {item["id"]: bool(item["available"]) for item in catalog["control_modes"]}

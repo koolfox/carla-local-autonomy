@@ -12,8 +12,7 @@ from typing import Any
 
 from ..artifacts import fingerprint_file
 from ..verification import ArtifactIntegrityError, verify_research_object
-from .contracts import ReplayConfig
-from .runner import REPLAY_RUN_SCHEMA_VERSION
+from .contracts import REPLAY_RUN_SCHEMA_VERSION, ReplayConfig
 
 
 class ReplayIntegrityError(RuntimeError):

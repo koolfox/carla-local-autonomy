@@ -31,9 +31,12 @@ from ..evaluation.runner import run_evaluation
 from ..model_release.verified import load_verified_model
 from ..scenarios.seeds import derive_seed
 from ..verification import verify_research_object
-from .contracts import ReplayConfig, ReplayModelSpec, load_replay_config
-
-REPLAY_RUN_SCHEMA_VERSION = "1.0"
+from .contracts import (
+    REPLAY_RUN_SCHEMA_VERSION,
+    ReplayConfig,
+    ReplayModelSpec,
+    load_replay_config,
+)
 
 
 @dataclass(frozen=True)
