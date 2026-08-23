@@ -52,10 +52,13 @@ uv run carla-operator-ui --no-enable-experimental --open-browser
 
 ## Runtime state is not configuration
 
-Values such as `overlay_frame_sequence`, current speed, actor IDs, current run ID,
-and telemetry are produced by the running system. They must not be placed in
-`.env.local`. `overlay_frame_sequence` is explicitly rejected so a stale value
-cannot masquerade as live state.
+Values such as current speed, actor IDs, current run ID, frame sequence, and
+telemetry are produced by the running system. They do not control startup state.
+
+For compatibility with existing local files, the known key
+`overlay_frame_sequence` is accepted and ignored. The live overlay sequence is
+still generated exclusively by the running Operator and is never initialized from
+`.env.local`.
 
 ## Example
 
@@ -65,4 +68,5 @@ CARLA_WORLD_WORKER_URL='http://192.168.1.108:8766'
 CARLA_HOST='192.168.1.108'
 CARLA_PORT='2000'
 detector.enabled=true
+overlay_frame_sequence=1
 ```
