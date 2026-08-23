@@ -51,6 +51,7 @@ jobs:
           tests/test_garage_research_bridge.py
           tests/test_garage_visual_contract.py
           tests/test_operator.py
+          tests/test_operator_local_config.py
           tests/test_recording.py
           tests/test_runtime.py
           tests/test_standalone_world_bridge.py
