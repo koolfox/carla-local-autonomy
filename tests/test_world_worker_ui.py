@@ -79,6 +79,7 @@ class WorldWorkerGarageContractTests(unittest.TestCase):
             '"traffic_manager"',
             '"walkers"',
             '"autopilot"',
+            '"driving_guidance"',
         ):
             with self.subTest(capability=capability):
                 self.assertIn(capability, self.script)
@@ -160,6 +161,18 @@ class WorldWorkerGarageContractTests(unittest.TestCase):
                 self.assertNotIn(forbidden, lowered_script)
 
         self.assertIn('request("/api/drive/catalog")', self.script)
+
+    def test_privileged_path_guide_is_exact_frame_stream_and_explicitly_sourced(self) -> None:
+        button_tag, button_attributes = self.parser.elements["drive-guidance-toggle"]
+        self.assertEqual(button_tag, "button")
+        self.assertEqual(button_attributes.get("aria-pressed"), "true")
+        self.assertIn('guidance.label || "CARLA PATH"', self.script)
+        self.assertIn("· PRIVILEGED · ${sampleLabel} · ACTUAL STEER", self.script)
+        self.assertIn("session.guidance_views?.[state.drive.view]", self.script)
+        self.assertIn('pathEnabled ? "path" : "clean"', self.script)
+        self.assertIn("guidance=${pathEnabled ? 1 : 0}", self.script)
+        self.assertNotIn("drive-guidance-canvas", self.html)
+        self.assertNotIn("debug.draw", self.script.lower())
 
 
 if __name__ == "__main__":

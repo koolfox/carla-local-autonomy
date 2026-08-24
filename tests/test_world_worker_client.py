@@ -464,6 +464,42 @@ class WorldWorkerClientHttpTests(unittest.TestCase):
         with self.assertRaisesRegex(WorldWorkerError, "scene.episode_id"):
             WorldWorkerScene.from_response(payload)
 
+    def test_scene_validates_and_retains_bounded_world_guidance(self) -> None:
+        payload = _scene_payload()
+        payload["scene"]["guidance"] = {
+            "available": True,
+            "source": "traffic_manager_action_buffer",
+            "points": [
+                {
+                    "center": [10, 2, 0.5],
+                    "left": [10, 0.2, 0.5],
+                    "right": [10, 3.8, 0.5],
+                    "distance_m": 10.0,
+                }
+            ],
+        }
+
+        scene = WorldWorkerScene.from_response(payload)
+
+        self.assertEqual(scene.guidance["source"], "traffic_manager_action_buffer")
+        self.assertEqual(scene.guidance["points"][0]["center"], [10.0, 2.0, 0.5])
+
+    def test_scene_rejects_non_finite_world_guidance(self) -> None:
+        payload = _scene_payload()
+        payload["scene"]["guidance"] = {
+            "available": True,
+            "points": [
+                {
+                    "center": [float("nan"), 0.0, 0.0],
+                    "left": [1.0, -1.0, 0.0],
+                    "right": [1.0, 1.0, 0.0],
+                }
+            ],
+        }
+
+        with self.assertRaisesRegex(WorldWorkerError, "three finite numbers"):
+            WorldWorkerScene.from_response(payload)
+
     def test_redirect_is_rejected_without_forwarding_bearer(self) -> None:
         redirect_target = _RecordingWorkerServer()
         target_thread = threading.Thread(target=redirect_target.serve_forever, daemon=True)

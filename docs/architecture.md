@@ -245,6 +245,42 @@ The following are required before broad model comparisons:
 An adapter may add output types, but it must never make downstream components
 import a model-specific result object.
 
+### 5.3 Road and lane model decision
+
+Road surface and lane markings are semantic-segmentation outputs, not object
+boxes.  The first supported research model for this layer is **SegFormer-B0**.
+Development starts from NVIDIA's Cityscapes checkpoint
+`nvidia/segformer-b0-finetuned-cityscapes-1024-1024`, then fine-tunes a
+five-class head on synchronized CARLA RGB/semantic-teacher pairs:
+
+```text
+0 other
+1 road
+2 road_line
+3 sidewalk
+4 non_drivable_ground
+```
+
+The Cityscapes checkpoint may be used only as a road/sidewalk smoke-test; it
+does not provide a CARLA `road_line` class.  A result may claim lane-line
+perception only after the CARLA fine-tuned checkpoint is loaded and evaluated.
+
+RT-DETR remains the object detector. SegFormer remains the RGB road/lane
+segmenter. CARLA map waypoints, Traffic Manager action buffers, and semantic
+camera labels are privileged reference or teacher data and must never be
+silently substituted for model output. Downstream code will consume a
+model-neutral mask/polyline contract so SegFormer can later be replaced by
+PIDNet or another PyTorch model without changing the UI, recorder, or metrics.
+
+The blue operator path is a separate privileged visualization. Traffic Manager
+intent or a CARLA map/assigned route is sampled by the World Worker heartbeat,
+then projected through the exact pose of each RGB frame. It is not claimed to
+be temporally exact simulator-frame state: every `guidance.jsonl` row records
+the latest-sample age and `exact_simulator_frame_alignment=false`. When Path is
+enabled, the web server draws that projection into a browser-only JPEG
+derivative for the same camera sequence; raw cached frames and research videos
+remain unchanged.
+
 ## 6. Live RGB perception pipeline
 
 ### 6.1 Current data flow

@@ -69,6 +69,21 @@ _ACTIVE_SCENE_STATES = frozenset({"prepared", "running", "stopping"})
 _ROUTE_MODES = frozenset({"free", "random_destination"})
 _CONTROL_MODES = frozenset({"manual", "autopilot"})
 _SIMULATOR_SEED_MODULUS = 2**31 - 1
+_GUIDANCE_STEP_METERS = 2.5
+_GUIDANCE_LOOKAHEAD_METERS = 120.0
+_GUIDANCE_MAX_POINTS = 64
+_DEFAULT_LANE_WIDTH_METERS = 3.5
+
+
+def _empty_guidance(reason: str) -> dict[str, Any]:
+    """Return an explicit non-actuating guidance state safe for API snapshots."""
+
+    return {
+        "available": False,
+        "privileged": True,
+        "feeds_vision_policy": False,
+        "reason": reason,
+    }
 
 # Keep the bridge executable as a single file on the CARLA host.  These small
 # presets are intentionally embedded here instead of importing the research
@@ -824,6 +839,10 @@ class SceneLease:
     cleanup_guard_passed: bool | None = None
     cleanup_errors: list[str] = field(default_factory=list)
     camera_relay: CompressedCameraRelay | None = None
+    guidance: dict[str, Any] = field(
+        default_factory=lambda: _empty_guidance("waiting for guidance heartbeat")
+    )
+    guidance_revision: int = 0
 
 
 class WorldWorker:
@@ -882,6 +901,10 @@ class WorldWorker:
         self._monitor_period = float(monitor_period)
         self._map_process_runner = map_process_runner
         self._lock = threading.RLock()
+        # CARLA guidance reads may run outside ``_lock`` so they never block
+        # manual control. This narrower lock protects actor/TM lifetime during
+        # those reads without entering the control hot path.
+        self._guidance_lock = threading.Lock()
         self._client: Any | None = None
         self._carla: Any | None = None
         self._route_planner_factory: Callable[[Any], Any] | None = None
@@ -1051,6 +1074,7 @@ class WorldWorker:
             "scene_props": True,
             "manual_control": True,
             "autopilot": True,
+            "driving_guidance": True,
             "random_route": random_route,
             "lease": True,
             "manual_deadman": True,
@@ -2109,20 +2133,34 @@ class WorldWorker:
                     "only a prepared scene can start",
                 )
             if scene.control_mode == "autopilot":
-                self._enable_autopilot(scene)
+                with self._guidance_lock:
+                    self._enable_autopilot(scene)
                 scene.deadman_active = False
             else:
-                self._enable_manual(scene)
+                with self._guidance_lock:
+                    self._enable_manual(scene)
             scene.status = "running"
+            self._invalidate_guidance(scene, "waiting for running guidance heartbeat")
             self._refresh_lease(scene)
             return self._scene_response(scene, "running")
 
     def heartbeat(self, scene_id: str, raw: Mapping[str, Any]) -> dict[str, Any]:
         lease_token = self._lease_token(raw, allowed={"lease_token"})
+        # Guidance may traverse a bounded CARLA waypoint/action buffer.  Keep
+        # that read-only work outside the scene-owner lock so a visualization
+        # refresh can never delay manual control or the deadman monitor.
         with self._lock:
             scene = self._require_scene(scene_id, lease_token)
             self._refresh_lease(scene)
-            return self._scene_response(scene, scene.status)
+            revision = scene.guidance_revision
+        with self._guidance_lock:
+            guidance = self._guidance_snapshot(scene)
+        with self._lock:
+            current = self._require_scene(scene_id, lease_token)
+            if current is scene and current.guidance_revision == revision:
+                current.guidance = guidance
+            self._refresh_lease(current)
+            return self._scene_response(current, current.status)
 
     def control(self, scene_id: str, raw: Mapping[str, Any]) -> dict[str, Any]:
         allowed = {
@@ -2204,12 +2242,14 @@ class WorldWorker:
                 )
             if scene.control_mode != control_mode:
                 if scene.status == "running":
-                    if control_mode == "autopilot":
-                        self._enable_autopilot(scene)
-                        scene.deadman_active = False
-                    else:
-                        self._enable_manual(scene)
+                    with self._guidance_lock:
+                        if control_mode == "autopilot":
+                            self._enable_autopilot(scene)
+                            scene.deadman_active = False
+                        else:
+                            self._enable_manual(scene)
                 scene.control_mode = control_mode
+                self._invalidate_guidance(scene, "waiting for mode guidance heartbeat")
             self._refresh_lease(scene)
             return self._scene_response(scene, scene.status)
 
@@ -2256,6 +2296,315 @@ class WorldWorker:
             "route_mode": scene.config.route_mode,
         }
 
+    @staticmethod
+    def _guidance_angle_delta(first: float, second: float) -> float:
+        return abs((float(first) - float(second) + 180.0) % 360.0 - 180.0)
+
+    @staticmethod
+    def _guidance_location(location: Any) -> tuple[float, float, float] | None:
+        try:
+            point = (float(location.x), float(location.y), float(location.z))
+        except (AttributeError, TypeError, ValueError):
+            return None
+        return point if all(math.isfinite(value) for value in point) else None
+
+    @staticmethod
+    def _guidance_option(value: Any) -> str:
+        name = getattr(value, "name", None)
+        text = str(name if name is not None else value).rsplit(".", 1)[-1]
+        text = re.sub(r"[^A-Za-z0-9_-]", "", text)[:48]
+        return text or "LaneFollow"
+
+    @staticmethod
+    def _guidance_marking(waypoint: Any, side: str) -> str | None:
+        try:
+            marking = getattr(waypoint, f"{side}_lane_marking")
+            value = getattr(marking, "type", marking)
+            text = str(getattr(value, "name", value)).rsplit(".", 1)[-1]
+        except Exception:
+            return None
+        normalized = re.sub(r"[^A-Za-z0-9_-]", "", text)[:48]
+        return normalized or None
+
+    @staticmethod
+    def _guidance_lane_width(waypoint: Any) -> float:
+        try:
+            lane_width = float(waypoint.lane_width)
+        except (AttributeError, TypeError, ValueError):
+            return _DEFAULT_LANE_WIDTH_METERS
+        if not math.isfinite(lane_width) or not 1.0 <= lane_width <= 20.0:
+            return _DEFAULT_LANE_WIDTH_METERS
+        return lane_width
+
+    @staticmethod
+    def _guidance_point(
+        center: tuple[float, float, float],
+        *,
+        yaw: float,
+        lane_width: float,
+        distance_m: float,
+        road_option: str,
+        waypoint: Any | None = None,
+    ) -> dict[str, Any]:
+        half_width = max(0.5, min(10.0, float(lane_width) / 2.0))
+        yaw_radians = math.radians(float(yaw))
+        right_x = -math.sin(yaw_radians)
+        right_y = math.cos(yaw_radians)
+        x, y, z = center
+        result: dict[str, Any] = {
+            "center": [round(x, 4), round(y, 4), round(z, 4)],
+            "left": [
+                round(x - right_x * half_width, 4),
+                round(y - right_y * half_width, 4),
+                round(z, 4),
+            ],
+            "right": [
+                round(x + right_x * half_width, 4),
+                round(y + right_y * half_width, 4),
+                round(z, 4),
+            ],
+            "distance_m": round(max(0.0, float(distance_m)), 3),
+            "lane_width_m": round(float(lane_width), 3),
+            "road_option": road_option,
+        }
+        if waypoint is not None:
+            for output_name, attribute in (("road_id", "road_id"), ("lane_id", "lane_id")):
+                value = getattr(waypoint, attribute, None)
+                if isinstance(value, int) and not isinstance(value, bool):
+                    result[output_name] = value
+            left_marking = WorldWorker._guidance_marking(waypoint, "left")
+            right_marking = WorldWorker._guidance_marking(waypoint, "right")
+            if left_marking is not None:
+                result["left_marking"] = left_marking
+            if right_marking is not None:
+                result["right_marking"] = right_marking
+        return result
+
+    def _guidance_from_waypoints(
+        self,
+        scene: SceneLease,
+        entries: Sequence[tuple[Any, Any]],
+        *,
+        source: str,
+        label: str,
+        semantic: str,
+    ) -> dict[str, Any] | None:
+        ego_location = self._guidance_location(scene.ego.get_location())
+        if ego_location is None:
+            return None
+        previous = ego_location
+        distance_m = 0.0
+        points: list[dict[str, Any]] = []
+        for road_option, waypoint in entries:
+            if len(points) >= _GUIDANCE_MAX_POINTS:
+                break
+            transform = getattr(waypoint, "transform", None)
+            center = self._guidance_location(getattr(transform, "location", None))
+            if center is None:
+                continue
+            segment = math.dist(previous, center)
+            if not math.isfinite(segment):
+                continue
+            distance_m += segment
+            previous = center
+            if distance_m > _GUIDANCE_LOOKAHEAD_METERS:
+                break
+            try:
+                yaw = float(transform.rotation.yaw)
+            except (AttributeError, TypeError, ValueError):
+                yaw = float(scene.ego.get_transform().rotation.yaw)
+            if not math.isfinite(yaw):
+                continue
+            points.append(
+                self._guidance_point(
+                    center,
+                    yaw=yaw,
+                    lane_width=self._guidance_lane_width(waypoint),
+                    distance_m=distance_m,
+                    road_option=self._guidance_option(road_option),
+                    waypoint=waypoint,
+                )
+            )
+        if len(points) < 2:
+            return None
+        return {
+            "available": True,
+            "authority": "privileged_simulator",
+            "source": source,
+            "semantic": semantic,
+            "label": label,
+            "privileged": True,
+            "feeds_vision_policy": False,
+            "visualization_only": True,
+            "lookahead_m": points[-1]["distance_m"],
+            "point_count": len(points),
+            "route": dict(scene.route),
+            "points": points,
+        }
+
+    def _traffic_manager_guidance(self, scene: SceneLease) -> dict[str, Any] | None:
+        if scene.control_mode != "autopilot" or not hasattr(
+            scene.traffic_manager, "get_all_actions"
+        ):
+            return None
+        try:
+            raw_actions = list(scene.traffic_manager.get_all_actions(scene.ego))
+        except Exception:
+            return None
+        entries: list[tuple[Any, Any]] = []
+        for item in raw_actions[:_GUIDANCE_MAX_POINTS]:
+            if not isinstance(item, Sequence) or isinstance(item, (str, bytes)) or len(item) < 2:
+                continue
+            entries.append((item[0], item[1]))
+        return self._guidance_from_waypoints(
+            scene,
+            entries,
+            source="traffic_manager_action_buffer",
+            label="TM INTENT",
+            semantic="reported_action_buffer",
+        )
+
+    def _assigned_route_guidance(self, scene: SceneLease) -> dict[str, Any] | None:
+        if len(scene.route_locations) < 2:
+            return None
+        ego_location = self._guidance_location(scene.ego.get_location())
+        locations = [
+            (location, self._guidance_location(location)) for location in scene.route_locations
+        ]
+        locations = [(raw, point) for raw, point in locations if point is not None]
+        if ego_location is None or len(locations) < 2:
+            return None
+        start_index = min(
+            range(len(locations)),
+            key=lambda index: math.dist(ego_location, locations[index][1]),
+        )
+        selected = locations[start_index:]
+        points: list[dict[str, Any]] = []
+        previous = ego_location
+        distance_m = 0.0
+        map_object = scene.world.get_map()
+        for index, (raw_location, center) in enumerate(selected):
+            if len(points) >= _GUIDANCE_MAX_POINTS:
+                break
+            segment = math.dist(previous, center)
+            distance_m += segment
+            previous = center
+            if distance_m > _GUIDANCE_LOOKAHEAD_METERS:
+                break
+            next_center = center
+            if index + 1 < len(selected):
+                next_center = selected[index + 1][1]
+            dx, dy = next_center[0] - center[0], next_center[1] - center[1]
+            yaw = (
+                math.degrees(math.atan2(dy, dx))
+                if abs(dx) + abs(dy) > 1e-6
+                else float(scene.ego.get_transform().rotation.yaw)
+            )
+            waypoint = None
+            try:
+                waypoint = map_object.get_waypoint(raw_location)
+            except Exception:
+                pass
+            points.append(
+                self._guidance_point(
+                    center,
+                    yaw=yaw,
+                    lane_width=self._guidance_lane_width(waypoint),
+                    distance_m=distance_m,
+                    road_option="AssignedRoute",
+                    waypoint=waypoint,
+                )
+            )
+        if len(points) < 2:
+            return None
+        enforced = bool(scene.route.get("enforced"))
+        return {
+            "available": True,
+            "authority": "privileged_simulator",
+            "source": "assigned_route",
+            "semantic": "traffic_manager_set_path" if enforced else "planned_route",
+            "label": "ASSIGNED ROUTE" if enforced else "PLANNED ROUTE",
+            "privileged": True,
+            "feeds_vision_policy": False,
+            "visualization_only": True,
+            "lookahead_m": points[-1]["distance_m"],
+            "point_count": len(points),
+            "route": dict(scene.route),
+            "points": points,
+        }
+
+    def _map_lane_guidance(self, scene: SceneLease) -> dict[str, Any] | None:
+        map_object = scene.world.get_map()
+        location = scene.ego.get_location()
+        try:
+            lane_type = getattr(getattr(self._carla, "LaneType", None), "Driving", None)
+            if lane_type is None:
+                waypoint = map_object.get_waypoint(location)
+            else:
+                waypoint = map_object.get_waypoint(
+                    location,
+                    project_to_road=True,
+                    lane_type=lane_type,
+                )
+        except Exception:
+            return None
+        entries: list[tuple[Any, Any]] = []
+        heading = float(scene.ego.get_transform().rotation.yaw)
+        for _ in range(_GUIDANCE_MAX_POINTS):
+            entries.append(("LaneFollow", waypoint))
+            try:
+                candidates = list(waypoint.next(_GUIDANCE_STEP_METERS))
+            except Exception:
+                break
+            if not candidates:
+                break
+            waypoint = min(
+                candidates,
+                key=lambda candidate: (
+                    self._guidance_angle_delta(candidate.transform.rotation.yaw, heading),
+                    int(getattr(candidate, "road_id", 0)),
+                    int(getattr(candidate, "lane_id", 0)),
+                ),
+            )
+            heading = float(waypoint.transform.rotation.yaw)
+        return self._guidance_from_waypoints(
+            scene,
+            entries,
+            source="carla_map_lane_reference",
+            label="MAP LANE REFERENCE",
+            semantic="local_lane_center_reference_not_tm_plan",
+        )
+
+    def _guidance_snapshot(self, scene: SceneLease) -> dict[str, Any]:
+        sampled_at = time.time()
+        if scene.status not in _ACTIVE_SCENE_STATES or scene.ego is None:
+            result = _empty_guidance("scene is not active")
+            result["sampled_at_unix_seconds"] = sampled_at
+            result["temporal_alignment"] = "worker_heartbeat_sample"
+            return result
+        for builder in (
+            self._traffic_manager_guidance,
+            self._assigned_route_guidance,
+            self._map_lane_guidance,
+        ):
+            try:
+                guidance = builder(scene)
+            except Exception:
+                guidance = None
+            if guidance is not None:
+                guidance["sampled_at_unix_seconds"] = time.time()
+                guidance["temporal_alignment"] = "worker_heartbeat_sample"
+                return guidance
+        result = _empty_guidance("CARLA did not report a bounded driving guide")
+        result["sampled_at_unix_seconds"] = time.time()
+        result["temporal_alignment"] = "worker_heartbeat_sample"
+        return result
+
+    @staticmethod
+    def _invalidate_guidance(scene: SceneLease, reason: str) -> None:
+        scene.guidance_revision += 1
+        scene.guidance = _empty_guidance(reason)
+
     def _scene_snapshot(self, scene: SceneLease) -> dict[str, Any]:
         now = self._clock()
         input_age = None if scene.last_control_at is None else max(0.0, now - scene.last_control_at)
@@ -2269,6 +2618,7 @@ class WorldWorker:
             "spawn_index": scene.spawn_index,
             "route_mode": scene.config.route_mode,
             "route": dict(scene.route),
+            "guidance": dict(scene.guidance),
             "destination": scene.destination,
             "control_mode": scene.control_mode,
             "weather_preset": scene.weather_preset,
@@ -2339,6 +2689,10 @@ class WorldWorker:
                     errors.append(f"Traffic Manager shutdown failed: {error}")
 
     def _cleanup_resources(self, scene: SceneLease, *, reason: str) -> dict[str, Any]:
+        with self._guidance_lock:
+            return self._cleanup_resources_locked(scene, reason=reason)
+
+    def _cleanup_resources_locked(self, scene: SceneLease, *, reason: str) -> dict[str, Any]:
         scene.status = "stopping"
         scene.stop_reason = reason
         if scene.camera_relay is not None:

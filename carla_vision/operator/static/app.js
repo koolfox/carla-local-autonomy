@@ -13,6 +13,7 @@ const state = {
     catalog: null,
     session: { status: "idle" },
     view: "raw",
+    guidanceEnabled: true,
     inputFocused: false,
     keys: {
       forward: false,
@@ -658,6 +659,9 @@ function driveWorldCapabilities() {
     autopilot:
       nativeWorker &&
       driveCapabilityValue(capabilities, ["autopilot", "native_autopilot"]),
+    guidance:
+      nativeWorker &&
+      driveCapabilityValue(capabilities, ["driving_guidance", "planner_guidance"]),
   };
 }
 
@@ -1322,6 +1326,7 @@ function renderDriveCapabilities() {
     ["Traffic population", ["traffic", "traffic_population", "spawn_traffic"]],
     ["Walker population", ["walkers", "walker_population", "spawn_walkers"]],
     ["Simulator autopilot", ["autopilot", "traffic_manager", "native_autopilot"]],
+    ["Planner path overlay", ["driving_guidance", "planner_guidance"]],
   ];
   const list = $("drive-capability-list");
   list.replaceChildren();
@@ -1485,6 +1490,12 @@ function updateDriveConfigAvailability() {
   }
   $("drive-view-overlay").disabled = !detectorEnabled;
   $("drive-view-overlay").title = visionRuntime.available ? "" : driveVisionRuntimeMessage();
+  const guidanceButton = $("drive-guidance-toggle");
+  const guidanceAvailable = driveWorldCapabilities().guidance;
+  guidanceButton.disabled = !guidanceAvailable;
+  guidanceButton.title = guidanceAvailable
+    ? "Show CARLA planner intent and lane reference"
+    : "Update the World Worker to enable the planner path overlay";
   configureDriveWorldControls();
 }
 
@@ -1715,6 +1726,7 @@ function renderDriveState() {
   } else {
     disconnectDriveStream();
   }
+  window.requestAnimationFrame(drawDriveGuidance);
 
   if (["success", "failed"].includes(statusName) && driveSessionId()) {
     if (state.drive.lastTerminalSession !== driveSessionId()) {
@@ -1767,6 +1779,48 @@ function setDriveView(view) {
   renderDriveState();
 }
 
+function clearDriveGuidance() {
+  $("drive-guidance-source").hidden = true;
+}
+
+function drawDriveGuidance() {
+  const session = state.drive.session || {};
+  const guidance = session.guidance_views?.[state.drive.view] || session.guidance || {};
+  const source = $("drive-guidance-source");
+  if (
+    !state.drive.guidanceEnabled ||
+    !driveIsRunning() ||
+    !guidance.available ||
+    !state.drive.streamReady
+  ) {
+    source.hidden = true;
+    return;
+  }
+
+  const steerValue = Math.round(Number(state.drive.session?.telemetry?.steer || 0) * 100);
+  const steerLabel = `${steerValue > 0 ? "+" : ""}${steerValue}%`;
+  const ageSeconds = guidance.source_age_seconds == null
+    ? Number.NaN
+    : Number(guidance.source_age_seconds);
+  const sampleLabel = Number.isFinite(ageSeconds)
+    ? `LATEST SAMPLE ${Math.round(ageSeconds * 1000)} MS`
+    : "LATEST SAMPLE";
+  source.textContent = `${guidance.label || "CARLA PATH"} · PRIVILEGED · ${sampleLabel} · ACTUAL STEER ${steerLabel}`;
+  source.hidden = false;
+}
+
+function toggleDriveGuidance() {
+  state.drive.guidanceEnabled = !state.drive.guidanceEnabled;
+  const button = $("drive-guidance-toggle");
+  button.classList.toggle("active", state.drive.guidanceEnabled);
+  button.setAttribute("aria-pressed", String(state.drive.guidanceEnabled));
+  if (driveIsRunning()) {
+    disconnectDriveStream();
+    connectDriveStream();
+  }
+  drawDriveGuidance();
+}
+
 function disconnectDriveStream() {
   window.clearTimeout(state.drive.streamRetryTimer);
   state.drive.streamRetryTimer = null;
@@ -1778,11 +1832,13 @@ function disconnectDriveStream() {
   frame.removeAttribute("src");
   frame.style.display = "none";
   $("drive-empty").style.display = "flex";
+  clearDriveGuidance();
 }
 
 function connectDriveStream() {
   if (!driveIsRunning() || !$("panel-drive").classList.contains("active")) return;
-  const key = `${driveSessionId()}:${state.drive.view}`;
+  const pathEnabled = state.drive.guidanceEnabled && driveWorldCapabilities().guidance;
+  const key = `${driveSessionId()}:${state.drive.view}:${pathEnabled ? "path" : "clean"}`;
   const frame = $("drive-frame");
   if (state.drive.streamKey === key && frame.getAttribute("src")) return;
   window.clearTimeout(state.drive.streamRetryTimer);
@@ -1794,6 +1850,7 @@ function connectDriveStream() {
     state.drive.streamReady = true;
     frame.style.display = "block";
     $("drive-empty").style.display = "none";
+    drawDriveGuidance();
   };
   frame.onerror = () => {
     if (state.drive.streamKey !== key || !driveIsRunning()) return;
@@ -1804,7 +1861,7 @@ function connectDriveStream() {
     $("drive-empty").style.display = "flex";
     state.drive.streamRetryTimer = window.setTimeout(connectDriveStream, 1200);
   };
-  frame.src = `/api/drive/stream.mjpg?view=${encodeURIComponent(state.drive.view)}&session=${encodeURIComponent(
+  frame.src = `/api/drive/stream.mjpg?view=${encodeURIComponent(state.drive.view)}&guidance=${pathEnabled ? 1 : 0}&session=${encodeURIComponent(
     driveSessionId(),
   )}&t=${Date.now()}`;
 }
@@ -2280,6 +2337,7 @@ function bindDriveConsole() {
   $("drive-focus").addEventListener("click", focusDriveControl);
   $("drive-view-raw").addEventListener("click", () => setDriveView("raw"));
   $("drive-view-overlay").addEventListener("click", () => setDriveView("overlay"));
+  $("drive-guidance-toggle").addEventListener("click", toggleDriveGuidance);
   $("drive-vehicle").addEventListener("change", () => {
     populateDriveColors();
     renderGarageBay();
@@ -3147,7 +3205,7 @@ async function initialize() {
     showToast(`Could not initialize Drive Console: ${error.message}`, true);
   }
   window.setInterval(refreshJobs, 1800);
-  window.setInterval(refreshDriveState, 350);
+  window.setInterval(refreshDriveState, 150);
 }
 
 window.addEventListener("DOMContentLoaded", initialize);

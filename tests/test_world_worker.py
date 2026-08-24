@@ -862,6 +862,62 @@ class WorldWorkerTest(unittest.TestCase):
         self.assertEqual(stopped["status"], "stopped")
         self.assertTrue(stopped["scene"]["cleanup_guard_passed"])
 
+    def test_autopilot_snapshot_exposes_bounded_tm_intent_as_privileged_guidance(self) -> None:
+        guidance_reads = 0
+
+        def get_all_actions(actor: FakeActor) -> list[tuple[str, FakeWaypoint]]:
+            nonlocal guidance_reads
+            guidance_reads += 1
+            origin = actor.get_location()
+            waypoints: list[tuple[str, FakeWaypoint]] = []
+            for offset in (4.0, 10.0, 18.0):
+                waypoint = FakeWaypoint(FakeLocation(origin.x + offset, origin.y, origin.z))
+                waypoint.lane_width = 3.6
+                waypoint.road_id = 12
+                waypoint.lane_id = -1
+                waypoints.append(("LaneFollow", waypoint))
+            return waypoints
+
+        self.traffic_manager.get_all_actions = get_all_actions  # type: ignore[attr-defined]
+        prepared = self.worker.prepare({"initial_control_mode": "autopilot"})
+        scene_id, lease_token = self.lease(prepared)
+
+        started = self.worker.start(scene_id, {"lease_token": lease_token})
+        self.assertFalse(started["scene"]["guidance"]["available"])
+        heartbeat = self.worker.heartbeat(scene_id, {"lease_token": lease_token})
+        guidance = heartbeat["scene"]["guidance"]
+
+        self.assertTrue(guidance["available"])
+        self.assertEqual(guidance["source"], "traffic_manager_action_buffer")
+        self.assertEqual(guidance["label"], "TM INTENT")
+        self.assertTrue(guidance["privileged"])
+        self.assertFalse(guidance["feeds_vision_policy"])
+        self.assertEqual(guidance["point_count"], 3)
+        self.assertLessEqual(guidance["point_count"], 64)
+        self.assertEqual(guidance["points"][0]["lane_width_m"], 3.6)
+        self.assertEqual(guidance["points"][0]["road_id"], 12)
+        self.assertEqual(guidance_reads, 1)
+
+        self.worker.mode(
+            scene_id,
+            {"lease_token": lease_token, "control_mode": "manual"},
+        )
+        self.worker.control(
+            scene_id,
+            {
+                "lease_token": lease_token,
+                "sequence": 0,
+                "throttle": 0.0,
+                "steer": 0.0,
+                "brake": 1.0,
+                "hand_brake": False,
+                "reverse": False,
+            },
+        )
+        self.assertEqual(guidance_reads, 1, "manual control must not compute guidance")
+
+        self.worker.stop(scene_id, {"lease_token": lease_token})
+
     def test_random_destination_rejected_when_route_planner_is_missing(self) -> None:
         unavailable = WorldWorker(
             carla_loader=lambda: self.carla,

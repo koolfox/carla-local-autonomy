@@ -420,6 +420,33 @@ class DriveSessionControlTests(_WorkspaceTestCase):
         with self.assertRaisesRegex(TimeoutError, "timed out"):
             session.wait_for_frame("raw", after_sequence=11, timeout=0.01)
 
+    def test_guidance_is_retained_for_the_exact_raw_and_detector_frames(self) -> None:
+        session = self.session()
+        guidance = {
+            "available": True,
+            "camera_sequence": 12,
+            "frame_size": [640, 384],
+            "center": [[320.0, 300.0], [320.0, 220.0]],
+            "left": [[280.0, 300.0], [300.0, 220.0]],
+            "right": [[360.0, 300.0], [340.0, 220.0]],
+        }
+        session._cache_frame("raw", 12, b"raw")
+        session._retain_guidance_frame(guidance)
+        session._cache_frame("overlay", 12, b"overlay")
+        session._select_overlay_guidance(12, width=640, height=384)
+
+        snapshot = session.snapshot()
+
+        self.assertEqual(snapshot["guidance_views"]["raw"]["camera_sequence"], 12)
+        self.assertEqual(snapshot["guidance_views"]["overlay"]["camera_sequence"], 12)
+        self.assertTrue(snapshot["guidance_views"]["overlay"]["available"])
+
+        session._cache_frame("overlay", 11, b"stale-overlay")
+        session._select_overlay_guidance(11, width=640, height=384)
+        stale = session.snapshot()["guidance_views"]["overlay"]
+        self.assertEqual(stale["camera_sequence"], 11)
+        self.assertFalse(stale["available"])
+
 
 class _FakeSession:
     def __init__(self, config: DriveStartConfig, *, workspace: Path) -> None:
@@ -833,6 +860,10 @@ class _FakeHttpDriveManager:
             raise EOFError("fake stream ended")
         return 7, b"fake-jpeg"
 
+    def guided_frame(self, view: str, sequence: int, payload: bytes) -> bytes:
+        self.assert_guided = (view, sequence, payload)
+        return b"guided-jpeg"
+
     def start(self, raw: dict[str, Any]) -> dict[str, Any]:
         self.started = dict(raw)
         return {"status": "starting", "session_id": str(raw["run_id"])}
@@ -913,7 +944,13 @@ class DriveHttpTests(_WorkspaceTestCase):
         self.assertEqual(status, 200)
         self.assertEqual(headers["Content-Type"], "image/jpeg")
         self.assertEqual(headers["X-Drive-Frame-Sequence"], "7")
+        self.assertEqual(headers["X-Drive-Guidance-Rendered"], "0")
         self.assertEqual(body, b"fake-jpeg")
+
+        status, headers, body = self.request("/api/drive/frame.jpg?view=raw&guidance=1")
+        self.assertEqual(status, 200)
+        self.assertEqual(headers["X-Drive-Guidance-Rendered"], "1")
+        self.assertEqual(body, b"guided-jpeg")
 
         status, _, body = self.request(
             "/api/drive/start",
@@ -936,7 +973,9 @@ class DriveHttpTests(_WorkspaceTestCase):
         self.assertEqual(self.fake.markers[0]["label"], "interesting")
 
     def test_drive_mjpeg_route_streams_multipart_without_serial_polling(self) -> None:
-        status, headers, body = self.request("/api/drive/stream.mjpg?view=raw")
+        status, headers, body = self.request(
+            "/api/drive/stream.mjpg?view=raw&guidance=1"
+        )
 
         self.assertEqual(status, 200)
         self.assertEqual(
@@ -944,7 +983,8 @@ class DriveHttpTests(_WorkspaceTestCase):
             "multipart/x-mixed-replace; boundary=carla-drive",
         )
         self.assertIn(b"X-Drive-Frame-Sequence: 7", body)
-        self.assertIn(b"fake-jpeg", body)
+        self.assertIn(b"X-Drive-Guidance-Rendered: 1", body)
+        self.assertIn(b"guided-jpeg", body)
 
     def test_drive_mutations_require_operator_token(self) -> None:
         with self.assertRaises(urllib.error.HTTPError) as caught:

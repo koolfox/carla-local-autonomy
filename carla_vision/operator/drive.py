@@ -40,6 +40,7 @@ from ..perception import PerceptionWorker
 from ..recording import AsyncVideoRecorder
 from ..watchdog import SafeActuator
 from .drive_contracts import DriveInput, DriveStartConfig, weather_payload
+from .driving_guidance import project_driving_guidance, render_driving_guidance_jpeg
 from .situations import PROP_PRESETS, WEATHER_PRESETS
 from .world_worker_client import (
     WorldWorkerCameraStream,
@@ -53,6 +54,7 @@ _BROWSER_LEASE_SECONDS = 0.40
 _CONTROL_PERIOD_SECONDS = 0.05
 _TELEMETRY_PERIOD_SECONDS = 0.20
 _WORKER_HEARTBEAT_SECONDS = 0.50
+_GUIDANCE_HISTORY_FRAMES = 180
 # CARLA's native camera transport is uncompressed BGRA. Keep that legacy
 # fallback near 100 Mbit/s; higher profiles require the Worker-side encoder.
 _MAX_RAW_CAMERA_BYTES_PER_SECOND = 12 * 1024 * 1024
@@ -424,11 +426,30 @@ class DriveSession:
         self._walker_count_actual = 0
         self._route: dict[str, Any] = {}
         self._destination: Any = None
+        self._guidance_world: dict[str, Any] = {}
+        self._guidance_world_sample_key: float | None = None
+        self._guidance_world_received_monotonic: float | None = None
+        self._guidance_screen: dict[str, Any] = {
+            "available": False,
+            "source": None,
+            "label": "PATH GUIDE UNAVAILABLE",
+            "privileged": True,
+            "feeds_control": False,
+            "camera_sequence": -1,
+            "center": [],
+            "left": [],
+            "right": [],
+            "steering_target": None,
+        }
+        self._guidance_overlay_screen: dict[str, Any] = dict(self._guidance_screen)
+        self._guidance_history: dict[int, dict[str, Any]] = {}
+        self._guidance_history_order: deque[int] = deque()
         self._detector_name: str | None = None
         self._recording = bool(config.record_video)
         self._output_path: str | None = None
         self._controls_written = 0
         self._detections_written = 0
+        self._guidance_written = 0
         self._frames_seen = 0
         self._manual_commands = 0
         self._deadman_commands = 0
@@ -451,6 +472,10 @@ class DriveSession:
                 else max(0.0, time.monotonic() - self._last_input[1])
             )
             stream = self._stream_snapshot(now)
+            guidance_views = {
+                "raw": dict(self._guidance_screen),
+                "overlay": dict(self._guidance_overlay_screen),
+            }
             return {
                 "schema_version": "1.0",
                 "status": self._status,
@@ -478,6 +503,10 @@ class DriveSession:
                 "walker_count_actual": self._walker_count_actual,
                 "route": dict(self._route),
                 "destination": self._destination,
+                # ``guidance`` remains the raw-view value for backwards
+                # compatibility. New clients select the exact per-view frame.
+                "guidance": guidance_views["raw"],
+                "guidance_views": guidance_views,
                 "detector": {
                     "enabled": self.config.detector_enabled,
                     "name": self._detector_name,
@@ -495,6 +524,7 @@ class DriveSession:
                 "frames_seen": self._frames_seen,
                 "controls_written": self._controls_written,
                 "detections_written": self._detections_written,
+                "guidance_written": self._guidance_written,
                 "experiment_preset": self.config.experiment_preset,
                 "human_marker_counts": dict(self._marker_counts),
                 "human_markers_written": sum(self._marker_counts.values()),
@@ -547,6 +577,7 @@ class DriveSession:
                 )
                 with self._lock:
                     self._worker_scene = updated
+                    self._adopt_worker_guidance(updated.guidance)
                     self._route = dict(updated.route)
                     self._destination = updated.destination
                     self._control_mode = "manual"
@@ -579,6 +610,7 @@ class DriveSession:
             updated = self._world_worker.mode(worker_scene, control_mode)
             with self._lock:
                 self._worker_scene = updated
+                self._adopt_worker_guidance(updated.guidance)
                 self._route = dict(updated.route)
                 self._destination = updated.destination
                 self._control_mode = control_mode
@@ -727,6 +759,70 @@ class DriveSession:
             self._frame_arrivals[view].append(received)
             self._frame_condition.notify_all()
 
+    def _retain_guidance_frame(self, guidance: Mapping[str, Any]) -> None:
+        sequence = int(guidance.get("camera_sequence", -1))
+        retained = dict(guidance)
+        with self._lock:
+            self._guidance_screen = retained
+            self._guidance_history[sequence] = retained
+            self._guidance_history_order.append(sequence)
+            while len(self._guidance_history_order) > _GUIDANCE_HISTORY_FRAMES:
+                expired = self._guidance_history_order.popleft()
+                self._guidance_history.pop(expired, None)
+
+    def _adopt_worker_guidance(self, guidance: Mapping[str, Any]) -> None:
+        retained = dict(guidance)
+        raw_sample = retained.get("sampled_at_unix_seconds")
+        try:
+            sample_key = float(raw_sample) if raw_sample is not None else None
+        except (TypeError, ValueError):
+            sample_key = None
+        if sample_key is None or not math.isfinite(sample_key):
+            self._guidance_world_sample_key = None
+            self._guidance_world_received_monotonic = None
+        elif sample_key != self._guidance_world_sample_key:
+            self._guidance_world_sample_key = sample_key
+            self._guidance_world_received_monotonic = time.monotonic()
+        self._guidance_world = retained
+
+    def guided_frame(self, view: str, sequence: int, payload: bytes) -> bytes:
+        """Render an exact-frame browser derivative without changing raw evidence."""
+
+        with self._lock:
+            if view == "overlay" and int(
+                self._guidance_overlay_screen.get("camera_sequence", -1)
+            ) == int(sequence):
+                guidance = dict(self._guidance_overlay_screen)
+            else:
+                guidance = dict(self._guidance_history.get(int(sequence), {}))
+        return render_driving_guidance_jpeg(payload, guidance)
+
+    def _select_overlay_guidance(
+        self,
+        sequence: int,
+        *,
+        width: int,
+        height: int,
+    ) -> None:
+        with self._lock:
+            retained = self._guidance_history.get(sequence)
+            if retained is None:
+                retained = {
+                    "available": False,
+                    "source": None,
+                    "label": "PATH GUIDE UNAVAILABLE",
+                    "privileged": True,
+                    "feeds_control": False,
+                    "camera_sequence": sequence,
+                    "frame_size": [width, height],
+                    "center": [],
+                    "left": [],
+                    "right": [],
+                    "steering_target": None,
+                    "reason": "no guidance retained for detector source frame",
+                }
+            self._guidance_overlay_screen = dict(retained)
+
     def _record_mode_change(self, previous: str, current: str, reason: str) -> None:
         if previous == current:
             return
@@ -784,6 +880,7 @@ class DriveSession:
             )
         with self._lock:
             self._worker_scene = prepared
+            self._adopt_worker_guidance(prepared.guidance)
             self._worker_scene_id = prepared.scene_id
             self._traffic_count_actual = prepared.traffic_count or 0
             self._walker_count_actual = prepared.walker_count or 0
@@ -823,6 +920,7 @@ class DriveSession:
                 raise RuntimeError("World Worker did not apply the requested initial control mode")
             with self._lock:
                 self._worker_scene = started
+                self._adopt_worker_guidance(started.guidance)
                 self._route = dict(started.route)
                 self._destination = started.destination
                 self._control_mode = self.config.initial_control_mode
@@ -855,6 +953,7 @@ class DriveSession:
                     updated = self._world_worker.heartbeat(scene)
                     with self._lock:
                         self._worker_scene = updated
+                        self._adopt_worker_guidance(updated.guidance)
             except BaseException as error:
                 with self._lock:
                     self._worker_heartbeat_error = error
@@ -883,6 +982,9 @@ class DriveSession:
             updated = worker.stop_scene(scene)
         with self._lock:
             self._worker_scene = updated
+            self._guidance_world = {}
+            self._guidance_world_sample_key = None
+            self._guidance_world_received_monotonic = None
             self._worker_scene_stopped = True
             self._worker_cleanup_guard_passed = updated.cleanup_guard_passed
             self._route = dict(updated.route)
@@ -953,6 +1055,7 @@ class DriveSession:
         overlay_recorder: AsyncVideoRecorder | None = None
         controls_stream: TextIO | None = None
         detections_stream: TextIO | None = None
+        guidance_stream: TextIO | None = None
         events_stream: TextIO | None = None
         episode_id: int | None = None
         owned_actor_ids: list[tuple[int, str]] = []
@@ -971,10 +1074,12 @@ class DriveSession:
         last_control_at = 0.0
         last_telemetry_at = 0.0
         detector_failed = False
+        last_guidance_log_at = 0.0
 
         config_path = tracker.artifact_path("config.json")
         controls_path = tracker.artifact_path("controls.jsonl")
         detections_path = tracker.artifact_path("detections.jsonl")
+        guidance_path = tracker.artifact_path("guidance.jsonl")
         events_path = tracker.artifact_path("events.jsonl")
         raw_video_path = tracker.artifact_path("raw-drive.mp4")
         overlay_video_path = tracker.artifact_path("model-overlay.mp4")
@@ -985,6 +1090,7 @@ class DriveSession:
         try:
             controls_stream = controls_path.open("w", encoding="utf-8", buffering=1)
             detections_stream = detections_path.open("w", encoding="utf-8", buffering=1)
+            guidance_stream = guidance_path.open("w", encoding="utf-8", buffering=1)
             events_stream = events_path.open("w", encoding="utf-8", buffering=1)
             rpc = CarlaRpc(self.config.host, self.config.port, timeout=5.0)
             self._server_version = str(rpc.value_call("version"))
@@ -1218,6 +1324,46 @@ class DriveSession:
                         )
                     last_camera_sequence = frame.sequence
                     last_camera_received = frame.received_monotonic
+                    with self._lock:
+                        guidance_world = dict(self._guidance_world)
+                        guidance_received = self._guidance_world_received_monotonic
+                    try:
+                        guidance_screen = project_driving_guidance(
+                            guidance_world,
+                            camera_transform=frame.transform,
+                            width=frame.width,
+                            height=frame.height,
+                            fov=frame.fov,
+                            camera_sequence=frame.sequence,
+                        )
+                    except Exception as error:
+                        guidance_screen = {
+                            "available": False,
+                            "source": None,
+                            "label": "PATH GUIDE UNAVAILABLE",
+                            "privileged": True,
+                            "feeds_control": False,
+                            "camera_sequence": frame.sequence,
+                            "frame_size": [frame.width, frame.height],
+                            "center": [],
+                            "left": [],
+                            "right": [],
+                            "steering_target": None,
+                            "reason": f"projection failed: {type(error).__name__}",
+                        }
+                    guidance_age = (
+                        None
+                        if guidance_received is None
+                        else round(max(0.0, now - guidance_received), 3)
+                    )
+                    guidance_screen["source_sampled_at_unix_seconds"] = guidance_world.get(
+                        "sampled_at_unix_seconds"
+                    )
+                    guidance_screen["source_age_seconds"] = guidance_age
+                    guidance_screen["temporal_alignment"] = (
+                        "latest_worker_heartbeat_sample_projected_to_camera_pose"
+                    )
+                    guidance_screen["exact_simulator_frame_alignment"] = False
                     source_jpeg = getattr(frame, "jpeg", None)
                     if isinstance(source_jpeg, bytes):
                         # The Worker already encoded this frame beside CARLA.
@@ -1226,6 +1372,7 @@ class DriveSession:
                         # not add glass-to-glass latency to this frame.
                         browser_frame = bytes(source_jpeg)
                         latest_raw_jpeg = browser_frame
+                        self._retain_guidance_frame(guidance_screen)
                         self._cache_frame("raw", frame.sequence, browser_frame)
                         self._frames_seen += 1
                         if raw_recorder is not None:
@@ -1234,8 +1381,41 @@ class DriveSession:
                         latest_raw = frame.bgr()
                         browser_frame = _jpeg(latest_raw)
                         latest_raw_jpeg = browser_frame
+                        self._retain_guidance_frame(guidance_screen)
                         self._cache_frame("raw", frame.sequence, browser_frame)
                         self._frames_seen += 1
+                    with self._lock:
+                        guidance_control_mode = self._control_mode
+                        guidance_telemetry = dict(self._telemetry)
+                    if (
+                        guidance_screen.get("available")
+                        and now - last_guidance_log_at >= _TELEMETRY_PERIOD_SECONDS
+                    ):
+                        _json_line(
+                            guidance_stream,
+                            {
+                                "at": _utc_now(),
+                                "camera_sequence": frame.sequence,
+                                "carla_frame": frame.frame,
+                                "source_timestamp": frame.timestamp,
+                                "camera_transform": list(frame.transform),
+                                "camera_fov": frame.fov,
+                                "frame_size": [frame.width, frame.height],
+                                "control_mode": guidance_control_mode,
+                                "telemetry": guidance_telemetry,
+                                "authority": "privileged_simulator",
+                                "feeds_vision_policy": False,
+                                "temporal_alignment": (
+                                    "latest_worker_heartbeat_sample_projected_to_camera_pose"
+                                ),
+                                "exact_simulator_frame_alignment": False,
+                                "guidance_source_age_seconds": guidance_age,
+                                "world_guidance": guidance_world,
+                                "projected_guidance": guidance_screen,
+                            },
+                        )
+                        self._guidance_written += 1
+                        last_guidance_log_at = now
                     if raw_recorder is not None and latest_raw is not None:
                         raw_recorder.submit(frame.sequence, latest_raw)
                     if perception is not None and not detector_failed:
@@ -1279,6 +1459,12 @@ class DriveSession:
                                 "MODEL": "ADVISORY ONLY",
                             },
                         )
+                        overlay_height, overlay_width = result.source_bgr.shape[:2]
+                        self._select_overlay_guidance(
+                            result.sequence,
+                            width=overlay_width,
+                            height=overlay_height,
+                        )
                         self._cache_frame("overlay", result.sequence, _jpeg(latest_overlay))
                         self._write_detections(detections_stream, result)
 
@@ -1308,6 +1494,7 @@ class DriveSession:
                             )
                         with self._lock:
                             self._worker_scene = updated_scene
+                            self._adopt_worker_guidance(updated_scene.guidance)
                     else:
                         rpc.void_call(
                             "set_weather_parameters",
@@ -1365,6 +1552,7 @@ class DriveSession:
                                     )
                                     with self._lock:
                                         self._worker_scene = updated_scene
+                                        self._adopt_worker_guidance(updated_scene.guidance)
                         else:
                             assert actuator is not None
                             actuator.send(command)
@@ -1438,7 +1626,12 @@ class DriveSession:
                         self._cleanup_errors.append(f"{name} recorder close: {error}")
             with self._lock:
                 self._recording = False
-            for stream_handle in (controls_stream, detections_stream, events_stream):
+            for stream_handle in (
+                controls_stream,
+                detections_stream,
+                guidance_stream,
+                events_stream,
+            ):
                 if stream_handle is not None:
                     try:
                         stream_handle.close()
@@ -1508,6 +1701,24 @@ class DriveSession:
                 latest_raw_jpeg=latest_raw_jpeg,
                 latest_overlay=latest_overlay,
             )
+            if guidance_path.is_file():
+                try:
+                    tracker.register_artifact(
+                        guidance_path,
+                        role="privileged_planner_guidance_evidence",
+                        metadata={
+                            "authority": "privileged_simulator",
+                            "feeds_vision_policy": False,
+                            "raw_video_mutated": False,
+                            "temporal_alignment": (
+                                "latest_worker_heartbeat_sample_projected_to_camera_pose"
+                            ),
+                            "exact_simulator_frame_alignment": False,
+                            "samples": self._guidance_written,
+                        },
+                    )
+                except Exception as error:
+                    self._cleanup_errors.append(f"register planner guidance: {error}")
 
     def _register_outputs(
         self,
@@ -1671,6 +1882,7 @@ class DriveSession:
         with self._lock:
             mode_history = [dict(item) for item in self._mode_history]
             stream = self._stream_snapshot(time.monotonic())
+            guidance = dict(self._guidance_screen)
         summary = {
             "schema_version": "1.0",
             "object_type": "interactive_drive_session_summary",
@@ -1704,6 +1916,14 @@ class DriveSession:
             "stream": stream,
             "controls_written": self._controls_written,
             "detections_written": self._detections_written,
+            "guidance_written": self._guidance_written,
+            "guidance": {
+                "available": bool(guidance.get("available")),
+                "source": guidance.get("source"),
+                "label": guidance.get("label"),
+                "privileged": True,
+                "feeds_vision_policy": False,
+            },
             "manual_commands": self._manual_commands,
             "deadman_commands": self._deadman_commands,
             "experiment_preset": self.config.experiment_preset,
@@ -2014,6 +2234,13 @@ class DriveSessionManager:
         if session is None:
             raise FileNotFoundError("no interactive drive session exists")
         return session.wait_for_frame(view, after_sequence, timeout)
+
+    def guided_frame(self, view: str, sequence: int, payload: bytes) -> bytes:
+        with self._lock:
+            session = self._session
+        if session is None:
+            raise FileNotFoundError("no interactive drive session exists")
+        return session.guided_frame(view, sequence, payload)
 
     def shutdown(self) -> None:
         with self._lock:

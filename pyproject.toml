@@ -13,12 +13,14 @@ dependencies = [
 [project.optional-dependencies]
 vision = [
   "torch>=2.4",
+  "transformers>=4.50",
   "ultralytics>=8.4",
 ]
 research = [
   "matplotlib>=3.9",
   "pycocotools>=2.0.10",
   "torch>=2.4",
+  "transformers>=4.50",
   "ultralytics>=8.4",
 ]
 experimental = [

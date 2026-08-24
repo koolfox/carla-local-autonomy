@@ -21,12 +21,21 @@
               <div class="drive-stage-column">
               <article class="card drive-viewer-card">
                 <div class="drive-viewer-toolbar">
-                  <div class="drive-view-switch" role="group" aria-label="Camera view">
+                  <div class="drive-view-switch" role="group" aria-label="Camera and visualization">
                     <button id="drive-view-raw" class="drive-view-button active" type="button" aria-pressed="true">
                       Camera
                     </button>
                     <button id="drive-view-overlay" class="drive-view-button" type="button" aria-pressed="false">
                       Detections
+                    </button>
+                    <button
+                      id="drive-guidance-toggle"
+                      class="drive-view-button drive-guidance-button active"
+                      type="button"
+                      aria-pressed="true"
+                      title="Show CARLA planner intent and lane reference"
+                    >
+                      Path
                     </button>
                   </div>
                   <div class="drive-view-actions">
@@ -50,6 +59,7 @@
                   aria-label="CARLA driving camera. Focus this viewport to use keyboard controls."
                 >
                   <img id="drive-frame" alt="Live front monocular CARLA camera">
+                  <div id="drive-guidance-source" class="drive-guidance-source" hidden></div>
                   <div id="drive-empty" class="drive-empty-state">
                     <span class="drive-empty-icon" aria-hidden="true">▣</span>
                     <strong>No live camera yet</strong>

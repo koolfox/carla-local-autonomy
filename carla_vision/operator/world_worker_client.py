@@ -14,7 +14,7 @@ import socket
 import threading
 import time
 from collections.abc import Iterator, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from http import HTTPStatus
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -268,6 +268,7 @@ class WorldWorkerScene:
     cleanup_guard_passed: bool | None
     cleanup_errors: tuple[str, ...]
     capabilities: Mapping[str, Any]
+    guidance: Mapping[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_response(cls, payload: Mapping[str, Any]) -> "WorldWorkerScene":
@@ -327,6 +328,7 @@ class WorldWorkerScene:
         capabilities = raw.get("capabilities", {})
         if not isinstance(capabilities, Mapping):
             raise WorldWorkerError("scene.capabilities must be an object")
+        guidance = _validated_guidance(raw.get("guidance", {}))
         cleanup_guard_passed = raw.get("cleanup_guard_passed")
         if cleanup_guard_passed is not None and not isinstance(cleanup_guard_passed, bool):
             raise WorldWorkerError("scene.cleanup_guard_passed must be boolean or null")
@@ -355,6 +357,7 @@ class WorldWorkerScene:
             cleanup_guard_passed=cleanup_guard_passed,
             cleanup_errors=tuple(raw_cleanup_errors),
             capabilities=dict(capabilities),
+            guidance=guidance,
         )
 
 
@@ -383,6 +386,41 @@ def _optional_integer(value: Any, name: str, *, minimum: int) -> int | None:
     if value is None:
         return None
     return _required_integer(value, name, minimum=minimum)
+
+
+def _validated_guidance(value: Any) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if not isinstance(value, Mapping):
+        raise WorldWorkerError("scene.guidance must be an object")
+    result = dict(value)
+    points = result.get("points", [])
+    if not isinstance(points, list) or len(points) > 96:
+        raise WorldWorkerError("scene.guidance.points must be a bounded list")
+    validated_points: list[dict[str, Any]] = []
+    for index, point in enumerate(points):
+        if not isinstance(point, Mapping):
+            raise WorldWorkerError(f"scene.guidance.points[{index}] must be an object")
+        item = dict(point)
+        for name in ("center", "left", "right"):
+            coordinates = item.get(name)
+            if (
+                not isinstance(coordinates, list)
+                or len(coordinates) != 3
+                or any(
+                    isinstance(coordinate, bool)
+                    or not isinstance(coordinate, (int, float))
+                    or not math.isfinite(float(coordinate))
+                    for coordinate in coordinates
+                )
+            ):
+                raise WorldWorkerError(
+                    f"scene.guidance.points[{index}].{name} must contain three finite numbers"
+                )
+            item[name] = [float(coordinate) for coordinate in coordinates]
+        validated_points.append(item)
+    result["points"] = validated_points
+    return result
 
 
 class WorldWorkerClient:

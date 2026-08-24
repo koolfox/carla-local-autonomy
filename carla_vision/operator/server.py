@@ -557,18 +557,27 @@ class OperatorRequestHandler(BaseHTTPRequestHandler):
                 self._json(HTTPStatus.OK, self.server.application.drive.state())
                 return
             if path == "/api/drive/frame.jpg":
-                view = parse_qs(parsed.query).get("view", ["raw"])[0]
+                query = parse_qs(parsed.query)
+                view = query.get("view", ["raw"])[0]
+                show_guidance = query.get("guidance", ["0"])[0] == "1"
                 sequence, payload = self.server.application.drive.frame(view)
+                if show_guidance:
+                    payload = self.server.application.drive.guided_frame(view, sequence, payload)
                 self._bytes(
                     HTTPStatus.OK,
                     payload,
                     content_type="image/jpeg",
-                    extra_headers={"X-Drive-Frame-Sequence": str(sequence)},
+                    extra_headers={
+                        "X-Drive-Frame-Sequence": str(sequence),
+                        "X-Drive-Guidance-Rendered": "1" if show_guidance else "0",
+                    },
                 )
                 return
             if path == "/api/drive/stream.mjpg":
-                view = parse_qs(parsed.query).get("view", ["raw"])[0]
-                self._drive_stream(view)
+                query = parse_qs(parsed.query)
+                view = query.get("view", ["raw"])[0]
+                show_guidance = query.get("guidance", ["0"])[0] == "1"
+                self._drive_stream(view, show_guidance=show_guidance)
                 return
             if path == "/api/evidence":
                 raw = parse_qs(parsed.query).get("path", [""])[0]
@@ -614,7 +623,7 @@ class OperatorRequestHandler(BaseHTTPRequestHandler):
         except BaseException as error:
             self._error(error)
 
-    def _drive_stream(self, view: str) -> None:
+    def _drive_stream(self, view: str, *, show_guidance: bool = False) -> None:
         """Relay cached newest frames over one persistent browser response."""
 
         if view not in {"raw", "overlay"}:
@@ -641,14 +650,20 @@ class OperatorRequestHandler(BaseHTTPRequestHandler):
         self.close_connection = True
         try:
             while True:
+                browser_payload = (
+                    self.server.application.drive.guided_frame(view, sequence, payload)
+                    if show_guidance
+                    else payload
+                )
                 header = (
                     f"--{boundary}\r\n"
                     "Content-Type: image/jpeg\r\n"
-                    f"Content-Length: {len(payload)}\r\n"
-                    f"X-Drive-Frame-Sequence: {sequence}\r\n\r\n"
+                    f"Content-Length: {len(browser_payload)}\r\n"
+                    f"X-Drive-Frame-Sequence: {sequence}\r\n"
+                    f"X-Drive-Guidance-Rendered: {1 if show_guidance else 0}\r\n\r\n"
                 ).encode("ascii")
                 self.wfile.write(header)
-                self.wfile.write(payload)
+                self.wfile.write(browser_payload)
                 self.wfile.write(b"\r\n")
                 self.wfile.flush()
                 try:

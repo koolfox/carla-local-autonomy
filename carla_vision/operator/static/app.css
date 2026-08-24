@@ -1236,6 +1236,8 @@ body:not(.drive-immersive) .drive-setup-column {
 }
 
 .drive-viewport img {
+  position: relative;
+  z-index: 0;
   display: none;
   width: 100%;
   height: 100%;
@@ -1243,6 +1245,38 @@ body:not(.drive-immersive) .drive-setup-column {
   background: #000;
   user-select: none;
   -webkit-user-drag: none;
+}
+
+.drive-guidance-source {
+  position: absolute;
+  z-index: 2;
+  top: 51px;
+  right: 13px;
+  max-width: calc(100% - 26px);
+  padding: 6px 9px;
+  overflow: hidden;
+  border: 1px solid rgba(104, 190, 255, 0.44);
+  border-radius: 999px;
+  color: #eaf7ff;
+  background: rgba(9, 35, 58, 0.74);
+  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.22);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.045em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+  backdrop-filter: blur(7px);
+}
+
+.drive-guidance-button.active {
+  color: #07131d;
+  background: #69beff;
+}
+
+body.drive-immersive .drive-guidance-button.active {
+  color: #07131d;
+  background: #69beff;
 }
 
 .drive-empty-state {
@@ -4151,6 +4185,10 @@ body.drive-immersive #game-stage .drive-hud-top {
   top: max(78px, calc(env(safe-area-inset-top) + 68px));
 }
 
+body.drive-immersive #game-stage .drive-guidance-source {
+  top: max(111px, calc(env(safe-area-inset-top) + 101px));
+}
+
 body.drive-immersive #game-stage .drive-control-deck,
 body.drive-immersive #game-stage .drive-model-boundary {
   display: none;
@@ -4370,5 +4408,34 @@ body.research-mode .research-tools-heading {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+  }
+}
+
+@media (max-width: 480px) and (any-pointer: coarse),
+  (max-width: 480px) and (hover: none) {
+  body.drive-immersive #game-stage .drive-viewer-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  body.drive-immersive #game-stage .drive-view-switch {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  body.drive-immersive #game-stage .drive-view-actions {
+    width: 100%;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+  }
+
+  body.drive-immersive #game-stage .drive-view-actions button {
+    min-width: 0;
+    flex: 1 1 120px;
+  }
+
+  body.drive-immersive #game-stage .drive-guidance-source {
+    top: max(190px, calc(env(safe-area-inset-top) + 180px));
   }
 }
