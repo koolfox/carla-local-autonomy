@@ -661,6 +661,25 @@ function driveWorldCapabilities() {
   };
 }
 
+function driveVisionRuntime() {
+  const runtime = state.drive.catalog?.vision_runtime;
+  const capabilities = state.drive.catalog?.capabilities || {};
+  const available = typeof runtime?.available === "boolean"
+    ? runtime.available
+    : driveCapabilityValue(capabilities, ["model_advisory"]);
+  const missing = Array.isArray(runtime?.missing)
+    ? runtime.missing.filter((item) => typeof item === "string" && item.trim())
+    : [];
+  return { available, missing };
+}
+
+function driveVisionRuntimeMessage() {
+  const runtime = driveVisionRuntime();
+  const components = runtime.missing.length ? runtime.missing.join(" and ") : "vision packages";
+  return `Detection is unavailable on this computer because ${components} did not load. ` +
+    "Install the project vision extra and restart the web server.";
+}
+
 function driveColorLabel(value) {
   const rgb = String(value).split(",").map((part) => Number(part.trim()));
   if (rgb.length !== 3 || rgb.some((part) => !Number.isFinite(part))) return String(value);
@@ -1378,7 +1397,12 @@ async function refreshDriveCatalog() {
 }
 
 function updateDriveModelToggle() {
-  const enabled = checked("drive-detector-enabled");
+  const runtime = driveVisionRuntime();
+  if (!runtime.available) {
+    $("drive-detector-enabled").checked = false;
+    showToast(driveVisionRuntimeMessage(), true);
+  }
+  const enabled = runtime.available && checked("drive-detector-enabled");
   if (!enabled) setDriveView("raw");
   updateDriveConfigAvailability();
 }
@@ -1423,7 +1447,10 @@ function configureDriveCameraProfiles() {
 
 function updateDriveConfigAvailability() {
   const active = driveIsActive();
-  const detectorEnabled = checked("drive-detector-enabled");
+  const visionRuntime = driveVisionRuntime();
+  const detectorToggle = $("drive-detector-enabled");
+  if (!visionRuntime.available) detectorToggle.checked = false;
+  const detectorEnabled = visionRuntime.available && detectorToggle.checked;
   configureDriveCameraProfiles();
   const lockIds = [
     "drive-run-id",
@@ -1441,6 +1468,11 @@ function updateDriveConfigAvailability() {
     "drive-spectator-follow",
   ];
   for (const id of lockIds) $(id).disabled = active;
+  detectorToggle.disabled = active || !visionRuntime.available;
+  detectorToggle.title = visionRuntime.available ? "" : driveVisionRuntimeMessage();
+  $("drive-detector-runtime-note").textContent = visionRuntime.available
+    ? "Show detected objects"
+    : driveVisionRuntimeMessage();
   $("drive-color").disabled = active || $("drive-color").options.length === 1 && !$("drive-color").value;
   for (const id of [
     "drive-detector",
@@ -1452,6 +1484,7 @@ function updateDriveConfigAvailability() {
     $(id).disabled = active || !detectorEnabled;
   }
   $("drive-view-overlay").disabled = !detectorEnabled;
+  $("drive-view-overlay").title = visionRuntime.available ? "" : driveVisionRuntimeMessage();
   configureDriveWorldControls();
 }
 
@@ -2153,9 +2186,13 @@ async function startDrive(event) {
   button.disabled = true;
   clearDriveKeys();
   try {
+    const startConfig = driveStartPayload();
+    if (startConfig.detector_enabled && !driveVisionRuntime().available) {
+      throw new Error(driveVisionRuntimeMessage());
+    }
     const payload = await request("/api/drive/start", {
       method: "POST",
-      body: JSON.stringify(driveStartPayload()),
+      body: JSON.stringify(startConfig),
     });
     const nextSession = payload.state || payload;
     state.drive.session = {
@@ -2164,7 +2201,7 @@ async function startDrive(event) {
     };
     state.drive.sequence = 0;
     state.drive.lastTerminalSession = null;
-    renderDriveState();
+    setDriveView(startConfig.detector_enabled ? "overlay" : "raw");
     showToast(
       state.drive.initialControlMode === "autopilot"
         ? "Drive is starting in simulator autopilot. Use Take Control for manual driving."

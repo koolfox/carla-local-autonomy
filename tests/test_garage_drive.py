@@ -97,6 +97,44 @@ def test_manual_mode_keeps_existing_browser_contract_without_pythonapi(tmp_path:
     assert session._garage_context is None
 
 
+def test_manual_output_registration_forwards_latest_worker_jpeg(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = GarageDriveSession(config(tmp_path), workspace=tmp_path)
+    captured: dict[str, object] = {}
+
+    def capture_registration(_session: object, _tracker: object, **kwargs: object) -> None:
+        captured.update(kwargs)
+
+    monkeypatch.setattr(garage_drive.DriveSession, "_register_outputs", capture_registration)
+    paths = {
+        name: tmp_path / name
+        for name in (
+            "controls.jsonl",
+            "detections.jsonl",
+            "events.jsonl",
+            "raw.mp4",
+            "overlay.mp4",
+        )
+    }
+    raw_frame = b"already-encoded-worker-jpeg"
+
+    session._register_outputs(
+        object(),
+        controls_path=paths["controls.jsonl"],
+        detections_path=paths["detections.jsonl"],
+        events_path=paths["events.jsonl"],
+        raw_video_path=paths["raw.mp4"],
+        overlay_video_path=paths["overlay.mp4"],
+        latest_raw=None,
+        latest_raw_jpeg=raw_frame,
+        latest_overlay=None,
+    )
+
+    assert captured["latest_raw_jpeg"] is raw_frame
+
+
 def test_experimental_control_modes_are_disabled_by_default(tmp_path: Path) -> None:
     with pytest.raises(PermissionError, match="--enable-experimental"):
         GarageDriveStartConfig.from_mapping(

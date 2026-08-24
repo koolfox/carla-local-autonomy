@@ -10,7 +10,9 @@ import urllib.request
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
+from unittest import mock
 
+from carla_vision.operator import drive as drive_module
 from carla_vision.operator.drive import (
     DriveSession,
     DriveSessionManager,
@@ -534,6 +536,19 @@ class DriveSessionManagerTests(_WorkspaceTestCase):
         self.assertFalse(catalog["capabilities"]["autopilot"])
         self.assertFalse(catalog["capabilities"]["map_reload"])
 
+    def test_catalog_reports_local_vision_runtime_instead_of_claiming_advisory(self) -> None:
+        runtime = {
+            "available": False,
+            "torch_importable": True,
+            "ultralytics_importable": False,
+            "missing": ["Ultralytics"],
+        }
+        with mock.patch.object(drive_module, "_vision_runtime_status", return_value=runtime):
+            catalog = self.manager(rpc_factory=_FakeRpc).catalog()
+
+        self.assertEqual(catalog["vision_runtime"], runtime)
+        self.assertFalse(catalog["capabilities"]["model_advisory"])
+
 
 class StaticDriveConsoleContractTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -620,6 +635,19 @@ class StaticDriveConsoleContractTests(unittest.TestCase):
         literal_id_references = set(re.findall(r"\$\(\s*[\"']([^\"']+)[\"']\s*\)", self.script))
         self.assertGreater(len(literal_id_references), 100)
         self.assertEqual(sorted(literal_id_references - set(self.parser.ids)), [])
+
+    def test_detector_runtime_is_visible_gated_and_selects_overlay_on_start(self) -> None:
+        note_tag, _ = self.parser.elements["drive-detector-runtime-note"]
+
+        self.assertEqual(note_tag, "small")
+        self.assertIn("function driveVisionRuntime()", self.script)
+        self.assertIn("detectorToggle.disabled = active || !visionRuntime.available;", self.script)
+        self.assertIn("throw new Error(driveVisionRuntimeMessage());", self.script)
+        self.assertIn(
+            'setDriveView(startConfig.detector_enabled ? "overlay" : "raw");',
+            self.script,
+        )
+        self.assertIn('$("drive-view-raw").addEventListener("click"', self.script)
 
     def test_drive_camera_defaults_to_balanced_profile_with_60_fps_available(self) -> None:
         tag, attributes = self.parser.elements["drive-resolution"]

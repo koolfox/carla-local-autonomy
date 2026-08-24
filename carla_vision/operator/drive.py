@@ -7,6 +7,7 @@ falls back to braking, with :class:`SafeActuator` providing a second watchdog.
 
 from __future__ import annotations
 
+import importlib
 import json
 import math
 import random
@@ -16,6 +17,7 @@ from collections import deque
 from collections.abc import Callable, Mapping
 from dataclasses import replace
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -78,6 +80,41 @@ def _world_worker_health_ready(payload: Mapping[str, Any]) -> bool:
     if isinstance(ready, bool):
         return ready
     return str(payload.get("status", "")).strip().lower() in {"ok", "ready"}
+
+
+def _runtime_component_importable(name: str, required_attributes: tuple[str, ...]) -> bool:
+    """Return whether a runtime component imports with the API the detector needs."""
+
+    try:
+        module = importlib.import_module(name)
+    except Exception:
+        return False
+    return all(hasattr(module, attribute) for attribute in required_attributes)
+
+
+@lru_cache(maxsize=1)
+def _vision_runtime_status() -> dict[str, Any]:
+    """Probe the optional local inference runtime once for the operator process."""
+
+    torch_importable = _runtime_component_importable("torch", ("Tensor",))
+    ultralytics_importable = _runtime_component_importable(
+        "ultralytics",
+        ("RTDETR", "YOLO"),
+    )
+    missing = [
+        label
+        for label, available in (
+            ("PyTorch", torch_importable),
+            ("Ultralytics", ultralytics_importable),
+        )
+        if not available
+    ]
+    return {
+        "available": not missing,
+        "torch_importable": torch_importable,
+        "ultralytics_importable": ultralytics_importable,
+        "missing": missing,
+    }
 
 
 def _validate_camera_attachment(camera: list[Any], vehicle_id: int) -> None:
@@ -1712,6 +1749,7 @@ class DriveSessionManager:
         self._session: DriveSession | None = None
 
     def catalog(self) -> dict[str, Any]:
+        vision_runtime = _vision_runtime_status()
         base = {
             "schema_version": "1.0",
             "connected": False,
@@ -1735,7 +1773,7 @@ class DriveSessionManager:
             "capabilities": {
                 "manual_drive": True,
                 "random_road_start": True,
-                "model_advisory": True,
+                "model_advisory": vision_runtime["available"],
                 "recording": True,
                 "weather": True,
                 "scene_props": True,
@@ -1751,6 +1789,7 @@ class DriveSessionManager:
                 "configured": self._world_worker is not None,
                 "connected": False,
             },
+            "vision_runtime": vision_runtime,
         }
         try:
             with self._rpc_factory(self.carla_host, self.carla_port, timeout=4.0) as rpc:
@@ -1780,7 +1819,7 @@ class DriveSessionManager:
                 if not isinstance(worker_capabilities, Mapping):
                     raise RuntimeError("World Worker capabilities must be an object")
                 for key, value in worker_capabilities.items():
-                    if isinstance(value, bool):
+                    if key != "model_advisory" and isinstance(value, bool):
                         base["capabilities"][str(key)] = value
                 base["capabilities"]["native_worker"] = True
 
