@@ -963,6 +963,7 @@ class GarageDriveSession(DriveSession):
         raw_video_path: Path,
         overlay_video_path: Path,
         latest_raw: np.ndarray | None,
+        latest_raw_jpeg: bytes | None,
         latest_overlay: np.ndarray | None,
     ) -> None:
         if self.config.control_mode == "manual":
@@ -974,6 +975,7 @@ class GarageDriveSession(DriveSession):
                 raw_video_path=raw_video_path,
                 overlay_video_path=overlay_video_path,
                 latest_raw=latest_raw,
+                latest_raw_jpeg=latest_raw_jpeg,
                 latest_overlay=latest_overlay,
             )
         if events_path.is_file():
@@ -1020,10 +1022,12 @@ class GarageDriveSession(DriveSession):
                 )
             except Exception as error:
                 self._cleanup_errors.append(f"register {role}: {error}")
-        if latest_raw is not None:
+        if latest_raw_jpeg is not None or latest_raw is not None:
             try:
                 path = tracker.artifact_path("latest-raw.jpg")
-                if not cv2.imwrite(str(path), latest_raw):
+                if latest_raw_jpeg is not None:
+                    path.write_bytes(latest_raw_jpeg)
+                elif latest_raw is not None and not cv2.imwrite(str(path), latest_raw):
                     raise RuntimeError("OpenCV did not write latest raw frame")
                 tracker.register_artifact(path, role="latest_raw_drive_frame")
             except Exception as error:
