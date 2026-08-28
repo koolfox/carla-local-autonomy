@@ -80,6 +80,58 @@ if (browser) {
   sessionConfig.subscribe((config) => persist(config));
 }
 
+function reconcileCapabilities(config: SessionConfig, snapshot: WorkspaceSnapshot): SessionConfig {
+  const next: SessionConfig = {
+    ...config,
+    scene: { ...config.scene },
+    route: { ...config.route },
+    control: { ...config.control },
+    perception: { ...config.perception },
+    policy: { ...config.policy }
+  };
+
+  if (!snapshot.system.workerConnected) {
+    next.scene.mapName = 'current';
+    next.route.mode = 'free';
+    next.scene.pedestrianCrossingFactor = 0.2;
+    next.scene.speedDifferencePercent = 12;
+    next.scene.followingDistanceMetres = 2;
+    if (next.control.mode === 'autopilot') next.control.mode = 'manual';
+  }
+
+  if (!snapshot.system.experimentalEnabled && ['behavior', 'imitation', 'voxel'].includes(next.control.mode)) {
+    next.control.mode = 'manual';
+    next.policy.acknowledgeAutonomy = false;
+  }
+
+  const modeCapability: Partial<Record<SessionConfig['control']['mode'], string>> = {
+    autopilot: 'autopilot',
+    behavior: 'garage_behavior_drive',
+    imitation: 'garage_imitation_drive',
+    voxel: 'garage_voxel_drive'
+  };
+  const capability = modeCapability[next.control.mode];
+  if (capability && !snapshot.system.capabilities[capability]) {
+    next.control.mode = 'manual';
+    next.policy.acknowledgeAutonomy = false;
+  }
+
+  if (!snapshot.system.visionRuntimeAvailable) {
+    next.perception.enabled = false;
+  } else if (next.perception.enabled && !next.perception.weights) {
+    next.perception.weights = snapshot.options.detectorWeights[0] ?? '';
+  }
+
+  if (!next.vehicle.blueprint) {
+    next.vehicle = {
+      ...next.vehicle,
+      blueprint: snapshot.options.vehicles[0]?.id ?? ''
+    };
+  }
+
+  return next;
+}
+
 export function hydrateWorkspace(snapshot: WorkspaceSnapshot): void {
   systemSettings.set(snapshot.system);
   workspaceOptions.set(snapshot.options);
@@ -88,19 +140,7 @@ export function hydrateWorkspace(snapshot: WorkspaceSnapshot): void {
 
   resolvedDefaults = mergeSessionDefaults(defaultSessionConfig(), snapshot.sessionDefaults);
   const stored = readStoredConfig(resolvedDefaults);
-  const next = stored ?? resolvedDefaults;
-  const firstVehicle = snapshot.options.vehicles[0]?.id ?? '';
-
-  if (!next.vehicle.blueprint && firstVehicle) {
-    next.vehicle = { ...next.vehicle, blueprint: firstVehicle };
-  }
-  if (!snapshot.system.visionRuntimeAvailable) {
-    next.perception = { ...next.perception, enabled: false };
-  }
-  if (!snapshot.system.workerConnected && next.control.mode === 'autopilot') {
-    next.control = { ...next.control, mode: 'manual' };
-  }
-  sessionConfig.set({ ...next });
+  sessionConfig.set(reconcileCapabilities(stored ?? resolvedDefaults, snapshot));
 }
 
 export function patchSessionSection<K extends keyof SessionConfig>(
@@ -128,5 +168,8 @@ export function resetSession(): void {
   const next = mergeSessionDefaults(defaultSessionConfig(), resolvedDefaults);
   next.vehicle.blueprint = options.vehicles[0]?.id ?? '';
   if (currentSystem && !currentSystem.visionRuntimeAvailable) next.perception.enabled = false;
+  if (next.perception.enabled && !next.perception.weights) {
+    next.perception.weights = options.detectorWeights[0] ?? '';
+  }
   sessionConfig.set(next);
 }
