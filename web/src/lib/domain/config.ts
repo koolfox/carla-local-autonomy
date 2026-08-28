@@ -1,6 +1,7 @@
 export type ControlMode = 'manual' | 'autopilot' | 'behavior' | 'imitation' | 'voxel';
 export type RouteMode = 'free' | 'random_destination';
 export type DetectorKind = 'rtdetr' | 'yolo';
+export type BehaviorStyle = 'cautious' | 'normal' | 'aggressive';
 export type ExperimentPreset =
   | 'free_drive'
   | 'manual_handling'
@@ -70,6 +71,17 @@ export interface SessionConfig {
   experiment: {
     preset: ExperimentPreset;
   };
+  policy: {
+    behavior: BehaviorStyle;
+    acknowledgeAutonomy: boolean;
+    checkpoint: string;
+    device: string;
+    voxelReadinessReport: string;
+    targetSpeedKmh: number;
+    maxPolicyErrors: number;
+    maxModelSpeedKmh: number;
+    maxSteerRate: number;
+  };
 }
 
 export interface ExperimentPresetPatch {
@@ -98,6 +110,7 @@ export interface WorkspaceOptions {
   vehicles: Array<{ id: string; label?: string; colors?: string[] }>;
   weatherPresets: Array<{ id: string; label: string }>;
   propPresets: Array<{ id: string; label: string }>;
+  detectorWeights: string[];
   checkpoints: string[];
 }
 
@@ -150,6 +163,17 @@ export function defaultSessionConfig(): SessionConfig {
     },
     experiment: {
       preset: 'free_drive'
+    },
+    policy: {
+      behavior: 'normal',
+      acknowledgeAutonomy: false,
+      checkpoint: '',
+      device: 'cpu',
+      voxelReadinessReport: '',
+      targetSpeedKmh: 35,
+      maxPolicyErrors: 3,
+      maxModelSpeedKmh: 45,
+      maxSteerRate: 2.5
     }
   };
 }
@@ -169,7 +193,8 @@ export function mergeSessionDefaults(
     camera: { ...fallback.camera, ...(defaults.camera ?? {}) },
     perception: { ...fallback.perception, ...(defaults.perception ?? {}) },
     recording: { ...fallback.recording, ...(defaults.recording ?? {}) },
-    experiment: { ...fallback.experiment, ...(defaults.experiment ?? {}) }
+    experiment: { ...fallback.experiment, ...(defaults.experiment ?? {}) },
+    policy: { ...fallback.policy, ...(defaults.policy ?? {}) }
   };
 }
 
@@ -184,7 +209,8 @@ export function applyExperimentPresetDefinition(
     control: { ...current.control },
     perception: { ...current.perception },
     recording: { ...current.recording },
-    experiment: { preset: definition.id }
+    experiment: { preset: definition.id },
+    policy: { ...current.policy }
   };
 
   if (patch.control?.mode) next.control.mode = patch.control.mode;
