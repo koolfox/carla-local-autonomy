@@ -16,6 +16,7 @@ export interface BootstrapPayload {
       map?: string;
     };
     capabilities: Record<string, boolean>;
+    weights?: string[];
   };
   drive?: Record<string, unknown>;
 }
@@ -72,6 +73,16 @@ export interface WorkspaceSnapshot {
   driveCatalog: DriveCatalogPayload;
 }
 
+export interface DriveState {
+  status?: string;
+  session_id?: string;
+  run_id?: string;
+  garage_mode?: string;
+  control_mode?: string;
+  emergency_stop?: boolean;
+  [key: string]: unknown;
+}
+
 async function readJson<T>(path: string): Promise<T> {
   const response = await fetch(path, {
     headers: { Accept: 'application/json' },
@@ -118,6 +129,7 @@ export async function loadWorkspaceSnapshot(): Promise<WorkspaceSnapshot> {
       ? driveCatalog.weather_presets
       : [],
     propPresets: Array.isArray(driveCatalog.prop_presets) ? driveCatalog.prop_presets : [],
+    detectorWeights: Array.isArray(bootstrap.catalog.weights) ? bootstrap.catalog.weights : [],
     checkpoints: Array.isArray(driveCatalog.policy_checkpoints)
       ? driveCatalog.policy_checkpoints
       : []
@@ -155,5 +167,12 @@ export class OperatorApi {
       throw new Error(`Operator API ${path} failed: ${message}`);
     }
     return payload as T;
+  }
+
+  startSession(session: SessionConfig): Promise<DriveState> {
+    return this.post<DriveState>('/api/session/start', {
+      schema_version: '1.0',
+      session
+    });
   }
 }
