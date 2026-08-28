@@ -39,6 +39,7 @@ from typing import Any, Self
 from urllib.parse import urlparse
 
 SCHEMA_VERSION = "1.0"
+WORKER_API_REVISION = 2
 EXPECTED_CARLA_VERSION = "0.9.16"
 DEFAULT_BIND = "127.0.0.1"
 DEFAULT_PORT = 8766
@@ -68,6 +69,12 @@ _JPEG_QUALITY = 90
 _ACTIVE_SCENE_STATES = frozenset({"prepared", "running", "stopping"})
 _ROUTE_MODES = frozenset({"free", "random_destination"})
 _CONTROL_MODES = frozenset({"manual", "autopilot"})
+_GARAGE_CAMERA_PRESETS = frozenset({"orbit", "front", "rear", "top", "cockpit"})
+_GARAGE_EXTERIOR_PRESETS: dict[str, tuple[float, float, float]] = {
+    "front": (0.0, -8.0, 6.5),
+    "rear": (180.0, -8.0, 6.5),
+    "top": (0.0, -70.0, 8.0),
+}
 _SIMULATOR_SEED_MODULUS = 2**31 - 1
 
 # Keep the bridge executable as a single file on the CARLA host.  These small
@@ -382,6 +389,9 @@ class SceneConfig:
     prop_preset: str = "none"
     route_mode: str = "free"
     initial_control_mode: str = "manual"
+    pedestrian_crossing_factor: float = 0.2
+    speed_difference_percent: float = 12.0
+    following_distance_metres: float = 2.0
 
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any]) -> Self:
@@ -396,6 +406,9 @@ class SceneConfig:
             "prop_preset",
             "route_mode",
             "initial_control_mode",
+            "pedestrian_crossing_factor",
+            "speed_difference_percent",
+            "following_distance_metres",
         }
         _strict_keys(raw, allowed=allowed, name="scene prepare request")
 
@@ -466,6 +479,24 @@ class SceneConfig:
             prop_preset=prop_preset,
             route_mode=route_mode,
             initial_control_mode=control_mode,
+            pedestrian_crossing_factor=_number(
+                raw.get("pedestrian_crossing_factor", 0.2),
+                "pedestrian_crossing_factor",
+                0.0,
+                1.0,
+            ),
+            speed_difference_percent=_number(
+                raw.get("speed_difference_percent", 12.0),
+                "speed_difference_percent",
+                -100.0,
+                100.0,
+            ),
+            following_distance_metres=_number(
+                raw.get("following_distance_metres", 2.0),
+                "following_distance_metres",
+                0.1,
+                20.0,
+            ),
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -480,6 +511,9 @@ class SceneConfig:
             "prop_preset": self.prop_preset,
             "route_mode": self.route_mode,
             "initial_control_mode": self.initial_control_mode,
+            "pedestrian_crossing_factor": self.pedestrian_crossing_factor,
+            "speed_difference_percent": self.speed_difference_percent,
+            "following_distance_metres": self.following_distance_metres,
         }
 
 
@@ -824,6 +858,7 @@ class SceneLease:
     cleanup_guard_passed: bool | None = None
     cleanup_errors: list[str] = field(default_factory=list)
     camera_relay: CompressedCameraRelay | None = None
+    camera_config: CompressedCameraConfig | None = None
 
 
 class WorldWorker:
@@ -1062,6 +1097,11 @@ class WorldWorker:
             "persistent_mjpeg_camera_relay": in_memory_encoder,
             "in_memory_jpeg_encoder_available": in_memory_encoder,
             "camera_60_fps": in_memory_encoder,
+            "garage_camera_presets": True,
+            "garage_vehicle_autoframing": True,
+            "world_dynamics_controls": True,
+            "exact_scene_population": True,
+            "bounded_scene_cleanup": True,
         }
 
     @staticmethod
@@ -1107,6 +1147,7 @@ class WorldWorker:
                 error_code = error.code
             return {
                 "schema_version": SCHEMA_VERSION,
+                "worker_api_revision": WORKER_API_REVISION,
                 "status": status,
                 "ready": ready,
                 "error_code": error_code,
@@ -1152,6 +1193,7 @@ class WorldWorker:
                 )
             return {
                 "schema_version": SCHEMA_VERSION,
+                "worker_api_revision": WORKER_API_REVISION,
                 "status": "ok",
                 "carla": self._carla_facts(
                     client,
@@ -1189,6 +1231,7 @@ class WorldWorker:
         with self._lock:
             return {
                 "schema_version": SCHEMA_VERSION,
+                "worker_api_revision": WORKER_API_REVISION,
                 "status": "idle" if self._scene is None else self._scene.status,
                 "scene": None if self._scene is None else self._scene_snapshot(self._scene),
             }
@@ -1371,6 +1414,70 @@ class WorldWorker:
             )
         )
 
+    @staticmethod
+    def _actor_is_confirmed_absent(world: Any, actor: Any) -> bool:
+        if not bool(getattr(actor, "is_alive", True)):
+            return True
+        try:
+            current = world.get_actor(int(actor.id))
+        except Exception:
+            return False
+        return current is None or not bool(getattr(current, "is_alive", True))
+
+    @classmethod
+    def _discard_actor_group(
+        cls,
+        world: Any,
+        owned: list[OwnedActor],
+        *actors: Any,
+    ) -> None:
+        """Best-effort rollback without forgetting actors CARLA still owns."""
+
+        destroyed_actor_ids: set[int] = set()
+        for actor in actors:
+            if actor is None:
+                continue
+            try:
+                if str(getattr(actor, "type_id", "")).startswith("controller.ai.walker"):
+                    actor.stop()
+            except Exception:
+                pass
+            try:
+                destroyed = actor.destroy()
+            except Exception:
+                destroyed = False
+            if destroyed is True or cls._actor_is_confirmed_absent(world, actor):
+                destroyed_actor_ids.add(int(actor.id))
+        owned[:] = [item for item in owned if item.actor_id not in destroyed_actor_ids]
+
+    @staticmethod
+    def _registered_actor_ids(world: Any, actors: Sequence[Any]) -> set[int]:
+        live_candidates = {
+            int(actor.id)
+            for actor in actors
+            if bool(getattr(actor, "is_alive", True))
+        }
+        if not live_candidates:
+            return set()
+        if hasattr(world, "get_actors"):
+            try:
+                return {
+                    int(actor.id)
+                    for actor in world.get_actors(list(live_candidates))
+                    if bool(getattr(actor, "is_alive", True))
+                }
+            except Exception:
+                return set()
+        registered: set[int] = set()
+        for actor_id in live_candidates:
+            try:
+                current = world.get_actor(actor_id)
+                if current is not None and bool(getattr(current, "is_alive", True)):
+                    registered.add(actor_id)
+            except Exception:
+                continue
+        return registered
+
     def _spawn_ego(
         self,
         world: Any,
@@ -1456,9 +1563,13 @@ class WorldWorker:
             if actor is None:
                 continue
             self._record_actor(owned, actor, kind="traffic", role_name=role_name)
-            actor.set_autopilot(True, int(traffic_manager.get_port()))
-            if hasattr(traffic_manager, "update_vehicle_lights"):
-                traffic_manager.update_vehicle_lights(actor, True)
+            try:
+                actor.set_autopilot(True, int(traffic_manager.get_port()))
+                if hasattr(traffic_manager, "update_vehicle_lights"):
+                    traffic_manager.update_vehicle_lights(actor, True)
+            except Exception:
+                self._discard_actor_group(world, owned, actor)
+                continue
             actors.append(actor)
         return actors
 
@@ -1498,60 +1609,88 @@ class WorldWorker:
             )
         walkers: list[Any] = []
         controllers: list[Any] = []
-        speeds: list[float] = []
-        for _ in range(count * 3):
-            if len(walkers) >= count:
-                break
-            location = world.get_random_location_from_navigation()
-            if location is None:
-                continue
-            blueprint = rng.choice(blueprints)
-            try:
-                if blueprint.has_attribute("is_invincible"):
-                    blueprint.set_attribute("is_invincible", "false")
-            except Exception:
-                pass
-            role_name = self._set_role(blueprint, f"world_worker_walker_{scene_id}")
-            transform = self._carla.Transform(location)
-            try:
-                walker = world.try_spawn_actor(blueprint, transform)
-            except Exception:
-                walker = None
-            if walker is None:
-                continue
-            self._record_actor(owned, walker, kind="walker", role_name=role_name)
-            try:
-                controller = world.try_spawn_actor(
-                    controller_blueprint,
-                    self._carla.Transform(),
-                    attach_to=walker,
-                )
-            except Exception:
-                controller = None
-            if controller is None:
-                try:
-                    walker.destroy()
-                finally:
-                    owned.pop()
-                continue
-            self._record_actor(owned, controller, kind="walker_controller")
-            walkers.append(walker)
-            controllers.append(controller)
-            speeds.append(self._walker_speed(blueprint, rng.random() < 0.05))
 
-        if controllers and hasattr(world, "wait_for_tick"):
-            try:
-                world.wait_for_tick(seconds=min(self.timeout, 5.0))
-            except TypeError:
-                world.wait_for_tick(min(self.timeout, 5.0))
-            except Exception:
-                pass
-        for controller, speed in zip(controllers, speeds, strict=True):
-            controller.start()
-            destination = world.get_random_location_from_navigation()
-            if destination is not None:
-                controller.go_to_location(destination)
-            controller.set_max_speed(speed)
+        # Dense walker creation can invalidate a newly attached parent before
+        # WalkerAIController.start() toggles its physics state. Retry failed
+        # pairs independently instead of aborting the whole scene with CARLA's
+        # opaque "actor not found in registry" error.
+        activation_batch_size = 24
+        maximum_rounds = max(3, math.ceil(count / activation_batch_size) * 3)
+        for _round in range(maximum_rounds):
+            needed = count - len(walkers)
+            if needed <= 0:
+                break
+            batch_target = min(activation_batch_size, needed)
+            pending: list[tuple[Any, Any, float]] = []
+            for _ in range(batch_target * 3):
+                if len(pending) >= batch_target:
+                    break
+                location = world.get_random_location_from_navigation()
+                if location is None:
+                    continue
+                blueprint = rng.choice(blueprints)
+                try:
+                    if blueprint.has_attribute("is_invincible"):
+                        blueprint.set_attribute("is_invincible", "false")
+                except Exception:
+                    pass
+                role_name = self._set_role(blueprint, f"world_worker_walker_{scene_id}")
+                transform = self._carla.Transform(location)
+                try:
+                    walker = world.try_spawn_actor(blueprint, transform)
+                except Exception:
+                    walker = None
+                if walker is None:
+                    continue
+                self._record_actor(owned, walker, kind="walker", role_name=role_name)
+                try:
+                    controller = world.try_spawn_actor(
+                        controller_blueprint,
+                        self._carla.Transform(),
+                        attach_to=walker,
+                    )
+                except Exception:
+                    controller = None
+                if controller is None:
+                    self._discard_actor_group(world, owned, walker)
+                    continue
+                self._record_actor(owned, controller, kind="walker_controller")
+                pending.append(
+                    (walker, controller, self._walker_speed(blueprint, rng.random() < 0.05))
+                )
+
+            barrier_ready = True
+            if pending and hasattr(world, "wait_for_tick"):
+                try:
+                    world.wait_for_tick(seconds=min(self.timeout, 5.0))
+                except TypeError:
+                    try:
+                        world.wait_for_tick(min(self.timeout, 5.0))
+                    except Exception:
+                        barrier_ready = False
+                except Exception:
+                    barrier_ready = False
+            if not barrier_ready:
+                for walker, controller, _speed in pending:
+                    self._discard_actor_group(world, owned, controller, walker)
+                continue
+            for walker, controller, speed in pending:
+                try:
+                    controller.start()
+                    destination = None
+                    for _ in range(3):
+                        destination = world.get_random_location_from_navigation()
+                        if destination is not None:
+                            break
+                    if destination is None:
+                        raise RuntimeError("navigation mesh returned no walker destination")
+                    controller.go_to_location(destination)
+                    controller.set_max_speed(speed)
+                except Exception:
+                    self._discard_actor_group(world, owned, controller, walker)
+                    continue
+                walkers.append(walker)
+                controllers.append(controller)
         return walkers, controllers
 
     @staticmethod
@@ -1730,13 +1869,17 @@ class WorldWorker:
                 if hasattr(traffic_manager, "set_random_device_seed"):
                     traffic_manager.set_random_device_seed(simulator_seed)
                 if hasattr(traffic_manager, "set_global_distance_to_leading_vehicle"):
-                    traffic_manager.set_global_distance_to_leading_vehicle(2.0)
+                    traffic_manager.set_global_distance_to_leading_vehicle(
+                        config.following_distance_metres
+                    )
                 if hasattr(traffic_manager, "global_percentage_speed_difference"):
-                    traffic_manager.global_percentage_speed_difference(12.0)
+                    traffic_manager.global_percentage_speed_difference(
+                        config.speed_difference_percent
+                    )
                 if hasattr(world, "set_pedestrians_seed"):
                     world.set_pedestrians_seed((simulator_seed + 1) % _SIMULATOR_SEED_MODULUS)
                 if hasattr(world, "set_pedestrians_cross_factor"):
-                    world.set_pedestrians_cross_factor(0.2)
+                    world.set_pedestrians_cross_factor(config.pedestrian_crossing_factor)
                 original_weather = world.get_weather()
             except WorkerError:
                 self._release_traffic_manager(traffic_manager)
@@ -1762,6 +1905,15 @@ class WorldWorker:
                         HTTPStatus.SERVICE_UNAVAILABLE,
                         "spawn_points_unavailable",
                         "active CARLA map exposes no vehicle spawn points",
+                    )
+                maximum_traffic = max(0, len(spawn_points) - 1)
+                if config.traffic_count > maximum_traffic:
+                    raise WorkerError(
+                        HTTPStatus.UNPROCESSABLE_ENTITY,
+                        "scene_population_capacity",
+                        "requested traffic_count "
+                        f"{config.traffic_count} exceeds this map's maximum of "
+                        f"{maximum_traffic} after reserving one ego spawn point",
                     )
                 ego, spawn_index = self._spawn_ego(
                     world,
@@ -1789,6 +1941,15 @@ class WorldWorker:
                     weather_preset=config.weather_preset,
                     lease_deadline=self._clock() + self.lease_seconds,
                 )
+                # Reserve the deterministic ego-relative fixed scene before
+                # filling the map with stochastic traffic and walkers.
+                partial.prop_actors = self._spawn_props(
+                    scene_id,
+                    world,
+                    config.prop_preset,
+                    ego.get_transform(),
+                    owned,
+                )
                 partial.vehicle_actors = self._spawn_traffic(
                     scene_id,
                     world,
@@ -1806,13 +1967,52 @@ class WorldWorker:
                     role_rng,
                     owned,
                 )
-                partial.prop_actors = self._spawn_props(
-                    scene_id,
+                registered_actor_ids = self._registered_actor_ids(
                     world,
-                    config.prop_preset,
-                    ego.get_transform(),
-                    owned,
+                    [
+                        *partial.vehicle_actors,
+                        *partial.walker_actors,
+                        *partial.walker_controllers,
+                    ],
                 )
+                verified_vehicles: list[Any] = []
+                for actor in partial.vehicle_actors:
+                    if int(actor.id) in registered_actor_ids:
+                        verified_vehicles.append(actor)
+                    else:
+                        self._discard_actor_group(world, owned, actor)
+                partial.vehicle_actors = verified_vehicles
+                verified_walkers: list[Any] = []
+                verified_controllers: list[Any] = []
+                for walker, controller in zip(
+                    partial.walker_actors,
+                    partial.walker_controllers,
+                    strict=True,
+                ):
+                    if (
+                        int(walker.id) in registered_actor_ids
+                        and int(controller.id) in registered_actor_ids
+                    ):
+                        verified_walkers.append(walker)
+                        verified_controllers.append(controller)
+                    else:
+                        self._discard_actor_group(world, owned, controller, walker)
+                partial.walker_actors = verified_walkers
+                partial.walker_controllers = verified_controllers
+                actual_traffic = len(partial.vehicle_actors)
+                actual_walkers = len(partial.walker_actors)
+                if (
+                    actual_traffic != config.traffic_count
+                    or actual_walkers != config.walker_count
+                ):
+                    raise WorkerError(
+                        HTTPStatus.UNPROCESSABLE_ENTITY,
+                        "scene_population_shortfall",
+                        "CARLA could not create the exact requested population: "
+                        f"traffic {actual_traffic}/{config.traffic_count}, "
+                        f"walkers {actual_walkers}/{config.walker_count}. "
+                        "No partial scene was retained; reduce the counts or change map/seed.",
+                    )
                 if config.route_mode == "random_destination":
                     partial.route, partial.destination, partial.route_locations = (
                         self._plan_random_route(
@@ -1943,17 +2143,174 @@ class WorldWorker:
         yaw: float,
         pitch: float,
         distance: float,
+        width: int | None = None,
+        height: int | None = None,
+        fov: float | None = None,
+        preset: str = "orbit",
     ) -> Any:
         assert self._carla is not None
         vehicle = ego.get_transform()
+        if preset in _GARAGE_EXTERIOR_PRESETS:
+            yaw, pitch, distance = _GARAGE_EXTERIOR_PRESETS[preset]
+        bounds = self._garage_vehicle_bounds(ego, vehicle)
+        if preset == "cockpit":
+            return self._garage_cockpit_transform(vehicle, bounds)
+
+        if bounds is not None and width is not None and height is not None and fov is not None:
+            target, _local_center, extent = bounds
+            try:
+                aspect = float(width) / float(height)
+                horizontal_half_fov = math.radians(float(fov)) / 2.0
+                vertical_half_fov = math.atan(math.tan(horizontal_half_fov) / aspect)
+                azimuth = math.radians(float(yaw))
+                pitch_radians = math.radians(float(pitch))
+                extent_x, extent_y, extent_z = extent
+                half_width = (
+                    abs(math.sin(azimuth)) * extent_x
+                    + abs(math.cos(azimuth)) * extent_y
+                )
+                half_depth = (
+                    abs(math.cos(azimuth)) * extent_x
+                    + abs(math.sin(azimuth)) * extent_y
+                )
+                projected_height = (
+                    abs(math.sin(pitch_radians)) * half_depth
+                    + abs(math.cos(pitch_radians)) * extent_z
+                )
+                projected_depth = (
+                    abs(math.cos(pitch_radians)) * half_depth
+                    + abs(math.sin(pitch_radians)) * extent_z
+                )
+                minimum_fit = projected_depth + max(
+                    half_width / math.tan(horizontal_half_fov),
+                    projected_height / math.tan(vertical_half_fov),
+                )
+                zoom_margin = 1.02 + ((float(distance) - 3.5) / 6.5) * 0.43
+                eye_distance = minimum_fit * zoom_margin
+                if not math.isfinite(eye_distance) or eye_distance <= 0.0:
+                    raise ValueError("computed Garage camera distance is invalid")
+                return self._garage_exterior_transform(
+                    vehicle,
+                    target=target,
+                    yaw=yaw,
+                    pitch=pitch,
+                    distance=eye_distance,
+                )
+            except (AttributeError, TypeError, ValueError, ZeroDivisionError):
+                pass
+
+        target = self._carla.Location(
+            x=float(vehicle.location.x),
+            y=float(vehicle.location.y),
+            z=float(vehicle.location.z) + 0.9,
+        )
+        return self._garage_exterior_transform(
+            vehicle,
+            target=target,
+            yaw=yaw,
+            pitch=pitch,
+            distance=distance,
+        )
+
+    def _garage_vehicle_bounds(
+        self,
+        ego: Any,
+        vehicle: Any,
+    ) -> tuple[
+        Any,
+        tuple[float, float, float],
+        tuple[float, float, float],
+    ] | None:
+        """Return a validated world-space bounds centre and local half-extents."""
+
+        try:
+            bounds = ego.bounding_box
+            center = bounds.location
+            extent = bounds.extent
+            center_values = (float(center.x), float(center.y), float(center.z))
+            extent_values = (float(extent.x), float(extent.y), float(extent.z))
+            if not all(math.isfinite(value) for value in (*center_values, *extent_values)):
+                return None
+            if any(value <= 0.0 for value in extent_values):
+                return None
+            target = self._garage_local_to_world(vehicle, center_values)
+        except (AttributeError, TypeError, ValueError, OverflowError):
+            return None
+        return target, center_values, extent_values
+
+    def _garage_local_to_world(
+        self,
+        vehicle: Any,
+        local: tuple[float, float, float],
+    ) -> Any:
+        assert self._carla is not None
+        pitch = math.radians(float(vehicle.rotation.pitch))
+        yaw = math.radians(float(vehicle.rotation.yaw))
+        roll = math.radians(float(vehicle.rotation.roll))
+        cy, sy = math.cos(yaw), math.sin(yaw)
+        cp, sp = math.cos(pitch), math.sin(pitch)
+        cr, sr = math.cos(roll), math.sin(roll)
+        matrix = (
+            (cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr),
+            (sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr),
+            (-sp, cp * sr, cp * cr),
+        )
+        translated = [
+            origin
+            + sum(coefficient * offset for coefficient, offset in zip(row, local, strict=True))
+            for origin, row in zip(
+                (vehicle.location.x, vehicle.location.y, vehicle.location.z),
+                matrix,
+                strict=True,
+            )
+        ]
+        return self._carla.Location(x=translated[0], y=translated[1], z=translated[2])
+
+    def _garage_cockpit_transform(
+        self,
+        vehicle: Any,
+        bounds: tuple[
+            Any,
+            tuple[float, float, float],
+            tuple[float, float, float],
+        ]
+        | None,
+    ) -> Any:
+        assert self._carla is not None
+        if bounds is None:
+            local_eye = (0.35, 0.0, 1.25)
+        else:
+            _target, center, extent = bounds
+            local_eye = (
+                center[0] + extent[0] * 0.5,
+                center[1] - extent[1] * 0.25,
+                center[2] + extent[2] * 0.65,
+            )
+        location = self._garage_local_to_world(vehicle, local_eye)
+        rotation = self._carla.Rotation(
+            pitch=float(vehicle.rotation.pitch),
+            yaw=float(vehicle.rotation.yaw),
+            roll=float(vehicle.rotation.roll),
+        )
+        return self._carla.Transform(location, rotation)
+
+    def _garage_exterior_transform(
+        self,
+        vehicle: Any,
+        *,
+        target: Any,
+        yaw: float,
+        pitch: float,
+        distance: float,
+    ) -> Any:
+        assert self._carla is not None
         bearing = math.radians(float(vehicle.rotation.yaw) + yaw)
         pitch_radians = math.radians(pitch)
         horizontal = distance * math.cos(pitch_radians)
-        target_z = float(vehicle.location.z) + 0.9
         location = self._carla.Location(
-            x=float(vehicle.location.x) + horizontal * math.cos(bearing),
-            y=float(vehicle.location.y) + horizontal * math.sin(bearing),
-            z=target_z - distance * math.sin(pitch_radians),
+            x=float(target.x) + horizontal * math.cos(bearing),
+            y=float(target.y) + horizontal * math.sin(bearing),
+            z=float(target.z) - distance * math.sin(pitch_radians),
         )
         rotation = self._carla.Rotation(
             pitch=pitch,
@@ -1998,6 +2355,9 @@ class WorldWorker:
                     yaw=config.yaw,
                     pitch=config.pitch,
                     distance=config.distance,
+                    width=config.width,
+                    height=config.height,
+                    fov=config.fov,
                 )
                 sensor = scene.world.spawn_actor(blueprint, transform)
             else:
@@ -2023,10 +2383,12 @@ class WorldWorker:
                 jpeg_quality=jpeg_quality,
             )
             scene.camera_relay = relay
+            scene.camera_config = config
             try:
                 relay.listen()
             except BaseException as error:
                 scene.camera_relay = None
+                scene.camera_config = None
                 relay.close()
                 try:
                     self._destroy_owned_actor(scene.world, owned)
@@ -2038,6 +2400,7 @@ class WorldWorker:
             self._refresh_lease(scene)
             return {
                 "schema_version": SCHEMA_VERSION,
+                "worker_api_revision": WORKER_API_REVISION,
                 "status": "starting",
                 "scene_id": scene.scene_id,
                 "camera": {
@@ -2051,12 +2414,25 @@ class WorldWorker:
             }
 
     def camera_orbit(self, scene_id: str, raw: Mapping[str, Any]) -> dict[str, Any]:
-        allowed = {"lease_token", "yaw", "pitch", "distance"}
+        allowed = {"lease_token", "yaw", "pitch", "distance", "preset"}
         lease_token = self._lease_token(raw, allowed=allowed)
-        _strict_keys(raw, allowed=allowed, required=allowed, name="camera orbit request")
+        _strict_keys(
+            raw,
+            allowed=allowed,
+            required={"lease_token", "yaw", "pitch", "distance"},
+            name="camera orbit request",
+        )
         yaw = _number(raw["yaw"], "yaw", -3600.0, 3600.0)
         pitch = _number(raw["pitch"], "pitch", -25.0, 15.0)
         distance = _number(raw["distance"], "distance", 3.5, 10.0)
+        preset = _text(raw.get("preset", "orbit"), "preset", maximum=16)
+        if preset not in _GARAGE_CAMERA_PRESETS:
+            choices = ", ".join(sorted(_GARAGE_CAMERA_PRESETS))
+            raise WorkerError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_field",
+                f"preset must be one of: {choices}",
+            )
         with self._lock:
             scene = self._require_scene(scene_id, lease_token)
             relay = scene.camera_relay
@@ -2064,17 +2440,28 @@ class WorldWorker:
                 raise WorkerError(
                     HTTPStatus.CONFLICT, "camera_inactive", "compressed camera is not active"
                 )
+            if scene.camera_config is None or scene.camera_config.mode != "garage":
+                raise WorkerError(
+                    HTTPStatus.CONFLICT,
+                    "camera_mode_conflict",
+                    "camera orbit and Garage presets require an active Garage camera",
+                )
             relay.sensor.set_transform(
                 self._garage_camera_transform(
                     scene.ego,
                     yaw=yaw,
                     pitch=pitch,
                     distance=distance,
+                    width=None if scene.camera_config is None else scene.camera_config.width,
+                    height=None if scene.camera_config is None else scene.camera_config.height,
+                    fov=None if scene.camera_config is None else scene.camera_config.fov,
+                    preset=preset,
                 )
             )
             self._refresh_lease(scene)
             return {
                 "schema_version": SCHEMA_VERSION,
+                "worker_api_revision": WORKER_API_REVISION,
                 "status": "running",
                 "scene_id": scene.scene_id,
                 "camera": relay.snapshot(),
@@ -2240,6 +2627,7 @@ class WorldWorker:
             self._scene = None
             return {
                 "schema_version": SCHEMA_VERSION,
+                "worker_api_revision": WORKER_API_REVISION,
                 "status": "stopped",
                 "scene": snapshot,
             }
@@ -2272,8 +2660,13 @@ class WorldWorker:
             "destination": scene.destination,
             "control_mode": scene.control_mode,
             "weather_preset": scene.weather_preset,
+            "traffic_count_requested": scene.config.traffic_count,
             "traffic_count": len(scene.vehicle_actors),
+            "walker_count_requested": scene.config.walker_count,
             "walker_count": len(scene.walker_actors),
+            "pedestrian_crossing_factor": scene.config.pedestrian_crossing_factor,
+            "speed_difference_percent": scene.config.speed_difference_percent,
+            "following_distance_metres": scene.config.following_distance_metres,
             "prop_actor_ids": [int(actor.id) for actor in scene.prop_actors],
             "lease_expires_in_seconds": max(0.0, scene.lease_deadline - now),
             "control_input_age_seconds": input_age,
@@ -2289,6 +2682,7 @@ class WorldWorker:
     def _scene_response(self, scene: SceneLease, status: str) -> dict[str, Any]:
         return {
             "schema_version": SCHEMA_VERSION,
+            "worker_api_revision": WORKER_API_REVISION,
             "status": status,
             "scene": self._scene_snapshot(scene),
         }
@@ -2317,7 +2711,20 @@ class WorldWorker:
                 raise RuntimeError(f"actor {owned.actor_id} role changed; refusing destroy")
         if hasattr(current, "is_alive") and not bool(current.is_alive):
             return
-        current.destroy()
+        try:
+            destroyed = current.destroy()
+        except Exception as error:
+            if self._actor_is_confirmed_absent(current_world, current):
+                return
+            raise RuntimeError(
+                f"actor {owned.actor_id} destroy raised while actor remains registered: "
+                f"{type(error).__name__}: {error}"
+            ) from error
+        if destroyed is True or self._actor_is_confirmed_absent(current_world, current):
+            return
+        raise RuntimeError(
+            f"actor {owned.actor_id} destroy was not confirmed and actor remains registered"
+        )
 
     @staticmethod
     def _release_traffic_manager(
@@ -2331,12 +2738,11 @@ class WorldWorker:
         except Exception as error:
             if errors is not None:
                 errors.append(f"Traffic Manager async restore failed: {error}")
-        if hasattr(traffic_manager, "shut_down"):
-            try:
-                traffic_manager.shut_down()
-            except Exception as error:
-                if errors is not None:
-                    errors.append(f"Traffic Manager shutdown failed: {error}")
+        # CARLA 0.9.16's native TrafficManager.shut_down() performs an
+        # unbounded internal thread join. On Windows it can retain the GIL and
+        # freeze every HTTP handler even while the simulator RPC remains
+        # healthy. A scene lease owns actors, not the process-scoped Traffic
+        # Manager connection, so restore async mode and reuse that connection.
 
     def _cleanup_resources(self, scene: SceneLease, *, reason: str) -> dict[str, Any]:
         scene.status = "stopping"
@@ -2344,6 +2750,7 @@ class WorldWorker:
         if scene.camera_relay is not None:
             scene.camera_relay.close()
             scene.camera_relay = None
+        scene.camera_config = None
         try:
             current_world = scene.client.get_world()
             same_episode = self._episode_marker(current_world) == scene.episode_marker
@@ -2572,6 +2979,7 @@ class WorldWorkerRequestHandler(BaseHTTPRequestHandler):
             error.status,
             {
                 "schema_version": SCHEMA_VERSION,
+                "worker_api_revision": WORKER_API_REVISION,
                 "error": {"code": error.code, "message": error.message},
             },
         )
@@ -2915,6 +3323,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         json.dumps(
             {
                 "schema_version": SCHEMA_VERSION,
+                "worker_api_revision": WORKER_API_REVISION,
                 "status": "listening",
                 "bind": address,
                 "port": port,

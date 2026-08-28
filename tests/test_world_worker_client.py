@@ -70,12 +70,17 @@ def _scene_payload(*, status: str = "prepared", control_mode: str = "manual") ->
             "destination": {"spawn_index": 9},
             "control_mode": control_mode,
             "traffic_count": 20,
+            "traffic_count_requested": 20,
             "walker_count": 10,
+            "walker_count_requested": 10,
+            "pedestrian_crossing_factor": 0.8,
+            "speed_difference_percent": -10.0,
+            "following_distance_metres": 7.0,
             "prop_actor_ids": [81, 82],
             "lease_expires_in_seconds": 2.0,
             "cleanup_guard_passed": True if status == "stopped" else None,
             "cleanup_errors": [],
-            "capabilities": {"autopilot": True},
+            "capabilities": {"autopilot": True, "garage_camera_presets": True},
         },
     }
 
@@ -86,6 +91,7 @@ class _RecordingWorkerServer(ThreadingHTTPServer):
         self.fail_path: str | None = None
         self.redirect_path: str | None = None
         self.redirect_location: str | None = None
+        self.world_dynamics_controls = True
         super().__init__(("127.0.0.1", 0), _RecordingWorkerHandler)
 
 
@@ -136,7 +142,11 @@ class _RecordingWorkerHandler(BaseHTTPRequestHandler):
                     "schema_version": "1.0",
                     "maps": [{"id": "Town10HD_Opt", "label": "Town 10 HD"}],
                     "vehicles": [],
-                    "capabilities": {"map_reload": True, "autopilot": True},
+                    "capabilities": {
+                        "map_reload": True,
+                        "autopilot": True,
+                        "world_dynamics_controls": self.server.world_dynamics_controls,
+                    },
                 },
             )
             return
@@ -254,6 +264,9 @@ class WorldWorkerClientHttpTests(unittest.TestCase):
                 "prop_preset": "none",
                 "route_mode": "random_destination",
                 "initial_control_mode": "manual",
+                "pedestrian_crossing_factor": 0.8,
+                "speed_difference_percent": -10.0,
+                "following_distance_metres": 7.0,
             }
         )
         active = self.client.start_scene(prepared)
@@ -277,6 +290,11 @@ class WorldWorkerClientHttpTests(unittest.TestCase):
         self.assertEqual(stopped.status, "stopped")
         self.assertEqual(stopped.ego_actor_id, 77)
         self.assertEqual(stopped.episode_id, 1234)
+        self.assertEqual(stopped.traffic_count_requested, 20)
+        self.assertEqual(stopped.walker_count_requested, 10)
+        self.assertEqual(stopped.pedestrian_crossing_factor, 0.8)
+        self.assertEqual(stopped.speed_difference_percent, -10.0)
+        self.assertEqual(stopped.following_distance_metres, 7.0)
         self.assertTrue(stopped.cleanup_guard_passed)
         self.assertTrue(stopped.route["planned"])
         self.assertTrue(self.server.requests)
@@ -291,6 +309,12 @@ class WorldWorkerClientHttpTests(unittest.TestCase):
         self.assertTrue(
             all(row["body"]["lease_token"] == "scene-lease-secret" for row in scene_requests)
         )
+        prepare_request = next(
+            row for row in self.server.requests if row["path"] == "/v1/scenes/prepare"
+        )
+        self.assertEqual(prepare_request["body"]["pedestrian_crossing_factor"], 0.8)
+        self.assertEqual(prepare_request["body"]["speed_difference_percent"], -10.0)
+        self.assertEqual(prepare_request["body"]["following_distance_metres"], 7.0)
 
     def test_worker_error_envelope_preserves_status_and_code(self) -> None:
         self.server.fail_path = "/v1/scenes/prepare"
@@ -314,6 +338,51 @@ class WorldWorkerClientHttpTests(unittest.TestCase):
         self.assertEqual(raised.exception.status, 409)
         self.assertEqual(raised.exception.code, "scene_busy")
 
+    def test_outdated_worker_rejects_world_dynamics_before_scene_mutation(self) -> None:
+        self.server.world_dynamics_controls = False
+
+        with self.assertRaisesRegex(WorldWorkerError, "pull main and restart"):
+            self.client.prepare_scene(
+                {
+                    "map_name": "current",
+                    "weather_preset": "keep",
+                    "vehicle_blueprint": "vehicle.tesla.model3",
+                    "color": None,
+                    "seed": 0,
+                    "traffic_count": 0,
+                    "walker_count": 0,
+                    "prop_preset": "none",
+                    "route_mode": "free",
+                    "initial_control_mode": "manual",
+                    "pedestrian_crossing_factor": 0.9,
+                }
+            )
+
+        self.assertFalse(
+            any(row["path"] == "/v1/scenes/prepare" for row in self.server.requests)
+        )
+
+    def test_outdated_worker_remains_compatible_when_dynamics_use_defaults(self) -> None:
+        self.server.world_dynamics_controls = False
+
+        prepared = self.client.prepare_scene(
+            {
+                "map_name": "current",
+                "weather_preset": "keep",
+                "vehicle_blueprint": "vehicle.tesla.model3",
+                "color": None,
+                "seed": 0,
+                "traffic_count": 0,
+                "walker_count": 0,
+                "prop_preset": "none",
+                "route_mode": "free",
+                "initial_control_mode": "manual",
+            }
+        )
+
+        self.assertEqual(prepared.scene_id, "scene-test-1")
+        self.assertFalse(any(row["path"] == "/v1/catalog" for row in self.server.requests))
+
     def test_camera_relay_uses_authenticated_jpeg_transport(self) -> None:
         scene = WorldWorkerScene.from_response(_scene_payload())
 
@@ -325,7 +394,13 @@ class WorldWorkerClientHttpTests(unittest.TestCase):
             fps=10.0,
             fov=65.0,
         )
-        self.client.orbit_camera(scene, yaw=90.0, pitch=-8.0, distance=6.0)
+        self.client.orbit_camera(
+            scene,
+            yaw=90.0,
+            pitch=-8.0,
+            distance=6.0,
+            preset="front",
+        )
         frame = self.client.camera_frame(scene, after_sequence=-1, timeout=1.0)
 
         self.assertEqual(started["camera"]["actor_id"], 91)
@@ -341,6 +416,20 @@ class WorldWorkerClientHttpTests(unittest.TestCase):
         )
         self.assertEqual(camera_requests[0]["body"]["width"], 1920)
         self.assertEqual(camera_requests[1]["body"]["yaw"], 90.0)
+        self.assertEqual(camera_requests[1]["body"]["preset"], "front")
+
+    def test_outdated_worker_rejects_non_orbit_camera_preset_with_update_guidance(self) -> None:
+        scene = WorldWorkerScene.from_response(_scene_payload())
+        scene = replace(scene, capabilities={"autopilot": True})
+
+        with self.assertRaisesRegex(WorldWorkerError, "pull main and restart"):
+            self.client.orbit_camera(
+                scene,
+                yaw=0.0,
+                pitch=-8.0,
+                distance=6.0,
+                preset="front",
+            )
 
     def test_persistent_camera_stream_uses_one_authenticated_multipart_response(self) -> None:
         payload = _scene_payload()
