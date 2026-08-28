@@ -47,10 +47,23 @@ def test_preview_config_is_strict_and_uses_authoritative_camera_defaults() -> No
     assert config.traffic_count == 15
     assert config.walker_count == 10
     assert config.prop_preset == "construction"
+    assert config.pedestrian_crossing_factor == 0.2
+    assert config.speed_difference_percent == 12.0
+    assert config.following_distance_metres == 2.0
     assert config.spectator_mirror is False
 
     mirrored = GaragePreviewConfig.from_mapping(preview_payload(spectator_mirror=True))
     assert mirrored.spectator_mirror is True
+    tuned = GaragePreviewConfig.from_mapping(
+        preview_payload(
+            pedestrian_crossing_factor=0.9,
+            speed_difference_percent=-25.0,
+            following_distance_metres=9.5,
+        )
+    )
+    assert tuned.pedestrian_crossing_factor == 0.9
+    assert tuned.speed_difference_percent == -25.0
+    assert tuned.following_distance_metres == 9.5
 
     with pytest.raises(ValueError, match="unknown fields"):
         GaragePreviewConfig.from_mapping(preview_payload(shell="anything"))
@@ -347,6 +360,65 @@ def test_preview_cleanup_requires_same_episode_type_and_owned_role(
     assert rpc.closed is True
     assert len(worker.stopped) == 1
     assert result["status"] == "stopped"
+
+
+def test_worker_orbit_rpc_remains_serialized_with_scene_lifecycle() -> None:
+    class Worker(_CleanupWorker):
+        session: GaragePreviewSession | None = None
+        presets: list[str]
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.presets = []
+
+        def orbit_camera(
+            self,
+            scene: WorldWorkerScene,
+            *,
+            yaw: float,
+            pitch: float,
+            distance: float,
+            preset: str,
+        ) -> dict[str, Any]:
+            del scene, yaw, pitch, distance
+            assert self.session is not None
+            assert self.session._worker_request_lock.locked()
+            self.presets.append(preset)
+            return {"status": "running"}
+
+    class Rpc(_CleanupRpc):
+        def actor_transform(self, actor_id: int, component: str) -> list[Any]:
+            assert (actor_id, component) == (20, "VehicleMesh")
+            return [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]
+
+    worker = Worker()
+    rpc = Rpc(episode=10, role="world_worker_camera")
+    session = GaragePreviewSession(
+        GaragePreviewConfig.from_mapping(preview_payload()),
+        carla_host="127.0.0.1",
+        carla_port=2000,
+        world_worker=worker,  # type: ignore[arg-type]
+    )
+    worker.session = session
+    with session._lock:
+        session._scene = _scene()
+        session._episode_id = 10
+        session._vehicle_id = 20
+        session._camera_id = 30
+        session._camera_type = "sensor.camera.rgb"
+        session._worker_camera = True
+        session._rpc = rpc  # type: ignore[assignment]
+        session._status = "running"
+
+    result = session.orbit(
+        GarageOrbitRequest.from_mapping(
+            {"sequence": 1, "yaw": 0.0, "pitch": -8.0, "distance": 6.0, "preset": "front"}
+        )
+    )
+
+    assert worker.presets == ["front"]
+    assert result["camera_preset"] == "front"
+    session.close()
 
 
 def test_preview_uses_worker_jpeg_relay_without_raw_lan_camera(monkeypatch) -> None:

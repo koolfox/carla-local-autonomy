@@ -70,12 +70,18 @@ def _integer(value: Any, *, name: str, minimum: int, maximum: int) -> int:
     return value
 
 
-def _number(value: Any, *, name: str) -> float:
+def _number(
+    value: Any,
+    *,
+    name: str,
+    minimum: float = -math.inf,
+    maximum: float = math.inf,
+) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise TypeError(f"{name} must be a number")
     result = float(value)
-    if not math.isfinite(result):
-        raise ValueError(f"{name} must be finite")
+    if not math.isfinite(result) or not minimum <= result <= maximum:
+        raise ValueError(f"{name} must be finite and in [{minimum}, {maximum}]")
     return result
 
 
@@ -121,6 +127,9 @@ class GaragePreviewConfig:
     traffic_count: int
     walker_count: int
     prop_preset: str
+    pedestrian_crossing_factor: float = 0.2
+    speed_difference_percent: float = 12.0
+    following_distance_metres: float = 2.0
     spectator_mirror: bool = False
     width: int = 1280
     height: int = 720
@@ -143,7 +152,13 @@ class GaragePreviewConfig:
             "walker_count",
             "prop_preset",
         }
-        allowed = required | {"spectator_mirror", "profile"}
+        allowed = required | {
+            "pedestrian_crossing_factor",
+            "speed_difference_percent",
+            "following_distance_metres",
+            "spectator_mirror",
+            "profile",
+        }
         _strict_keys(raw, allowed=allowed, required=required, name="Garage preview request")
 
         map_name = str(raw["map_name"]).strip()
@@ -186,6 +201,24 @@ class GaragePreviewConfig:
             ),
             walker_count=_integer(raw["walker_count"], name="walker_count", minimum=0, maximum=250),
             prop_preset=prop_preset,
+            pedestrian_crossing_factor=_number(
+                raw.get("pedestrian_crossing_factor", 0.2),
+                name="pedestrian_crossing_factor",
+                minimum=0.0,
+                maximum=1.0,
+            ),
+            speed_difference_percent=_number(
+                raw.get("speed_difference_percent", 12.0),
+                name="speed_difference_percent",
+                minimum=-100.0,
+                maximum=100.0,
+            ),
+            following_distance_metres=_number(
+                raw.get("following_distance_metres", 2.0),
+                name="following_distance_metres",
+                minimum=0.1,
+                maximum=20.0,
+            ),
             spectator_mirror=_boolean(raw.get("spectator_mirror", False), name="spectator_mirror"),
             width=width,
             height=height,
@@ -283,21 +316,28 @@ class GaragePreviewSession:
             if self._closed:
                 raise RuntimeError("Garage preview session is already closed")
             try:
+                scene_payload: dict[str, Any] = {
+                    "map_name": self.config.map_name,
+                    "weather_preset": self.config.weather_preset,
+                    "vehicle_blueprint": self.config.vehicle_blueprint,
+                    "color": self.config.color,
+                    "seed": self.config.seed,
+                    "traffic_count": self.config.traffic_count,
+                    "walker_count": self.config.walker_count,
+                    "prop_preset": self.config.prop_preset,
+                    "route_mode": "free",
+                    "initial_control_mode": "manual",
+                }
+                for field_name, default in (
+                    ("pedestrian_crossing_factor", 0.2),
+                    ("speed_difference_percent", 12.0),
+                    ("following_distance_metres", 2.0),
+                ):
+                    value = getattr(self.config, field_name)
+                    if value != default:
+                        scene_payload[field_name] = value
                 with self._worker_request_lock:
-                    scene = self.world_worker.prepare_scene(
-                        {
-                            "map_name": self.config.map_name,
-                            "weather_preset": self.config.weather_preset,
-                            "vehicle_blueprint": self.config.vehicle_blueprint,
-                            "color": self.config.color,
-                            "seed": self.config.seed,
-                            "traffic_count": self.config.traffic_count,
-                            "walker_count": self.config.walker_count,
-                            "prop_preset": self.config.prop_preset,
-                            "route_mode": "free",
-                            "initial_control_mode": "manual",
-                        }
-                    )
+                    scene = self.world_worker.prepare_scene(scene_payload)
                 if scene.ego_actor_id is None or scene.episode_id is None:
                     raise RuntimeError(
                         "World Worker prepared Garage preview without an ego episode"
@@ -548,6 +588,7 @@ class GaragePreviewSession:
                         yaw=request.yaw,
                         pitch=request.pitch,
                         distance=request.distance,
+                        preset=request.preset,
                     )
             else:
                 camera = rpc.actor(camera_id)

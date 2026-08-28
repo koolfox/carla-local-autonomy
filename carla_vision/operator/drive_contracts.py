@@ -34,6 +34,9 @@ _WORKER_FIELDS = frozenset(
         "walker_count",
         "route_mode",
         "initial_control_mode",
+        "pedestrian_crossing_factor",
+        "speed_difference_percent",
+        "following_distance_metres",
     }
 )
 _WEATHER_FIELDS = (
@@ -120,6 +123,9 @@ class DriveStartConfig:
     walker_count: int = 0
     route_mode: str = "free"
     initial_control_mode: str = "manual"
+    pedestrian_crossing_factor: float = 0.2
+    speed_difference_percent: float = 12.0
+    following_distance_metres: float = 2.0
     experiment_preset: str = "free_drive"
     max_throttle: float = 0.55
 
@@ -224,6 +230,24 @@ class DriveStartConfig:
         initial_control_mode = str(raw.get("initial_control_mode", "manual")).strip()
         if initial_control_mode not in _CONTROL_MODES:
             raise ValueError("initial_control_mode must be manual or autopilot")
+        pedestrian_crossing_factor = _number(
+            raw.get("pedestrian_crossing_factor", 0.2),
+            "pedestrian_crossing_factor",
+            0.0,
+            1.0,
+        )
+        speed_difference_percent = _number(
+            raw.get("speed_difference_percent", 12.0),
+            "speed_difference_percent",
+            -100.0,
+            100.0,
+        )
+        following_distance_metres = _number(
+            raw.get("following_distance_metres", 2.0),
+            "following_distance_metres",
+            0.1,
+            20.0,
+        )
         experiment_preset = str(raw.get("experiment_preset", "free_drive")).strip()
         if experiment_preset not in EXPERIMENT_PRESETS:
             raise ValueError(
@@ -241,6 +265,12 @@ class DriveStartConfig:
                 unsupported.append("route_mode")
             if initial_control_mode != "manual":
                 unsupported.append("initial_control_mode")
+            if pedestrian_crossing_factor != 0.2:
+                unsupported.append("pedestrian_crossing_factor")
+            if speed_difference_percent != 12.0:
+                unsupported.append("speed_difference_percent")
+            if following_distance_metres != 2.0:
+                unsupported.append("following_distance_metres")
             if unsupported:
                 raise ValueError(
                     "configured World Worker is required for: " + ", ".join(unsupported)
@@ -273,6 +303,9 @@ class DriveStartConfig:
             walker_count=walker_count,
             route_mode=route_mode,
             initial_control_mode=initial_control_mode,
+            pedestrian_crossing_factor=pedestrian_crossing_factor,
+            speed_difference_percent=speed_difference_percent,
+            following_distance_metres=following_distance_metres,
             experiment_preset=experiment_preset,
         )
 
@@ -312,6 +345,9 @@ class DriveStartConfig:
             "walker_count": self.walker_count,
             "route_mode": self.route_mode,
             "initial_control_mode": self.initial_control_mode,
+            "pedestrian_crossing_factor": self.pedestrian_crossing_factor,
+            "speed_difference_percent": self.speed_difference_percent,
+            "following_distance_metres": self.following_distance_metres,
             "experiment_preset": self.experiment_preset,
             "max_throttle": self.max_throttle,
         }

@@ -573,6 +573,19 @@ class WorldWorkerTest(unittest.TestCase):
         self.assertEqual(config.map_name, "current")
         self.assertEqual(config.route_mode, "free")
         self.assertEqual(config.initial_control_mode, "manual")
+        self.assertEqual(config.pedestrian_crossing_factor, 0.2)
+        self.assertEqual(config.speed_difference_percent, 12.0)
+        self.assertEqual(config.following_distance_metres, 2.0)
+        tuned = SceneConfig.from_mapping(
+            {
+                "pedestrian_crossing_factor": 0.85,
+                "speed_difference_percent": -20.0,
+                "following_distance_metres": 8.5,
+            }
+        )
+        self.assertEqual(tuned.pedestrian_crossing_factor, 0.85)
+        self.assertEqual(tuned.speed_difference_percent, -20.0)
+        self.assertEqual(tuned.following_distance_metres, 8.5)
         with self.assertRaisesRegex(WorkerError, "unknown fields"):
             SceneConfig.from_mapping({"shell": "rm"})
         with self.assertRaisesRegex(WorkerError, "route_mode"):
@@ -589,7 +602,157 @@ class WorldWorkerTest(unittest.TestCase):
         self.assertEqual(catalog["vehicles"][0].keys(), {"id", "label", "colors"})
         self.assertTrue(catalog["capabilities"]["random_route"])
         self.assertTrue(catalog["capabilities"]["asynchronous_world"])
+        self.assertTrue(catalog["capabilities"]["world_dynamics_controls"])
+        self.assertTrue(catalog["capabilities"]["garage_camera_presets"])
+        self.assertEqual(catalog["worker_api_revision"], 2)
         self.assertEqual(catalog["carla"]["current_map"], "Town10HD_Opt")
+
+    def test_population_capacity_fails_before_returning_a_partial_scene(self) -> None:
+        with self.assertRaisesRegex(WorkerError, "maximum of 7") as raised:
+            self.worker.prepare({"traffic_count": 8})
+
+        self.assertEqual(raised.exception.code, "scene_population_capacity")
+        self.assertIsNone(self.worker.current_scene()["scene"])
+        self.assertEqual(self.world.actors, {})
+
+    def test_dense_walker_activation_retries_a_lost_registry_pair(self) -> None:
+        original_start = FakeActor.start
+        failed_once = False
+
+        def flaky_start(actor: FakeActor) -> None:
+            nonlocal failed_once
+            if actor.type_id == "controller.ai.walker" and not failed_once:
+                failed_once = True
+                raise RuntimeError("Actor could not be found in the registry")
+            original_start(actor)
+
+        with mock.patch.object(FakeActor, "start", flaky_start):
+            prepared = self.worker.prepare({"walker_count": 1})
+
+        self.assertTrue(failed_once)
+        self.assertEqual(prepared["scene"]["walker_count"], 1)
+        controllers = [
+            actor for actor in self.world.actors.values() if actor.type_id == "controller.ai.walker"
+        ]
+        self.assertEqual(len(controllers), 1)
+        self.assertTrue(controllers[0].started)
+
+    def test_120_vehicle_and_120_walker_population_is_exact(self) -> None:
+        self.world.map.spawn_points = [
+            FakeTransform(FakeLocation(float(index * 8), float(index % 7) * 3.0, 0.5))
+            for index in range(130)
+        ]
+        prepared = self.worker.prepare({"traffic_count": 120, "walker_count": 120})
+
+        self.assertEqual(prepared["scene"]["traffic_count_requested"], 120)
+        self.assertEqual(prepared["scene"]["traffic_count"], 120)
+        self.assertEqual(prepared["scene"]["walker_count_requested"], 120)
+        self.assertEqual(prepared["scene"]["walker_count"], 120)
+        self.assertEqual(self.world.wait_count, 5)
+
+    def test_failed_walker_tick_barrier_cleans_every_pair_and_allows_retry(self) -> None:
+        original_wait = self.world.wait_for_tick
+
+        def fail_wait(*args: Any, **kwargs: Any) -> None:
+            del args, kwargs
+            raise RuntimeError("tick timeout")
+
+        self.world.wait_for_tick = fail_wait  # type: ignore[method-assign]
+        with self.assertRaisesRegex(WorkerError, "walkers 0/1") as raised:
+            self.worker.prepare({"walker_count": 1})
+
+        self.assertEqual(raised.exception.code, "scene_population_shortfall")
+        self.assertIsNone(self.worker.current_scene()["scene"])
+        self.assertEqual(self.world.actors, {})
+
+        self.world.wait_for_tick = original_wait  # type: ignore[method-assign]
+        prepared = self.worker.prepare({"walker_count": 1})
+        self.assertEqual(prepared["scene"]["walker_count"], 1)
+
+    def test_garage_autoframing_scales_with_vehicle_bounds(self) -> None:
+        prepared = self.worker.prepare({})
+        ego = self.world.get_actor(prepared["scene"]["ego_actor_id"])
+        assert ego is not None
+
+        class Bounds:
+            location = FakeLocation(0.0, 0.0, 1.0)
+            extent = FakeLocation(2.0, 1.0, 1.0)
+
+        ego.bounding_box = Bounds()
+        compact = self.worker._garage_camera_transform(
+            ego,
+            yaw=0.0,
+            pitch=-8.0,
+            distance=6.0,
+            width=1280,
+            height=720,
+            fov=65.0,
+            preset="front",
+        )
+        ego.bounding_box.extent = FakeLocation(6.0, 1.4, 1.8)
+        long_vehicle = self.worker._garage_camera_transform(
+            ego,
+            yaw=0.0,
+            pitch=-8.0,
+            distance=6.0,
+            width=1280,
+            height=720,
+            fov=65.0,
+            preset="front",
+        )
+
+        self.assertGreater(long_vehicle.location.x, compact.location.x)
+        self.assertEqual(long_vehicle.rotation.yaw, 180.0)
+        top = self.worker._garage_camera_transform(
+            ego,
+            yaw=0.0,
+            pitch=-25.0,
+            distance=8.0,
+            width=1280,
+            height=720,
+            fov=65.0,
+            preset="top",
+        )
+        self.assertEqual(top.rotation.pitch, -70.0)
+
+    def test_camera_orbit_rejects_an_attached_drive_camera(self) -> None:
+        prepared = self.worker.prepare({})
+        scene_id, lease_token = self.lease(prepared)
+
+        class Sensor:
+            def set_transform(self, transform: Any) -> None:
+                del transform
+                raise AssertionError("drive camera transform must remain untouched")
+
+        class Relay:
+            sensor = Sensor()
+
+            def close(self) -> None:
+                pass
+
+        assert self.worker._scene is not None
+        self.worker._scene.camera_relay = Relay()  # type: ignore[assignment]
+        self.worker._scene.camera_config = CompressedCameraConfig(
+            mode="drive",
+            width=1280,
+            height=720,
+            fps=30.0,
+            fov=90.0,
+        )
+
+        with self.assertRaisesRegex(WorkerError, "active Garage camera") as raised:
+            self.worker.camera_orbit(
+                scene_id,
+                {
+                    "lease_token": lease_token,
+                    "yaw": 0.0,
+                    "pitch": -8.0,
+                    "distance": 6.0,
+                    "preset": "front",
+                },
+            )
+
+        self.assertEqual(raised.exception.code, "camera_mode_conflict")
 
     def test_camera_activation_failure_rolls_back_owned_sensor(self) -> None:
         self.library.blueprints["sensor.camera.rgb"] = FakeBlueprint(
@@ -654,17 +817,28 @@ class WorldWorkerTest(unittest.TestCase):
                 "traffic_count": 2,
                 "walker_count": 2,
                 "prop_preset": "cones",
+                "pedestrian_crossing_factor": 0.75,
+                "speed_difference_percent": -15.0,
+                "following_distance_metres": 6.5,
             }
         )
         scene_id, lease_token = self.lease(prepared)
         scene = prepared["scene"]
         self.assertEqual(scene["traffic_count"], 2)
+        self.assertEqual(scene["traffic_count_requested"], 2)
         self.assertEqual(scene["walker_count"], 2)
+        self.assertEqual(scene["walker_count_requested"], 2)
+        self.assertEqual(scene["pedestrian_crossing_factor"], 0.75)
+        self.assertEqual(scene["speed_difference_percent"], -15.0)
+        self.assertEqual(scene["following_distance_metres"], 6.5)
         self.assertEqual(len(scene["prop_actor_ids"]), 2)
         self.assertEqual(scene["map_name"], "Town10HD_Opt")
         self.assertIsInstance(scene["episode_id"], int)
         self.assertEqual(self.client.loaded_maps, [])
         self.assertIsNot(self.world.weather, original_weather)
+        self.assertEqual(self.world.cross_factor, 0.75)
+        self.assertEqual(self.traffic_manager.speed_difference, -15.0)
+        self.assertEqual(self.traffic_manager.distance, 6.5)
 
         started = self.worker.start(scene_id, {"lease_token": lease_token})
         ego = self.world.get_actor(started["scene"]["ego_actor_id"])
@@ -698,7 +872,24 @@ class WorldWorkerTest(unittest.TestCase):
         self.assertTrue(all(actor.destroyed for actor in all_owned))
         self.assertIs(self.world.weather, original_weather)
         self.assertFalse(self.traffic_manager.synchronous)
-        self.assertTrue(self.traffic_manager.shutdown)
+        self.assertFalse(
+            self.traffic_manager.shutdown,
+            "scene cleanup must not call CARLA's unbounded Traffic Manager shutdown",
+        )
+
+    def test_traffic_manager_connection_is_reused_across_scene_leases(self) -> None:
+        first = self.worker.prepare({"traffic_count": 1, "walker_count": 1})
+        first_id, first_token = self.lease(first)
+        self.worker.stop(first_id, {"lease_token": first_token})
+
+        second = self.worker.prepare({"traffic_count": 1, "walker_count": 1})
+        second_id, second_token = self.lease(second)
+        self.worker.stop(second_id, {"lease_token": second_token})
+
+        self.assertEqual(self.client.traffic_manager_calls, 2)
+        self.assertFalse(self.traffic_manager.synchronous)
+        self.assertFalse(self.traffic_manager.shutdown)
+        self.assertIsNone(self.worker.current_scene()["scene"])
 
     def test_current_map_never_starts_isolated_loader(self) -> None:
         runner_calls: list[list[str]] = []
@@ -874,7 +1065,8 @@ class WorldWorkerTest(unittest.TestCase):
         self.assertFalse(catalog["capabilities"]["random_route"])
         with self.assertRaisesRegex(WorkerError, "GlobalRoutePlanner"):
             unavailable.prepare({"route_mode": "random_destination"})
-        self.assertTrue(self.traffic_manager.shutdown)
+        self.assertFalse(self.traffic_manager.synchronous)
+        self.assertFalse(self.traffic_manager.shutdown)
 
     def test_large_research_seed_is_bounded_for_carla_seed_apis(self) -> None:
         prepared = self.worker.prepare({"seed": 2**63 - 1})

@@ -767,21 +767,28 @@ class DriveSession:
         worker = self._world_worker
         if worker is None:
             raise RuntimeError("World Worker is not configured")
+        scene_payload: dict[str, Any] = {
+            "map_name": self.config.map_name,
+            "weather_preset": self.config.weather_preset,
+            "vehicle_blueprint": self.config.vehicle_blueprint,
+            "color": self.config.color,
+            "seed": self.config.seed,
+            "traffic_count": self.config.traffic_count,
+            "walker_count": self.config.walker_count,
+            "prop_preset": self.config.prop_preset,
+            "route_mode": self.config.route_mode,
+            "initial_control_mode": self.config.initial_control_mode,
+        }
+        for field_name, default in (
+            ("pedestrian_crossing_factor", 0.2),
+            ("speed_difference_percent", 12.0),
+            ("following_distance_metres", 2.0),
+        ):
+            value = getattr(self.config, field_name)
+            if value != default:
+                scene_payload[field_name] = value
         with self._worker_request_lock:
-            prepared = worker.prepare_scene(
-                {
-                    "map_name": self.config.map_name,
-                    "weather_preset": self.config.weather_preset,
-                    "vehicle_blueprint": self.config.vehicle_blueprint,
-                    "color": self.config.color,
-                    "seed": self.config.seed,
-                    "traffic_count": self.config.traffic_count,
-                    "walker_count": self.config.walker_count,
-                    "prop_preset": self.config.prop_preset,
-                    "route_mode": self.config.route_mode,
-                    "initial_control_mode": self.config.initial_control_mode,
-                }
-            )
+            prepared = worker.prepare_scene(scene_payload)
         with self._lock:
             self._worker_scene = prepared
             self._worker_scene_id = prepared.scene_id

@@ -178,8 +178,32 @@ class DriveStartConfigTests(_WorkspaceTestCase):
         self.assertEqual(config.prop_preset, "none")
         self.assertTrue(config.record_video)
         self.assertFalse(config.spectator_follow)
+        self.assertEqual(config.pedestrian_crossing_factor, 0.2)
+        self.assertEqual(config.speed_difference_percent, 12.0)
+        self.assertEqual(config.following_distance_metres, 2.0)
         self.assertEqual(config.experiment_preset, "free_drive")
         self.assertFalse(config.manifest_config()["model_output_actuated"])
+
+    def test_world_worker_dynamics_are_retained_in_manifest(self) -> None:
+        config = DriveStartConfig.from_mapping(
+            valid_start(
+                pedestrian_crossing_factor=0.95,
+                speed_difference_percent=-30.0,
+                following_distance_metres=10.0,
+            ),
+            workspace=self.workspace,
+            expected_host=CARLA_HOST,
+            expected_port=CARLA_PORT,
+            world_worker_configured=True,
+        )
+
+        self.assertEqual(config.pedestrian_crossing_factor, 0.95)
+        self.assertEqual(config.speed_difference_percent, -30.0)
+        self.assertEqual(config.following_distance_metres, 10.0)
+        manifest = config.manifest_config()
+        self.assertEqual(manifest["pedestrian_crossing_factor"], 0.95)
+        self.assertEqual(manifest["speed_difference_percent"], -30.0)
+        self.assertEqual(manifest["following_distance_metres"], 10.0)
 
     def test_detector_can_be_disabled_without_resolving_weights(self) -> None:
         config = self.config(detector_enabled=False, weights="")

@@ -22,7 +22,7 @@ from urllib.parse import quote, urlsplit, urlunsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 _MAX_RESPONSE_BYTES = 8 * 1024 * 1024
-_SCENE_PREPARE_KEYS = frozenset(
+_SCENE_PREPARE_REQUIRED_KEYS = frozenset(
     {
         "map_name",
         "weather_preset",
@@ -36,6 +36,14 @@ _SCENE_PREPARE_KEYS = frozenset(
         "initial_control_mode",
     }
 )
+_SCENE_PREPARE_OPTIONAL_KEYS = frozenset(
+    {
+        "pedestrian_crossing_factor",
+        "speed_difference_percent",
+        "following_distance_metres",
+    }
+)
+_SCENE_PREPARE_KEYS = _SCENE_PREPARE_REQUIRED_KEYS | _SCENE_PREPARE_OPTIONAL_KEYS
 _CONTROL_KEYS = frozenset(
     {
         "sequence",
@@ -268,6 +276,11 @@ class WorldWorkerScene:
     cleanup_guard_passed: bool | None
     cleanup_errors: tuple[str, ...]
     capabilities: Mapping[str, Any]
+    traffic_count_requested: int | None = None
+    walker_count_requested: int | None = None
+    pedestrian_crossing_factor: float | None = None
+    speed_difference_percent: float | None = None
+    following_distance_metres: float | None = None
 
     @classmethod
     def from_response(cls, payload: Mapping[str, Any]) -> "WorldWorkerScene":
@@ -294,6 +307,34 @@ class WorldWorkerScene:
             raw.get("walker_count"),
             "scene.walker_count",
             minimum=0,
+        )
+        traffic_count_requested = _optional_integer(
+            raw.get("traffic_count_requested"),
+            "scene.traffic_count_requested",
+            minimum=0,
+        )
+        walker_count_requested = _optional_integer(
+            raw.get("walker_count_requested"),
+            "scene.walker_count_requested",
+            minimum=0,
+        )
+        pedestrian_crossing_factor = _optional_number(
+            raw.get("pedestrian_crossing_factor"),
+            "scene.pedestrian_crossing_factor",
+            minimum=0.0,
+            maximum=1.0,
+        )
+        speed_difference_percent = _optional_number(
+            raw.get("speed_difference_percent"),
+            "scene.speed_difference_percent",
+            minimum=-100.0,
+            maximum=100.0,
+        )
+        following_distance_metres = _optional_number(
+            raw.get("following_distance_metres"),
+            "scene.following_distance_metres",
+            minimum=0.1,
+            maximum=20.0,
         )
         map_name = _optional_text(raw.get("map_name"), "scene.map_name")
         route_mode = _optional_text(raw.get("route_mode"), "scene.route_mode")
@@ -355,6 +396,11 @@ class WorldWorkerScene:
             cleanup_guard_passed=cleanup_guard_passed,
             cleanup_errors=tuple(raw_cleanup_errors),
             capabilities=dict(capabilities),
+            traffic_count_requested=traffic_count_requested,
+            walker_count_requested=walker_count_requested,
+            pedestrian_crossing_factor=pedestrian_crossing_factor,
+            speed_difference_percent=speed_difference_percent,
+            following_distance_metres=following_distance_metres,
         )
 
 
@@ -383,6 +429,23 @@ def _optional_integer(value: Any, name: str, *, minimum: int) -> int | None:
     if value is None:
         return None
     return _required_integer(value, name, minimum=minimum)
+
+
+def _optional_number(
+    value: Any,
+    name: str,
+    *,
+    minimum: float,
+    maximum: float,
+) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise WorldWorkerError(f"{name} must be a number")
+    result = float(value)
+    if not math.isfinite(result) or not minimum <= result <= maximum:
+        raise WorldWorkerError(f"{name} must be finite and in [{minimum}, {maximum}]")
+    return result
 
 
 class WorldWorkerClient:
@@ -432,8 +495,8 @@ class WorldWorkerClient:
 
     def prepare_scene(self, payload: Mapping[str, Any]) -> WorldWorkerScene:
         keys = frozenset(str(key) for key in payload)
-        if keys != _SCENE_PREPARE_KEYS:
-            missing = sorted(_SCENE_PREPARE_KEYS - keys)
+        if not _SCENE_PREPARE_REQUIRED_KEYS <= keys or not keys <= _SCENE_PREPARE_KEYS:
+            missing = sorted(_SCENE_PREPARE_REQUIRED_KEYS - keys)
             unknown = sorted(keys - _SCENE_PREPARE_KEYS)
             detail = []
             if missing:
@@ -441,6 +504,17 @@ class WorldWorkerClient:
             if unknown:
                 detail.append(f"unknown {', '.join(unknown)}")
             raise ValueError(f"World Worker scene payload has {'; '.join(detail)}")
+        if keys & _SCENE_PREPARE_OPTIONAL_KEYS:
+            catalog = self.catalog()
+            capabilities = catalog.get("capabilities", {})
+            if not isinstance(capabilities, Mapping) or not bool(
+                capabilities.get("world_dynamics_controls")
+            ):
+                raise WorldWorkerError(
+                    "the Windows World Worker is outdated and cannot apply pedestrian "
+                    "crossing, traffic speed, or following distance; pull main and restart "
+                    "the Worker"
+                )
         return WorldWorkerScene.from_response(
             # Native map reloads can legitimately outlive ordinary LAN control
             # calls. Keep the longer budget local to this destructive request;
@@ -531,17 +605,30 @@ class WorldWorkerClient:
         yaw: float,
         pitch: float,
         distance: float,
+        preset: str = "orbit",
     ) -> dict[str, Any]:
+        choices = {"orbit", "front", "rear", "top", "cockpit"}
+        if not isinstance(preset, str) or preset not in choices:
+            raise ValueError("camera preset must be orbit, front, rear, top, or cockpit")
+        supports_presets = bool(scene.capabilities.get("garage_camera_presets"))
+        if preset != "orbit" and not supports_presets:
+            raise WorldWorkerError(
+                "the Windows World Worker is outdated and does not support Garage camera "
+                "presets; pull main and restart the Worker"
+            )
         scene_id = quote(scene.scene_id, safe="")
+        payload: dict[str, Any] = {
+            "lease_token": scene.lease_token,
+            "yaw": float(yaw),
+            "pitch": float(pitch),
+            "distance": float(distance),
+        }
+        if supports_presets:
+            payload["preset"] = preset
         return self._request(
             "POST",
             f"/v1/scenes/{scene_id}/camera_orbit",
-            {
-                "lease_token": scene.lease_token,
-                "yaw": float(yaw),
-                "pitch": float(pitch),
-                "distance": float(distance),
-            },
+            payload,
         )
 
     def camera_frame(
