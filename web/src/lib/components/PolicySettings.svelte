@@ -1,0 +1,138 @@
+<script lang="ts">
+  import type { BehaviorStyle } from '$lib/domain/config';
+  import { patchSessionSection, sessionConfig, workspaceOptions } from '$lib/stores/configuration';
+  import { fieldChecked, fieldNumber, fieldValue } from '$lib/ui/events';
+
+  $: autonomous = ['behavior', 'imitation', 'voxel'].includes($sessionConfig.control.mode);
+  $: checkpointRequired = ['imitation', 'voxel'].includes($sessionConfig.control.mode);
+
+  function setBehavior(event: Event): void {
+    patchSessionSection('policy', { behavior: fieldValue(event) as BehaviorStyle });
+  }
+</script>
+
+{#if autonomous}
+  <section class="config-card">
+    <div class="section-heading">
+      <div>
+        <span class="eyebrow">04 · Experimental policy</span>
+        <h2>Autonomy runtime</h2>
+      </div>
+      <span class="capability">Explicit opt-in · fail-closed runtime</span>
+    </div>
+
+    <div class="field-grid three-columns">
+      {#if $sessionConfig.control.mode === 'behavior' || $sessionConfig.control.mode === 'voxel'}
+        <label class="field">
+          <span>Behavior style</span>
+          <select value={$sessionConfig.policy.behavior} onchange={setBehavior}>
+            <option value="cautious">Cautious</option>
+            <option value="normal">Normal</option>
+            <option value="aggressive">Aggressive</option>
+          </select>
+        </label>
+      {/if}
+
+      {#if checkpointRequired}
+        <label class="field">
+          <span>Policy checkpoint</span>
+          <select
+            value={$sessionConfig.policy.checkpoint}
+            onchange={(event) => patchSessionSection('policy', { checkpoint: fieldValue(event) })}
+          >
+            <option value="">Select checkpoint</option>
+            {#each $workspaceOptions.checkpoints as checkpoint}
+              <option value={checkpoint}>{checkpoint}</option>
+            {/each}
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Policy device</span>
+          <select
+            value={$sessionConfig.policy.device}
+            onchange={(event) => patchSessionSection('policy', { device: fieldValue(event) })}
+          >
+            <option value="cpu">CPU</option>
+            <option value="mps">MPS</option>
+            <option value="cuda">CUDA</option>
+          </select>
+        </label>
+      {/if}
+
+      <label class="field">
+        <span>Target speed km/h</span>
+        <input
+          type="number"
+          min="5"
+          max="120"
+          value={$sessionConfig.policy.targetSpeedKmh}
+          oninput={(event) => patchSessionSection('policy', { targetSpeedKmh: fieldNumber(event) })}
+        />
+      </label>
+    </div>
+
+    {#if $sessionConfig.control.mode === 'voxel'}
+      <details class="advanced-block">
+        <summary>Voxel supervisor inputs</summary>
+        <div class="field-grid three-columns">
+          <label class="field">
+            <span>Readiness report</span>
+            <input
+              value={$sessionConfig.policy.voxelReadinessReport}
+              placeholder="Optional workspace JSON"
+              oninput={(event) =>
+                patchSessionSection('policy', { voxelReadinessReport: fieldValue(event) })}
+            />
+          </label>
+          <label class="field">
+            <span>Max model speed km/h</span>
+            <input
+              type="number"
+              min="5"
+              max="160"
+              value={$sessionConfig.policy.maxModelSpeedKmh}
+              oninput={(event) =>
+                patchSessionSection('policy', { maxModelSpeedKmh: fieldNumber(event) })}
+            />
+          </label>
+          <label class="field">
+            <span>Max steer rate</span>
+            <input
+              type="number"
+              min="0.1"
+              max="10"
+              step="0.1"
+              value={$sessionConfig.policy.maxSteerRate}
+              oninput={(event) => patchSessionSection('policy', { maxSteerRate: fieldNumber(event) })}
+            />
+          </label>
+          <label class="field">
+            <span>Max policy errors</span>
+            <input
+              type="number"
+              min="1"
+              max="20"
+              value={$sessionConfig.policy.maxPolicyErrors}
+              oninput={(event) =>
+                patchSessionSection('policy', { maxPolicyErrors: fieldNumber(event) })}
+            />
+          </label>
+        </div>
+      </details>
+    {/if}
+
+    <label class="switch-field autonomy-acknowledgement">
+      <input
+        type="checkbox"
+        checked={$sessionConfig.policy.acknowledgeAutonomy}
+        onchange={(event) =>
+          patchSessionSection('policy', { acknowledgeAutonomy: fieldChecked(event) })}
+      />
+      <span>
+        <strong>I acknowledge that this mode actuates the CARLA ego vehicle</strong>
+        <small>Required by the existing Garage safety contract before an autonomous session can start.</small>
+      </span>
+    </label>
+  </section>
+{/if}
