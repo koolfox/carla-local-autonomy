@@ -2,8 +2,8 @@
 
 Precedence is deterministic: explicit CLI > process environment > .env.local >
 existing built-in defaults. The actual HTTP/server lifecycle remains owned by
-``garage_server.main``; this module only resolves local machine configuration and
-applies the detector checkbox default to the served shell.
+``garage_server.main``; this module resolves local machine configuration and
+exposes the canonical, secret-free product configuration contract.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ from urllib.parse import urlparse
 
 from . import garage_server
 from . import server as base
+from .configuration import build_configuration_contract
 
 _ENV_FILE = ".env.local"
 _SUPPORTED_KEYS = frozenset(
@@ -256,12 +257,33 @@ def render_operator_index(html: str, *, detector_enabled: bool) -> str:
 
 
 class LocalConfigGarageRequestHandler(garage_server.GarageOperatorRequestHandler):
-    """Serve the normal Garage shell with the configured detector default."""
+    """Serve the Garage shell and canonical local configuration contract."""
 
     detector_enabled_default = True
 
+    def _configuration_contract(self) -> dict[str, object]:
+        return build_configuration_contract(
+            self.server.application,
+            detector_enabled=self.detector_enabled_default,
+        )
+
     def do_GET(self) -> None:
-        if urlparse(self.path).path == "/":
+        path = urlparse(self.path).path
+        if path == "/api/configuration":
+            try:
+                self._json(HTTPStatus.OK, self._configuration_contract())
+            except BaseException as error:
+                self._error(error)
+            return
+        if path == "/api/bootstrap":
+            try:
+                payload = self.server.application.bootstrap()
+                payload["configuration"] = self._configuration_contract()
+                self._json(HTTPStatus.OK, payload)
+            except BaseException as error:
+                self._error(error)
+            return
+        if path == "/":
             try:
                 html = (base.STATIC_ROOT / "index.html").read_text(encoding="utf-8")
                 html = render_operator_index(
