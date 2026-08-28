@@ -669,6 +669,65 @@ class WorldWorkerTest(unittest.TestCase):
         prepared = self.worker.prepare({"walker_count": 1})
         self.assertEqual(prepared["scene"]["walker_count"], 1)
 
+    def test_failed_walker_activation_retains_actors_until_cleanup_confirms_destroy(
+        self,
+    ) -> None:
+        original_destroy = FakeActor.destroy
+        destroy_attempts: dict[int, int] = {}
+        first_failure_modes: dict[int, str] = {}
+
+        def reject_controller_start(actor: FakeActor) -> None:
+            if actor.type_id == "controller.ai.walker":
+                raise RuntimeError("controller activation failed")
+            actor.started = True
+
+        def flaky_destroy(actor: FakeActor) -> None | bool:
+            if actor.type_id != "controller.ai.walker":
+                return original_destroy(actor)
+            attempt = destroy_attempts.get(actor.id, 0) + 1
+            destroy_attempts[actor.id] = attempt
+            if attempt == 1:
+                mode = "false" if len(first_failure_modes) % 2 == 0 else "exception"
+                first_failure_modes[actor.id] = mode
+                if mode == "false":
+                    return False
+                raise RuntimeError("transient destroy failure")
+            return original_destroy(actor)
+
+        with (
+            mock.patch.object(FakeActor, "start", reject_controller_start),
+            mock.patch.object(FakeActor, "destroy", flaky_destroy),
+            self.assertRaisesRegex(WorkerError, "walkers 0/1") as raised,
+        ):
+            self.worker.prepare({"walker_count": 1})
+
+        self.assertEqual(raised.exception.code, "scene_population_shortfall")
+        self.assertEqual(set(first_failure_modes.values()), {"false", "exception"})
+        self.assertTrue(all(destroy_attempts[actor_id] >= 2 for actor_id in first_failure_modes))
+        self.assertIsNone(self.worker.current_scene()["scene"])
+        self.assertEqual(self.world.actors, {})
+
+    def test_stop_reports_actor_destroy_that_remains_unconfirmed(self) -> None:
+        prepared = self.worker.prepare({"walker_count": 1})
+        scene_id, lease_token = self.lease(prepared)
+        controller = next(
+            actor for actor in self.world.actors.values() if actor.type_id == "controller.ai.walker"
+        )
+        original_destroy = controller.destroy
+        controller.destroy = lambda: False  # type: ignore[method-assign]
+
+        stopped = self.worker.stop(scene_id, {"lease_token": lease_token})
+
+        self.assertIn(controller.id, self.world.actors)
+        self.assertTrue(
+            any(
+                f"destroy walker_controller {controller.id}" in value
+                and "remains registered" in value
+                for value in stopped["scene"]["cleanup_errors"]
+            )
+        )
+        original_destroy()
+
     def test_garage_autoframing_scales_with_vehicle_bounds(self) -> None:
         prepared = self.worker.prepare({})
         ego = self.world.get_actor(prepared["scene"]["ego_actor_id"])

@@ -1415,10 +1415,25 @@ class WorldWorker:
         )
 
     @staticmethod
-    def _discard_actor_group(owned: list[OwnedActor], *actors: Any) -> None:
-        """Best-effort rollback for actors that vanish during CARLA activation."""
+    def _actor_is_confirmed_absent(world: Any, actor: Any) -> bool:
+        if not bool(getattr(actor, "is_alive", True)):
+            return True
+        try:
+            current = world.get_actor(int(actor.id))
+        except Exception:
+            return False
+        return current is None or not bool(getattr(current, "is_alive", True))
 
-        actor_ids = {int(actor.id) for actor in actors if actor is not None}
+    @classmethod
+    def _discard_actor_group(
+        cls,
+        world: Any,
+        owned: list[OwnedActor],
+        *actors: Any,
+    ) -> None:
+        """Best-effort rollback without forgetting actors CARLA still owns."""
+
+        destroyed_actor_ids: set[int] = set()
         for actor in actors:
             if actor is None:
                 continue
@@ -1428,10 +1443,12 @@ class WorldWorker:
             except Exception:
                 pass
             try:
-                actor.destroy()
+                destroyed = actor.destroy()
             except Exception:
-                pass
-        owned[:] = [item for item in owned if item.actor_id not in actor_ids]
+                destroyed = False
+            if destroyed is True or cls._actor_is_confirmed_absent(world, actor):
+                destroyed_actor_ids.add(int(actor.id))
+        owned[:] = [item for item in owned if item.actor_id not in destroyed_actor_ids]
 
     @staticmethod
     def _registered_actor_ids(world: Any, actors: Sequence[Any]) -> set[int]:
@@ -1551,7 +1568,7 @@ class WorldWorker:
                 if hasattr(traffic_manager, "update_vehicle_lights"):
                     traffic_manager.update_vehicle_lights(actor, True)
             except Exception:
-                self._discard_actor_group(owned, actor)
+                self._discard_actor_group(world, owned, actor)
                 continue
             actors.append(actor)
         return actors
@@ -1635,7 +1652,7 @@ class WorldWorker:
                 except Exception:
                     controller = None
                 if controller is None:
-                    self._discard_actor_group(owned, walker)
+                    self._discard_actor_group(world, owned, walker)
                     continue
                 self._record_actor(owned, controller, kind="walker_controller")
                 pending.append(
@@ -1655,7 +1672,7 @@ class WorldWorker:
                     barrier_ready = False
             if not barrier_ready:
                 for walker, controller, _speed in pending:
-                    self._discard_actor_group(owned, controller, walker)
+                    self._discard_actor_group(world, owned, controller, walker)
                 continue
             for walker, controller, speed in pending:
                 try:
@@ -1670,7 +1687,7 @@ class WorldWorker:
                     controller.go_to_location(destination)
                     controller.set_max_speed(speed)
                 except Exception:
-                    self._discard_actor_group(owned, controller, walker)
+                    self._discard_actor_group(world, owned, controller, walker)
                     continue
                 walkers.append(walker)
                 controllers.append(controller)
@@ -1963,7 +1980,7 @@ class WorldWorker:
                     if int(actor.id) in registered_actor_ids:
                         verified_vehicles.append(actor)
                     else:
-                        self._discard_actor_group(owned, actor)
+                        self._discard_actor_group(world, owned, actor)
                 partial.vehicle_actors = verified_vehicles
                 verified_walkers: list[Any] = []
                 verified_controllers: list[Any] = []
@@ -1979,7 +1996,7 @@ class WorldWorker:
                         verified_walkers.append(walker)
                         verified_controllers.append(controller)
                     else:
-                        self._discard_actor_group(owned, controller, walker)
+                        self._discard_actor_group(world, owned, controller, walker)
                 partial.walker_actors = verified_walkers
                 partial.walker_controllers = verified_controllers
                 actual_traffic = len(partial.vehicle_actors)
@@ -2694,7 +2711,20 @@ class WorldWorker:
                 raise RuntimeError(f"actor {owned.actor_id} role changed; refusing destroy")
         if hasattr(current, "is_alive") and not bool(current.is_alive):
             return
-        current.destroy()
+        try:
+            destroyed = current.destroy()
+        except Exception as error:
+            if self._actor_is_confirmed_absent(current_world, current):
+                return
+            raise RuntimeError(
+                f"actor {owned.actor_id} destroy raised while actor remains registered: "
+                f"{type(error).__name__}: {error}"
+            ) from error
+        if destroyed is True or self._actor_is_confirmed_absent(current_world, current):
+            return
+        raise RuntimeError(
+            f"actor {owned.actor_id} destroy was not confirmed and actor remains registered"
+        )
 
     @staticmethod
     def _release_traffic_manager(
