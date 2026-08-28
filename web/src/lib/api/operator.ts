@@ -1,4 +1,9 @@
-import type { SystemSettings, WorkspaceOptions } from '$lib/domain/config';
+import type {
+  ExperimentPresetDefinition,
+  SessionConfig,
+  SystemSettings,
+  WorkspaceOptions
+} from '$lib/domain/config';
 
 export interface BootstrapPayload {
   schema_version: string;
@@ -12,9 +17,24 @@ export interface BootstrapPayload {
     };
     capabilities: Record<string, boolean>;
   };
-  weather_presets?: string[];
-  prop_presets?: string[];
   drive?: Record<string, unknown>;
+}
+
+export interface ConfigurationContractPayload {
+  schema_version: string;
+  system: {
+    workspace: string;
+    carlaHost: string;
+    carlaPort: number;
+    localOnly: boolean;
+    worldWorker: {
+      configured: boolean;
+      url: string | null;
+    };
+    experimentalEnabled: boolean;
+  };
+  sessionDefaults: Partial<SessionConfig>;
+  experimentPresets: ExperimentPresetDefinition[];
 }
 
 export interface DriveCatalogPayload {
@@ -47,6 +67,8 @@ export interface WorkspaceSnapshot {
   token: string;
   system: SystemSettings;
   options: WorkspaceOptions;
+  sessionDefaults: Partial<SessionConfig>;
+  experimentPresets: ExperimentPresetDefinition[];
   driveCatalog: DriveCatalogPayload;
 }
 
@@ -67,22 +89,24 @@ async function readJson<T>(path: string): Promise<T> {
 }
 
 export async function loadWorkspaceSnapshot(): Promise<WorkspaceSnapshot> {
-  const [bootstrap, driveCatalog] = await Promise.all([
+  const [bootstrap, configuration, driveCatalog] = await Promise.all([
     readJson<BootstrapPayload>('/api/bootstrap'),
+    readJson<ConfigurationContractPayload>('/api/configuration'),
     readJson<DriveCatalogPayload>('/api/drive/catalog')
   ]);
 
   const system: SystemSettings = {
-    workspace: bootstrap.catalog.workspace,
-    carlaHost: driveCatalog.host || bootstrap.catalog.defaults.carla_host,
-    carlaPort: driveCatalog.port || bootstrap.catalog.defaults.carla_port,
-    localOnly: bootstrap.catalog.capabilities.local_only !== false,
+    workspace: configuration.system.workspace,
+    carlaHost: configuration.system.carlaHost,
+    carlaPort: configuration.system.carlaPort,
+    localOnly: configuration.system.localOnly,
     connected: Boolean(driveCatalog.connected),
     serverVersion: driveCatalog.server_version ?? null,
     currentMap: driveCatalog.map ?? null,
-    workerConfigured: Boolean(driveCatalog.world_worker?.configured),
+    workerConfigured: Boolean(configuration.system.worldWorker.configured),
     workerConnected: Boolean(driveCatalog.world_worker?.connected),
-    experimentalEnabled: Array.isArray(driveCatalog.policy_checkpoints),
+    workerUrl: configuration.system.worldWorker.url,
+    experimentalEnabled: Boolean(configuration.system.experimentalEnabled),
     visionRuntimeAvailable: driveCatalog.vision_runtime?.available !== false,
     capabilities: { ...driveCatalog.capabilities }
   };
@@ -103,6 +127,8 @@ export async function loadWorkspaceSnapshot(): Promise<WorkspaceSnapshot> {
     token: bootstrap.token,
     system,
     options,
+    sessionDefaults: configuration.sessionDefaults,
+    experimentPresets: configuration.experimentPresets,
     driveCatalog
   };
 }
