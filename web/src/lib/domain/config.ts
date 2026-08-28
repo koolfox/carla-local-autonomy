@@ -19,6 +19,7 @@ export interface SystemSettings {
   currentMap: string | null;
   workerConfigured: boolean;
   workerConnected: boolean;
+  workerUrl: string | null;
   experimentalEnabled: boolean;
   visionRuntimeAvailable: boolean;
   capabilities: Record<string, boolean>;
@@ -69,6 +70,27 @@ export interface SessionConfig {
   experiment: {
     preset: ExperimentPreset;
   };
+}
+
+export interface ExperimentPresetPatch {
+  control?: { mode?: ControlMode };
+  scene?: {
+    trafficCount?: number;
+    walkerCount?: number;
+    trafficCountMinimum?: number;
+    walkerCountMinimum?: number;
+    weatherPreset?: string;
+    weatherPresetIfKeep?: string;
+  };
+  perception?: { enabled?: boolean };
+  recording?: { video?: boolean };
+}
+
+export interface ExperimentPresetDefinition {
+  id: ExperimentPreset;
+  label: string;
+  description: string;
+  patch: ExperimentPresetPatch;
 }
 
 export interface WorkspaceOptions {
@@ -132,47 +154,61 @@ export function defaultSessionConfig(): SessionConfig {
   };
 }
 
-export function applyExperimentPreset(
-  current: SessionConfig,
-  preset: ExperimentPreset
+export function mergeSessionDefaults(
+  fallback: SessionConfig,
+  defaults: Partial<SessionConfig>
 ): SessionConfig {
+  return {
+    ...fallback,
+    ...defaults,
+    identity: { ...fallback.identity, ...(defaults.identity ?? {}), runId: fallback.identity.runId },
+    scene: { ...fallback.scene, ...(defaults.scene ?? {}) },
+    vehicle: { ...fallback.vehicle, ...(defaults.vehicle ?? {}) },
+    route: { ...fallback.route, ...(defaults.route ?? {}) },
+    control: { ...fallback.control, ...(defaults.control ?? {}) },
+    camera: { ...fallback.camera, ...(defaults.camera ?? {}) },
+    perception: { ...fallback.perception, ...(defaults.perception ?? {}) },
+    recording: { ...fallback.recording, ...(defaults.recording ?? {}) },
+    experiment: { ...fallback.experiment, ...(defaults.experiment ?? {}) }
+  };
+}
+
+export function applyExperimentPresetDefinition(
+  current: SessionConfig,
+  definition: ExperimentPresetDefinition
+): SessionConfig {
+  const patch = definition.patch;
   const next: SessionConfig = {
     ...current,
     scene: { ...current.scene },
     control: { ...current.control },
     perception: { ...current.perception },
     recording: { ...current.recording },
-    experiment: { preset }
+    experiment: { preset: definition.id }
   };
 
-  switch (preset) {
-    case 'free_drive':
-      next.control.mode = 'manual';
-      next.scene.trafficCount = 0;
-      next.scene.walkerCount = 0;
-      break;
-    case 'manual_handling':
-      next.control.mode = 'manual';
-      next.perception.enabled = false;
-      break;
-    case 'autopilot_takeover':
-      next.control.mode = 'autopilot';
-      next.scene.trafficCount = Math.max(8, next.scene.trafficCount);
-      next.scene.walkerCount = Math.max(4, next.scene.walkerCount);
-      break;
-    case 'perception_review':
-      next.control.mode = 'manual';
-      next.perception.enabled = true;
-      next.recording.video = true;
-      break;
-    case 'traffic_stress':
-      next.scene.trafficCount = Math.max(30, next.scene.trafficCount);
-      next.scene.walkerCount = Math.max(20, next.scene.walkerCount);
-      break;
-    case 'adverse_weather':
-      if (next.scene.weatherPreset === 'keep') next.scene.weatherPreset = 'heavy-rain';
-      next.recording.video = true;
-      break;
+  if (patch.control?.mode) next.control.mode = patch.control.mode;
+  if (typeof patch.scene?.trafficCount === 'number') {
+    next.scene.trafficCount = patch.scene.trafficCount;
+  }
+  if (typeof patch.scene?.walkerCount === 'number') {
+    next.scene.walkerCount = patch.scene.walkerCount;
+  }
+  if (typeof patch.scene?.trafficCountMinimum === 'number') {
+    next.scene.trafficCount = Math.max(next.scene.trafficCount, patch.scene.trafficCountMinimum);
+  }
+  if (typeof patch.scene?.walkerCountMinimum === 'number') {
+    next.scene.walkerCount = Math.max(next.scene.walkerCount, patch.scene.walkerCountMinimum);
+  }
+  if (patch.scene?.weatherPreset) next.scene.weatherPreset = patch.scene.weatherPreset;
+  if (patch.scene?.weatherPresetIfKeep && next.scene.weatherPreset === 'keep') {
+    next.scene.weatherPreset = patch.scene.weatherPresetIfKeep;
+  }
+  if (typeof patch.perception?.enabled === 'boolean') {
+    next.perception.enabled = patch.perception.enabled;
+  }
+  if (typeof patch.recording?.video === 'boolean') {
+    next.recording.video = patch.recording.video;
   }
 
   return next;
