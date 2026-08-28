@@ -22,6 +22,7 @@ export const workspaceOptions = writable<WorkspaceOptions>({
   vehicles: [],
   weatherPresets: [],
   propPresets: [],
+  detectorWeights: [],
   checkpoints: []
 });
 export const experimentPresets = writable<ExperimentPresetDefinition[]>([]);
@@ -59,6 +60,10 @@ function readStoredConfig(base: SessionConfig): SessionConfig | null {
       experiment: {
         ...base.experiment,
         ...(isRecord(parsed.experiment) ? parsed.experiment : {})
+      },
+      policy: {
+        ...base.policy,
+        ...(isRecord(parsed.policy) ? parsed.policy : {})
       }
     } as SessionConfig;
   } catch {
