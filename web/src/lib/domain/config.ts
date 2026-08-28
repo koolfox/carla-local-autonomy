@@ -170,7 +170,7 @@ export function applyExperimentPreset(
       next.scene.walkerCount = Math.max(20, next.scene.walkerCount);
       break;
     case 'adverse_weather':
-      if (next.scene.weatherPreset === 'keep') next.scene.weatherPreset = 'hard-rain-noon';
+      if (next.scene.weatherPreset === 'keep') next.scene.weatherPreset = 'heavy-rain';
       next.recording.video = true;
       break;
   }
