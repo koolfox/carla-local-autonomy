@@ -14,10 +14,20 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from ..controller import ControlCommand
-from ..model_driver import ModelDriverConfig, ModelObservation, control_from_value, create_driving_model
+from ..model_driver import (
+    ModelDriverConfig,
+    ModelObservation,
+    control_from_value,
+    create_driving_model,
+)
 from ..model_registry import ModelPackage, resolve_model_package
 from .drive import _world_worker_health_ready
-from .garage_drive import GarageDriveSession, GarageDriveSessionManager, GarageDriveStartConfig, _PolicyCamera
+from .garage_drive import (
+    GarageDriveSession,
+    GarageDriveSessionManager,
+    GarageDriveStartConfig,
+    _PolicyCamera,
+)
 from .world_worker_client import WorldWorkerClient
 
 _TORCHSCRIPT_FACTORY = "carla_vision.torchscript_driver:create_driver"
