@@ -222,15 +222,17 @@
   onMount(() => {
     const interval = window.setInterval(() => void sendControl(), 67);
     const release = () => releaseControl();
-    window.addEventListener('keyup', (event) => handleKey(event, false));
-    window.addEventListener('blur', release);
-    window.addEventListener('pagehide', release);
+    const keyUp = (event: KeyboardEvent) => handleKey(event, false);
     const visibility = () => {
       if (document.hidden) releaseControl();
     };
+    window.addEventListener('keyup', keyUp);
+    window.addEventListener('blur', release);
+    window.addEventListener('pagehide', release);
     document.addEventListener('visibilitychange', visibility);
     return () => {
       window.clearInterval(interval);
+      window.removeEventListener('keyup', keyUp);
       window.removeEventListener('blur', release);
       window.removeEventListener('pagehide', release);
       document.removeEventListener('visibilitychange', visibility);
