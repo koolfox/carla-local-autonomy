@@ -20,7 +20,8 @@
   $: active = isDriveActive($garageRuntime.drive);
   $: running = $garageRuntime.drive.status === 'running';
   $: terminal = ['success', 'failed'].includes($garageRuntime.drive.status);
-  $: disabled = blockers.length > 0 || active || $garageRuntime.action !== null;
+  $: freshRunId = !terminal || $sessionConfig.identity.runId !== $garageRuntime.drive.run_id;
+  $: disabled = blockers.length > 0 || active || $garageRuntime.action !== null || !freshRunId;
 
   async function launch(): Promise<void> {
     if (disabled) return;
@@ -63,9 +64,12 @@
     {:else if active}
       <strong>{$garageRuntime.drive.status === 'stopping' ? 'Saving and releasing the session…' : 'Garage session is active.'}</strong>
       <small>{$garageRuntime.drive.run_id ?? $sessionConfig.identity.runId}</small>
-    {:else if terminal}
+    {:else if terminal && !freshRunId}
       <strong>{$garageRuntime.drive.status === 'success' ? 'Run saved.' : 'The previous run failed.'}</strong>
-      <small>{$garageRuntime.drive.output_path ?? $garageRuntime.drive.error ?? 'Review the runtime panel for details.'}</small>
+      <small>Prepare a new run ID before starting another session.</small>
+    {:else if terminal}
+      <strong>Next run is ready to start.</strong>
+      <small>{$sessionConfig.identity.runId}</small>
     {:else}
       <strong>Configuration is ready to start.</strong>
       <small>{$sessionConfig.identity.runId}</small>
@@ -90,12 +94,11 @@
       >
         {$garageRuntime.action === 'stop' ? 'Saving…' : 'Stop & Save'}
       </button>
-    {:else if terminal}
-      <button type="button" class="button secondary-button" onclick={prepareAnotherRun}>New run ID</button>
-      <button type="button" class="button primary-button" disabled={disabled} onclick={launch}>Start again</button>
+    {:else if terminal && !freshRunId}
+      <button type="button" class="button primary-button" onclick={prepareAnotherRun}>Prepare next run</button>
     {:else}
       <button type="button" class="button primary-button" disabled={disabled} onclick={launch}>
-        {$garageRuntime.action === 'start' ? 'Starting Garage…' : 'Start session'}
+        {$garageRuntime.action === 'start' ? 'Starting Garage…' : terminal ? 'Start next run' : 'Start session'}
       </button>
     {/if}
   </div>
