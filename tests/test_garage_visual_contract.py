@@ -225,6 +225,118 @@ class GarageVisualContractTests(unittest.TestCase):
         self.assertEqual(duplicate_ids, [])
         self.assertEqual(self.parser.nested_forms, [])
 
+    def test_research_tools_stay_inside_an_accessible_garage_dialog(self) -> None:
+        opener_tag, opener_attributes = self.parser.elements["game-research-open"]
+        self.assertEqual(opener_tag, "button")
+        self.assertEqual(opener_attributes.get("aria-label"), "Research tools")
+        self.assertEqual(opener_attributes.get("aria-controls"), "game-research-modal")
+        self.assertEqual(opener_attributes.get("aria-haspopup"), "dialog")
+        self.assertEqual(opener_attributes.get("aria-expanded"), "false")
+
+        dialog_tag, dialog_attributes = self.parser.elements["game-research-modal"]
+        self.assertEqual(dialog_tag, "dialog")
+        self.assertEqual(dialog_attributes.get("aria-modal"), "true")
+        self.assertEqual(dialog_attributes.get("aria-labelledby"), "tools-title")
+
+        dialog_start = self.html.index('id="game-research-modal"')
+        dialog_end = self.html.index("</dialog>", dialog_start)
+        for element_id in (
+            "panel-tools",
+            "live-form",
+            "situation-form",
+            "plan-form",
+            "qa-form",
+            "native-form",
+            "matrix-form",
+            "replay-form",
+            "train-form",
+            "analysis-form",
+            "verify-form",
+        ):
+            with self.subTest(element_id=element_id):
+                position = self.html.index(f'id="{element_id}"')
+                self.assertGreater(position, dialog_start)
+                self.assertLess(position, dialog_end)
+
+        for behavior in (
+            "modal.showModal();",
+            'researchModal.addEventListener("cancel"',
+            "if (event.target === researchModal) closeGarageResearchModal();",
+            "if (opener?.isConnected) opener.focus();",
+            'openGarageResearchModal("sessions")',
+            'openGarageResearchModal("workflows")',
+        ):
+            with self.subTest(behavior=behavior):
+                self.assertIn(behavior, self.script)
+        self.assertNotIn('activateTab("tools")', self.script)
+
+        modal = _balanced_block(self.styles, ".game-research-modal")
+        self.assertEqual(_property(modal, "position"), "fixed")
+        self.assertEqual(_property(modal, "overflow"), "hidden")
+        mobile = _balanced_block(self.styles, "@media (max-width: 760px)")
+        mobile_modal = _balanced_block(mobile, ".game-research-modal")
+        self.assertEqual(_property(mobile_modal, "width"), "100vw")
+        self.assertIn("100dvh", mobile_modal)
+
+    def test_scene_builder_has_one_current_scene_path_back_to_garage(self) -> None:
+        advanced_tag, advanced_attributes = self.parser.elements["situation-advanced"]
+        self.assertEqual(advanced_tag, "details")
+        self.assertNotIn("open", advanced_attributes)
+
+        ego_tag, _ = self.parser.elements["situation-ego"]
+        self.assertEqual(ego_tag, "select")
+        self.assertNotIn("plan-suite", self.parser.elements)
+        self.assertIn("Advanced dataset capture", self.html)
+        self.assertIn("deterministic episode capture stays with the recipe", self.html)
+        self.assertIn("situation-use-garage", self.parser.elements)
+        self.assertIn("Apply scene to Garage", self.html)
+        self.assertIn("Build current plan", self.html)
+        self.assertIn("Use in Garage", self.html)
+
+        for behavior in (
+            "async function saveCurrentSituation",
+            "suite: saved.path",
+            'artifact.role === "resolved_scenario_suite"',
+            "function applyScenarioRecipeToGarage",
+            "function applySituationToGarage",
+            "function applyGarageSceneValues",
+            "function syncSituationFromGarage",
+            'setScenarioCount("drive-traffic-choice"',
+            'setScenarioCount("drive-walkers-choice"',
+            '$("drive-seed").value',
+            '$("drive-camera-fov").value',
+            'openGameDrawer("settings")',
+            'use.textContent = "Use in Garage"',
+        ):
+            with self.subTest(behavior=behavior):
+                self.assertIn(behavior, self.script)
+        for capability_error in (
+            "This Scene needs map reload",
+            "This Scene needs traffic population",
+            "This Scene needs pedestrian population",
+        ):
+            self.assertIn(capability_error, self.script)
+        self.assertNotIn('$("plan-suite")', self.script)
+
+    def test_live_research_settings_have_an_explicit_adapter_into_garage(self) -> None:
+        button_tag, button_attributes = self.parser.elements["live-use-garage"]
+        self.assertEqual(button_tag, "button")
+        self.assertEqual(button_attributes.get("type"), "button")
+        for behavior in (
+            "function applyLiveSettingsToGarage",
+            '$("drive-camera-fov").value = $("live-fov").value;',
+            '$("drive-detector").value = $("live-detector").value;',
+            '$("drive-record-video").checked = checked("live-video");',
+            '$("drive-spectator-follow").checked = checked("live-spectator-follow");',
+            '$("live-use-garage").addEventListener("click"',
+        ):
+            with self.subTest(behavior=behavior):
+                self.assertIn(behavior, self.script)
+        self.assertNotIn('$("drive-host").value = $("live-host").value;', self.script)
+        self.assertNotIn('$("drive-port").value = $("live-port").value;', self.script)
+        self.assertIn("Camera normalized to ${camera.applied.resolution}", self.script)
+        self.assertEqual(self.html.count('value="1920x1080"'), 2)
+
     def test_drive_is_a_static_fullscreen_stage_instead_of_dashboard_chrome(self) -> None:
         for element_id in (
             "game-shell",
@@ -264,6 +376,43 @@ class GarageVisualContractTests(unittest.TestCase):
         self.assertIn("preset: garage.cameraPreset", self.script)
         self.assertIn("syncGarageVehicleCarousel({ reveal: true });", self.script)
         self.assertEqual(self.script.count('request("/api/drive/start"'), 1)
+
+    def test_garage_scene_updates_keep_one_latest_request_and_the_last_frame(self) -> None:
+        poster_tag, _ = self.parser.elements["garage-preview-poster"]
+        self.assertEqual(poster_tag, "canvas")
+        for contract in (
+            "configureInFlight",
+            "configureGeneration",
+            "desiredConfig",
+            "runGarageConfigureLoop",
+            "captureGaragePreviewPoster",
+            "scheduleGarageStreamRetry",
+            "configured.configure_action",
+            "preview.applied_config",
+        ):
+            with self.subTest(contract=contract):
+                self.assertIn(contract, self.script)
+        self.assertNotIn(
+            "The CARLA garage stream stopped. Exit the garage and try again.",
+            self.script,
+        )
+        self.assertIn(
+            "#game-stage #garage-preview.live.busy .garage-preview-loading",
+            self.styles,
+        )
+
+    def test_active_free_drive_scene_rehydrates_garage_controls_after_reload(self) -> None:
+        for contract in (
+            "restoreGarageControlsFromAppliedConfig",
+            'state.drive.experimentPreset !== "free_drive"',
+            "hydrateControls = false",
+            "refreshGaragePreviewState({ hydrateControls: true })",
+            'setScenarioCount("drive-traffic-choice", config.traffic_count, "vehicles")',
+            'setScenarioCount("drive-walkers-choice", config.walker_count, "pedestrians")',
+            'selectAppliedValue("drive-camera-profile", config.profile)',
+        ):
+            with self.subTest(contract=contract):
+                self.assertIn(contract, self.script)
 
 
 if __name__ == "__main__":

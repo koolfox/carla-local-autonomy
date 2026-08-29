@@ -526,6 +526,73 @@ button.secondary:hover,
   margin-top: 16px;
 }
 
+.situation-advanced > summary,
+.planner-options > summary {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.situation-advanced > summary small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 550;
+  text-align: right;
+}
+
+.situation-advanced-fields,
+.planner-options .fields {
+  margin-top: 16px;
+}
+
+.situation-save-actions {
+  margin-top: 0;
+}
+
+.scenario-plan-form {
+  display: grid;
+  gap: 12px;
+}
+
+.planner-options {
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 9px;
+  background: var(--surface-2);
+}
+
+.scenario-plan-form > .actions {
+  margin-top: 0;
+}
+
+.scenario-plan-action {
+  display: flex;
+  min-height: 58px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-2);
+}
+
+.scenario-plan-action[hidden] {
+  display: none;
+}
+
+.scenario-plan-action .primary {
+  flex: 0 0 auto;
+  min-height: 42px;
+}
+
 .button-field {
   display: flex;
   align-items: flex-end;
@@ -1651,7 +1718,6 @@ kbd {
 .drive-setup-form > .drive-video-profile,
 .drive-setup-form > .drive-simple-toggles,
 .drive-setup-form > .drive-session-actions,
-.drive-setup-form > .drive-result-banner,
 .drive-setup-form > .drive-advanced,
 .drive-setup-form > .garage-research-shelf {
   grid-column: 1 / -1;
@@ -1768,7 +1834,7 @@ kbd {
 
 .drive-simple-toggles {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 7px;
   margin-top: 0;
 }
@@ -1895,39 +1961,9 @@ kbd {
   text-align: center;
 }
 
-.drive-output-path {
-  max-width: 100%;
-  margin: 10px 0 0;
-  overflow-wrap: anywhere;
-  color: var(--muted);
-  font-size: 9px;
-}
-
-.drive-result-banner {
-  display: grid;
-  gap: 10px;
-  margin-top: 14px;
-  padding: 13px;
-  border: 1px solid rgba(112, 214, 163, 0.3);
-  border-radius: 10px;
-  background: rgba(112, 214, 163, 0.07);
-}
-
-.drive-result-banner[hidden] {
-  display: none;
-}
-
-.drive-result-banner strong {
+.drive-start-note.saved {
   color: var(--green);
-  font-size: 13px;
-}
-
-.drive-result-banner .drive-output-path {
-  margin-top: 4px;
-}
-
-.drive-result-banner button {
-  width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .drive-health-grid {
@@ -2767,10 +2803,10 @@ body.drive-immersive {
     linear-gradient(145deg, #263033, #121719 65%);
 }
 
-#garage-preview-frame {
+#garage-preview-frame,
+#garage-preview-poster {
   position: absolute;
   inset: 0;
-  z-index: 1;
   display: block;
   width: 100%;
   height: 100%;
@@ -2780,6 +2816,16 @@ body.drive-immersive {
   transition: opacity 240ms ease;
 }
 
+#garage-preview-poster {
+  z-index: 1;
+  pointer-events: none;
+}
+
+#garage-preview-frame {
+  z-index: 2;
+}
+
+#garage-preview-poster.visible,
 #garage-preview-frame.visible {
   opacity: 1;
 }
@@ -2787,7 +2833,7 @@ body.drive-immersive {
 .garage-preview-media::after {
   position: absolute;
   inset: 0;
-  z-index: 2;
+  z-index: 3;
   background:
     linear-gradient(180deg, rgba(5, 8, 9, 0.46), transparent 26%),
     linear-gradient(0deg, rgba(5, 8, 9, 0.83), transparent 43%);
@@ -3728,6 +3774,38 @@ body:not(.drive-immersive) .game-status .drive-advisory-badge {
   line-height: 1.45;
 }
 
+.experiment-current .experiment-readiness {
+  color: #f3bc6a;
+  font-weight: 650;
+}
+
+.experiment-current .experiment-readiness.ready {
+  color: #8fd7b7;
+}
+
+.experiment-current .experiment-config-summary {
+  padding: 9px 10px;
+  border-left: 2px solid #f4a340;
+  color: #e5e8ea;
+  background: rgba(244, 163, 64, 0.08);
+}
+
+.experiment-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 0.78fr) minmax(0, 1.22fr);
+  gap: 8px;
+  margin-top: 3px;
+}
+
+.experiment-actions button {
+  width: 100%;
+  min-height: 48px;
+}
+
+.experiment-current #experiment-start:disabled {
+  opacity: 0.55;
+}
+
 .human-marker-panel > div:first-child {
   display: grid;
   gap: 3px;
@@ -3878,6 +3956,12 @@ body.drive-immersive #game-stage .drive-frame-state {
   object-fit: cover;
 }
 
+#game-stage #garage-preview-poster {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 #game-stage .garage-preview-media::after {
   display: none;
 }
@@ -3889,6 +3973,43 @@ body.drive-immersive #game-stage .drive-frame-state {
   background:
     radial-gradient(circle at 50% 46%, rgba(255, 255, 255, 0.045), transparent 31%),
     linear-gradient(180deg, #14171a, #090a0b);
+}
+
+#game-stage #garage-preview.live.busy .garage-preview-loading {
+  inset: max(76px, calc(env(safe-area-inset-top) + 58px)) 24px auto auto;
+  width: min(360px, calc(100vw - 48px));
+  min-height: 0;
+  margin: 0;
+  padding: 13px 15px;
+  grid-template-columns: auto minmax(0, 1fr);
+  place-content: initial;
+  justify-items: start;
+  gap: 2px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 12px;
+  background: rgba(14, 18, 20, 0.86);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+  text-align: left;
+  backdrop-filter: blur(14px);
+}
+
+#game-stage #garage-preview.live.busy .garage-preview-spinner {
+  width: 22px;
+  height: 22px;
+  grid-row: 1 / span 2;
+  align-self: center;
+  margin: 0;
+  border-width: 2px;
+}
+
+#game-stage #garage-preview.live.busy .garage-preview-loading strong {
+  font-size: 13px;
+  letter-spacing: 0;
+}
+
+#game-stage #garage-preview.live.busy .garage-preview-loading > span:last-child {
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 #game-stage .garage-preview-fallback {
@@ -4124,24 +4245,15 @@ body.game-camera-menu-open #game-stage .garage-camera-presets:not([hidden]) {
   text-shadow: 0 1px 8px #000;
 }
 
-.game-shell > .drive-result-banner {
-  position: fixed;
-  z-index: 70;
-  right: 50%;
-  bottom: max(28px, env(safe-area-inset-bottom));
-  width: min(620px, calc(100vw - 32px));
-  transform: translateX(50%);
-  border-color: rgba(255, 255, 255, 0.17);
-  color: #fff;
-  background: rgba(16, 18, 20, 0.94);
-  backdrop-filter: blur(16px);
-}
-
 body.drive-immersive #garage-preview,
 body.drive-immersive #game-menu,
 body.drive-immersive .game-top-hud,
 body.drive-immersive .game-shell > .drive-session-actions {
   display: none !important;
+}
+
+.game-shell > .drive-session-actions .drive-start-note.saved {
+  color: #b9f2cf;
 }
 
 body:not(.drive-immersive) #game-stage .drive-stage-column {
@@ -4198,26 +4310,39 @@ body.drive-immersive #game-stage .drive-hud-bottom {
   bottom: max(22px, env(safe-area-inset-bottom));
 }
 
-body.research-mode {
-  min-width: 0;
-  overflow: auto;
+.game-research-modal {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  width: min(1320px, calc(100vw - 48px));
+  max-width: calc(100vw - 48px);
+  height: min(900px, calc(100dvh - 48px));
+  max-height: calc(100dvh - 48px);
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid rgba(24, 33, 38, 0.22);
+  border-radius: 16px;
   color-scheme: light;
   color: var(--text);
   background: var(--bg);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.5);
 }
 
-body.research-mode .app-shell {
-  width: min(1440px, 100%);
-  min-height: 100vh;
-  margin: 0 auto;
-  padding: 24px;
+.game-research-modal::backdrop {
+  background: rgba(3, 5, 7, 0.72);
+  backdrop-filter: blur(5px);
 }
 
-body.research-mode #panel-tools {
+.game-research-modal #panel-tools {
   display: block;
+  height: 100%;
+  overflow: auto;
+  padding: 26px;
+  overscroll-behavior: contain;
 }
 
-body.research-mode .research-tools-heading {
+.game-research-modal .research-tools-heading {
   align-items: center;
   justify-content: flex-start;
   gap: 14px;
@@ -4355,8 +4480,23 @@ body.research-mode .research-tools-heading {
     padding-left: max(18px, env(safe-area-inset-left));
   }
 
-  body.research-mode .app-shell {
-    padding: 14px;
+  .game-research-modal {
+    width: 100vw;
+    max-width: none;
+    height: 100vh;
+    height: 100dvh;
+    max-height: none;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .game-research-modal #panel-tools {
+    padding:
+      max(18px, env(safe-area-inset-top))
+      max(14px, env(safe-area-inset-right))
+      max(18px, env(safe-area-inset-bottom))
+      max(14px, env(safe-area-inset-left));
   }
 }
 

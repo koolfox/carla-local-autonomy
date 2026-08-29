@@ -698,7 +698,10 @@ class WorldWorkerTest(unittest.TestCase):
         self.assertTrue(all(actor.destroyed for actor in all_owned))
         self.assertIs(self.world.weather, original_weather)
         self.assertFalse(self.traffic_manager.synchronous)
-        self.assertTrue(self.traffic_manager.shutdown)
+        self.assertFalse(
+            self.traffic_manager.shutdown,
+            "scene cleanup must not call CARLA's unbounded Traffic Manager shutdown",
+        )
 
     def test_current_map_never_starts_isolated_loader(self) -> None:
         runner_calls: list[list[str]] = []
@@ -930,7 +933,8 @@ class WorldWorkerTest(unittest.TestCase):
         self.assertFalse(catalog["capabilities"]["random_route"])
         with self.assertRaisesRegex(WorkerError, "GlobalRoutePlanner"):
             unavailable.prepare({"route_mode": "random_destination"})
-        self.assertTrue(self.traffic_manager.shutdown)
+        self.assertFalse(self.traffic_manager.synchronous)
+        self.assertFalse(self.traffic_manager.shutdown)
 
     def test_large_research_seed_is_bounded_for_carla_seed_apis(self) -> None:
         prepared = self.worker.prepare({"seed": 2**63 - 1})

@@ -21,7 +21,15 @@ from .contracts import (
 _LABEL_ALIASES: dict[RoadClass, frozenset[str]] = {
     RoadClass.OTHER: frozenset({"other", "background", "unlabeled", "unlabelled", "void"}),
     RoadClass.ROAD: frozenset(
-        {"road", "street", "road_surface", "drivable", "drivable_area", "asphalt"}
+        {
+            "road",
+            "street",
+            "road_surface",
+            "drivable",
+            "drivable_area",
+            "asphalt",
+            "construction_flat_road",
+        }
     ),
     RoadClass.ROAD_LINE: frozenset(
         {
@@ -34,9 +42,20 @@ _LABEL_ALIASES: dict[RoadClass, frozenset[str]] = {
             "lane_marking",
             "lane_markings",
             "lane_divider",
+            "marking_general",
+            "marking_crosswalk_zebra",
+            "lane_marking_general",
+            "lane_marking_crosswalk",
+            "lane_marking_general_crosswalk",
+            "solid_line",
+            "dashed_line",
+            "double_solid_line",
+            "zebra",
         }
     ),
-    RoadClass.SIDEWALK: frozenset({"sidewalk", "pavement", "footpath", "walkway"}),
+    RoadClass.SIDEWALK: frozenset(
+        {"sidewalk", "pavement", "footpath", "walkway", "construction_flat_sidewalk"}
+    ),
     RoadClass.NON_DRIVABLE_GROUND: frozenset(
         {
             "non_drivable_ground",
@@ -46,6 +65,7 @@ _LABEL_ALIASES: dict[RoadClass, frozenset[str]] = {
             "grass",
             "dirt",
             "sand",
+            "nature_terrain",
         }
     ),
 }
@@ -168,11 +188,17 @@ class SegFormerSegmenter:
         )
         checkpoint_name = Path(str(config.checkpoint).rstrip("/")).name
         self._name = f"hf-segformer:{checkpoint_name}"
+        requested_revision = config.options.get("revision")
+        resolved_revision = getattr(self._model.config, "_commit_hash", None)
         self._metadata = SegmentationMetadata(
             name=self._name,
             backend="huggingface-segformer",
             checkpoint=str(config.checkpoint),
             device=config.device,
+            revision=(None if requested_revision is None else str(requested_revision)),
+            resolved_revision=(
+                None if resolved_revision is None else str(resolved_revision)
+            ),
             source_labels=self._source_labels,
             source_to_canonical={
                 source_id: CANONICAL_CLASS_NAMES[int(road_class)]
@@ -236,7 +262,16 @@ class SegFormerSegmenter:
             canonical_probabilities[int(road_class)] += source_probabilities[source_id]
 
         class_ids = canonical_probabilities.argmax(axis=0).astype(np.uint8)
-        confidence = canonical_probabilities.max(axis=0).astype(np.float32)
+        # Several source classes intentionally collapse into ``other``.  Their
+        # float32 sum can exceed 1.0 by a few ULPs even though the source
+        # softmax is valid (observed on the real MPS Cityscapes runtime).
+        # Clamp only the exported confidence; class selection remains based on
+        # the unmodified canonical probabilities.
+        confidence = np.clip(
+            canonical_probabilities.max(axis=0),
+            0.0,
+            1.0,
+        ).astype(np.float32)
         return SegmentationResult(
             class_ids=class_ids,
             confidence=confidence,

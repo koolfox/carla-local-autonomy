@@ -68,6 +68,12 @@ _JPEG_QUALITY = 90
 _ACTIVE_SCENE_STATES = frozenset({"prepared", "running", "stopping"})
 _ROUTE_MODES = frozenset({"free", "random_destination"})
 _CONTROL_MODES = frozenset({"manual", "autopilot"})
+_GARAGE_CAMERA_PRESETS = frozenset({"orbit", "front", "rear", "top", "cockpit"})
+_GARAGE_EXTERIOR_PRESETS: dict[str, tuple[float, float, float]] = {
+    "front": (0.0, -8.0, 6.5),
+    "rear": (180.0, -8.0, 6.5),
+    "top": (0.0, -25.0, 8.0),
+}
 _SIMULATOR_SEED_MODULUS = 2**31 - 1
 _GUIDANCE_STEP_METERS = 2.5
 _GUIDANCE_LOOKAHEAD_METERS = 120.0
@@ -839,6 +845,7 @@ class SceneLease:
     cleanup_guard_passed: bool | None = None
     cleanup_errors: list[str] = field(default_factory=list)
     camera_relay: CompressedCameraRelay | None = None
+    camera_config: CompressedCameraConfig | None = None
     guidance: dict[str, Any] = field(
         default_factory=lambda: _empty_guidance("waiting for guidance heartbeat")
     )
@@ -1967,17 +1974,179 @@ class WorldWorker:
         yaw: float,
         pitch: float,
         distance: float,
+        width: int | None = None,
+        height: int | None = None,
+        fov: float | None = None,
+        preset: str = "orbit",
     ) -> Any:
         assert self._carla is not None
         vehicle = ego.get_transform()
+        if preset in _GARAGE_EXTERIOR_PRESETS:
+            yaw, pitch, distance = _GARAGE_EXTERIOR_PRESETS[preset]
+        bounds = self._garage_vehicle_bounds(ego, vehicle)
+        if preset == "cockpit":
+            return self._garage_cockpit_transform(vehicle, bounds)
+
+        if bounds is not None and width is not None and height is not None and fov is not None:
+            target, _local_center, extent = bounds
+            try:
+                aspect = float(width) / float(height)
+                horizontal_half_fov = math.radians(float(fov)) / 2.0
+                vertical_half_fov = math.atan(math.tan(horizontal_half_fov) / aspect)
+                azimuth = math.radians(float(yaw))
+                pitch_radians = math.radians(float(pitch))
+                extent_x, extent_y, extent_z = extent
+                half_width = (
+                    abs(math.sin(azimuth)) * extent_x
+                    + abs(math.cos(azimuth)) * extent_y
+                )
+                half_depth = (
+                    abs(math.cos(azimuth)) * extent_x
+                    + abs(math.sin(azimuth)) * extent_y
+                )
+                projected_height = (
+                    abs(math.sin(pitch_radians)) * half_depth
+                    + abs(math.cos(pitch_radians)) * extent_z
+                )
+                projected_depth = (
+                    abs(math.cos(pitch_radians)) * half_depth
+                    + abs(math.sin(pitch_radians)) * extent_z
+                )
+                minimum_fit = projected_depth + max(
+                    half_width / math.tan(horizontal_half_fov),
+                    projected_height / math.tan(vertical_half_fov),
+                )
+                # Keep the full bounds visible at every allowed zoom value.
+                # The old 3.5-10 m control now selects a modest framing margin
+                # around the size-derived fit instead of clipping long vehicles.
+                zoom_margin = 1.02 + ((float(distance) - 3.5) / 6.5) * 0.43
+                eye_distance = minimum_fit * zoom_margin
+                if not math.isfinite(eye_distance) or eye_distance <= 0.0:
+                    raise ValueError("computed Garage camera distance is invalid")
+                return self._garage_exterior_transform(
+                    vehicle,
+                    target=target,
+                    yaw=yaw,
+                    pitch=pitch,
+                    distance=eye_distance,
+                )
+            except (AttributeError, TypeError, ValueError, ZeroDivisionError):
+                # Malformed geometry must never prevent the Garage from
+                # opening. Preserve the previous fixed transform as fallback.
+                pass
+
+        target = self._carla.Location(
+            x=float(vehicle.location.x),
+            y=float(vehicle.location.y),
+            z=float(vehicle.location.z) + 0.9,
+        )
+        return self._garage_exterior_transform(
+            vehicle,
+            target=target,
+            yaw=yaw,
+            pitch=pitch,
+            distance=distance,
+        )
+
+    def _garage_vehicle_bounds(
+        self,
+        ego: Any,
+        vehicle: Any,
+    ) -> tuple[
+        Any,
+        tuple[float, float, float],
+        tuple[float, float, float],
+    ] | None:
+        """Return a validated world-space bounds centre and local half-extents."""
+
+        try:
+            bounds = ego.bounding_box
+            center = bounds.location
+            extent = bounds.extent
+            center_values = (float(center.x), float(center.y), float(center.z))
+            extent_values = (float(extent.x), float(extent.y), float(extent.z))
+            if not all(math.isfinite(value) for value in (*center_values, *extent_values)):
+                return None
+            if any(value <= 0.0 for value in extent_values):
+                return None
+            target = self._garage_local_to_world(vehicle, center_values)
+        except (AttributeError, TypeError, ValueError, OverflowError):
+            return None
+        return target, center_values, extent_values
+
+    def _garage_local_to_world(
+        self,
+        vehicle: Any,
+        local: tuple[float, float, float],
+    ) -> Any:
+        assert self._carla is not None
+        pitch = math.radians(float(vehicle.rotation.pitch))
+        yaw = math.radians(float(vehicle.rotation.yaw))
+        roll = math.radians(float(vehicle.rotation.roll))
+        cy, sy = math.cos(yaw), math.sin(yaw)
+        cp, sp = math.cos(pitch), math.sin(pitch)
+        cr, sr = math.cos(roll), math.sin(roll)
+        matrix = (
+            (cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr),
+            (sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr),
+            (-sp, cp * sr, cp * cr),
+        )
+        translated = [
+            origin
+            + sum(coefficient * offset for coefficient, offset in zip(row, local, strict=True))
+            for origin, row in zip(
+                (vehicle.location.x, vehicle.location.y, vehicle.location.z),
+                matrix,
+                strict=True,
+            )
+        ]
+        return self._carla.Location(x=translated[0], y=translated[1], z=translated[2])
+
+    def _garage_cockpit_transform(
+        self,
+        vehicle: Any,
+        bounds: tuple[
+            Any,
+            tuple[float, float, float],
+            tuple[float, float, float],
+        ]
+        | None,
+    ) -> Any:
+        assert self._carla is not None
+        if bounds is None:
+            local_eye = (0.35, 0.0, 1.25)
+        else:
+            _target, center, extent = bounds
+            local_eye = (
+                center[0] + extent[0] * 0.5,
+                center[1] - extent[1] * 0.25,
+                center[2] + extent[2] * 0.65,
+            )
+        location = self._garage_local_to_world(vehicle, local_eye)
+        rotation = self._carla.Rotation(
+            pitch=float(vehicle.rotation.pitch),
+            yaw=float(vehicle.rotation.yaw),
+            roll=float(vehicle.rotation.roll),
+        )
+        return self._carla.Transform(location, rotation)
+
+    def _garage_exterior_transform(
+        self,
+        vehicle: Any,
+        *,
+        target: Any,
+        yaw: float,
+        pitch: float,
+        distance: float,
+    ) -> Any:
+        assert self._carla is not None
         bearing = math.radians(float(vehicle.rotation.yaw) + yaw)
         pitch_radians = math.radians(pitch)
         horizontal = distance * math.cos(pitch_radians)
-        target_z = float(vehicle.location.z) + 0.9
         location = self._carla.Location(
-            x=float(vehicle.location.x) + horizontal * math.cos(bearing),
-            y=float(vehicle.location.y) + horizontal * math.sin(bearing),
-            z=target_z - distance * math.sin(pitch_radians),
+            x=float(target.x) + horizontal * math.cos(bearing),
+            y=float(target.y) + horizontal * math.sin(bearing),
+            z=float(target.z) - distance * math.sin(pitch_radians),
         )
         rotation = self._carla.Rotation(
             pitch=pitch,
@@ -2022,6 +2191,9 @@ class WorldWorker:
                     yaw=config.yaw,
                     pitch=config.pitch,
                     distance=config.distance,
+                    width=config.width,
+                    height=config.height,
+                    fov=config.fov,
                 )
                 sensor = scene.world.spawn_actor(blueprint, transform)
             else:
@@ -2047,10 +2219,12 @@ class WorldWorker:
                 jpeg_quality=jpeg_quality,
             )
             scene.camera_relay = relay
+            scene.camera_config = config
             try:
                 relay.listen()
             except BaseException as error:
                 scene.camera_relay = None
+                scene.camera_config = None
                 relay.close()
                 try:
                     self._destroy_owned_actor(scene.world, owned)
@@ -2075,12 +2249,25 @@ class WorldWorker:
             }
 
     def camera_orbit(self, scene_id: str, raw: Mapping[str, Any]) -> dict[str, Any]:
-        allowed = {"lease_token", "yaw", "pitch", "distance"}
+        allowed = {"lease_token", "yaw", "pitch", "distance", "preset"}
         lease_token = self._lease_token(raw, allowed=allowed)
-        _strict_keys(raw, allowed=allowed, required=allowed, name="camera orbit request")
+        _strict_keys(
+            raw,
+            allowed=allowed,
+            required={"lease_token", "yaw", "pitch", "distance"},
+            name="camera orbit request",
+        )
         yaw = _number(raw["yaw"], "yaw", -3600.0, 3600.0)
         pitch = _number(raw["pitch"], "pitch", -25.0, 15.0)
         distance = _number(raw["distance"], "distance", 3.5, 10.0)
+        preset = _text(raw.get("preset", "orbit"), "preset", maximum=16)
+        if preset not in _GARAGE_CAMERA_PRESETS:
+            choices = ", ".join(sorted(_GARAGE_CAMERA_PRESETS))
+            raise WorkerError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_field",
+                f"preset must be one of: {choices}",
+            )
         with self._lock:
             scene = self._require_scene(scene_id, lease_token)
             relay = scene.camera_relay
@@ -2094,6 +2281,10 @@ class WorldWorker:
                     yaw=yaw,
                     pitch=pitch,
                     distance=distance,
+                    width=None if scene.camera_config is None else scene.camera_config.width,
+                    height=None if scene.camera_config is None else scene.camera_config.height,
+                    fov=None if scene.camera_config is None else scene.camera_config.fov,
+                    preset=preset,
                 )
             )
             self._refresh_lease(scene)
@@ -2681,12 +2872,13 @@ class WorldWorker:
         except Exception as error:
             if errors is not None:
                 errors.append(f"Traffic Manager async restore failed: {error}")
-        if hasattr(traffic_manager, "shut_down"):
-            try:
-                traffic_manager.shut_down()
-            except Exception as error:
-                if errors is not None:
-                    errors.append(f"Traffic Manager shutdown failed: {error}")
+        # Do not call CARLA 0.9.16's native TrafficManager.shut_down() for a
+        # scene lease. Its internal thread join has no deadline and can retain
+        # the Python GIL indefinitely while CARLA itself remains healthy,
+        # freezing every HTTP handler in this Worker. Restoring asynchronous
+        # mode and destroying only our owned actors is the same cleanup model
+        # used by CARLA's official traffic example; the process-scoped Traffic
+        # Manager connection is safe to reuse for the next scene.
 
     def _cleanup_resources(self, scene: SceneLease, *, reason: str) -> dict[str, Any]:
         with self._guidance_lock:
@@ -2698,6 +2890,7 @@ class WorldWorker:
         if scene.camera_relay is not None:
             scene.camera_relay.close()
             scene.camera_relay = None
+        scene.camera_config = None
         try:
             current_world = scene.client.get_world()
             same_episode = self._episode_marker(current_world) == scene.episode_marker

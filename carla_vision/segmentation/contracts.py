@@ -84,6 +84,8 @@ class SegmentationMetadata:
     backend: str
     checkpoint: str | None
     device: str
+    revision: str | None = None
+    resolved_revision: str | None = None
     source_labels: Mapping[int, str] = field(default_factory=dict)
     source_to_canonical: Mapping[int, str] = field(default_factory=dict)
 
@@ -113,6 +115,9 @@ class SegmentationMetadata:
             "backend": self.backend,
             "checkpoint": self.checkpoint,
             "device": self.device,
+            "revision": self.revision,
+            "resolved_revision": self.resolved_revision,
+            "supports_road_line": "road_line" in self.source_to_canonical.values(),
             "canonical_classes": list(CANONICAL_CLASS_NAMES),
             "source_labels": dict(self.source_labels),
             "source_to_canonical": dict(self.source_to_canonical),

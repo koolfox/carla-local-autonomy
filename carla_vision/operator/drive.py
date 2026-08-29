@@ -7,6 +7,7 @@ falls back to braking, with :class:`SafeActuator` providing a second watchdog.
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 import json
 import math
@@ -38,6 +39,14 @@ from ..detectors.factory import create_detector
 from ..display import OverlayRenderer
 from ..perception import PerceptionWorker
 from ..recording import AsyncVideoRecorder
+from ..segmentation import (
+    AsyncSegmentationRuntime,
+    SegmentationFrameInput,
+    SegmentationFrameResult,
+    create_segmenter,
+    render_segmentation_overlay,
+)
+from ..segmentation.contracts import CANONICAL_CLASS_NAMES, RoadClass
 from ..watchdog import SafeActuator
 from .drive_contracts import DriveInput, DriveStartConfig, weather_payload
 from .driving_guidance import project_driving_guidance, render_driving_guidance_jpeg
@@ -55,6 +64,8 @@ _CONTROL_PERIOD_SECONDS = 0.05
 _TELEMETRY_PERIOD_SECONDS = 0.20
 _WORKER_HEARTBEAT_SECONDS = 0.50
 _GUIDANCE_HISTORY_FRAMES = 180
+_ANALYSIS_HISTORY_FRAMES = 32
+_SEGMENTATION_MAX_FPS = 5.0
 # CARLA's native camera transport is uncompressed BGRA. Keep that legacy
 # fallback near 100 Mbit/s; higher profiles require the Worker-side encoder.
 _MAX_RAW_CAMERA_BYTES_PER_SECOND = 12 * 1024 * 1024
@@ -73,6 +84,12 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def _rgb_sha256(image_bgr: np.ndarray) -> str:
+    """Fingerprint the exact uint8 BGR tensor supplied to a vision model."""
+
+    return hashlib.sha256(np.ascontiguousarray(image_bgr).tobytes()).hexdigest()
+
+
 def _map_short_name(raw: str) -> str:
     return raw.rsplit("/", 1)[-1].removesuffix(".umap")
 
@@ -82,6 +99,14 @@ def _world_worker_health_ready(payload: Mapping[str, Any]) -> bool:
     if isinstance(ready, bool):
         return ready
     return str(payload.get("status", "")).strip().lower() in {"ok", "ready"}
+
+
+def _segmentation_submission_due(now: float, last_submitted_at: float) -> bool:
+    """Protect the raw/control loop from an unbounded best-effort model cadence."""
+
+    return last_submitted_at <= 0.0 or (
+        now - last_submitted_at + 1e-9 >= 1.0 / _SEGMENTATION_MAX_FPS
+    )
 
 
 def _runtime_component_importable(name: str, required_attributes: tuple[str, ...]) -> bool:
@@ -103,6 +128,10 @@ def _vision_runtime_status() -> dict[str, Any]:
         "ultralytics",
         ("RTDETR", "YOLO"),
     )
+    transformers_importable = _runtime_component_importable(
+        "transformers",
+        ("AutoImageProcessor", "SegformerForSemanticSegmentation"),
+    )
     missing = [
         label
         for label, available in (
@@ -115,6 +144,16 @@ def _vision_runtime_status() -> dict[str, Any]:
         "available": not missing,
         "torch_importable": torch_importable,
         "ultralytics_importable": ultralytics_importable,
+        "transformers_importable": transformers_importable,
+        "road_segmentation_available": torch_importable and transformers_importable,
+        "road_segmentation_missing": [
+            label
+            for label, available in (
+                ("PyTorch", torch_importable),
+                ("Transformers", transformers_importable),
+            )
+            if not available
+        ],
         "missing": missing,
     }
 
@@ -341,6 +380,89 @@ def _vehicle_catalog(definitions: list[Any]) -> list[dict[str, Any]]:
     return result
 
 
+class _ExactFrameAnalysisBuffer:
+    """Retain bounded model results and release only sequence-safe overlays."""
+
+    def __init__(self, *, detector_enabled: bool, segmentation_enabled: bool) -> None:
+        self.detector_enabled = bool(detector_enabled)
+        self.segmentation_enabled = bool(segmentation_enabled)
+        self._detector: dict[int, PerceptionResult] = {}
+        self._segmentation: dict[int, SegmentationFrameResult] = {}
+        self._detector_order: deque[int] = deque()
+        self._segmentation_order: deque[int] = deque()
+        self._last_released = -1
+
+    def enable_segmentation(self) -> None:
+        self.segmentation_enabled = True
+        self._segmentation.clear()
+        self._segmentation_order.clear()
+
+    def disable_detector(self) -> None:
+        self.detector_enabled = False
+        self._detector.clear()
+        self._detector_order.clear()
+
+    def disable_segmentation(self) -> None:
+        self.segmentation_enabled = False
+        self._segmentation.clear()
+        self._segmentation_order.clear()
+
+    def add_detector(self, result: PerceptionResult) -> None:
+        self._retain(self._detector, self._detector_order, result.sequence, result)
+
+    def add_segmentation(self, result: SegmentationFrameResult) -> None:
+        self._retain(self._segmentation, self._segmentation_order, result.sequence, result)
+
+    def next_ready(
+        self,
+    ) -> tuple[PerceptionResult | None, SegmentationFrameResult | None] | None:
+        if self.detector_enabled and self.segmentation_enabled:
+            candidates = set(self._detector).intersection(self._segmentation)
+        elif self.detector_enabled:
+            candidates = set(self._detector)
+        elif self.segmentation_enabled:
+            candidates = set(self._segmentation)
+        else:
+            return None
+        candidates = {sequence for sequence in candidates if sequence > self._last_released}
+        if not candidates:
+            return None
+        sequence = max(candidates)
+        detector = self._detector.get(sequence) if self.detector_enabled else None
+        segmentation = self._segmentation.get(sequence) if self.segmentation_enabled else None
+        if detector is not None and segmentation is not None:
+            if detector.carla_frame != segmentation.carla_frame:
+                raise RuntimeError("analysis sources share a sequence but not a CARLA frame")
+            if detector.source_bgr.shape != segmentation.source_bgr.shape:
+                raise RuntimeError("analysis sources share a sequence but not a frame shape")
+        self._last_released = sequence
+        self._discard_through(sequence)
+        return detector, segmentation
+
+    @staticmethod
+    def _retain(
+        values: dict[int, Any],
+        order: deque[int],
+        sequence: int,
+        result: Any,
+    ) -> None:
+        if sequence in values:
+            values[sequence] = result
+            return
+        values[sequence] = result
+        order.append(sequence)
+        while len(order) > _ANALYSIS_HISTORY_FRAMES:
+            values.pop(order.popleft(), None)
+
+    def _discard_through(self, sequence: int) -> None:
+        for values, order in (
+            (self._detector, self._detector_order),
+            (self._segmentation, self._segmentation_order),
+        ):
+            while order and order[0] <= sequence:
+                values.pop(order.popleft(), None)
+
+
 class DriveSession:
     """Own every resource for one interactive browser-controlled drive."""
 
@@ -445,6 +567,12 @@ class DriveSession:
         self._guidance_history: dict[int, dict[str, Any]] = {}
         self._guidance_history_order: deque[int] = deque()
         self._detector_name: str | None = None
+        self._segmentation_runtime: AsyncSegmentationRuntime | None = None
+        self._segmenter_name: str | None = None
+        self._segmenter_metadata: dict[str, Any] | None = None
+        self._segmentation_frame_sequence = -1
+        self._segmentations_written = 0
+        self._segmentation_worker_stats: dict[str, int] | None = None
         self._recording = bool(config.record_video)
         self._output_path: str | None = None
         self._controls_written = 0
@@ -476,6 +604,18 @@ class DriveSession:
                 "raw": dict(self._guidance_screen),
                 "overlay": dict(self._guidance_overlay_screen),
             }
+            segmentation_runtime = self._segmentation_runtime
+            if segmentation_runtime is None:
+                segmentation_state = {
+                    "state": (
+                        "disabled" if self.config.road_segmentation is None else "initializing"
+                    ),
+                    "error": None,
+                    "name": self._segmenter_name,
+                    "metadata": self._segmenter_metadata,
+                }
+            else:
+                segmentation_state = segmentation_runtime.snapshot()
             return {
                 "schema_version": "1.0",
                 "status": self._status,
@@ -513,6 +653,16 @@ class DriveSession:
                     "advisory_only": True,
                     "actuated": False,
                 },
+                "road_segmentation": {
+                    "enabled": self.config.road_segmentation is not None,
+                    "advisory_only": True,
+                    "actuated": False,
+                    "max_inference_fps": _SEGMENTATION_MAX_FPS,
+                    "latest_sequence": self._segmentation_frame_sequence,
+                    "samples_written": self._segmentations_written,
+                    "worker_stats": self._segmentation_worker_stats,
+                    **segmentation_state,
+                },
                 "recording": self._recording,
                 "weather_preset": self._weather_preset,
                 "output_path": self._output_path,
@@ -524,6 +674,7 @@ class DriveSession:
                 "frames_seen": self._frames_seen,
                 "controls_written": self._controls_written,
                 "detections_written": self._detections_written,
+                "segmentations_written": self._segmentations_written,
                 "guidance_written": self._guidance_written,
                 "experiment_preset": self.config.experiment_preset,
                 "human_marker_counts": dict(self._marker_counts),
@@ -659,6 +810,7 @@ class DriveSession:
                 "control_source": self._control_source,
                 "raw_camera_sequence": self._raw_frame_sequence,
                 "detector_sequence": self._overlay_frame_sequence,
+                "road_segmentation_sequence": self._segmentation_frame_sequence,
                 "telemetry": dict(self._telemetry),
                 "model_output_actuated": False,
             }
@@ -999,15 +1151,36 @@ class DriveSession:
             with CarlaRpc(self.config.host, self.config.port, timeout=4.0) as preflight_rpc:
                 preflight_version = str(preflight_rpc.value_call("version"))
                 preflight_map = str(preflight_rpc.value_call("get_map_info")[0])
-            model_refs: tuple[Mapping[str, Any], ...] = ()
+            model_refs: list[Mapping[str, Any]] = []
             if self.config.detector_enabled and self.config.weights is not None:
-                model_refs = (
+                model_refs.append(
                     {
                         "kind": "advisory_object_detector",
                         "actuation_authorized": False,
                         **fingerprint_file(self.config.weights),
-                    },
+                    }
                 )
+            if self.config.road_segmentation is not None:
+                segmentation_reference: dict[str, Any] = {
+                    "kind": "advisory_road_segmenter",
+                    "actuation_authorized": False,
+                    "configuration": self.config.road_segmentation.as_dict(),
+                }
+                checkpoint = self.config.road_segmentation.checkpoint
+                if isinstance(checkpoint, Path):
+                    checkpoint_files = sorted(
+                        {
+                            candidate
+                            for pattern in ("*.json", "*.safetensors", "*.bin")
+                            for candidate in checkpoint.glob(pattern)
+                            if candidate.is_file()
+                        },
+                        key=lambda candidate: candidate.name,
+                    )
+                    segmentation_reference["checkpoint_files"] = [
+                        fingerprint_file(candidate) for candidate in checkpoint_files
+                    ]
+                model_refs.append(segmentation_reference)
             tracker = RunArtifactTracker(
                 self.workspace / "runs",
                 run_id=self.config.run_id,
@@ -1017,7 +1190,7 @@ class DriveSession:
                 carla_endpoint={"host": self.config.host, "port": self.config.port},
                 carla_version=preflight_version,
                 carla_map=preflight_map,
-                model_refs=model_refs,
+                model_refs=tuple(model_refs),
             )
             with self._lock:
                 self._output_path = tracker.run_dir.relative_to(self.workspace).as_posix()
@@ -1051,10 +1224,12 @@ class DriveSession:
         stream: CarlaCameraStream | WorldWorkerCameraStream | None = None
         actuator: SafeActuator | None = None
         perception: PerceptionWorker | None = None
+        segmentation_runtime: AsyncSegmentationRuntime | None = None
         raw_recorder: AsyncVideoRecorder | None = None
         overlay_recorder: AsyncVideoRecorder | None = None
         controls_stream: TextIO | None = None
         detections_stream: TextIO | None = None
+        segmentation_stream: TextIO | None = None
         guidance_stream: TextIO | None = None
         events_stream: TextIO | None = None
         episode_id: int | None = None
@@ -1068,17 +1243,30 @@ class DriveSession:
         latest_raw: np.ndarray | None = None
         latest_raw_jpeg: bytes | None = None
         latest_overlay: np.ndarray | None = None
+        latest_segmentation_mask: np.ndarray | None = None
+        latest_segmentation_source: np.ndarray | None = None
+        latest_segmentation_source_sha256: str | None = None
+        latest_segmentation_carla_frame: int | None = None
         last_camera_sequence = -1
         last_result_sequence = -1
+        last_segmentation_sequence = -1
+        last_segmentation_submit_at = 0.0
         last_camera_received = 0.0
         last_control_at = 0.0
         last_telemetry_at = 0.0
         detector_failed = False
+        segmentation_failed = False
+        segmentation_ready = False
         last_guidance_log_at = 0.0
 
         config_path = tracker.artifact_path("config.json")
         controls_path = tracker.artifact_path("controls.jsonl")
         detections_path = tracker.artifact_path("detections.jsonl")
+        segmentation_path = tracker.artifact_path("road-segmentation.jsonl")
+        segmentation_mask_path = tracker.artifact_path("latest-road-segmentation.png")
+        segmentation_source_path = tracker.artifact_path(
+            "latest-road-segmentation-source.png"
+        )
         guidance_path = tracker.artifact_path("guidance.jsonl")
         events_path = tracker.artifact_path("events.jsonl")
         raw_video_path = tracker.artifact_path("raw-drive.mp4")
@@ -1090,6 +1278,8 @@ class DriveSession:
         try:
             controls_stream = controls_path.open("w", encoding="utf-8", buffering=1)
             detections_stream = detections_path.open("w", encoding="utf-8", buffering=1)
+            if self.config.road_segmentation is not None:
+                segmentation_stream = segmentation_path.open("w", encoding="utf-8", buffering=1)
             guidance_stream = guidance_path.open("w", encoding="utf-8", buffering=1)
             events_stream = events_path.open("w", encoding="utf-8", buffering=1)
             rpc = CarlaRpc(self.config.host, self.config.port, timeout=5.0)
@@ -1254,6 +1444,13 @@ class DriveSession:
                 )
                 self._detector_name = detector.name
                 perception = PerceptionWorker(detector)
+            if self.config.road_segmentation is not None:
+                segmentation_config = self.config.road_segmentation
+                segmentation_runtime = AsyncSegmentationRuntime(
+                    lambda: create_segmenter(segmentation_config)
+                )
+                with self._lock:
+                    self._segmentation_runtime = segmentation_runtime
 
             if self.config.record_video:
                 raw_recorder = AsyncVideoRecorder(
@@ -1261,7 +1458,7 @@ class DriveSession:
                     frame_size=(self.config.width, self.config.height),
                     fps=self.config.camera_fps,
                 )
-                if self.config.detector_enabled:
+                if self.config.detector_enabled or self.config.road_segmentation is not None:
                     overlay_recorder = AsyncVideoRecorder(
                         overlay_video_path,
                         frame_size=(self.config.width, self.config.height),
@@ -1305,15 +1502,71 @@ class DriveSession:
                         else "carla_raw_bgra"
                     ),
                     "control_mode": self._control_mode,
+                    "road_segmentation": (
+                        None
+                        if segmentation_runtime is None
+                        else segmentation_runtime.snapshot()
+                    ),
                     "model_output_actuated": False,
                 },
             )
             self._set_status("running")
 
             renderer = OverlayRenderer(stale_after_seconds=2.0)
+            analysis = _ExactFrameAnalysisBuffer(
+                detector_enabled=perception is not None,
+                # Initialization is asynchronous. Detector-only overlays remain
+                # available until the segmenter reports ready.
+                segmentation_enabled=False,
+            )
             while not self._stop_event.is_set():
                 self._drain_pending_events(events_stream)
                 now = time.monotonic()
+                if (
+                    segmentation_runtime is not None
+                    and not segmentation_ready
+                    and not segmentation_failed
+                ):
+                    runtime_state = segmentation_runtime.snapshot()
+                    state = str(runtime_state.get("state", "initializing"))
+                    if state == "ready":
+                        segmentation_ready = True
+                        analysis.enable_segmentation()
+                        metadata = runtime_state.get("metadata")
+                        with self._lock:
+                            self._segmenter_name = str(runtime_state.get("name") or "") or None
+                            self._segmenter_metadata = (
+                                dict(metadata) if isinstance(metadata, Mapping) else None
+                            )
+                        tracker.add_model_reference(
+                            {
+                                "kind": "advisory_road_segmenter_runtime_identity",
+                                "actuation_authorized": False,
+                                "metadata": self._segmenter_metadata,
+                            }
+                        )
+                        _json_line(
+                            events_stream,
+                            {
+                                "event": "road_segmentation_ready",
+                                "at": _utc_now(),
+                                "model": self._segmenter_metadata,
+                                "model_output_actuated": False,
+                            },
+                        )
+                    elif state == "failed":
+                        segmentation_failed = True
+                        analysis.disable_segmentation()
+                        error = str(runtime_state.get("error") or "unknown initialization error")
+                        _json_line(
+                            events_stream,
+                            {
+                                "event": "road_segmentation_failed",
+                                "at": _utc_now(),
+                                "error": error,
+                                "model_output_actuated": False,
+                            },
+                        )
                 frame = stream.latest()
                 if frame is not None and frame.sequence > last_camera_sequence:
                     if isinstance(stream, WorldWorkerCameraStream):
@@ -1423,7 +1676,32 @@ class DriveSession:
                             perception.submit(frame)
                         except Exception as error:
                             detector_failed = True
+                            analysis.disable_detector()
                             self._cleanup_errors.append(f"detector submit: {error}")
+                    if (
+                        segmentation_runtime is not None
+                        and segmentation_ready
+                        and not segmentation_failed
+                        and (perception is None or detector_failed)
+                        and _segmentation_submission_due(now, last_segmentation_submit_at)
+                    ):
+                        try:
+                            segmentation_runtime.submit(frame)
+                            last_segmentation_submit_at = now
+                        except Exception as error:
+                            segmentation_failed = True
+                            analysis.disable_segmentation()
+                            self._cleanup_errors.append(f"road segmentation submit: {error}")
+                            _json_line(
+                                events_stream,
+                                {
+                                    "event": "road_segmentation_failed",
+                                    "at": _utc_now(),
+                                    "phase": "submit",
+                                    "error": f"{type(error).__name__}: {error}",
+                                    "model_output_actuated": False,
+                                },
+                            )
                     if spectator_id is not None and spectator_follow_active:
                         try:
                             rpc.set_actor_transform(
@@ -1441,32 +1719,137 @@ class DriveSession:
                         result = perception.latest()
                     except Exception as error:
                         detector_failed = True
+                        analysis.disable_detector()
                         self._cleanup_errors.append(f"detector runtime: {error}")
                         result = None
                     if result is not None and result.sequence > last_result_sequence:
                         last_result_sequence = result.sequence
+                        analysis.add_detector(result)
+                        self._write_detections(detections_stream, result)
+                        if (
+                            segmentation_runtime is not None
+                            and segmentation_ready
+                            and not segmentation_failed
+                            and _segmentation_submission_due(now, last_segmentation_submit_at)
+                        ):
+                            try:
+                                segmentation_runtime.submit(
+                                    SegmentationFrameInput.from_perception(result)
+                                )
+                                last_segmentation_submit_at = now
+                            except Exception as error:
+                                segmentation_failed = True
+                                analysis.disable_segmentation()
+                                self._cleanup_errors.append(
+                                    f"road segmentation detector-chain submit: {error}"
+                                )
+                                _json_line(
+                                    events_stream,
+                                    {
+                                        "event": "road_segmentation_failed",
+                                        "at": _utc_now(),
+                                        "phase": "detector_chain_submit",
+                                        "error": f"{type(error).__name__}: {error}",
+                                        "model_output_actuated": False,
+                                    },
+                                )
+
+                if (
+                    segmentation_runtime is not None
+                    and segmentation_ready
+                    and not segmentation_failed
+                ):
+                    try:
+                        segmentation_result = segmentation_runtime.latest()
+                    except Exception as error:
+                        segmentation_failed = True
+                        analysis.disable_segmentation()
+                        self._cleanup_errors.append(f"road segmentation runtime: {error}")
+                        _json_line(
+                            events_stream,
+                            {
+                                "event": "road_segmentation_failed",
+                                "at": _utc_now(),
+                                "phase": "inference",
+                                "error": f"{type(error).__name__}: {error}",
+                                "model_output_actuated": False,
+                            },
+                        )
+                        segmentation_result = None
+                    if (
+                        segmentation_result is not None
+                        and segmentation_result.sequence > last_segmentation_sequence
+                    ):
+                        last_segmentation_sequence = segmentation_result.sequence
+                        if segmentation_result.perception is not None:
+                            # Carrying the exact detector result through the slower
+                            # worker prevents bounded-history eviction from breaking
+                            # combined output at high camera rates.
+                            analysis.add_detector(segmentation_result.perception)
+                        analysis.add_segmentation(segmentation_result)
+                        latest_segmentation_mask = segmentation_result.segmentation.class_ids
+                        latest_segmentation_source = segmentation_result.source_bgr
+                        latest_segmentation_source_sha256 = _rgb_sha256(
+                            segmentation_result.source_bgr
+                        )
+                        latest_segmentation_carla_frame = segmentation_result.carla_frame
+                        with self._lock:
+                            self._segmentation_frame_sequence = segmentation_result.sequence
+                        self._write_segmentation(
+                            segmentation_stream,
+                            segmentation_result,
+                            self._segmenter_metadata,
+                        )
+
+                ready_analysis = analysis.next_ready()
+                if ready_analysis is not None:
+                    detector_result, segmentation_result = ready_analysis
+                    if detector_result is not None:
+                        source_bgr = detector_result.source_bgr
+                        sequence = detector_result.sequence
+                        completed = detector_result.completed_monotonic
+                    elif segmentation_result is not None:
+                        source_bgr = segmentation_result.source_bgr
+                        sequence = segmentation_result.sequence
+                        completed = segmentation_result.completed_monotonic
+                    else:  # pragma: no cover - guarded by the analysis buffer
+                        raise RuntimeError("analysis buffer released an empty result")
+
+                    if segmentation_result is not None:
+                        source_bgr = render_segmentation_overlay(
+                            source_bgr,
+                            segmentation_result.segmentation,
+                        )
+                        completed = max(completed, segmentation_result.completed_monotonic)
+                    if detector_result is not None:
                         with self._lock:
                             control_mode = self._control_mode
+                        rendered_result = replace(detector_result, source_bgr=source_bgr)
                         latest_overlay = renderer.render(
-                            result,
-                            now_monotonic=result.completed_monotonic,
+                            rendered_result,
+                            now_monotonic=completed,
                             hud={
                                 "CONTROL": (
                                     "CARLA / AUTOPILOT"
                                     if control_mode == "autopilot"
                                     else "HUMAN / BROWSER"
                                 ),
-                                "MODEL": "ADVISORY ONLY",
+                                "MODEL": (
+                                    "OBJECTS + ROAD SEGMENTATION / ADVISORY"
+                                    if segmentation_result is not None
+                                    else "OBJECT DETECTION / ADVISORY"
+                                ),
                             },
                         )
-                        overlay_height, overlay_width = result.source_bgr.shape[:2]
-                        self._select_overlay_guidance(
-                            result.sequence,
-                            width=overlay_width,
-                            height=overlay_height,
-                        )
-                        self._cache_frame("overlay", result.sequence, _jpeg(latest_overlay))
-                        self._write_detections(detections_stream, result)
+                    else:
+                        latest_overlay = source_bgr
+                    overlay_height, overlay_width = latest_overlay.shape[:2]
+                    self._select_overlay_guidance(
+                        sequence,
+                        width=overlay_width,
+                        height=overlay_height,
+                    )
+                    self._cache_frame("overlay", sequence, _jpeg(latest_overlay))
 
                 if (
                     overlay_recorder is not None
@@ -1618,6 +2001,38 @@ class DriveSession:
                     perception.close()
                 except Exception as error:
                     self._cleanup_errors.append(f"detector close: {error}")
+            if segmentation_runtime is not None:
+                close_error: Exception | None = None
+                try:
+                    segmentation_runtime.close()
+                except Exception as error:
+                    close_error = error
+                    self._cleanup_errors.append(f"road segmentation close: {error}")
+                finally:
+                    stats = segmentation_runtime.stats()
+                    if stats is not None:
+                        with self._lock:
+                            self._segmentation_worker_stats = {
+                                "submitted": stats.submitted,
+                                "processed": stats.processed,
+                                "dropped_before_inference": stats.dropped_before_inference,
+                                "failed_during_inference": stats.failed_during_inference,
+                            }
+                if close_error is not None:
+                    try:
+                        _json_line(
+                            events_stream,
+                            {
+                                "event": "road_segmentation_close_failed",
+                                "at": _utc_now(),
+                                "error": f"{type(close_error).__name__}: {close_error}",
+                                "model_output_actuated": False,
+                            },
+                        )
+                    except Exception as error:
+                        self._cleanup_errors.append(
+                            f"road segmentation close event: {error}"
+                        )
             for name, recorder in (("raw", raw_recorder), ("overlay", overlay_recorder)):
                 if recorder is not None:
                     try:
@@ -1629,6 +2044,7 @@ class DriveSession:
             for stream_handle in (
                 controls_stream,
                 detections_stream,
+                segmentation_stream,
                 guidance_stream,
                 events_stream,
             ):
@@ -1701,6 +2117,58 @@ class DriveSession:
                 latest_raw_jpeg=latest_raw_jpeg,
                 latest_overlay=latest_overlay,
             )
+            if segmentation_path.is_file() and self._segmentations_written:
+                try:
+                    tracker.register_artifact(
+                        segmentation_path,
+                        role="exact_frame_road_segmentation_metadata",
+                        metadata={
+                            "model": self._segmenter_metadata,
+                            "model_output_actuated": False,
+                            "exact_source_frame_alignment": True,
+                            "samples": self._segmentations_written,
+                        },
+                    )
+                except Exception as error:
+                    self._cleanup_errors.append(f"register road segmentation: {error}")
+            if latest_segmentation_mask is not None:
+                try:
+                    if latest_segmentation_source is None:
+                        raise RuntimeError("segmentation mask lost its exact RGB source")
+                    if not cv2.imwrite(str(segmentation_mask_path), latest_segmentation_mask):
+                        raise RuntimeError("OpenCV did not write the segmentation mask")
+                    if not cv2.imwrite(str(segmentation_source_path), latest_segmentation_source):
+                        raise RuntimeError("OpenCV did not write the segmentation source frame")
+                    paired_metadata = {
+                        "model": self._segmenter_metadata,
+                        "camera_sequence": self._segmentation_frame_sequence,
+                        "carla_frame": latest_segmentation_carla_frame,
+                        "source_bgr_sha256": latest_segmentation_source_sha256,
+                        "source_bgr_encoding": "uint8_hwc_bgr",
+                        "source_file_encoding": "lossless_png",
+                        "source_frame_size": [
+                            latest_segmentation_source.shape[1],
+                            latest_segmentation_source.shape[0],
+                        ],
+                        "exact_source_frame_alignment": True,
+                        "model_output_actuated": False,
+                    }
+                    tracker.register_artifact(
+                        segmentation_mask_path,
+                        role="latest_canonical_road_segmentation_mask",
+                        metadata={
+                            **paired_metadata,
+                            "canonical_classes": list(CANONICAL_CLASS_NAMES),
+                            "class_id_encoding": "uint8_png",
+                        },
+                    )
+                    tracker.register_artifact(
+                        segmentation_source_path,
+                        role="latest_road_segmentation_source_frame",
+                        metadata=paired_metadata,
+                    )
+                except Exception as error:
+                    self._cleanup_errors.append(f"latest road segmentation mask: {error}")
             if guidance_path.is_file():
                 try:
                     tracker.register_artifact(
@@ -1873,6 +2341,53 @@ class DriveSession:
         )
         self._detections_written += 1
 
+    def _write_segmentation(
+        self,
+        stream: TextIO | None,
+        result: SegmentationFrameResult,
+        model_metadata: Mapping[str, Any] | None,
+    ) -> None:
+        class_ids = result.segmentation.class_ids
+        confidence = result.segmentation.confidence
+        total = int(class_ids.size)
+        counts = np.bincount(class_ids.reshape(-1), minlength=len(CANONICAL_CLASS_NAMES))
+        classes: dict[str, dict[str, float | int]] = {}
+        for road_class in RoadClass:
+            mask = class_ids == int(road_class)
+            pixels = int(counts[int(road_class)])
+            classes[CANONICAL_CLASS_NAMES[int(road_class)]] = {
+                "pixels": pixels,
+                "fraction": pixels / total,
+                "mean_confidence": float(confidence[mask].mean()) if pixels else 0.0,
+            }
+        _json_line(
+            stream,
+            {
+                "at": _utc_now(),
+                "sequence": result.sequence,
+                "carla_frame": result.carla_frame,
+                "source_timestamp": result.source_timestamp,
+                "source_transform": (
+                    None if result.source_transform is None else list(result.source_transform)
+                ),
+                "source_fov": result.source_fov,
+                "frame_size": [class_ids.shape[1], class_ids.shape[0]],
+                "inference_seconds": result.inference_seconds,
+                "model_inference_seconds": result.model_inference_seconds,
+                "segmenter": result.segmenter_name,
+                "model": None if model_metadata is None else dict(model_metadata),
+                "source_bgr_sha256": _rgb_sha256(result.source_bgr),
+                "source_bgr_encoding": "uint8_hwc_bgr",
+                "canonical_classes": classes,
+                "exact_detector_sequence": (
+                    None if result.perception is None else result.perception.sequence
+                ),
+                "exact_source_frame_alignment": True,
+                "model_output_actuated": False,
+            },
+        )
+        self._segmentations_written += 1
+
     def _finalize(
         self,
         tracker: RunArtifactTracker,
@@ -1883,6 +2398,12 @@ class DriveSession:
             mode_history = [dict(item) for item in self._mode_history]
             stream = self._stream_snapshot(time.monotonic())
             guidance = dict(self._guidance_screen)
+            segmentation_runtime = self._segmentation_runtime
+            segmentation_state = (
+                {"state": "disabled", "error": None}
+                if segmentation_runtime is None
+                else segmentation_runtime.snapshot()
+            )
         summary = {
             "schema_version": "1.0",
             "object_type": "interactive_drive_session_summary",
@@ -1916,6 +2437,17 @@ class DriveSession:
             "stream": stream,
             "controls_written": self._controls_written,
             "detections_written": self._detections_written,
+            "segmentations_written": self._segmentations_written,
+            "road_segmentation": {
+                "enabled": self.config.road_segmentation is not None,
+                "latest_sequence": self._segmentation_frame_sequence,
+                "max_inference_fps": _SEGMENTATION_MAX_FPS,
+                "model": self._segmenter_metadata,
+                "worker_stats": self._segmentation_worker_stats,
+                "raw_video_mutated": False,
+                "model_output_actuated": False,
+                **segmentation_state,
+            },
             "guidance_written": self._guidance_written,
             "guidance": {
                 "available": bool(guidance.get("available")),
@@ -1970,6 +2502,8 @@ class DriveSessionManager:
 
     def catalog(self) -> dict[str, Any]:
         vision_runtime = _vision_runtime_status()
+        segmentation_available = bool(vision_runtime.get("road_segmentation_available", False))
+        segmentation_missing = list(vision_runtime.get("road_segmentation_missing", []))
         base = {
             "schema_version": "1.0",
             "connected": False,
@@ -1994,6 +2528,7 @@ class DriveSessionManager:
                 "manual_drive": True,
                 "random_road_start": True,
                 "model_advisory": vision_runtime["available"],
+                "road_segmentation": segmentation_available,
                 "recording": True,
                 "weather": True,
                 "scene_props": True,
@@ -2010,6 +2545,14 @@ class DriveSessionManager:
                 "connected": False,
             },
             "vision_runtime": vision_runtime,
+            "segmentation_runtime": {
+                "available": segmentation_available,
+                "torch_importable": bool(vision_runtime.get("torch_importable", False)),
+                "transformers_importable": bool(
+                    vision_runtime.get("transformers_importable", False)
+                ),
+                "missing": segmentation_missing,
+            },
         }
         try:
             with self._rpc_factory(self.carla_host, self.carla_port, timeout=4.0) as rpc:
@@ -2158,6 +2701,20 @@ class DriveSessionManager:
                     "advisory_only": True,
                     "actuated": False,
                 },
+                "road_segmentation": {
+                    "enabled": False,
+                    "state": "disabled",
+                    "error": None,
+                    "name": None,
+                    "metadata": None,
+                    "advisory_only": True,
+                    "actuated": False,
+                    "latest_sequence": -1,
+                    "samples_written": 0,
+                    "worker_stats": None,
+                    "max_inference_fps": _SEGMENTATION_MAX_FPS,
+                },
+                "segmentations_written": 0,
                 "deadman_active": True,
                 "error": None,
             }

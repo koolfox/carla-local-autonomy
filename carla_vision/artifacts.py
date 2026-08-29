@@ -41,6 +41,7 @@ DEFAULT_PACKAGE_NAMES = (
     "opencv-python",
     "torch",
     "torchvision",
+    "transformers",
     "ultralytics",
 )
 

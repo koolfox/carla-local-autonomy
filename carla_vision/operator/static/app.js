@@ -8,6 +8,9 @@ const state = {
   selectedStream: "stdout",
   selectedEvidencePath: null,
   selectedEvidence: null,
+  researchModalOpener: null,
+  scenarioPlanJobId: null,
+  scenarioPlanUsing: false,
   toastTimer: null,
   drive: {
     catalog: null,
@@ -55,7 +58,15 @@ const state = {
       failed: false,
       streamReady: false,
       configKey: "",
+      appliedConfig: null,
       configureTimer: null,
+      configureInFlight: false,
+      configurePromise: null,
+      configureGeneration: 0,
+      desiredConfig: null,
+      closing: false,
+      streamRetryTimer: null,
+      streamRetryCount: 0,
       stateTimer: null,
       orbitTimer: null,
       orbitInFlight: false,
@@ -214,19 +225,24 @@ function updateRange(inputId, outputId, digits = 0) {
   render();
 }
 
-function selectPreferredWeight() {
+function selectPreferredWeight({ resetConfidence = true } = {}) {
   const detector = $("live-detector").value;
   const weights = state.catalog?.weights || [];
+  const current = $("live-weights").value;
   const preferred =
+    weights.find((value) => value === current) ||
     weights.find((value) => value.toLowerCase().includes(detector === "rtdetr" ? "rtdetr" : "yolo")) ||
     weights[0] ||
     "";
   setOptions("live-weights", weights, "Add a .pt weight file", preferred);
-  $("live-confidence").value = detector === "rtdetr" ? "0.2" : "0.05";
-  $("live-confidence").dispatchEvent(new Event("input"));
+  if (resetConfidence) {
+    $("live-confidence").value = detector === "rtdetr" ? "0.2" : "0.05";
+    $("live-confidence").dispatchEvent(new Event("input"));
+  }
 }
 
 function populateCatalog(catalog, weatherPresets, propPresets) {
+  const firstLoad = !state.catalog;
   state.catalog = catalog;
   const capabilities = catalog.capabilities;
   const carla = $("carla-status");
@@ -243,15 +259,16 @@ function populateCatalog(catalog, weatherPresets, propPresets) {
   }`;
 
   const defaults = catalog.defaults;
-  $("live-host").value = defaults.carla_host;
-  $("live-port").value = defaults.carla_port;
-  $("live-vehicle").value = defaults.vehicle_id;
-  $("live-camera").value = defaults.camera_id;
-  $("live-map").value = defaults.map;
+  if (firstLoad) {
+    $("live-host").value = defaults.carla_host;
+    $("live-port").value = defaults.carla_port;
+    $("live-vehicle").value = defaults.vehicle_id;
+    $("live-camera").value = defaults.camera_id;
+    $("live-map").value = defaults.map;
+  }
 
   setOptions("situation-weather", weatherPresets);
   setOptions("situation-props", propPresets);
-  setOptions("plan-suite", catalog.scenario_suites, "Save a situation first");
   setOptions(
     "plan-split",
     catalog.split_plans,
@@ -276,8 +293,8 @@ function populateCatalog(catalog, weatherPresets, propPresets) {
     })),
     "No research object found",
   );
-  selectPreferredWeight();
-  selectPreferredDriveWeight();
+  selectPreferredWeight({ resetConfidence: false });
+  selectPreferredDriveWeight({ resetConfidence: false });
   populateEvidenceFilters();
   renderEvidenceList();
   if (
@@ -326,21 +343,21 @@ function populateEvidenceFilters() {
     "No research objects discovered.";
 }
 
-function activateTab(name) {
-  if (name !== "drive" && state.drive.inputFocused) {
-    releaseDriveControl("Drive console hidden");
-  }
-  document.body.classList.toggle("drive-tab-active", name === "drive");
-  document.body.classList.toggle("research-mode", name !== "drive");
+function openGarageResearchModal(tab = "live", opener = document.activeElement) {
+  const modal = $("game-research-modal");
+  if (state.drive.inputFocused) releaseDriveControl("Research tools opened");
   closeGameDrawers();
-  for (const tab of document.querySelectorAll(".tab")) {
-    const active = tab.dataset.tab === name;
-    tab.classList.toggle("active", active);
-    tab.setAttribute("aria-selected", String(active));
+  activateResearchTool(tab);
+  if (!modal.open) {
+    state.researchModalOpener = opener instanceof HTMLElement ? opener : null;
+    modal.showModal();
   }
-  for (const panel of document.querySelectorAll(".panel")) {
-    panel.classList.toggle("active", panel.id === `panel-${name}`);
-  }
+  $("game-research-open").setAttribute("aria-expanded", "true");
+}
+
+function closeGarageResearchModal() {
+  const modal = $("game-research-modal");
+  if (modal.open) modal.close();
 }
 
 function closeGameDrawers() {
@@ -376,17 +393,97 @@ function openGameDrawer(name) {
 
 function selectIfAvailable(id, value) {
   const select = $(id);
-  if (!select || select.disabled) return false;
+  if (!select) return false;
   if (![...select.options].some((option) => option.value === String(value))) return false;
   select.value = String(value);
   select.dispatchEvent(new Event("change", { bubbles: true }));
   return true;
 }
 
+function selectHasAvailableOption(id, value) {
+  const select = $(id);
+  return Boolean(
+    select &&
+    [...select.options].some((option) => option.value === String(value)),
+  );
+}
+
+function driveExperimentReadiness(name = state.drive.experimentPreset) {
+  const preset = DRIVE_EXPERIMENTS[name];
+  if (!preset) return { ready: false, message: "Choose a supported experiment." };
+  if (!state.drive.catalog) {
+    return { ready: false, message: "Checking CARLA capabilities before this experiment can be configured." };
+  }
+  const capabilities = driveWorldCapabilities();
+  const blockers = [];
+  if (preset.mode === "autopilot" && !capabilities.autopilot) {
+    blockers.push("CARLA World Worker autopilot");
+  }
+  if (preset.detector && !driveVisionRuntime().available) {
+    blockers.push("the local detection runtime");
+  }
+  if (
+    preset.traffic &&
+    (!capabilities.traffic || !selectHasAvailableOption("drive-traffic-choice", preset.traffic))
+  ) {
+    blockers.push("World Worker traffic population");
+  }
+  if (
+    preset.walkers &&
+    (!capabilities.walkers || !selectHasAvailableOption("drive-walkers-choice", preset.walkers))
+  ) {
+    blockers.push("World Worker pedestrian population");
+  }
+  if (preset.weather && !selectHasAvailableOption("drive-weather", preset.weather)) {
+    blockers.push("the requested weather preset");
+  }
+  if (preset.props && !selectHasAvailableOption("drive-props", preset.props)) {
+    blockers.push("the requested road scene");
+  }
+  return blockers.length
+    ? { ready: false, message: `Needs ${blockers.join(" and ")}.` }
+    : { ready: true, message: "Ready to configure and start." };
+}
+
+function experimentConfigSummary(preset) {
+  const settings = [];
+  if (preset.mode) settings.push(preset.mode === "autopilot" ? "Autopilot" : "Manual control");
+  if (preset.detector !== undefined) settings.push(preset.detector ? "Detection on" : "Detection off");
+  if (preset.record !== undefined) settings.push(preset.record ? "Recording on" : "Recording off");
+  if (preset.traffic) settings.push(`${preset.traffic} traffic vehicles`);
+  if (preset.walkers) settings.push(`${preset.walkers} pedestrians`);
+  if (preset.props) settings.push(`${preset.props} road scene`);
+  if (preset.weather) settings.push(`${preset.weather} weather`);
+  return settings.length
+    ? settings.join(" · ")
+    : "Uses your current Garage Setup without overriding it.";
+}
+
+function rememberExperimentPreset(name) {
+  try {
+    window.sessionStorage.setItem("carla-drive-experiment", name);
+  } catch (_error) {
+    // The in-memory selection still works when browser storage is unavailable.
+  }
+}
+
+function restoreExperimentPreset() {
+  try {
+    const saved = window.sessionStorage.getItem("carla-drive-experiment");
+    if (saved && saved in DRIVE_EXPERIMENTS) state.drive.experimentPreset = saved;
+  } catch (_error) {
+    // Keep the safe Free drive default.
+  }
+}
+
 function renderExperimentUi() {
   const selected = DRIVE_EXPERIMENTS[state.drive.experimentPreset] || DRIVE_EXPERIMENTS.free_drive;
+  const readiness = driveExperimentReadiness(state.drive.experimentPreset);
   $("experiment-current-title").textContent = selected.title;
   $("experiment-current-note").textContent = selected.note;
+  $("experiment-current-config").textContent = experimentConfigSummary(selected);
+  $("experiment-current-readiness").textContent = readiness.message;
+  $("experiment-current-readiness").classList.toggle("ready", readiness.ready);
   $("drive-hud-experiment").textContent = selected.title.toUpperCase();
   for (const button of document.querySelectorAll("[data-experiment-preset]")) {
     const active = button.dataset.experimentPreset === state.drive.experimentPreset;
@@ -405,33 +502,57 @@ function renderExperimentUi() {
   $("human-marker-help").textContent = driveIsRunning()
     ? "Markers retain the exact camera/detector sequence, control mode, telemetry, and optional note."
     : "Start a drive before marking moments.";
+  const canStart = readiness.ready &&
+    !driveIsActive() &&
+    !state.drive.garage.configureInFlight &&
+    !state.drive.garage.busy &&
+    Boolean(state.drive.catalog?.connected) &&
+    Boolean($("drive-vehicle").value);
+  $("experiment-start").disabled = !canStart;
+  $("experiment-start").textContent = `Start ${selected.title}`;
+  $("experiment-start").title = canStart
+    ? `Start ${selected.title}`
+    : readiness.ready
+      ? "Choose a CARLA vehicle before starting."
+      : readiness.message;
+  $("experiment-review-setup").disabled = driveIsActive() || !state.drive.catalog;
 }
 
-function applyExperimentPreset(name) {
+function applyExperimentPreset(name, { announce = true } = {}) {
   const preset = DRIVE_EXPERIMENTS[name];
   if (!preset || driveIsActive()) return;
   state.drive.experimentPreset = name;
-  if (preset.mode) {
-    if (preset.mode === "autopilot" && $("drive-mode-autopilot").disabled) {
-      showToast("This experiment needs the CARLA World Worker autopilot.", true);
-      state.drive.experimentPreset = "free_drive";
-      renderExperimentUi();
-      return;
-    }
+  rememberExperimentPreset(name);
+  const readiness = driveExperimentReadiness(name);
+  if (
+    preset.mode === "manual" ||
+    (preset.mode === "autopilot" && driveWorldCapabilities().autopilot)
+  ) {
     setDriveInitialControlMode(preset.mode);
   }
-  if (preset.detector !== undefined) {
+  if (preset.detector !== undefined && driveVisionRuntime().available) {
     $("drive-detector-enabled").checked = preset.detector;
     updateDriveModelToggle();
   }
   if (preset.record !== undefined) $("drive-record-video").checked = preset.record;
-  if (preset.traffic) selectIfAvailable("drive-traffic-choice", preset.traffic);
-  if (preset.walkers) selectIfAvailable("drive-walkers-choice", preset.walkers);
+  if (preset.traffic && driveWorldCapabilities().traffic) {
+    selectIfAvailable("drive-traffic-choice", preset.traffic);
+  }
+  if (preset.walkers && driveWorldCapabilities().walkers) {
+    selectIfAvailable("drive-walkers-choice", preset.walkers);
+  }
   if (preset.props) selectIfAvailable("drive-props", preset.props);
   if (preset.weather) selectIfAvailable("drive-weather", preset.weather);
   renderGarageBay();
   renderExperimentUi();
-  showToast(`${preset.title} is ready. Review the scene, then start driving.`);
+  if (announce) {
+    showToast(
+      readiness.ready
+        ? `${preset.title} is configured. Start it from Tests or the garage.`
+        : `${preset.title} is selected. Available settings were applied; ${readiness.message}`,
+      !readiness.ready,
+    );
+  }
 }
 
 async function markHumanMoment(label) {
@@ -460,6 +581,7 @@ async function markHumanMoment(label) {
 }
 
 function bindExperiments() {
+  restoreExperimentPreset();
   for (const button of document.querySelectorAll("[data-experiment-preset]")) {
     button.addEventListener("click", () => applyExperimentPreset(button.dataset.experimentPreset));
   }
@@ -472,9 +594,9 @@ function bindExperiments() {
     else openGameDrawer("experiments");
   });
   $("experiment-open-lab").addEventListener("click", () => {
-    activateTab("tools");
-    activateResearchTool("workflows");
+    openGarageResearchModal("workflows", $("experiment-open-lab"));
   });
+  $("experiment-review-setup").addEventListener("click", () => openGameDrawer("settings"));
   renderExperimentUi();
 }
 
@@ -492,14 +614,24 @@ function bindGameShell() {
   for (const button of document.querySelectorAll("[data-game-close]")) {
     button.addEventListener("click", closeGameDrawers);
   }
-  document.getElementById("game-research-open")?.addEventListener(
-    "click",
-    () => activateTab("tools"),
-  );
-  document.getElementById("game-back-to-drive")?.addEventListener(
-    "click",
-    () => activateTab("drive"),
-  );
+  $("game-research-open").addEventListener("click", (event) => {
+    openGarageResearchModal("live", event.currentTarget);
+  });
+  $("game-back-to-drive").addEventListener("click", closeGarageResearchModal);
+  const researchModal = $("game-research-modal");
+  researchModal.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    closeGarageResearchModal();
+  });
+  researchModal.addEventListener("click", (event) => {
+    if (event.target === researchModal) closeGarageResearchModal();
+  });
+  researchModal.addEventListener("close", () => {
+    $("game-research-open").setAttribute("aria-expanded", "false");
+    const opener = state.researchModalOpener;
+    state.researchModalOpener = null;
+    if (opener?.isConnected) opener.focus();
+  });
   document.getElementById("game-camera-toggle")?.addEventListener("click", (event) => {
     const button = event.currentTarget;
     const open = !document.body.classList.contains("game-camera-menu-open");
@@ -520,6 +652,8 @@ function bindGameShell() {
 }
 
 function activateResearchTool(name) {
+  if (name === "situation") syncSituationFromGarage();
+  if (name === "live") syncLiveFromGarage();
   for (const tab of document.querySelectorAll(".research-tab")) {
     const active = tab.dataset.researchTab === name;
     tab.classList.toggle("active", active);
@@ -543,6 +677,7 @@ function installGameShell() {
     "game-experiments",
     "drive-experiment-toggle",
     "game-research-open",
+    "game-research-modal",
     "game-back-to-drive",
   ];
   const missing = requiredIds.filter((id) => !document.getElementById(id));
@@ -564,8 +699,8 @@ async function startJob(kind, parameters) {
   state.selectedJobId = job.job_id;
   showToast(`${job.title} queued.`);
   await refreshJobs();
-  activateTab("tools");
-  activateResearchTool("sessions");
+  openGarageResearchModal("sessions");
+  return job;
 }
 
 function driveIsRunning() {
@@ -684,6 +819,31 @@ function driveVisionRuntimeMessage() {
     "Install the project vision extra and restart the web server.";
 }
 
+function driveSegmentationRuntime() {
+  const runtime = state.drive.catalog?.segmentation_runtime;
+  const capabilities = state.drive.catalog?.capabilities || {};
+  const available = typeof runtime?.available === "boolean"
+    ? runtime.available
+    : driveCapabilityValue(capabilities, ["road_segmentation", "segmentation"]);
+  const missing = Array.isArray(runtime?.missing)
+    ? runtime.missing.filter((item) => typeof item === "string" && item.trim())
+    : [];
+  const preferredDevice = typeof runtime?.preferred_device === "string"
+    ? runtime.preferred_device
+    : typeof runtime?.preferredDevice === "string"
+      ? runtime.preferredDevice
+      : null;
+  return { available, missing, preferredDevice };
+}
+
+function driveSegmentationRuntimeMessage() {
+  const runtime = driveSegmentationRuntime();
+  const components = runtime.missing.length
+    ? runtime.missing.join(" and ")
+    : "the road-segmentation runtime";
+  return `Road understanding is unavailable because ${components} did not load.`;
+}
+
 function driveColorLabel(value) {
   const rgb = String(value).split(",").map((part) => Number(part.trim()));
   if (rgb.length !== 3 || rgb.some((part) => !Number.isFinite(part))) return String(value);
@@ -754,7 +914,28 @@ function garagePreviewPayload() {
 }
 
 function garagePayloadKey(payload = garagePreviewPayload()) {
-  return JSON.stringify(payload);
+  return JSON.stringify({
+    map_name: payload.map_name || "current",
+    weather_preset: payload.weather_preset || "keep",
+    vehicle_blueprint: payload.vehicle_blueprint || "",
+    color: payload.color || null,
+    seed: Number(payload.seed || 0),
+    traffic_count: Number(payload.traffic_count || 0),
+    walker_count: Number(payload.walker_count || 0),
+    prop_preset: payload.prop_preset || "none",
+    spectator_mirror: Boolean(payload.spectator_mirror),
+    profile: payload.profile || "balanced",
+  });
+}
+
+function garageConfigChangeKind(payload) {
+  const current = state.drive.garage.appliedConfig;
+  if (!current || !state.drive.garage.active) return "start";
+  if (garagePayloadKey(current) === garagePayloadKey(payload)) return "noop";
+  const currentWithoutWeather = { ...current, weather_preset: payload.weather_preset };
+  return garagePayloadKey(currentWithoutWeather) === garagePayloadKey(payload)
+    ? "weather"
+    : "restart";
 }
 
 function garagePreviewAvailable() {
@@ -763,6 +944,60 @@ function garagePreviewAvailable() {
     driveWorldCapabilities().nativeWorker &&
     $("drive-vehicle").value,
   );
+}
+
+function garagePreviewUnavailableMessage() {
+  const catalog = state.drive.catalog;
+  if (!catalog) return "Checking CARLA and the World Worker…";
+  if (!catalog.connected) return "CARLA is offline. Start the simulator or check the configured host.";
+  if (!driveWorldCapabilities().nativeWorker) {
+    return catalog.world_worker?.configured
+      ? "The World Worker did not respond. Restart the bridge on the CARLA computer, then reload this page."
+      : "Garage preview needs the small World Worker bridge on the CARLA computer.";
+  }
+  if (!$("drive-vehicle").value) return "Choose a compatible CARLA vehicle.";
+  return "Garage preview is unavailable.";
+}
+
+function restoreGarageControlsFromAppliedConfig(config) {
+  if (!config || state.drive.experimentPreset !== "free_drive") return false;
+
+  const selectAppliedValue = (id, value, { matchBasename = false } = {}) => {
+    if (value === undefined || value === null) return false;
+    const select = $(id);
+    const requested = String(value);
+    const option = [...select.options].find((candidate) =>
+      candidate.value === requested ||
+      (matchBasename && candidate.value.split("/").pop() === requested.split("/").pop()),
+    );
+    if (!option) return false;
+    select.value = option.value;
+    return true;
+  };
+
+  selectAppliedValue("drive-map-choice", config.map_name, { matchBasename: true });
+  selectAppliedValue("drive-weather", config.weather_preset);
+  selectAppliedValue("drive-props", config.prop_preset);
+  selectAppliedValue("drive-vehicle", config.vehicle_blueprint);
+  populateDriveColors();
+  if (config.color === null && !selectHasAvailableOption("drive-color", "")) {
+    const factoryPaint = document.createElement("option");
+    factoryPaint.value = "";
+    factoryPaint.textContent = "Blueprint default";
+    $("drive-color").prepend(factoryPaint);
+  }
+  selectAppliedValue("drive-color", config.color ?? "");
+  setScenarioCount("drive-traffic-choice", config.traffic_count, "vehicles");
+  setScenarioCount("drive-walkers-choice", config.walker_count, "pedestrians");
+  if (Number.isInteger(Number(config.seed)) && Number(config.seed) >= 0) {
+    $("drive-seed").value = String(config.seed);
+  }
+  $("drive-spectator-follow").checked = Boolean(config.spectator_mirror);
+  if (selectAppliedValue("drive-camera-profile", config.profile)) applyDriveCameraProfile();
+  renderGarageVehicleCarousel();
+  renderGarageBay();
+  updateDriveConfigAvailability();
+  return true;
 }
 
 function renderCarlaDiscovery(payload) {
@@ -853,6 +1088,12 @@ function setGaragePreviewBusy(busy, title = "Preparing CARLA garage…", note = 
   $("garage-preview-loading-note").textContent = note;
   $("garage-preview-loading").hidden = !busy;
   renderGaragePreviewUi();
+  if (busy) {
+    $("drive-start").disabled = true;
+    $("experiment-start").disabled = true;
+  } else {
+    renderDriveState();
+  }
 }
 
 function setGaragePreviewError(message = "") {
@@ -890,6 +1131,8 @@ function renderGaragePreviewUi() {
       ? streamStale
         ? "● Live · stream stale"
         : `● Live · ${sourceFps.toFixed(1)} FPS`
+      : !available && state.drive.catalog
+        ? "Bridge unavailable"
       : garage.failed
         ? "Preview unavailable"
         : "Preview paused";
@@ -901,39 +1144,98 @@ function renderGaragePreviewUi() {
     ? "Loading…"
     : live
       ? "Close preview"
+      : !available && state.drive.catalog
+        ? "Preview unavailable"
       : garage.failed
         ? "Try again"
         : "Open preview";
   toggle.disabled = garage.busy || driveIsActive() || (!live && !available);
   toggle.title = !available && !live
-    ? "Connect the World Worker and choose a CARLA vehicle first."
+    ? garagePreviewUnavailableMessage()
     : "";
+  const error = $("garage-preview-error");
+  if (!live && !available && state.drive.catalog && !garage.failed) {
+    error.textContent = garagePreviewUnavailableMessage();
+    error.hidden = false;
+  } else if (!garage.failed) {
+    error.textContent = "";
+    error.hidden = true;
+  }
+}
+
+const GARAGE_STREAM_RETRY_DELAYS = [450, 900, 1800, 3000];
+
+function captureGaragePreviewPoster() {
+  const frame = $("garage-preview-frame");
+  const poster = $("garage-preview-poster");
+  if (!state.drive.garage.streamReady || !frame.naturalWidth || !frame.naturalHeight) return;
+  try {
+    poster.width = frame.naturalWidth;
+    poster.height = frame.naturalHeight;
+    poster.getContext("2d")?.drawImage(frame, 0, 0, poster.width, poster.height);
+    poster.classList.add("visible");
+  } catch (_error) {
+    poster.classList.remove("visible");
+  }
+}
+
+function clearGarageStreamRetry() {
+  window.clearTimeout(state.drive.garage.streamRetryTimer);
+  state.drive.garage.streamRetryTimer = null;
 }
 
 function loadGarageLiveStream() {
   const frame = $("garage-preview-frame");
+  clearGarageStreamRetry();
   state.drive.garage.streamReady = false;
   frame.src = `/api/garage/preview/stream.mjpg?t=${Date.now()}`;
 }
 
 function unloadGarageLiveStream() {
   const frame = $("garage-preview-frame");
+  clearGarageStreamRetry();
   frame.removeAttribute("src");
+  $("garage-preview-poster").classList.remove("visible");
   state.drive.garage.streamReady = false;
+  state.drive.garage.streamRetryCount = 0;
 }
 
-async function refreshGaragePreviewState({ quiet = true } = {}) {
+function scheduleGarageStreamRetry() {
+  const garage = state.drive.garage;
+  if (!garage.enabled || !garage.active || driveIsActive() || garage.streamRetryTimer) return;
+  if (garage.configureInFlight || garage.busy) return;
+  if (garage.streamRetryCount >= GARAGE_STREAM_RETRY_DELAYS.length) {
+    setGaragePreviewError("The CARLA garage stream could not reconnect. Close the preview and try again.");
+    return;
+  }
+  const delay = GARAGE_STREAM_RETRY_DELAYS[garage.streamRetryCount];
+  garage.streamRetryCount += 1;
+  garage.streamRetryTimer = window.setTimeout(() => {
+    garage.streamRetryTimer = null;
+    if (garage.enabled && garage.active && !driveIsActive()) loadGarageLiveStream();
+  }, delay);
+}
+
+async function refreshGaragePreviewState({ quiet = true, hydrateControls = false } = {}) {
   if (driveIsActive()) return;
   try {
     const payload = await request("/api/garage/preview/state");
-    const active = garagePreviewIsActive(payload);
+    const preview = payload.state || payload.preview || payload;
+    const active = garagePreviewIsActive(preview);
     state.drive.garage.active = active;
-    state.drive.garage.stream = payload.stream || state.drive.garage.stream;
+    state.drive.garage.stream = preview.stream || state.drive.garage.stream;
     if (active) {
       state.drive.garage.enabled = true;
+      if (preview.applied_config) {
+        state.drive.garage.appliedConfig = preview.applied_config;
+        state.drive.garage.configKey = garagePayloadKey(preview.applied_config);
+        if (hydrateControls) restoreGarageControlsFromAppliedConfig(preview.applied_config);
+      }
       if (!$("garage-preview-frame").getAttribute("src")) loadGarageLiveStream();
     } else if (state.drive.garage.enabled && !state.drive.garage.busy) {
       state.drive.garage.enabled = false;
+      state.drive.garage.appliedConfig = null;
+      state.drive.garage.configKey = "";
       unloadGarageLiveStream();
     }
     renderGaragePreviewUi();
@@ -942,48 +1244,99 @@ async function refreshGaragePreviewState({ quiet = true } = {}) {
   }
 }
 
-async function configureGaragePreview({ announce = false } = {}) {
-  if (driveIsActive() || !garagePreviewAvailable()) return;
-  const payload = garagePreviewPayload();
-  if (!payload.vehicle_blueprint) return;
-  const key = garagePayloadKey(payload);
-  state.drive.garage.enabled = true;
-  setGaragePreviewError();
-  setGaragePreviewBusy(
-    true,
-    state.drive.garage.active ? "Updating the garage…" : "Preparing CARLA garage…",
-    "CARLA is placing the selected car in the world.",
-  );
+async function runGarageConfigureLoop() {
+  const garage = state.drive.garage;
+  garage.configureInFlight = true;
   try {
-    const configured = await request("/api/garage/preview/configure", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-    state.drive.garage.configKey = key;
-    state.drive.garage.active = true;
-    state.drive.garage.stream = configured.stream || state.drive.garage.stream;
-    Object.assign(state.drive.garage, GARAGE_DEFAULT_ORBIT);
-    state.drive.garage.sequence = 0;
-    setGarageCameraPreset("orbit");
-    loadGarageLiveStream();
-    if (announce) showToast("Live CARLA garage is ready. Drag or swipe around the car.");
-  } catch (error) {
-    state.drive.garage.active = false;
-    state.drive.garage.enabled = false;
-    unloadGarageLiveStream();
-    setGaragePreviewError(error.message);
-    if (announce) showToast(error.message, true);
+    while (garage.desiredConfig && garage.enabled && !driveIsActive()) {
+      const desired = garage.desiredConfig;
+      garage.desiredConfig = null;
+      if (desired.key === garage.configKey && garage.active) continue;
+      const changeKind = garageConfigChangeKind(desired.payload);
+      if (changeKind === "restart") captureGaragePreviewPoster();
+      setGaragePreviewError();
+      setGaragePreviewBusy(
+        true,
+        garage.active ? "Updating the scene…" : "Preparing CARLA garage…",
+        changeKind === "weather"
+          ? "Applying weather without restarting the camera."
+          : "Keeping the last frame visible while CARLA applies the latest setup.",
+      );
+      let configured;
+      try {
+        configured = await request("/api/garage/preview/configure", {
+          method: "POST",
+          body: JSON.stringify(desired.payload),
+        });
+      } catch (error) {
+        const superseded = desired.generation !== garage.configureGeneration && garage.desiredConfig;
+        if (superseded || !garage.enabled || driveIsActive()) continue;
+        if (changeKind === "start" || changeKind === "restart") {
+          garage.active = false;
+          garage.enabled = false;
+          garage.appliedConfig = null;
+          garage.configKey = "";
+          unloadGarageLiveStream();
+        }
+        setGaragePreviewError(error.message);
+        if (desired.announce) showToast(error.message, true);
+        continue;
+      }
+      const superseded = desired.generation !== garage.configureGeneration && garage.desiredConfig;
+      if (superseded || !garage.enabled || driveIsActive()) continue;
+      const action = configured.configure_action || {
+        start: "started",
+        restart: "restarted",
+        weather: "weather",
+        noop: "noop",
+      }[changeKind];
+      garage.active = true;
+      garage.appliedConfig = configured.applied_config || desired.payload;
+      garage.configKey = garagePayloadKey(garage.appliedConfig);
+      garage.stream = configured.stream || garage.stream;
+      if (["started", "restarted"].includes(action)) {
+        Object.assign(garage, GARAGE_DEFAULT_ORBIT);
+        garage.sequence = 0;
+        setGarageCameraPreset("orbit");
+        loadGarageLiveStream();
+      } else if (!$("garage-preview-frame").getAttribute("src")) {
+        loadGarageLiveStream();
+      }
+      if (desired.announce) {
+        showToast("Live CARLA garage is ready. Drag or swipe around the car.");
+      }
+    }
   } finally {
-    setGaragePreviewBusy(false);
+    garage.configureInFlight = false;
+    garage.configurePromise = null;
+    if (!garage.closing) setGaragePreviewBusy(false);
+    if (garage.enabled && garage.active && !garage.streamReady) scheduleGarageStreamRetry();
     renderGaragePreviewUi();
   }
+}
+
+function configureGaragePreview({ announce = false } = {}) {
+  if (driveIsActive() || !garagePreviewAvailable()) return Promise.resolve();
+  const payload = garagePreviewPayload();
+  if (!payload.vehicle_blueprint) return Promise.resolve();
+  const garage = state.drive.garage;
+  garage.enabled = true;
+  garage.configureGeneration += 1;
+  garage.desiredConfig = {
+    payload,
+    key: garagePayloadKey(payload),
+    generation: garage.configureGeneration,
+    announce,
+  };
+  if (!garage.configurePromise) garage.configurePromise = runGarageConfigureLoop();
+  return garage.configurePromise;
 }
 
 function scheduleGarageConfigure() {
   renderGarageBay();
   if (!state.drive.garage.enabled || driveIsActive()) return;
   const nextKey = garagePayloadKey();
-  if (nextKey === state.drive.garage.configKey) return;
+  if (nextKey === state.drive.garage.configKey && !state.drive.garage.desiredConfig) return;
   window.clearTimeout(state.drive.garage.configureTimer);
   state.drive.garage.configureTimer = window.setTimeout(
     () => void configureGaragePreview(),
@@ -992,8 +1345,13 @@ function scheduleGarageConfigure() {
 }
 
 async function closeGaragePreview({ announce = false } = {}) {
-  window.clearTimeout(state.drive.garage.configureTimer);
-  state.drive.garage.enabled = false;
+  const garage = state.drive.garage;
+  window.clearTimeout(garage.configureTimer);
+  garage.configureGeneration += 1;
+  garage.desiredConfig = null;
+  garage.closing = true;
+  garage.enabled = false;
+  clearGarageStreamRetry();
   setGaragePreviewError();
   setGaragePreviewBusy(true, "Closing the garage…", "Releasing the temporary CARLA scene.");
   try {
@@ -1005,8 +1363,10 @@ async function closeGaragePreview({ announce = false } = {}) {
   } catch (error) {
     if (announce) showToast(error.message, true);
   } finally {
-    state.drive.garage.active = false;
-    state.drive.garage.configKey = "";
+    garage.closing = false;
+    garage.active = false;
+    garage.appliedConfig = null;
+    garage.configKey = "";
     unloadGarageLiveStream();
     setGaragePreviewBusy(false);
     renderGaragePreviewUi();
@@ -1159,13 +1519,17 @@ function bindGaragePreview() {
   const frame = $("garage-preview-frame");
   frame.addEventListener("load", () => {
     state.drive.garage.streamReady = true;
+    state.drive.garage.streamRetryCount = 0;
+    clearGarageStreamRetry();
+    $("garage-preview-poster").classList.remove("visible");
     setGaragePreviewError();
     renderGaragePreviewUi();
   });
   frame.addEventListener("error", () => {
     if (!state.drive.garage.enabled) return;
     state.drive.garage.streamReady = false;
-    setGaragePreviewError("The CARLA garage stream stopped. Exit the garage and try again.");
+    if (state.drive.garage.configureInFlight || state.drive.garage.busy) return;
+    scheduleGarageStreamRetry();
   });
 
   const orbit = $("garage-orbit-surface");
@@ -1238,18 +1602,22 @@ function bindGaragePreview() {
   renderGaragePreviewUi();
 }
 
-function selectPreferredDriveWeight() {
+function selectPreferredDriveWeight({ resetConfidence = true } = {}) {
   const detector = $("drive-detector").value;
   const weights = state.catalog?.weights || [];
+  const current = $("drive-weights").value;
   const preferred =
+    weights.find((value) => value === current) ||
     weights.find((value) =>
       value.toLowerCase().includes(detector === "rtdetr" ? "rtdetr" : "yolo"),
     ) ||
     weights[0] ||
     "";
   setOptions("drive-weights", weights, "Add a compatible .pt weight file", preferred);
-  $("drive-confidence").value = detector === "rtdetr" ? "0.55" : "0.35";
-  $("drive-confidence").dispatchEvent(new Event("input"));
+  if (resetConfidence) {
+    $("drive-confidence").value = detector === "rtdetr" ? "0.55" : "0.35";
+    $("drive-confidence").dispatchEvent(new Event("input"));
+  }
   updateDriveConfigAvailability();
 }
 
@@ -1343,8 +1711,18 @@ function renderDriveCapabilities() {
   }
 }
 
+function configureDriveSegmentationDevice() {
+  const preferredDevice = driveSegmentationRuntime().preferredDevice;
+  if (!preferredDevice) return;
+  const select = $("drive-segmentation-device");
+  if ([...select.options].some((option) => option.value === preferredDevice)) {
+    select.value = preferredDevice;
+  }
+}
+
 function populateDriveCatalog(catalog) {
   state.drive.catalog = catalog;
+  configureDriveSegmentationDevice();
   const effectiveConnected = Boolean(catalog.connected || catalog.world_worker?.connected);
   const carlaStatus = $("carla-status");
   carlaStatus.textContent = effectiveConnected ? "CARLA · reachable" : "CARLA · offline";
@@ -1361,6 +1739,7 @@ function populateDriveCatalog(catalog) {
     maps.unshift({ value: currentMap, label: currentMap.split("/").pop() || currentMap });
   }
   setOptions("drive-map-choice", maps, "Current map unavailable", currentMap);
+  setOptions("situation-map", maps, "No CARLA map reported", currentMap);
   const vehicles = (catalog.vehicles || []).map((vehicle) => ({
     value: vehicle.id,
     label: vehicle.label || vehicle.id,
@@ -1370,6 +1749,12 @@ function populateDriveCatalog(catalog) {
     vehicles[0]?.value ||
     "";
   setOptions("drive-vehicle", vehicles, "No compatible vehicle blueprint found", preferredVehicle);
+  setOptions(
+    "situation-ego",
+    vehicles,
+    "No compatible vehicle blueprint found",
+    preferredVehicle,
+  );
   const weather = (catalog.weather_presets || []).map((preset) => ({
     value: preset.id,
     label: preset.label || preset.id,
@@ -1379,6 +1764,12 @@ function populateDriveCatalog(catalog) {
     weather[0]?.value ||
     "";
   setOptions("drive-weather", weather, "No weather presets reported", preferredWeather);
+  setOptions(
+    "situation-weather",
+    weather.filter((preset) => preset.value !== "keep"),
+    "No weather presets reported",
+    preferredWeather === "keep" ? "" : preferredWeather,
+  );
   const props = (catalog.prop_presets || []).map((preset) => ({
     value: preset.id,
     label: preset.label || preset.id,
@@ -1388,11 +1779,13 @@ function populateDriveCatalog(catalog) {
     props[0]?.value ||
     "";
   setOptions("drive-props", props, "No scene prop presets reported", preferredProps);
+  setOptions("situation-props", props, "No scene prop presets reported", preferredProps);
   populateDriveColors();
   renderGarageVehicleCarousel();
   renderDriveCapabilities();
   configureDriveWorldControls();
   updateDriveConfigAvailability();
+  applyExperimentPreset(state.drive.experimentPreset, { announce: false });
   renderGarageBay();
 }
 
@@ -1408,7 +1801,20 @@ function updateDriveModelToggle() {
     showToast(driveVisionRuntimeMessage(), true);
   }
   const enabled = runtime.available && checked("drive-detector-enabled");
-  if (!enabled) setDriveView("raw");
+  const roadEnabled = driveSegmentationRuntime().available && checked("drive-segmentation-enabled");
+  if (!enabled && !roadEnabled) setDriveView("raw");
+  updateDriveConfigAvailability();
+}
+
+function updateDriveSegmentationToggle() {
+  const runtime = driveSegmentationRuntime();
+  if (!runtime.available) {
+    $("drive-segmentation-enabled").checked = false;
+    showToast(driveSegmentationRuntimeMessage(), true);
+  }
+  const roadEnabled = runtime.available && checked("drive-segmentation-enabled");
+  const detectorEnabled = driveVisionRuntime().available && checked("drive-detector-enabled");
+  if (!roadEnabled && !detectorEnabled) setDriveView("raw");
   updateDriveConfigAvailability();
 }
 
@@ -1453,9 +1859,13 @@ function configureDriveCameraProfiles() {
 function updateDriveConfigAvailability() {
   const active = driveIsActive();
   const visionRuntime = driveVisionRuntime();
+  const segmentationRuntime = driveSegmentationRuntime();
   const detectorToggle = $("drive-detector-enabled");
+  const segmentationToggle = $("drive-segmentation-enabled");
   if (!visionRuntime.available) detectorToggle.checked = false;
+  if (!segmentationRuntime.available) segmentationToggle.checked = false;
   const detectorEnabled = visionRuntime.available && detectorToggle.checked;
+  const segmentationEnabled = segmentationRuntime.available && segmentationToggle.checked;
   configureDriveCameraProfiles();
   const lockIds = [
     "drive-run-id",
@@ -1469,6 +1879,7 @@ function updateDriveConfigAvailability() {
     "drive-camera-fps",
     "drive-camera-fov",
     "drive-detector-enabled",
+    "drive-segmentation-enabled",
     "drive-record-video",
     "drive-spectator-follow",
   ];
@@ -1478,6 +1889,11 @@ function updateDriveConfigAvailability() {
   $("drive-detector-runtime-note").textContent = visionRuntime.available
     ? "Show detected objects"
     : driveVisionRuntimeMessage();
+  segmentationToggle.disabled = active || !segmentationRuntime.available;
+  segmentationToggle.title = segmentationRuntime.available ? "" : driveSegmentationRuntimeMessage();
+  $("drive-segmentation-runtime-note").textContent = segmentationRuntime.available
+    ? "Road and sidewalk context. Cityscapes does not claim lane lines."
+    : driveSegmentationRuntimeMessage();
   $("drive-color").disabled = active || $("drive-color").options.length === 1 && !$("drive-color").value;
   for (const id of [
     "drive-detector",
@@ -1488,8 +1904,18 @@ function updateDriveConfigAvailability() {
   ]) {
     $(id).disabled = active || !detectorEnabled;
   }
-  $("drive-view-overlay").disabled = !detectorEnabled;
-  $("drive-view-overlay").title = visionRuntime.available ? "" : driveVisionRuntimeMessage();
+  for (const id of [
+    "drive-segmentation-backend",
+    "drive-segmentation-checkpoint",
+    "drive-segmentation-device",
+  ]) {
+    $(id).disabled = active || !segmentationEnabled;
+  }
+  const understandingEnabled = detectorEnabled || segmentationEnabled;
+  $("drive-view-overlay").disabled = !understandingEnabled;
+  $("drive-view-overlay").title = understandingEnabled
+    ? "Show the selected object and road understanding overlays"
+    : "Enable detection overlay or road understanding to show visual overlays.";
   const guidanceButton = $("drive-guidance-toggle");
   const guidanceAvailable = driveWorldCapabilities().guidance;
   guidanceButton.disabled = !guidanceAvailable;
@@ -1504,6 +1930,36 @@ function driveDetectorLabel(detector) {
   if (typeof detector === "string") return detector;
   if (detector.enabled === false) return "off";
   return detector.label || detector.name || detector.detector || detector.status || "enabled";
+}
+
+function driveSegmentationLabel(segmentation) {
+  if (!segmentation || segmentation.enabled === false) {
+    return checked("drive-segmentation-enabled") ? "road context requested" : "off";
+  }
+  if (typeof segmentation === "string") return segmentation;
+  const label = segmentation.label || segmentation.name || segmentation.backend || "road context";
+  if (segmentation.state === "failed" || segmentation.error) {
+    return `${label} · failed`;
+  }
+  const checkpoint = String(
+    segmentation.checkpoint || segmentation.metadata?.checkpoint || "",
+  ).toLowerCase();
+  const supportsRoadLine = segmentation.metadata?.supports_road_line
+    ?? segmentation.model_metadata?.supports_road_line
+    ?? segmentation.supports_road_line;
+  if (supportsRoadLine === false) return `${label} · no lane lines`;
+  if (supportsRoadLine === true) return label;
+  return segmentation.state === "initializing" && checkpoint.includes("cityscapes")
+    ? `${label} · Cityscapes (no lane lines)`
+    : label;
+}
+
+function driveUnderstandingLabel(session) {
+  const detector = driveDetectorLabel(session.detector);
+  const segmentation = driveSegmentationLabel(session.road_segmentation);
+  return [detector === "off" ? "" : detector, segmentation === "off" ? "" : segmentation]
+    .filter(Boolean)
+    .join(" + ") || "off";
 }
 
 function selectedOptionLabel(id, fallback) {
@@ -1547,10 +2003,13 @@ function renderGarageBay() {
 
 function renderDriveState() {
   const session = state.drive.session || { status: "idle" };
-  if (session.experiment_preset in DRIVE_EXPERIMENTS) {
+  const statusName = session.status || "idle";
+  if (
+    ["starting", "running", "stopping"].includes(statusName) &&
+    session.experiment_preset in DRIVE_EXPERIMENTS
+  ) {
     state.drive.experimentPreset = session.experiment_preset;
   }
-  const statusName = session.status || "idle";
   const immersive = driveIsActive();
   const autopilotActive = driveIsRunning() && driveIsAutopilot();
   if (autopilotActive && state.drive.inputFocused) {
@@ -1597,7 +2056,7 @@ function renderDriveState() {
   $("drive-camera-id").textContent = session.camera_id == null
     ? "—"
     : `${session.camera_id}${released}`;
-  $("drive-detector-state").textContent = driveDetectorLabel(session.detector);
+  $("drive-understanding-state").textContent = driveUnderstandingLabel(session);
   $("drive-hud-session").textContent = driveSessionId()
     ? `SESSION ${driveSessionId()}`
     : statusName.toUpperCase();
@@ -1647,17 +2106,32 @@ function renderDriveState() {
     deadman.className = "status-pill neutral";
   }
 
+  const experimentReadiness = driveExperimentReadiness();
+  const saved = statusName === "success";
   $("drive-start").disabled =
     driveIsActive() ||
+    state.drive.garage.configureInFlight ||
+    state.drive.garage.busy ||
     !state.drive.catalog?.connected ||
-    !$("drive-vehicle").value;
-  $("drive-start-note").textContent = driveIsActive()
-    ? "Drive session in progress."
-    : !state.drive.catalog?.connected
-      ? "CARLA is offline. Start CARLA or check the host in Advanced settings."
-      : !$("drive-vehicle").value
-        ? "No compatible vehicle is available."
-        : "";
+    !$("drive-vehicle").value ||
+    !experimentReadiness.ready;
+  $("drive-start").textContent = saved ? "Start another drive" : "Start Drive";
+  $("drive-start").hidden = false;
+  $("drive-session-actions").hidden = false;
+  $("drive-start-note").textContent = saved
+    ? session.output_path
+      ? `Saved to ${session.output_path}`
+      : "Run saved. Garage is ready for another drive."
+    : driveIsActive()
+      ? "Drive session in progress."
+      : !state.drive.catalog?.connected
+        ? "CARLA is offline. Start CARLA or check the host in Advanced settings."
+        : !$("drive-vehicle").value
+          ? "No compatible vehicle is available."
+          : !experimentReadiness.ready
+            ? experimentReadiness.message
+            : "";
+  $("drive-start-note").classList.toggle("saved", saved);
   $("drive-stop").disabled = !["starting", "running"].includes(statusName);
   $("drive-emergency").disabled = !driveIsRunning();
   $("drive-focus").disabled =
@@ -1668,14 +2142,14 @@ function renderDriveState() {
       ? "Keyboard active"
       : "Take keyboard control";
   $("drive-advisory-badge").textContent = autopilotActive
-    ? "CARLA autopilot · detections remain visual"
-    : "Detections only — you drive";
+    ? "CARLA autopilot · visual models remain advisory"
+    : "Visual understanding only — you drive";
   $("drive-control-boundary-title").textContent = autopilotActive
     ? "Simulator autopilot active."
     : "Human control.";
   $("drive-control-boundary-copy").textContent = autopilotActive
     ? "Choose Take Control before keyboard or touch commands can reach the vehicle."
-    : "AI boxes are visual hints. Leaving the camera or browser applies the brake.";
+    : "Object boxes and road context are visual hints. Leaving the camera or browser applies the brake.";
   if (autopilotActive) {
     $("drive-focus-shield").textContent = state.drive.modeTakeoverPromise
       ? "Requesting a safe handover from autopilot…"
@@ -1686,17 +2160,6 @@ function renderDriveState() {
   $("drive-props").disabled =
     driveIsActive() || !(state.drive.catalog?.prop_presets || []).length;
   $("drive-error").textContent = session.error || "";
-  $("drive-output-path").textContent = session.output_path
-    ? `Saved to ${session.output_path}`
-    : recording
-      ? "Recording now. Files will be saved when the drive ends."
-      : "Run files were saved without video.";
-  const saved = statusName === "success";
-  $("drive-result-banner").hidden = !saved;
-  $("drive-start").hidden = saved;
-  $("drive-session-actions").hidden = saved;
-  $("drive-start-another").disabled =
-    !saved || !state.drive.catalog?.connected || !$("drive-vehicle").value;
 
   const sequence =
     state.drive.view === "overlay"
@@ -1710,7 +2173,7 @@ function renderDriveState() {
     : stream.frame_age_seconds;
   const viewAge = selectedAge == null ? Number.NaN : Number(selectedAge);
   $("drive-frame-state").textContent = driveIsRunning()
-    ? `${state.drive.view === "overlay" ? "Detections" : "Camera"} · ${viewFps.toFixed(1)} FPS · ${
+    ? `${state.drive.view === "overlay" ? "Understanding" : "Camera"} · ${viewFps.toFixed(1)} FPS · ${
         Number.isFinite(viewAge) ? `${Math.round(viewAge * 1000)} ms` : "waiting"
       } · frame ${sequence ?? "—"}`
     : statusName === "starting"
@@ -1734,7 +2197,11 @@ function renderDriveState() {
       releaseDriveControl("Session finished", false);
       $("drive-run-id").value = generatedId("drive");
       showToast(
-        statusName === "success" ? "Run saved. The garage is ready for another drive." : session.error || "Drive failed.",
+        statusName === "success"
+          ? session.output_path
+            ? `Run saved to ${session.output_path}`
+            : "Run saved. The garage is ready for another drive."
+          : session.error || "Drive failed.",
         statusName === "failed",
       );
     }
@@ -2206,7 +2673,7 @@ function bindDriveTouchControls() {
 }
 
 function driveStartPayload() {
-  return {
+  const payload = {
     run_id: $("drive-run-id").value,
     host: $("drive-host").value,
     port: number("drive-port"),
@@ -2235,6 +2702,17 @@ function driveStartPayload() {
     record_video: checked("drive-record-video"),
     spectator_follow: checked("drive-spectator-follow"),
   };
+  if (checked("drive-segmentation-enabled")) {
+    Object.assign(payload, {
+      road_segmentation: {
+        enabled: true,
+        backend: $("drive-segmentation-backend").value,
+        checkpoint: $("drive-segmentation-checkpoint").value,
+        device: $("drive-segmentation-device").value,
+      },
+    });
+  }
+  return payload;
 }
 
 async function startDrive(event) {
@@ -2243,9 +2721,14 @@ async function startDrive(event) {
   button.disabled = true;
   clearDriveKeys();
   try {
+    const experimentReadiness = driveExperimentReadiness();
+    if (!experimentReadiness.ready) throw new Error(experimentReadiness.message);
     const startConfig = driveStartPayload();
     if (startConfig.detector_enabled && !driveVisionRuntime().available) {
       throw new Error(driveVisionRuntimeMessage());
+    }
+    if (startConfig.road_segmentation?.enabled && !driveSegmentationRuntime().available) {
+      throw new Error(driveSegmentationRuntimeMessage());
     }
     const payload = await request("/api/drive/start", {
       method: "POST",
@@ -2258,7 +2741,9 @@ async function startDrive(event) {
     };
     state.drive.sequence = 0;
     state.drive.lastTerminalSession = null;
-    setDriveView(startConfig.detector_enabled ? "overlay" : "raw");
+    setDriveView(
+      startConfig.detector_enabled || startConfig.road_segmentation?.enabled ? "overlay" : "raw",
+    );
     showToast(
       state.drive.initialControlMode === "autopilot"
         ? "Drive is starting in simulator autopilot. Use Take Control for manual driving."
@@ -2356,6 +2841,7 @@ function bindDriveConsole() {
   }
   $("drive-detector").addEventListener("change", selectPreferredDriveWeight);
   $("drive-detector-enabled").addEventListener("change", updateDriveModelToggle);
+  $("drive-segmentation-enabled").addEventListener("change", updateDriveSegmentationToggle);
   $("drive-camera-profile").addEventListener("change", () => {
     applyDriveCameraProfile();
     scheduleGarageConfigure();
@@ -2393,9 +2879,74 @@ function bindDriveConsole() {
   renderDriveState();
 }
 
+function liveCameraProfile() {
+  const resolution = $("live-resolution").value;
+  const fps = number("live-camera-fps");
+  const exact = Object.entries(DRIVE_CAMERA_PROFILES).find(
+    ([, profile]) => profile.resolution === resolution && profile.fps === fps,
+  )?.[0];
+  const nearest = exact || (
+    resolution === "1920x1080"
+      ? "detail"
+      : resolution === "1280x720" && fps >= 45
+        ? "high-refresh"
+        : resolution === "1280x720"
+          ? "balanced"
+          : "compatibility"
+  );
+  const option = [...$("drive-camera-profile").options].find(
+    (candidate) => candidate.value === nearest,
+  );
+  const profile = option && !option.disabled ? nearest : "compatibility";
+  const applied = DRIVE_CAMERA_PROFILES[profile];
+  return {
+    profile,
+    normalized: applied.resolution !== resolution || applied.fps !== fps,
+    applied,
+  };
+}
+
+function applyLiveSettingsToGarage() {
+  if (driveIsActive()) throw new Error("End the active drive before changing Garage settings.");
+  if (!driveVisionRuntime().available) throw new Error(driveVisionRuntimeMessage());
+  const camera = liveCameraProfile();
+  $("drive-camera-profile").value = camera.profile;
+  applyDriveCameraProfile();
+  $("drive-camera-fov").value = $("live-fov").value;
+  $("drive-detector").value = $("live-detector").value;
+  selectPreferredDriveWeight();
+  selectIfAvailable("drive-weights", $("live-weights").value);
+  $("drive-device").value = $("live-device").value;
+  $("drive-image-size").value = $("live-image-size").value;
+  $("drive-confidence").value = $("live-confidence").value;
+  $("drive-confidence").dispatchEvent(new Event("input", { bubbles: true }));
+  $("drive-detector-enabled").checked = true;
+  $("drive-record-video").checked = checked("live-video");
+  $("drive-spectator-follow").checked = checked("live-spectator-follow");
+  updateDriveModelToggle();
+  renderGarageBay();
+  scheduleGarageConfigure();
+  closeGarageResearchModal();
+  openGameDrawer("settings");
+  showToast(
+    "Vision, video, FOV, and server-camera settings applied to Garage. " +
+      (camera.normalized
+        ? `Camera normalized to ${camera.applied.resolution} at ${camera.applied.fps} FPS. `
+        : "") +
+      "Connection, expected map, actor IDs, duration, teacher motion, and shadow policy remain Live workflow settings.",
+  );
+}
+
 function bindLiveForm() {
   $("live-run-id").value = generatedId("ui-live");
   $("live-detector").addEventListener("change", selectPreferredWeight);
+  $("live-use-garage").addEventListener("click", () => {
+    try {
+      applyLiveSettingsToGarage();
+    } catch (error) {
+      showToast(error.message, true);
+    }
+  });
   $("live-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const button = event.submitter;
@@ -2466,6 +3017,278 @@ function situationPayload() {
   };
 }
 
+function syncRangeFromGarage(id, value) {
+  const input = $(id);
+  const minimum = Number(input.min || value);
+  const maximum = Number(input.max || value);
+  input.value = String(Math.min(maximum, Math.max(minimum, Number(value) || 0)));
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function syncSituationFromGarage() {
+  if (!state.drive.catalog) return;
+  for (const [situationId, garageId] of [
+    ["situation-map", "drive-map-choice"],
+    ["situation-weather", "drive-weather"],
+    ["situation-props", "drive-props"],
+    ["situation-ego", "drive-vehicle"],
+  ]) {
+    const value = $(garageId).value;
+    if ([...$(situationId).options].some((option) => option.value === value)) {
+      $(situationId).value = value;
+    }
+  }
+  syncRangeFromGarage("vehicle-count", $("drive-traffic-choice").value);
+  syncRangeFromGarage("walker-count", $("drive-walkers-choice").value);
+  $("situation-seed").value = $("drive-seed").value;
+  $("situation-fov").value = $("drive-camera-fov").value;
+}
+
+function syncLiveFromGarage() {
+  if (!state.drive.catalog) return;
+  $("live-host").value = $("drive-host").value;
+  $("live-port").value = $("drive-port").value;
+  $("live-map").value = $("drive-map-choice").value.split("/").pop() || "";
+  selectIfAvailable("live-resolution", $("drive-resolution").value);
+  $("live-camera-fps").value = $("drive-camera-fps").value;
+  $("live-fov").value = $("drive-camera-fov").value;
+  selectIfAvailable("live-detector", $("drive-detector").value);
+  selectPreferredWeight({ resetConfidence: false });
+  selectIfAvailable("live-weights", $("drive-weights").value);
+  selectIfAvailable("live-device", $("drive-device").value);
+  $("live-image-size").value = $("drive-image-size").value;
+  $("live-confidence").value = $("drive-confidence").value;
+  $("live-confidence").dispatchEvent(new Event("input", { bubbles: true }));
+  $("live-video").checked = checked("drive-record-video");
+  $("live-spectator-follow").checked = checked("drive-spectator-follow");
+}
+
+async function saveCurrentSituation({ announce = true } = {}) {
+  const result = $("situation-result");
+  const payload = await request("/api/situations", {
+    method: "POST",
+    body: JSON.stringify(situationPayload()),
+  });
+  result.textContent = `Saved ${payload.path}`;
+  result.className = "inline-result ok";
+  if (announce) showToast("Situation recipe saved and validated.");
+  await refreshBootstrap();
+  return payload;
+}
+
+function scenarioPlanObjectPath(job) {
+  if (
+    job?.kind !== "scenario_plan" ||
+    job.status !== "success" ||
+    !job.expected_output_exists ||
+    !job.expected_output ||
+    !state.catalog?.workspace
+  ) {
+    return null;
+  }
+  const workspace = `${state.catalog.workspace.replace(/\/+$/, "")}/`;
+  if (!job.expected_output.startsWith(workspace)) return null;
+  const relative = job.expected_output.slice(workspace.length).replaceAll("\\", "/");
+  return /^runs\/[^/]+$/.test(relative) ? relative : null;
+}
+
+function scenarioPlanWeatherPreset(recipe) {
+  const raw = String(recipe?.weather?.weather_id || "").toLowerCase();
+  const direct = raw.replace(/^operator-/, "");
+  const options = new Set([...$("drive-weather").options].map((option) => option.value));
+  if (options.has(direct)) return direct;
+  if (raw.includes("heavy") && raw.includes("rain")) return "heavy-rain";
+  if (raw.includes("soft") && raw.includes("rain")) return "soft-rain-sunset";
+  if (raw.includes("fog") || raw.includes("night")) return "fog-night";
+  if (raw.includes("wet")) return "wet-day";
+  if (raw.includes("cloud")) return "cloudy-day";
+  if (raw.includes("clear")) return "clear-day";
+  return null;
+}
+
+function scenarioPlanPropPreset(recipe) {
+  const blueprintIds = (recipe?.props || []).map((prop) =>
+    String(prop?.blueprint_id || "").toLowerCase(),
+  );
+  if (!blueprintIds.length) return "none";
+  if (blueprintIds.some((value) => value.includes("warningaccident") || value.includes("debris"))) {
+    return "accident";
+  }
+  if (blueprintIds.some((value) => value.includes("warningconstruction") || value.includes("barrier"))) {
+    return "construction";
+  }
+  if (blueprintIds.every((value) => value.includes("trafficcone"))) return "cones";
+  return null;
+}
+
+function scenarioSelectValue(id, candidates, label) {
+  const select = $(id);
+  const values = [...select.options].map((option) => option.value);
+  const selected = candidates.filter(Boolean).find((candidate) =>
+    values.some((value) => value === candidate || value.endsWith(`/${candidate}`)),
+  );
+  if (!selected) throw new Error(`${label} is not available in the connected Garage.`);
+  return values.find((value) => value === selected || value.endsWith(`/${selected}`));
+}
+
+function setScenarioCount(id, value, noun) {
+  const select = $(id);
+  const normalized = String(Math.max(0, Math.round(Number(value) || 0)));
+  for (const option of [...select.querySelectorAll("option[data-scenario-count]")]) {
+    if (option.value !== normalized) option.remove();
+  }
+  if (![...select.options].some((option) => option.value === normalized)) {
+    const option = document.createElement("option");
+    option.value = normalized;
+    option.textContent = `${normalized} ${noun} · scenario`;
+    option.dataset.scenarioCount = "true";
+    select.append(option);
+  }
+  select.value = normalized;
+}
+
+async function loadScenarioPlanSuite(job) {
+  const objectPath = scenarioPlanObjectPath(job);
+  if (!objectPath) throw new Error("This scenario plan is not ready to use in Garage.");
+  const evidence = await request(`/api/evidence?path=${encodeURIComponent(objectPath)}`);
+  const suiteArtifact = (evidence.artifacts || []).find(
+    (artifact) => artifact.role === "resolved_scenario_suite" && artifact.downloadable,
+  );
+  if (!suiteArtifact) throw new Error("The scenario plan has no usable resolved scene.");
+  const suite = await request(artifactUrl(objectPath, suiteArtifact.path));
+  if (!Array.isArray(suite.recipes) || !suite.recipes.length) {
+    throw new Error("The scenario plan contains no scene recipe.");
+  }
+  return { objectPath, suite };
+}
+
+function applyGarageSceneValues(
+  {
+    map,
+    vehicle,
+    weather,
+    props,
+    trafficCount = 0,
+    walkerCount = 0,
+    seed = null,
+    cameraFov = null,
+  },
+  sourceLabel,
+) {
+  if (driveIsActive()) throw new Error("End the active drive before loading another scene.");
+  const resolved = {
+    map: scenarioSelectValue("drive-map-choice", [String(map || "")], "Scenario map"),
+    vehicle: scenarioSelectValue("drive-vehicle", [vehicle], "Scenario vehicle"),
+    weather: scenarioSelectValue("drive-weather", [weather], "Scenario weather"),
+    props: scenarioSelectValue("drive-props", [props], "Scenario road scene"),
+  };
+  const capabilities = driveWorldCapabilities();
+  const currentMap = String(state.drive.catalog?.map || "").split("/").pop();
+  const requestedMap = String(resolved.map || "").split("/").pop();
+  if (requestedMap && currentMap && requestedMap !== currentMap && !capabilities.mapReload) {
+    throw new Error("This Scene needs map reload, but the connected World Worker does not provide it.");
+  }
+  if (Number(trafficCount) > 0 && !capabilities.traffic) {
+    throw new Error("This Scene needs traffic population, but the connected World Worker does not provide it.");
+  }
+  if (Number(walkerCount) > 0 && !capabilities.walkers) {
+    throw new Error("This Scene needs pedestrian population, but the connected World Worker does not provide it.");
+  }
+
+  $("drive-map-choice").value = resolved.map;
+  $("drive-vehicle").value = resolved.vehicle;
+  $("drive-weather").value = resolved.weather;
+  $("drive-props").value = resolved.props;
+  setScenarioCount("drive-traffic-choice", trafficCount, "vehicles");
+  setScenarioCount("drive-walkers-choice", walkerCount, "pedestrians");
+  if (Number.isFinite(Number(seed)) && Number(seed) >= 0) {
+    $("drive-seed").value = String(Math.round(Number(seed)));
+  }
+  if (Number.isFinite(Number(cameraFov)) && Number(cameraFov) >= 30 && Number(cameraFov) <= 150) {
+    $("drive-camera-fov").value = String(Number(cameraFov));
+  }
+  populateDriveColors();
+  renderGarageVehicleCarousel();
+  renderGarageBay();
+  updateDriveConfigAvailability();
+  scheduleGarageConfigure();
+  closeGarageResearchModal();
+  openGameDrawer("settings");
+  showToast(
+    `${sourceLabel} applied to Garage · ${trafficCount || 0} vehicles · ` +
+      `${walkerCount || 0} pedestrians.`,
+  );
+}
+
+function applySituationToGarage() {
+  const situation = situationPayload();
+  applyGarageSceneValues(
+    {
+      map: situation.map_name,
+      vehicle: situation.ego_blueprint,
+      weather: situation.weather_preset,
+      props: situation.prop_preset,
+      trafficCount: situation.vehicle_count,
+      walkerCount: situation.walker_count,
+      seed: situation.master_seed,
+      cameraFov: situation.camera_fov,
+    },
+    "Current Scene Builder values",
+  );
+}
+
+function applyScenarioRecipeToGarage(recipe, objectPath, masterSeed = null) {
+  applyGarageSceneValues(
+    {
+      map: recipe.map_name,
+      vehicle: recipe.ego_blueprint,
+      weather: scenarioPlanWeatherPreset(recipe),
+      props: scenarioPlanPropPreset(recipe),
+      trafficCount: recipe.traffic?.vehicle_count,
+      walkerCount: recipe.traffic?.walker_count,
+      seed: masterSeed,
+      cameraFov: recipe.camera?.fov_degrees,
+    },
+    `Plan ${objectPath.split("/").pop()}`,
+  );
+}
+
+async function useScenarioPlanInGarage(job) {
+  if (state.scenarioPlanUsing) return;
+  state.scenarioPlanUsing = true;
+  renderScenarioPlanAction();
+  try {
+    const { objectPath, suite } = await loadScenarioPlanSuite(job);
+    applyScenarioRecipeToGarage(suite.recipes[0], objectPath, suite.master_seed);
+    if (suite.recipes.length > 1) {
+      showToast(`Loaded the first of ${suite.recipes.length} planned scenes into Garage.`);
+    }
+  } catch (error) {
+    showToast(error.message, true);
+  } finally {
+    state.scenarioPlanUsing = false;
+    renderScenarioPlanAction();
+  }
+}
+
+function renderScenarioPlanAction() {
+  const panel = $("scenario-plan-action");
+  if (!panel) return;
+  const job = state.jobs.find((candidate) => candidate.job_id === state.scenarioPlanJobId);
+  panel.hidden = !job;
+  if (!job) return;
+  const status = $("scenario-plan-status");
+  const use = $("scenario-use-garage");
+  status.textContent = job.status === "success"
+    ? `${job.title} is ready.`
+    : isActive(job.status)
+      ? `${job.title} is ${job.status}.`
+      : `${job.title} ${job.status}: ${job.error || "inspect Activity for details"}`;
+  status.className = `inline-result ${job.status === "success" ? "ok" : ""}`;
+  use.hidden = job.status !== "success";
+  use.disabled = state.scenarioPlanUsing || !scenarioPlanObjectPath(job);
+}
+
 async function refreshBootstrap() {
   const bootstrap = await request("/api/bootstrap");
   state.token = bootstrap.token;
@@ -2475,26 +3298,27 @@ async function refreshBootstrap() {
     bootstrap.prop_presets,
   );
   state.jobs = bootstrap.jobs;
+  state.scenarioPlanJobId ||= state.jobs.find((job) => job.kind === "scenario_plan")?.job_id || null;
   renderJobs();
 }
 
 function bindSituationForms() {
+  $("situation-id").value = generatedId("scene");
   $("plan-run-id").value = generatedId("ui-plan");
+  $("situation-use-garage").addEventListener("click", () => {
+    try {
+      applySituationToGarage();
+    } catch (error) {
+      showToast(error.message, true);
+    }
+  });
   $("situation-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const button = event.submitter;
     button.disabled = true;
     const result = $("situation-result");
     try {
-      const payload = await request("/api/situations", {
-        method: "POST",
-        body: JSON.stringify(situationPayload()),
-      });
-      result.textContent = `Saved ${payload.path}`;
-      result.className = "inline-result ok";
-      showToast("Situation recipe saved and validated.");
-      await refreshBootstrap();
-      $("plan-suite").value = payload.path;
+      await saveCurrentSituation();
       $("plan-run-id").value = `plan-${$("situation-id").value}-${nowToken()}`;
     } catch (error) {
       result.textContent = error.message;
@@ -2506,16 +3330,29 @@ function bindSituationForms() {
   });
   $("plan-form").addEventListener("submit", async (event) => {
     event.preventDefault();
+    const button = event.submitter;
+    button.disabled = true;
     try {
-      await startJob("scenario_plan", {
-        suite: $("plan-suite").value,
+      const runId = $("plan-run-id").value;
+      const saved = await saveCurrentSituation({ announce: false });
+      const job = await startJob("scenario_plan", {
+        suite: saved.path,
         split_plan: $("plan-split").value,
-        run_id: $("plan-run-id").value,
+        run_id: runId,
       });
+      state.scenarioPlanJobId = job.job_id;
+      renderScenarioPlanAction();
+      $("situation-id").value = generatedId("scene");
       $("plan-run-id").value = generatedId("ui-plan");
     } catch (error) {
       showToast(error.message, true);
+    } finally {
+      button.disabled = false;
     }
+  });
+  $("scenario-use-garage").addEventListener("click", () => {
+    const job = state.jobs.find((candidate) => candidate.job_id === state.scenarioPlanJobId);
+    if (job) void useScenarioPlanInGarage(job);
   });
 }
 
@@ -2961,8 +3798,7 @@ function selectEvidenceForVerification() {
     return;
   }
   verifier.value = path;
-  activateTab("tools");
-  activateResearchTool("workflows");
+  openGarageResearchModal("workflows");
   $("verify-form").scrollIntoView({ behavior: "smooth", block: "center" });
   verifier.focus();
   showToast("Selected in the existing verification workflow.");
@@ -3023,6 +3859,18 @@ function renderJobs() {
         }
       });
       actionCell.append(stop);
+    } else if (scenarioPlanObjectPath(job)) {
+      const use = document.createElement("button");
+      use.type = "button";
+      use.className = "row-action";
+      use.textContent = "Use in Garage";
+      use.disabled = state.scenarioPlanUsing;
+      use.addEventListener("click", (event) => {
+        event.stopPropagation();
+        state.scenarioPlanJobId = job.job_id;
+        void useScenarioPlanInGarage(job);
+      });
+      actionCell.append(use);
     } else {
       const inspect = document.createElement("button");
       inspect.type = "button";
@@ -3037,6 +3885,7 @@ function renderJobs() {
   $("jobs-status").textContent = `${activeCount} active job${activeCount === 1 ? "" : "s"}`;
   $("jobs-status").className = `status-pill ${activeCount ? "running" : "neutral"}`;
   $("session-count").textContent = state.jobs.length;
+  renderScenarioPlanAction();
   if (state.selectedJobId) {
     renderInspector();
   }
@@ -3142,6 +3991,13 @@ async function refreshJobs() {
   try {
     const payload = await request("/api/jobs");
     state.jobs = payload.jobs;
+    if (
+      !state.scenarioPlanJobId ||
+      !state.jobs.some((job) => job.job_id === state.scenarioPlanJobId)
+    ) {
+      state.scenarioPlanJobId =
+        state.jobs.find((job) => job.kind === "scenario_plan")?.job_id || null;
+    }
     renderJobs();
   } catch (error) {
     showToast(error.message, true);
@@ -3151,9 +4007,6 @@ async function refreshJobs() {
 function bindChrome() {
   installGameShell();
   bindGameShell();
-  for (const tab of document.querySelectorAll(".tab")) {
-    tab.addEventListener("click", () => activateTab(tab.dataset.tab));
-  }
   for (const tab of document.querySelectorAll(".research-tab")) {
     tab.addEventListener("click", () => activateResearchTool(tab.dataset.researchTab));
   }
@@ -3196,8 +4049,11 @@ async function initialize() {
   }
   try {
     await refreshDriveCatalog();
-    await refreshGaragePreviewState();
-    if (garagePreviewAvailable() && !state.drive.garage.active) {
+    await refreshGaragePreviewState({ hydrateControls: true });
+    if (
+      garagePreviewAvailable() &&
+      (!state.drive.garage.active || state.drive.garage.configKey !== garagePayloadKey())
+    ) {
       await configureGaragePreview();
     }
     await refreshDriveState();

@@ -153,7 +153,14 @@ class _FakePreviewSession:
             "distance": self.config.distance,
             "error": None,
             "cleanup_errors": [],
+            "camera_id": id(self),
+            "weather_preset": self.config.weather_preset,
         }
+
+    def update_weather(self, weather_preset: str) -> dict[str, Any]:
+        self.events.append(f"weather:{weather_preset}")
+        self.config = replace(self.config, weather_preset=weather_preset)
+        return self.snapshot()
 
     def orbit(self, request: GarageOrbitRequest) -> dict[str, Any]:
         self.events.append(f"orbit:{request.sequence}")
@@ -196,13 +203,83 @@ def test_preview_manager_rejects_drive_overlap_and_reconfigure_cleans_old_scene(
     second = manager.configure(preview_payload(vehicle_blueprint="vehicle.audi.tt"))
 
     assert first["active"] is True
+    assert first["configure_action"] == "started"
     assert second["active"] is True
+    assert second["configure_action"] == "restarted"
     assert sessions[0].events == ["start", "close:reconfigure"]
     assert sessions[1].events == ["start"]
 
     manager.stop_for_drive()
     assert sessions[1].events == ["start", "close:drive_start"]
     assert manager.state()["active"] is False
+
+
+def test_preview_manager_identical_config_is_a_no_op() -> None:
+    manager, sessions = _manager({"status": "idle"})
+
+    first = manager.configure(preview_payload())
+    second = manager.configure(preview_payload())
+
+    assert len(sessions) == 1
+    assert sessions[0].events == ["start"]
+    assert second["camera_id"] == first["camera_id"]
+    assert second["configure_action"] == "noop"
+
+
+def test_preview_manager_updates_only_weather_in_place() -> None:
+    manager, sessions = _manager({"status": "idle"})
+
+    first = manager.configure(preview_payload())
+    second = manager.configure(preview_payload(weather_preset="heavy-rain"))
+
+    assert len(sessions) == 1
+    assert sessions[0].events == ["start", "weather:heavy-rain"]
+    assert second["camera_id"] == first["camera_id"]
+    assert second["weather_preset"] == "heavy-rain"
+    assert second["configure_action"] == "weather"
+
+
+def test_preview_manager_weather_failure_preserves_the_existing_scene_and_config() -> None:
+    manager, sessions = _manager({"status": "idle"})
+    first = manager.configure(preview_payload())
+
+    def fail_weather(weather_preset: str) -> dict[str, Any]:
+        sessions[0].events.append(f"weather-failed:{weather_preset}")
+        raise TimeoutError("weather RPC stalled")
+
+    sessions[0].update_weather = fail_weather  # type: ignore[method-assign]
+
+    with pytest.raises(TimeoutError, match="weather RPC stalled"):
+        manager.configure(preview_payload(weather_preset="heavy-rain"))
+
+    current = manager.state()
+    assert len(sessions) == 1
+    assert current["active"] is True
+    assert current["camera_id"] == first["camera_id"]
+    assert current["weather_preset"] == "clear-day"
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("traffic_count", 30),
+        ("walker_count", 22),
+        ("prop_preset", "accident"),
+    ],
+)
+def test_preview_manager_restarts_for_scene_population_changes(
+    field: str,
+    value: object,
+) -> None:
+    manager, sessions = _manager({"status": "idle"})
+
+    manager.configure(preview_payload())
+    changed = manager.configure(preview_payload(**{field: value}))
+
+    assert changed["configure_action"] == "restarted"
+    assert len(sessions) == 2
+    assert sessions[0].events == ["start", "close:reconfigure"]
+    assert sessions[1].events == ["start"]
 
 
 def test_garage_server_streams_multipart_preview_frames_without_polling(
@@ -282,6 +359,47 @@ class _CleanupWorker:
     def stop_scene(self, scene: WorldWorkerScene) -> WorldWorkerScene:
         self.stopped.append(scene)
         return replace(scene, status="stopped", cleanup_guard_passed=True)
+
+
+def test_preview_session_weather_update_preserves_scene_camera_and_stream() -> None:
+    class Worker(_CleanupWorker):
+        def __init__(self) -> None:
+            super().__init__()
+            self.weather_updates: list[tuple[WorldWorkerScene, str]] = []
+
+        def weather(
+            self,
+            scene: WorldWorkerScene,
+            weather_preset: str,
+        ) -> WorldWorkerScene:
+            self.weather_updates.append((scene, weather_preset))
+            return scene
+
+    worker = Worker()
+    session = GaragePreviewSession(
+        GaragePreviewConfig.from_mapping(preview_payload()),
+        carla_host="127.0.0.1",
+        carla_port=2000,
+        world_worker=worker,  # type: ignore[arg-type]
+    )
+    scene = _scene()
+    stream = object()
+    with session._lock:
+        session._scene = scene
+        session._stream = stream  # type: ignore[assignment]
+        session._vehicle_id = 20
+        session._camera_id = 30
+        session._status = "running"
+
+    updated = session.update_weather("heavy-rain")
+
+    assert worker.weather_updates == [(scene, "heavy-rain")]
+    assert session._scene is scene
+    assert session._stream is stream
+    assert updated["vehicle_id"] == 20
+    assert updated["camera_id"] == 30
+    assert updated["weather_preset"] == "heavy-rain"
+    assert updated["applied_config"]["weather_preset"] == "heavy-rain"
 
 
 class _CleanupRpc:
@@ -490,3 +608,154 @@ def test_raw_fallback_keeps_last_frame_during_long_lan_pause(monkeypatch) -> Non
     assert session._status == "running"
     assert session._error is None
     assert session._jpeg == b"last-good-frame"
+
+
+def test_worker_camera_timeout_recovers_without_replacing_scene_or_camera(monkeypatch) -> None:
+    class Frame:
+        sequence = 5
+        jpeg = b"recovered-frame"
+
+    class RecoveringStream:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.parked = threading.Event()
+            self.release = threading.Event()
+
+        def wait_for_frame(self, *, after_sequence: int, timeout: float) -> Frame:
+            del after_sequence, timeout
+            self.calls += 1
+            if self.calls <= 6:
+                raise TimeoutError
+            if self.calls == 7:
+                return Frame()
+            self.parked.set()
+            self.release.wait(1.0)
+            raise TimeoutError
+
+    worker = _CleanupWorker()
+    session = GaragePreviewSession(
+        GaragePreviewConfig.from_mapping(preview_payload()),
+        carla_host="127.0.0.1",
+        carla_port=2000,
+        world_worker=worker,  # type: ignore[arg-type]
+    )
+    scene = _scene()
+    stream = RecoveringStream()
+    clock_value = 0.0
+
+    def advancing_clock() -> float:
+        nonlocal clock_value
+        clock_value += 10.0
+        return clock_value
+
+    monkeypatch.setattr(
+        "carla_vision.operator.garage_preview.time.monotonic",
+        advancing_clock,
+    )
+    with session._lock:
+        session._scene = scene
+        session._stream = stream  # type: ignore[assignment]
+        session._frame_sequence = 4
+        session._jpeg = b"last-good-frame"
+        session._vehicle_id = 20
+        session._camera_id = 30
+        session._status = "running"
+        session._worker_camera = True
+
+    thread = threading.Thread(target=session._frame_loop)
+    thread.start()
+    assert stream.parked.wait(1.0)
+
+    assert session._status == "running"
+    assert session._closed is False
+    assert session._scene is scene
+    assert session._camera_id == 30
+    assert session.frame() == (5, b"recovered-frame")
+    assert worker.stopped == []
+
+    session._frame_stop.set()
+    stream.release.set()
+    thread.join(timeout=1.0)
+    assert not thread.is_alive()
+
+
+def test_transient_heartbeat_failure_recovers_without_closing_scene(monkeypatch) -> None:
+    class Worker(_CleanupWorker):
+        def __init__(self) -> None:
+            super().__init__()
+            self.calls = 0
+            self.parked = threading.Event()
+            self.release = threading.Event()
+
+        def heartbeat(self, scene: WorldWorkerScene) -> WorldWorkerScene:
+            self.calls += 1
+            if self.calls == 1:
+                raise TimeoutError("temporary LAN stall")
+            if self.calls == 3:
+                self.parked.set()
+                self.release.wait(1.0)
+            return scene
+
+    monkeypatch.setattr("carla_vision.operator.garage_preview._HEARTBEAT_SECONDS", 0.001)
+    worker = Worker()
+    session = GaragePreviewSession(
+        GaragePreviewConfig.from_mapping(preview_payload()),
+        carla_host="127.0.0.1",
+        carla_port=2000,
+        world_worker=worker,  # type: ignore[arg-type]
+    )
+    scene = _scene()
+    with session._lock:
+        session._scene = scene
+        session._vehicle_id = 20
+        session._camera_id = 30
+        session._status = "running"
+
+    thread = threading.Thread(target=session._heartbeat_loop)
+    thread.start()
+    assert worker.parked.wait(1.0)
+
+    assert session._status == "running"
+    assert session._error is None
+    assert session._closed is False
+    assert session._scene is scene
+    assert worker.stopped == []
+
+    session._heartbeat_stop.set()
+    worker.release.set()
+    thread.join(timeout=1.0)
+    assert not thread.is_alive()
+
+
+def test_persistent_heartbeat_failure_closes_after_bounded_retries(monkeypatch) -> None:
+    class Worker(_CleanupWorker):
+        def __init__(self) -> None:
+            super().__init__()
+            self.calls = 0
+
+        def heartbeat(self, scene: WorldWorkerScene) -> WorldWorkerScene:
+            del scene
+            self.calls += 1
+            raise TimeoutError("persistent LAN failure")
+
+    monkeypatch.setattr("carla_vision.operator.garage_preview._HEARTBEAT_SECONDS", 0.001)
+    worker = Worker()
+    session = GaragePreviewSession(
+        GaragePreviewConfig.from_mapping(preview_payload()),
+        carla_host="127.0.0.1",
+        carla_port=2000,
+        world_worker=worker,  # type: ignore[arg-type]
+    )
+    scene = _scene()
+    with session._lock:
+        session._scene = scene
+        session._status = "running"
+
+    session._heartbeat_loop()
+
+    assert worker.calls == 3
+    assert worker.stopped == [scene]
+    assert session._status == "failed"
+    assert session._closed is True
+    assert session._error is not None
+    assert "(3/3)" in session._error

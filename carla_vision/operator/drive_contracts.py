@@ -10,11 +10,18 @@ from pathlib import Path
 from typing import Any, Self
 
 from ..controller import ControlCommand
+from ..segmentation.contracts import (
+    DEFAULT_SEGFORMER_B0_CHECKPOINT,
+    SegmentationConfig,
+)
 from .situations import PROP_PRESETS, WEATHER_PRESETS
 
 _RUN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _RESOLUTION = re.compile(r"^(\d{3,4})x(\d{3,4})$")
 _MAP_NAME = re.compile(r"^[A-Za-z0-9_./-]{1,160}$")
+_HF_MODEL_ID = re.compile(
+    r"^[A-Za-z0-9][A-Za-z0-9._-]{0,95}(?:/[A-Za-z0-9][A-Za-z0-9._-]{0,95})?$"
+)
 _CONTROL_MODES = frozenset({"manual", "autopilot"})
 _ROUTE_MODES = frozenset({"free", "random_destination"})
 EXPERIMENT_PRESETS = frozenset(
@@ -83,6 +90,85 @@ def _boolean(value: Any, name: str) -> bool:
     return value
 
 
+def _road_segmentation_config(
+    raw: Any,
+    *,
+    workspace: Path,
+    default_device: str,
+) -> SegmentationConfig | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, Mapping):
+        raise TypeError("road_segmentation must be an object")
+    allowed = {
+        "enabled",
+        "backend",
+        "checkpoint",
+        "device",
+        "local_files_only",
+        "revision",
+    }
+    _strict_keys(raw, allowed, "road_segmentation")
+    enabled = _boolean(raw.get("enabled", False), "road_segmentation.enabled")
+    if not enabled:
+        configured = sorted(str(key) for key in raw if key != "enabled")
+        if configured:
+            raise ValueError("disabled road_segmentation cannot declare model settings")
+        return None
+
+    backend = str(raw.get("backend", "segformer-b0")).strip().lower().replace("_", "-")
+    if backend not in {"segformer", "segformer-b0", "hf-segformer", "huggingface-segformer"}:
+        raise ValueError("live road_segmentation backend must be SegFormer")
+    checkpoint_raw = str(raw.get("checkpoint", DEFAULT_SEGFORMER_B0_CHECKPOINT)).strip()
+    if not checkpoint_raw:
+        raise ValueError("road_segmentation.checkpoint must not be empty")
+
+    checkpoint: str | Path
+    local_candidate = (workspace / checkpoint_raw).expanduser()
+    if local_candidate.exists():
+        resolved = local_candidate.resolve(strict=True)
+        resolved.relative_to(workspace)
+        if not resolved.is_dir() or not (resolved / "config.json").is_file():
+            raise ValueError(
+                "local road segmentation checkpoint must be a workspace-contained "
+                "Hugging Face model directory"
+            )
+        checkpoint = resolved
+    else:
+        parts = checkpoint_raw.split("/")
+        if not _HF_MODEL_ID.fullmatch(checkpoint_raw) or any(part in {".", ".."} for part in parts):
+            raise ValueError(
+                "road_segmentation.checkpoint must be a safe Hugging Face model id or "
+                "workspace model directory"
+            )
+        checkpoint = checkpoint_raw
+
+    device = str(raw.get("device", default_device)).strip()
+    if not device or len(device) > 64:
+        raise ValueError("road_segmentation.device must be a non-empty device name")
+    local_files_only = _boolean(
+        raw.get("local_files_only", False),
+        "road_segmentation.local_files_only",
+    )
+    revision_raw = raw.get("revision")
+    revision = None if revision_raw in {None, ""} else str(revision_raw).strip()
+    if revision is not None and (
+        len(revision) > 128
+        or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,127}", revision)
+        or ".." in revision.split("/")
+    ):
+        raise ValueError("road_segmentation.revision is not a safe revision identifier")
+    options: dict[str, Any] = {"local_files_only": local_files_only}
+    if revision is not None:
+        options["revision"] = revision
+    return SegmentationConfig(
+        backend=backend,
+        checkpoint=checkpoint,
+        device=device,
+        options=options,
+    )
+
+
 def weather_payload(preset: str) -> list[float]:
     """Serialize one named preset in CARLA 0.9.16's fixed RPC field order."""
 
@@ -114,6 +200,7 @@ class DriveStartConfig:
     camera_fov: float
     record_video: bool
     spectator_follow: bool
+    road_segmentation: SegmentationConfig | None = None
     world_worker_enabled: bool = False
     map_name: str = "current"
     traffic_count: int = 0
@@ -153,11 +240,12 @@ class DriveStartConfig:
             "camera_fov",
             "record_video",
             "spectator_follow",
+            "road_segmentation",
             "experiment_preset",
             *_WORKER_FIELDS,
         }
         _strict_keys(raw, allowed, "drive start request")
-        required = allowed - {"color", "experiment_preset"} - _WORKER_FIELDS
+        required = allowed - {"color", "experiment_preset", "road_segmentation"} - _WORKER_FIELDS
         missing = sorted(key for key in required if key not in raw)
         if missing:
             raise ValueError(f"drive start request is missing fields: {', '.join(missing)}")
@@ -246,6 +334,13 @@ class DriveStartConfig:
                     "configured World Worker is required for: " + ", ".join(unsupported)
                 )
 
+        device = str(raw["device"]).strip()
+        road_segmentation = _road_segmentation_config(
+            raw.get("road_segmentation"),
+            workspace=workspace,
+            default_device=device,
+        )
+
         return cls(
             run_id=run_id,
             host=host,
@@ -258,7 +353,7 @@ class DriveStartConfig:
             detector_enabled=detector_enabled,
             detector=detector,
             weights=weights,
-            device=str(raw["device"]).strip(),
+            device=device,
             image_size=_integer(raw["image_size"], "image_size", 64, 4096),
             confidence=_number(raw["confidence"], "confidence", 0.0, 1.0),
             width=width,
@@ -267,6 +362,7 @@ class DriveStartConfig:
             camera_fov=_number(raw["camera_fov"], "camera_fov", 30.0, 150.0),
             record_video=_boolean(raw["record_video"], "record_video"),
             spectator_follow=_boolean(raw["spectator_follow"], "spectator_follow"),
+            road_segmentation=road_segmentation,
             world_worker_enabled=bool(world_worker_configured),
             map_name=map_name,
             traffic_count=traffic_count,
@@ -306,6 +402,9 @@ class DriveStartConfig:
             "camera_fov": self.camera_fov,
             "record_video": self.record_video,
             "spectator_follow": self.spectator_follow,
+            "road_segmentation": (
+                None if self.road_segmentation is None else self.road_segmentation.as_dict()
+            ),
             "world_worker_enabled": self.world_worker_enabled,
             "map_name": self.map_name,
             "traffic_count": self.traffic_count,

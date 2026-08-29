@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import io
 import json
 import re
 import tempfile
@@ -12,10 +14,13 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
+import numpy as np
+
 from carla_vision.operator import drive as drive_module
 from carla_vision.operator.drive import (
     DriveSession,
     DriveSessionManager,
+    _segmentation_submission_due,
     _validate_camera_attachment,
 )
 from carla_vision.operator.drive_contracts import (
@@ -24,6 +29,11 @@ from carla_vision.operator.drive_contracts import (
     weather_payload,
 )
 from carla_vision.operator.server import create_server
+from carla_vision.segmentation import (
+    SegmentationFrameResult,
+    SegmentationMetadata,
+    SegmentationResult,
+)
 
 CARLA_HOST = "172.20.10.7"
 CARLA_PORT = 2000
@@ -187,6 +197,43 @@ class DriveStartConfigTests(_WorkspaceTestCase):
         self.assertIsNone(config.weights)
         self.assertFalse(config.detector_enabled)
 
+    def test_road_segmentation_is_optional_and_manifested_with_revision(self) -> None:
+        self.assertIsNone(self.config().road_segmentation)
+        self.assertIsNone(self.config().manifest_config()["road_segmentation"])
+
+        config = self.config(
+            road_segmentation={
+                "enabled": True,
+                "backend": "segformer-b0",
+                "checkpoint": "research/lane-segformer-b0",
+                "device": "mps",
+                "local_files_only": False,
+                "revision": "thesis-release-v1",
+            }
+        )
+
+        self.assertIsNotNone(config.road_segmentation)
+        assert config.road_segmentation is not None
+        self.assertEqual(config.road_segmentation.checkpoint, "research/lane-segformer-b0")
+        self.assertEqual(config.road_segmentation.device, "mps")
+        self.assertEqual(config.road_segmentation.options["revision"], "thesis-release-v1")
+        self.assertEqual(
+            config.manifest_config()["road_segmentation"],
+            config.road_segmentation.as_dict(),
+        )
+
+    def test_road_segmentation_rejects_ambiguous_or_unsafe_configuration(self) -> None:
+        invalid = (
+            ({"enabled": False, "checkpoint": "org/model"}, "disabled"),
+            ({"enabled": True, "backend": "not-segformer"}, "SegFormer"),
+            ({"enabled": True, "checkpoint": "../../outside"}, "checkpoint"),
+            ({"enabled": True, "revision": "../mutable"}, "revision"),
+        )
+        for road_segmentation, message in invalid:
+            with self.subTest(road_segmentation=road_segmentation):
+                with self.assertRaisesRegex((TypeError, ValueError), message):
+                    self.config(road_segmentation=road_segmentation)
+
     def test_camera_contract_accepts_60_fps_but_rejects_higher_rates(self) -> None:
         config = self.config(camera_fps=60.0)
 
@@ -298,6 +345,11 @@ class CameraAttachmentTests(unittest.TestCase):
 
 
 class DriveSessionControlTests(_WorkspaceTestCase):
+    def test_segmentation_submission_cadence_is_bounded_for_raw_stream_headroom(self) -> None:
+        self.assertTrue(_segmentation_submission_due(10.0, 0.0))
+        self.assertFalse(_segmentation_submission_due(10.19, 10.0))
+        self.assertTrue(_segmentation_submission_due(10.20, 10.0))
+
     def session(self) -> DriveSession:
         return DriveSession(self.config(), workspace=self.workspace)
 
@@ -447,6 +499,102 @@ class DriveSessionControlTests(_WorkspaceTestCase):
         self.assertEqual(stale["camera_sequence"], 11)
         self.assertFalse(stale["available"])
 
+    def test_segmentation_evidence_records_exact_source_hash_and_model_identity(self) -> None:
+        session = DriveSession(
+            self.config(detector_enabled=False, weights=""),
+            workspace=self.workspace,
+        )
+        source = np.arange(24, dtype=np.uint8).reshape(2, 4, 3)
+        segmentation = SegmentationResult(
+            class_ids=np.array([[0, 1, 2, 3], [4, 1, 2, 0]], dtype=np.uint8),
+            confidence=np.full((2, 4), 0.75, dtype=np.float32),
+            model_name="fake-road-segmenter",
+        )
+        result = SegmentationFrameResult(
+            sequence=7,
+            carla_frame=107,
+            source_timestamp=12.5,
+            source_received_monotonic=20.0,
+            inference_started_monotonic=20.1,
+            completed_monotonic=20.3,
+            source_bgr=source,
+            segmentation=segmentation,
+            segmenter_name="fake-road-segmenter",
+            source_transform=(1.0, 2.0, 3.0, 0.0, 90.0, 0.0),
+            source_fov=90.0,
+        )
+        metadata = SegmentationMetadata(
+            name="fake-road-segmenter",
+            backend="test",
+            checkpoint="research/model",
+            device="cpu",
+            revision="release-v1",
+            resolved_revision="abc123",
+            source_labels={0: "road", 1: "road line"},
+            source_to_canonical={0: "road", 1: "road_line"},
+        ).as_dict()
+        output = io.StringIO()
+
+        session._write_segmentation(output, result, metadata)
+        row = json.loads(output.getvalue())
+
+        self.assertEqual(row["sequence"], 7)
+        self.assertEqual(row["carla_frame"], 107)
+        self.assertEqual(row["model"]["resolved_revision"], "abc123")
+        self.assertTrue(row["model"]["supports_road_line"])
+        self.assertEqual(
+            row["source_bgr_sha256"],
+            hashlib.sha256(source.tobytes()).hexdigest(),
+        )
+        self.assertEqual(row["source_bgr_encoding"], "uint8_hwc_bgr")
+        self.assertTrue(row["exact_source_frame_alignment"])
+        self.assertFalse(row["model_output_actuated"])
+        self.assertEqual(row["canonical_classes"]["road"]["pixels"], 2)
+        self.assertEqual(session._segmentations_written, 1)
+
+    def test_terminal_summary_preserves_segmentation_failure_and_final_stats(self) -> None:
+        session = DriveSession(
+            self.config(road_segmentation={"enabled": True}),
+            workspace=self.workspace,
+        )
+        runtime = mock.Mock()
+        runtime.snapshot.return_value = {
+            "state": "closed",
+            "error": "ValueError: inference boom",
+            "failure_phase": "inference",
+            "name": "fake-road-segmenter",
+            "metadata": {"resolved_revision": "abc123"},
+        }
+        session._segmentation_runtime = runtime
+        session._segmentation_worker_stats = {
+            "submitted": 4,
+            "processed": 2,
+            "dropped_before_inference": 1,
+            "failed_during_inference": 1,
+        }
+        summary_path = self.workspace / "summary-test.json"
+        tracker = mock.Mock()
+        tracker.artifact_path.return_value = summary_path
+
+        session._finalize(tracker, None)
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+
+        road = summary["road_segmentation"]
+        self.assertEqual(road["state"], "closed")
+        self.assertEqual(road["failure_phase"], "inference")
+        self.assertEqual(road["error"], "ValueError: inference boom")
+        stats = road["worker_stats"]
+        self.assertEqual(
+            stats["submitted"],
+            stats["processed"]
+            + stats["dropped_before_inference"]
+            + stats["failed_during_inference"],
+        )
+        tracker.register_artifact.assert_called_once_with(
+            summary_path,
+            role="interactive_drive_summary",
+        )
+
 
 class _FakeSession:
     def __init__(self, config: DriveStartConfig, *, workspace: Path) -> None:
@@ -575,6 +723,34 @@ class DriveSessionManagerTests(_WorkspaceTestCase):
 
         self.assertEqual(catalog["vision_runtime"], runtime)
         self.assertFalse(catalog["capabilities"]["model_advisory"])
+        self.assertFalse(catalog["capabilities"]["road_segmentation"])
+        self.assertFalse(catalog["segmentation_runtime"]["available"])
+        self.assertFalse(catalog["segmentation_runtime"]["transformers_importable"])
+
+    def test_catalog_advertises_independent_road_segmentation_runtime(self) -> None:
+        runtime = {
+            "available": False,
+            "torch_importable": True,
+            "ultralytics_importable": False,
+            "transformers_importable": True,
+            "road_segmentation_available": True,
+            "road_segmentation_missing": [],
+            "missing": ["Ultralytics"],
+        }
+        with mock.patch.object(drive_module, "_vision_runtime_status", return_value=runtime):
+            catalog = self.manager(rpc_factory=_FakeRpc).catalog()
+
+        self.assertFalse(catalog["capabilities"]["model_advisory"])
+        self.assertTrue(catalog["capabilities"]["road_segmentation"])
+        self.assertEqual(
+            catalog["segmentation_runtime"],
+            {
+                "available": True,
+                "torch_importable": True,
+                "transformers_importable": True,
+                "missing": [],
+            },
+        )
 
 
 class StaticDriveConsoleContractTests(unittest.TestCase):
@@ -606,6 +782,7 @@ class StaticDriveConsoleContractTests(unittest.TestCase):
             "drive-color",
             "drive-camera-profile",
             "drive-detector-enabled",
+            "drive-segmentation-enabled",
             "drive-record-video",
             "drive-spectator-follow",
         }
@@ -644,6 +821,9 @@ class StaticDriveConsoleContractTests(unittest.TestCase):
             "drive-device",
             "drive-image-size",
             "drive-confidence",
+            "drive-segmentation-backend",
+            "drive-segmentation-checkpoint",
+            "drive-segmentation-device",
         }
         for element_id in advanced_configuration:
             with self.subTest(element_id=element_id):
@@ -653,30 +833,61 @@ class StaticDriveConsoleContractTests(unittest.TestCase):
                     ("drive-advanced-settings",),
                 )
 
-        for element_id in ("drive-start", "drive-start-another"):
-            with self.subTest(element_id=element_id):
-                self.assertEqual(controls[element_id]["form"], "drive-start-form")
-                self.assertEqual(controls[element_id]["details"], ())
+        self.assertEqual(controls["drive-start"]["form"], "drive-start-form")
+        self.assertEqual(controls["drive-start"]["details"], ())
+        self.assertNotIn("drive-start-another", self.parser.elements)
+        self.assertNotIn("drive-result-banner", self.parser.elements)
+        self.assertNotIn("drive-output-path", self.parser.elements)
+        self.assertIn(
+            '$("drive-start").textContent = saved ? "Start another drive" : "Start Drive";',
+            self.script,
+        )
+        self.assertIn('$("drive-start-note").classList.toggle("saved", saved);', self.script)
+        self.assertNotIn(".game-shell > .drive-result-banner", self.styles)
 
     def test_every_literal_javascript_id_reference_exists_in_html(self) -> None:
         literal_id_references = set(re.findall(r"\$\(\s*[\"']([^\"']+)[\"']\s*\)", self.script))
         self.assertGreater(len(literal_id_references), 100)
         self.assertEqual(sorted(literal_id_references - set(self.parser.ids)), [])
 
-    def test_detector_runtime_is_visible_gated_and_selects_overlay_on_start(self) -> None:
+    def test_visual_understanding_is_visible_gated_and_selects_one_combined_overlay_on_start(self) -> None:
         note_tag, _ = self.parser.elements["drive-detector-runtime-note"]
+        road_note_tag, _ = self.parser.elements["drive-segmentation-runtime-note"]
 
         self.assertEqual(note_tag, "small")
+        self.assertEqual(road_note_tag, "small")
         self.assertIn("function driveVisionRuntime()", self.script)
+        self.assertIn("function driveSegmentationRuntime()", self.script)
         self.assertIn("detectorToggle.disabled = active || !visionRuntime.available;", self.script)
         self.assertIn("throw new Error(driveVisionRuntimeMessage());", self.script)
+        self.assertIn("throw new Error(driveSegmentationRuntimeMessage());", self.script)
         self.assertIn(
-            'setDriveView(startConfig.detector_enabled ? "overlay" : "raw");',
+            'startConfig.detector_enabled || startConfig.road_segmentation?.enabled ? "overlay" : "raw",',
             self.script,
         )
+        self.assertIn('if (checked("drive-segmentation-enabled")) {', self.script)
+        self.assertIn("road_segmentation: {", self.script)
+        self.assertIn("enabled: true", self.script)
+        self.assertIn("driveSegmentationLabel(session.road_segmentation)", self.script)
+        self.assertIn("segmentation.metadata?.supports_road_line", self.script)
+        self.assertIn("supportsRoadLine === false", self.script)
+        self.assertIn("supportsRoadLine === true", self.script)
+        self.assertIn('segmentation.state === "failed" || segmentation.error', self.script)
+        self.assertIn("`${label} · failed`", self.script)
+        self.assertIn('segmentation.state === "initializing"', self.script)
+        self.assertIn("`${label} · no lane lines`", self.script)
+        self.assertIn("Road understanding", self.html)
+        self.assertIn("Cityscapes baseline does not claim lane lines.", self.html)
+        self.assertRegex(
+            self.html,
+            r'<option\s+value="mps"\s+selected>Apple GPU</option>',
+        )
+        self.assertIn("configureDriveSegmentationDevice()", self.script)
+        self.assertIn("driveUnderstandingLabel(session)", self.script)
+        self.assertNotIn("drive-view-segmentation", self.html)
         self.assertIn('$("drive-view-raw").addEventListener("click"', self.script)
 
-    def test_drive_camera_defaults_to_balanced_profile_with_60_fps_available(self) -> None:
+    def test_drive_camera_defaults_to_detail_profile_with_60_fps_available(self) -> None:
         tag, attributes = self.parser.elements["drive-resolution"]
         self.assertEqual(tag, "select")
         selected = re.search(
@@ -684,9 +895,9 @@ class StaticDriveConsoleContractTests(unittest.TestCase):
             self.html[self.html.index('id="drive-resolution"') :],
         )
         self.assertIsNotNone(selected)
-        self.assertEqual(selected.group(1), "1280x720")
+        self.assertEqual(selected.group(1), "1920x1080")
         profile = self.html[self.html.index('id="drive-camera-profile"') :]
-        self.assertRegex(profile, r'value="balanced"\s+selected')
+        self.assertRegex(profile, r'value="detail"\s+selected')
         self.assertIn('value="high-refresh"', profile)
         fps_tag, fps_attributes = self.parser.elements["drive-camera-fps"]
         self.assertEqual(fps_tag, "input")
@@ -716,6 +927,10 @@ class StaticDriveConsoleContractTests(unittest.TestCase):
             "game-experiments",
             "drive-experiment-toggle",
             "experiment-presets",
+            "experiment-current-config",
+            "experiment-current-readiness",
+            "experiment-review-setup",
+            "experiment-start",
             "human-marker-count",
             "human-marker-note",
         ):
@@ -743,6 +958,22 @@ class StaticDriveConsoleContractTests(unittest.TestCase):
         self.assertIn('request("/api/drive/mark"', self.script)
         self.assertIn("experiment_preset: state.drive.experimentPreset", self.script)
         self.assertIn('openGameDrawer("experiments")', self.script)
+        self.assertIn("function driveExperimentReadiness", self.script)
+        self.assertIn("function experimentConfigSummary", self.script)
+        self.assertIn('window.sessionStorage.setItem("carla-drive-experiment", name)', self.script)
+        self.assertIn('window.sessionStorage.getItem("carla-drive-experiment")', self.script)
+        self.assertIn('if (!select) return false;', self.script)
+        self.assertNotIn('if (!select || select.disabled) return false;', self.script)
+        self.assertIn('$("experiment-start").textContent = `Start ${selected.title}`;', self.script)
+        self.assertIn('openGameDrawer("settings")', self.script)
+        self.assertRegex(
+            self.script,
+            re.compile(
+                r'\["starting", "running", "stopping"\]\.includes\(statusName\).*?'
+                r'state\.drive\.experimentPreset = session\.experiment_preset;',
+                re.DOTALL,
+            ),
+        )
 
     def test_touch_hud_mapping_pointer_lifecycle_and_responsive_visibility(self) -> None:
         expected_controls = {

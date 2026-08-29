@@ -21,12 +21,12 @@
               <div class="drive-stage-column">
               <article class="card drive-viewer-card">
                 <div class="drive-viewer-toolbar">
-                  <div class="drive-view-switch" role="group" aria-label="Camera and visualization">
+                  <div class="drive-view-switch" role="group" aria-label="Camera and visual understanding">
                     <button id="drive-view-raw" class="drive-view-button active" type="button" aria-pressed="true">
                       Camera
                     </button>
                     <button id="drive-view-overlay" class="drive-view-button" type="button" aria-pressed="false">
-                      Detections
+                      Understanding
                     </button>
                     <button
                       id="drive-guidance-toggle"
@@ -146,6 +146,7 @@
                     alt="Live CARLA exterior view of the selected vehicle"
                     draggable="false"
                   >
+                  <canvas id="garage-preview-poster" aria-hidden="true"></canvas>
                   <div id="garage-preview-fallback" class="garage-preview-fallback">
                     <span class="garage-preview-mark" aria-hidden="true">
                       <svg viewBox="0 0 48 48" role="presentation">
@@ -230,7 +231,7 @@
                 </div>
                 <span id="drive-status" class="status-pill neutral">idle</span>
                 <span id="drive-advisory-badge" class="boundary-badge drive-advisory-badge">
-                  Detections only — you drive
+                  Visual understanding only — you drive
                 </span>
               </div>
             </div>
@@ -248,7 +249,14 @@
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3M8 15h8"></path></svg>
                 <small>Tests</small>
               </button>
-              <button id="game-research-open" type="button" aria-controls="panel-tools">
+              <button
+                id="game-research-open"
+                type="button"
+                aria-label="Research tools"
+                aria-controls="game-research-modal"
+                aria-expanded="false"
+                aria-haspopup="dialog"
+              >
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5zM8 8h8M8 12h3M8 16h8"></path></svg>
                 <small>Research</small>
               </button>
@@ -385,9 +393,9 @@
                 <label class="drive-video-profile">
                   <span>Video quality</span>
                   <select id="drive-camera-profile">
-                    <option value="balanced" selected>Balanced · 720p at 30 FPS</option>
+                    <option value="balanced">Balanced · 720p at 30 FPS</option>
                     <option value="high-refresh">High refresh · 720p at 60 FPS</option>
-                    <option value="detail">Detail · 1080p at 30 FPS</option>
+                    <option value="detail" selected>Detail · 1080p at 30 FPS</option>
                     <option value="compatibility">Compatibility · 640 × 384 at 10 FPS</option>
                   </select>
                   <small id="drive-camera-profile-note">Checking the compressed camera relay…</small>
@@ -399,6 +407,15 @@
                     <span>
                       <strong>Detection overlay</strong>
                       <small id="drive-detector-runtime-note">Checking the local vision runtime…</small>
+                    </span>
+                  </label>
+                  <label class="drive-simple-toggle">
+                    <input id="drive-segmentation-enabled" type="checkbox">
+                    <span>
+                      <strong>Road understanding</strong>
+                      <small id="drive-segmentation-runtime-note">
+                        Road and sidewalk context only. The Cityscapes baseline does not claim lane lines.
+                      </small>
                     </span>
                   </label>
                   <label class="drive-simple-toggle">
@@ -443,8 +460,8 @@
                     <label hidden>
                       Camera resolution
                       <select id="drive-resolution">
-                        <option value="1280x720" selected>1280 × 720 · realtime</option>
-                        <option value="1920x1080">1920 × 1080 · high quality</option>
+                        <option value="1280x720">1280 × 720 · realtime</option>
+                        <option value="1920x1080" selected>1920 × 1080 · high quality</option>
                         <option value="640x384">640 × 384 · low bandwidth</option>
                       </select>
                     </label>
@@ -483,6 +500,28 @@
                       <span>Minimum confidence <output id="drive-confidence-value">0.55</output></span>
                       <input id="drive-confidence" type="range" min="0" max="1" value="0.55" step="0.01">
                     </label>
+                    <label>
+                      Road model backend
+                      <select id="drive-segmentation-backend">
+                        <option value="segformer-b0" selected>SegFormer-B0</option>
+                      </select>
+                    </label>
+                    <label>
+                      Road compute device
+                      <select id="drive-segmentation-device">
+                        <option value="mps" selected>Apple GPU</option>
+                        <option value="cuda">NVIDIA GPU</option>
+                        <option value="cpu">CPU</option>
+                      </select>
+                    </label>
+                    <label class="span-2">
+                      Road checkpoint
+                      <input
+                        id="drive-segmentation-checkpoint"
+                        value="nvidia/segformer-b0-finetuned-cityscapes-1024-1024"
+                      >
+                      <small>Use a CARLA fine-tuned checkpoint before making any road-line claim.</small>
+                    </label>
                   </div>
                 </details>
               </form>
@@ -498,7 +537,7 @@
                   <div><dt>Throttle</dt><dd id="drive-telemetry-throttle">0%</dd></div>
                   <div><dt>Steer</dt><dd id="drive-telemetry-steer">0%</dd></div>
                   <div><dt>Brake</dt><dd id="drive-telemetry-brake">0%</dd></div>
-                  <div><dt>AI model</dt><dd id="drive-detector-state">off</dd></div>
+                  <div><dt>Visual models</dt><dd id="drive-understanding-state">off</dd></div>
                   <div><dt>Video stream</dt><dd id="drive-stream-health">waiting</dd></div>
                 </dl>
                 <p id="drive-error" class="drive-error" role="alert"></p>
@@ -547,6 +586,26 @@
                 <span>Selected</span>
                 <strong id="experiment-current-title">Free drive</strong>
                 <p id="experiment-current-note">No fixed protocol. Explore the scene naturally.</p>
+                <p id="experiment-current-config" class="experiment-config-summary">
+                  Uses your current Garage Setup without overriding it.
+                </p>
+                <p id="experiment-current-readiness" class="experiment-readiness" role="status">
+                  Checking CARLA capabilities…
+                </p>
+                <div class="experiment-actions">
+                  <button id="experiment-review-setup" class="secondary" type="button">
+                    Review in Setup
+                  </button>
+                  <button
+                    id="experiment-start"
+                    class="primary"
+                    type="submit"
+                    form="drive-start-form"
+                    aria-describedby="experiment-current-readiness"
+                  >
+                    Start Free drive
+                  </button>
+                </div>
               </div>
 
               <section class="human-marker-panel" aria-labelledby="human-marker-title">
@@ -580,29 +639,24 @@
               </button>
               <p id="drive-start-note" class="drive-start-note" aria-live="polite"></p>
             </div>
-            <div id="drive-result-banner" class="drive-result-banner" hidden>
-              <div>
-                <strong>Run saved</strong>
-                <p id="drive-output-path" class="drive-output-path" aria-live="polite">
-                  Saved output will appear here.
-                </p>
-              </div>
-              <button
-                id="drive-start-another"
-                class="primary"
-                type="submit"
-                form="drive-start-form"
-              >
-                Start another drive
-              </button>
-            </div>
           </div>
         </section>
 
-        <section id="panel-tools" class="panel" role="tabpanel" aria-labelledby="tools-title">
+        <dialog
+          id="game-research-modal"
+          class="game-research-modal"
+          aria-labelledby="tools-title"
+          aria-modal="true"
+        >
+        <section id="panel-tools" class="panel active" role="tabpanel" aria-labelledby="tools-title">
           <div class="section-heading research-tools-heading">
-            <button id="game-back-to-drive" class="secondary game-back-button" type="button">
-              Back to Garage
+            <button
+              id="game-back-to-drive"
+              class="secondary game-back-button"
+              type="button"
+              data-game-research-close
+            >
+              Close Research
             </button>
             <div>
               <p class="eyebrow">OPTIONAL WORKSPACE</p>
@@ -689,7 +743,6 @@
                     <option value="1920x1080" selected>1920 × 1080 · high quality</option>
                     <option value="1280x720">1280 × 720 · balanced</option>
                     <option value="640x384">640 × 384 · low bandwidth</option>
-                    <option value="1920x1080">1920 × 1080 · heavy</option>
                   </select>
                 </label>
                 <label>
@@ -820,6 +873,9 @@
               </div>
               <div class="actions">
                 <button class="primary" type="submit">Start live session</button>
+                <button id="live-use-garage" class="secondary" type="button">
+                  Apply vision settings to Garage
+                </button>
                 <p class="action-note">The viewer opens in a separate local window.</p>
               </div>
             </article>
@@ -829,14 +885,14 @@
         <section id="panel-situation" class="research-panel" role="tabpanel" aria-labelledby="situation-title">
           <div class="section-heading">
             <div>
-              <p class="eyebrow">SCENARIO + SITUATION MODE</p>
-              <h2 id="situation-title">Compose traffic without editing JSON</h2>
+              <p class="eyebrow">GARAGE SCENE BUILDER</p>
+              <h2 id="situation-title">Design a scene, then use it in Garage</h2>
               <p>
-                Save one strict scenario recipe, then resolve it into deterministic
-                episodes. Saving and planning never contact CARLA.
+                Map, weather, road scene, vehicle, and crowdedness use the same
+                vocabulary as Garage Setup. Building a plan saves the current values automatically.
               </p>
             </div>
-            <span class="boundary-badge safe">Offline until native execute</span>
+            <span class="boundary-badge safe">Planning offline · Garage apply is explicit</span>
           </div>
 
           <form id="situation-form" class="form-grid">
@@ -844,35 +900,75 @@
               <div class="card-heading">
                 <span class="step">01</span>
                 <div>
-                  <h3>World</h3>
-                  <p>Map, weather, starting point, and repeat count.</p>
+                  <h3>World &amp; vehicle</h3>
+                  <p>The same scene choices exposed in Garage Setup.</p>
                 </div>
               </div>
               <div class="fields two">
                 <label>
-                  Situation ID
-                  <input id="situation-id" value="town10-operator-poc" pattern="[a-z0-9-]+" required>
+                  Scene ID
+                  <input id="situation-id" pattern="[a-z0-9-]+" required>
                 </label>
                 <label>
                   Map
-                  <select id="situation-map">
-                    <option value="Town10HD_Opt">Town10HD_Opt</option>
-                    <option value="Town01_Opt">Town01_Opt</option>
-                    <option value="Town02_Opt">Town02_Opt</option>
-                    <option value="Town03_Opt">Town03_Opt</option>
-                    <option value="Town04_Opt">Town04_Opt</option>
-                    <option value="Town05_Opt">Town05_Opt</option>
-                    <option value="Town06_Opt">Town06_Opt</option>
-                    <option value="Town07_Opt">Town07_Opt</option>
+                  <select id="situation-map" required>
+                    <option value="">Loading CARLA maps…</option>
                   </select>
                 </label>
                 <label>
                   Weather
-                  <select id="situation-weather"></select>
+                  <select id="situation-weather" required></select>
                 </label>
                 <label>
-                  Props
-                  <select id="situation-props"></select>
+                  Road scene
+                  <select id="situation-props" required></select>
+                </label>
+                <label class="span-2">
+                  Vehicle
+                  <select id="situation-ego" required>
+                    <option value="">Loading CARLA vehicles…</option>
+                  </select>
+                </label>
+              </div>
+            </article>
+
+            <article class="card">
+              <div class="card-heading">
+                <span class="step">02</span>
+                <div>
+                  <h3>Crowdedness</h3>
+                  <p>These exact counts are carried into Garage Setup.</p>
+                </div>
+              </div>
+              <div class="fields two">
+                <label class="range-field span-2">
+                  <span>Traffic vehicles <output id="vehicle-count-value">35</output></span>
+                  <input id="vehicle-count" type="range" min="0" max="120" value="35" step="1">
+                </label>
+                <label class="range-field span-2">
+                  <span>Pedestrians <output id="walker-count-value">30</output></span>
+                  <input id="walker-count" type="range" min="0" max="120" value="30" step="1">
+                </label>
+              </div>
+            </article>
+
+            <details id="situation-advanced" class="card span-2 situation-advanced">
+              <summary>
+                <span>Advanced dataset capture</span>
+                <small>Seed/FOV can transfer; deterministic episode capture stays with the recipe</small>
+              </summary>
+              <div class="fields four situation-advanced-fields">
+                <label class="range-field span-2">
+                  <span>Pedestrian crossing probability <output id="crossing-value">0.10</output></span>
+                  <input id="crossing" type="range" min="0" max="1" value="0.1" step="0.01">
+                </label>
+                <label>
+                  Traffic speed difference %
+                  <input id="speed-difference" type="number" min="-100" max="100" value="20" step="1">
+                </label>
+                <label>
+                  Following distance m
+                  <input id="following-distance" type="number" min="0.1" max="20" value="2.5" step="0.1">
                 </label>
                 <label>
                   Ego spawn index
@@ -887,68 +983,23 @@
                   <input id="situation-seed" type="number" min="0" value="20260726">
                 </label>
                 <label>
-                  Duration seconds
+                  Episode duration seconds
                   <input id="situation-duration" type="number" min="5" max="3600" value="30">
                 </label>
-              </div>
-            </article>
-
-            <article class="card">
-              <div class="card-heading">
-                <span class="step">02</span>
-                <div>
-                  <h3>Crowdedness</h3>
-                  <p>Direct controls for cars, pedestrians, crossing, and spacing.</p>
-                </div>
-              </div>
-              <div class="fields two">
-                <label class="range-field span-2">
-                  <span>Traffic vehicles <output id="vehicle-count-value">35</output></span>
-                  <input id="vehicle-count" type="range" min="0" max="120" value="35" step="1">
-                </label>
-                <label class="range-field span-2">
-                  <span>Pedestrians <output id="walker-count-value">30</output></span>
-                  <input id="walker-count" type="range" min="0" max="120" value="30" step="1">
-                </label>
-                <label class="range-field span-2">
-                  <span>Crossing probability <output id="crossing-value">0.10</output></span>
-                  <input id="crossing" type="range" min="0" max="1" value="0.1" step="0.01">
-                </label>
                 <label>
-                  Traffic speed difference %
-                  <input id="speed-difference" type="number" min="-100" max="100" value="20" step="1">
-                  <small>Positive values make traffic slower.</small>
-                </label>
-                <label>
-                  Following distance m
-                  <input id="following-distance" type="number" min="0.1" max="20" value="2.5" step="0.1">
-                </label>
-              </div>
-            </article>
-
-            <article class="card span-2">
-              <div class="card-heading">
-                <span class="step">03</span>
-                <div>
-                  <h3>Camera &amp; capture</h3>
-                  <p>Source capture stays front monocular RGB; teacher masks are label-only.</p>
-                </div>
-              </div>
-              <div class="fields five">
-                <label>
-                  Width
+                  Dataset frame width
                   <input id="situation-width" type="number" min="320" max="3840" value="1280">
                 </label>
                 <label>
-                  Height
+                  Dataset frame height
                   <input id="situation-height" type="number" min="180" max="2160" value="720">
                 </label>
                 <label>
-                  FOV
+                  Dataset camera FOV
                   <input id="situation-fov" type="number" min="30" max="150" value="90">
                 </label>
                 <label>
-                  Capture FPS
+                  Dataset capture FPS
                   <select id="situation-capture-fps">
                     <option value="1">1 FPS</option>
                     <option value="2">2 FPS</option>
@@ -956,43 +1007,54 @@
                     <option value="10">10 FPS</option>
                   </select>
                 </label>
-                <label>
-                  Ego blueprint
-                  <input id="situation-ego" value="vehicle.tesla.model3">
-                </label>
               </div>
-              <div class="actions">
-                <button class="primary" type="submit">Save situation recipe</button>
-                <span id="situation-result" class="inline-result" aria-live="polite"></span>
-              </div>
-            </article>
+            </details>
+
+            <div class="actions span-2 situation-save-actions">
+              <button id="situation-use-garage" class="primary" type="button">
+                Apply scene to Garage
+              </button>
+              <button class="secondary" type="submit">Save recipe only</button>
+              <p class="action-note">
+                Applies map, vehicle, weather, road scene, counts, seed, and next-drive FOV.
+                Crossing, traffic behavior, spawn, repetitions, duration, frame size, and sampling stay with the recipe.
+              </p>
+              <span id="situation-result" class="inline-result" aria-live="polite"></span>
+            </div>
           </form>
 
           <article class="card planner-card">
             <div class="card-heading">
-              <span class="step">04</span>
+              <span class="step">03</span>
               <div>
-                <h3>Resolve deterministic episodes</h3>
-                <p>Creates a checksum-tracked plan with seeds and leakage-safe partitions.</p>
+                <h3>Build the current scene</h3>
+                <p>Saves these values, creates the reproducible plan, then makes it available to Garage.</p>
               </div>
             </div>
-            <form id="plan-form" class="fields four">
-              <label>
-                Situation suite
-                <select id="plan-suite" required></select>
-              </label>
-              <label>
-                Split plan
-                <select id="plan-split" required></select>
-              </label>
-              <label>
-                Plan run ID
-                <input id="plan-run-id" required>
-              </label>
-              <div class="button-field">
-                <button class="primary" type="submit">Build scenario plan</button>
+            <form id="plan-form" class="scenario-plan-form">
+              <details class="planner-options">
+                <summary>Plan identity &amp; dataset split</summary>
+                <div class="fields two">
+                  <label>
+                    Split plan
+                    <select id="plan-split" required></select>
+                  </label>
+                  <label>
+                    Plan run ID
+                    <input id="plan-run-id" required>
+                  </label>
+                </div>
+              </details>
+              <div class="actions">
+                <button class="primary" type="submit">Build current plan</button>
               </div>
             </form>
+            <div id="scenario-plan-action" class="scenario-plan-action" hidden>
+              <p id="scenario-plan-status" class="inline-result" aria-live="polite"></p>
+              <button id="scenario-use-garage" class="primary" type="button" hidden>
+                Use in Garage
+              </button>
+            </div>
           </article>
         </section>
 
@@ -1397,6 +1459,7 @@
           </div>
         </section>
         </section>
+        </dialog>
       </main>
     </div>
 

@@ -290,26 +290,42 @@ CARLA RGB TCP
     |
     v
 CarlaCameraStream -- retains newest frame only
-    |
-    v
-PerceptionWorker -- one in-flight inference + one replaceable pending frame
-    |
-    v
-PerceptionResult -- detections and exact source_bgr share sequence/frame/time
-    |                 |                  |                    |
-    v                 v                  v                    v
-HazardPolicy    VisionObservation  OverlayRenderer      detections.jsonl
-                      |                  |
-                      v                  +--> LiveViewer + AsyncVideoRecorder
-              VisionPolicy proposal
-                      |
-                      +--> policy_shadow.jsonl + HUD (NOT APPLIED)
+    |-----------------------------|
+    v                             v
+PerceptionWorker          AsyncSegmentationRuntime
+(RT-DETR / YOLO)          (SegFormer, newest frame only)
+    |                             |
+    v                             v
+PerceptionResult          SegmentationFrameResult
+    |              |              |
+    |              +-- exact -----+
+    |                         |
+    v                         v
+HazardPolicy /        Understanding overlay + recorder
+VisionObservation              |
+    |                          +--> detections.jsonl
+    v                          +--> road-segmentation.jsonl
+policy_shadow.jsonl
+(NOT APPLIED)
 ```
 
 The important invariant is:
 
-> A detection overlay is drawn only on `PerceptionResult.source_bgr`, the exact
-> image used for inference.
+> Every detection and segmentation overlay is drawn only on the exact RGB
+> image used by that model. When both models are enabled, the detector result
+> is carried through the slower segmentation worker so the combined overlay
+> cannot join results from different camera sequences.
+
+The browser Drive console exposes one optional **Understanding** view. Object
+detection and road segmentation are independently selectable, but they do not
+create extra viewer tabs. SegFormer initialization and inference run off the
+camera/control loop. A slow model lowers only the derived overlay cadence; the
+raw newest-frame stream and browser control heartbeat remain independent.
+
+The default Cityscapes checkpoint is a road/sidewalk baseline and explicitly
+reports `supports_road_line=false`. A swappable checkpoint may claim road-line
+support only when its label metadata maps at least one source class to the
+canonical `road_line` class.
 
 When inference is slower than the camera:
 
@@ -319,6 +335,12 @@ When inference is slower than the camera:
 - split mode shows the newest raw frame on the left and the exact annotated
   inference frame on the right;
 - an old detection is never painted over an unrelated newer frame.
+
+Interactive Drive artifacts retain the untouched raw MP4, the derived model
+overlay MP4, exact-frame detection and segmentation JSONL, resolved model
+revision metadata, canonical class statistics, and an exact RGB/mask pair for
+the latest segmentation result. The segmentation output remains advisory and
+never reaches the actuator.
 
 The current HUD includes CARLA frame/sequence, detection count, inference
 latency, source age, model, mode, simulator-derived speed, route progress,
@@ -351,8 +373,10 @@ does not match the preregistration.
 - publish camera FPS, inference FPS, end-to-end latency percentiles, queue
   drops, frame age, and recorder drops as structured metrics;
 - add a temporal tracker with IDs while preserving detector-frame provenance;
-- add drivable-area/lane perception as a separate RGB model or multi-task
-  adapter;
+- train and evaluate the canonical five-class CARLA SegFormer checkpoint from
+  synchronized RGB/semantic-teacher pairs; the live adapter and evidence path
+  are implemented, while the semantic dataset/training release chain remains
+  separate work;
 - support headless streaming for remote monitoring in addition to native
   OpenCV display;
 - record both raw RGB and annotated video when the protocol requires it;

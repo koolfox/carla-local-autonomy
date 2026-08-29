@@ -47,6 +47,7 @@ _CONTROL_KEYS = frozenset(
     }
 )
 _CONTROL_MODES = frozenset({"manual", "autopilot"})
+_GARAGE_CAMERA_PRESETS = frozenset({"orbit", "front", "rear", "top", "cockpit"})
 
 
 class WorldWorkerError(RuntimeError):
@@ -569,7 +570,11 @@ class WorldWorkerClient:
         yaw: float,
         pitch: float,
         distance: float,
+        preset: str = "orbit",
     ) -> dict[str, Any]:
+        if not isinstance(preset, str) or preset not in _GARAGE_CAMERA_PRESETS:
+            choices = ", ".join(sorted(_GARAGE_CAMERA_PRESETS))
+            raise ValueError(f"camera preset must be one of: {choices}")
         scene_id = quote(scene.scene_id, safe="")
         return self._request(
             "POST",
@@ -579,6 +584,7 @@ class WorldWorkerClient:
                 "yaw": float(yaw),
                 "pitch": float(pitch),
                 "distance": float(distance),
+                "preset": preset,
             },
         )
 

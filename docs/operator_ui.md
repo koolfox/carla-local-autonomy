@@ -94,7 +94,12 @@ Adverse Weather
 
 Unavailable capability-gated presets remain unavailable rather than silently
 falling back. For example, Autopilot Takeover requires World Worker autopilot.
-The selected preset is written to the Drive config and summary.
+The selected preset remains stable across normal state polling and a page reload.
+It updates the shared Garage Setup controls rather than maintaining a second
+hidden configuration. The drawer shows the exact changes, offers `Review in
+Setup`, and submits the same Drive form through its context-specific Start
+button. While a Drive is active, the drawer reflects that session's recorded
+preset. The selected preset is written to the Drive config and summary.
 
 While a Drive is running, the operator can retain one of five human observations:
 
@@ -162,6 +167,41 @@ and hard release thresholds are defined in
 The browser stream is not a training-data source. It is newest-only and lossy by
 design. Review MP4s remain Drive artifacts; synchronized RGB/label collection
 remains a separate native dataset workflow.
+
+### Visual understanding overlay
+
+Drive setup has two independent optional visual models:
+
+```text
+Detection overlay  -> RT-DETR or YOLO object boxes
+Road understanding -> SegFormer canonical road mask
+```
+
+Both appear in the single **Understanding** viewer. Model loading and inference
+are asynchronous and newest-frame-only, so they cannot stall raw video or the
+manual-control heartbeat. When both are enabled, a combined image is published
+only when the object detections and segmentation mask came from the same camera
+sequence and CARLA frame.
+
+The live road model is capped at 5 inference frames per second. This is an
+operator-console responsiveness budget, not a model benchmark: the raw camera
+continues at the selected profile while the exact-frame Understanding view
+updates at the model cadence.
+
+The default checkpoint,
+`nvidia/segformer-b0-finetuned-cityscapes-1024-1024`, is useful for road,
+sidewalk, and terrain context. It has no lane-marking class; the UI and run
+metadata therefore say **no lane lines**. Advanced settings accept another
+label-aware Hugging Face SegFormer checkpoint or a workspace-contained local
+checkpoint directory. Lane-line support is derived from checkpoint label
+metadata rather than from its filename.
+
+With recording enabled, the raw video remains unchanged. The run may also
+contain `model-overlay.mp4`, `road-segmentation.jsonl`, a canonical uint8 mask,
+and the exact RGB source paired with that mask. Every segmentation record
+includes camera/CARLA frame identity, timing, canonical pixel fractions,
+confidence summaries, model/checkpoint identity, and resolved remote revision.
+These outputs are advisory: `model_output_actuated` remains false.
 
 ## Garage runtime control modes
 
@@ -439,18 +479,22 @@ spectator follow is visualization, not vehicle-control authority.
 
 ## Scene builder
 
-The `Scene builder` tab creates a strict situation recipe with current fields for
-map, weather, static prop preset, ego spawn index, repetitions, seed, episode
-duration, traffic count, pedestrian count, crossing probability, Traffic Manager
-speed difference, following distance, camera dimensions/FOV/capture FPS, and ego
-blueprint.
+The `Scene builder` uses the same primary scene vocabulary as Garage Setup:
+map, weather, road-scene preset, ego vehicle, traffic count, and pedestrian
+count. Dataset-only controls such as exact capture cadence, camera dimensions,
+episode duration, seeds, repetitions, crossing probability, and Traffic Manager
+tuning remain available under `Advanced dataset capture` instead of competing
+with the normal Garage path.
 
-Saving a situation produces an Operator situation config. The scenario-plan form
-then resolves a selected situation/suite plus split plan into the existing
-scenario-planner workflow.
+`Build current plan` first validates and saves the values currently visible in
+the builder, then resolves that exact situation through the existing deterministic
+scenario planner. It never silently falls back to a previously selected suite.
+When the job succeeds, `Use in Garage` loads the first resolved recipe into
+Garage Setup, including exact traffic/pedestrian counts, and requests one Garage
+preview refresh. The user can review the applied values before starting a drive.
 
-Situation saving and scenario-plan generation are offline operations. They do
-not themselves contact CARLA or populate the currently running Drive session.
+Situation saving and scenario-plan generation remain offline operations. Loading
+the successful plan into Garage is a separate, explicit world-preview action.
 
 ## Workflows tab
 

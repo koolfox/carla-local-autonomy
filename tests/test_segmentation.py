@@ -56,6 +56,7 @@ class _FakeProcessor:
 
 class _FakeModelConfig:
     num_labels = 5
+    _commit_hash = "0123456789abcdef"
     id2label = {
         "0": "road-line",
         "1": "other",
@@ -144,8 +145,96 @@ class SegmentationContractTests(unittest.TestCase):
         self.assertIs(canonical_class_for_label("terrain"), RoadClass.NON_DRIVABLE_GROUND)
         self.assertIs(canonical_class_for_label("car"), RoadClass.OTHER)
 
+    def test_common_lane_checkpoint_aliases_map_without_checkpoint_name_logic(self) -> None:
+        aliases = {
+            "construction--flat--road": RoadClass.ROAD,
+            "construction--flat--sidewalk": RoadClass.SIDEWALK,
+            "marking--general": RoadClass.ROAD_LINE,
+            "marking--crosswalk-zebra": RoadClass.ROAD_LINE,
+            "lane marking - general": RoadClass.ROAD_LINE,
+            "lane marking - crosswalk": RoadClass.ROAD_LINE,
+            "lane marking - general/crosswalk": RoadClass.ROAD_LINE,
+            "solid line": RoadClass.ROAD_LINE,
+            "dashed line": RoadClass.ROAD_LINE,
+            "double solid line": RoadClass.ROAD_LINE,
+            "zebra": RoadClass.ROAD_LINE,
+            "nature--terrain": RoadClass.NON_DRIVABLE_GROUND,
+        }
+        for label, expected in aliases.items():
+            with self.subTest(label=label):
+                self.assertIs(canonical_class_for_label(label), expected)
+
 
 class SegFormerAdapterTests(unittest.TestCase):
+    def test_collapsed_float32_confidence_is_clamped_after_softmax(self) -> None:
+        # This distribution reproduces the MPS Cityscapes accumulation case:
+        # individually valid source probabilities collapse to OTHER at
+        # 1.0000001 in float32.
+        logits = np.array(
+            [
+                -21.3489017,
+                -19.1082840,
+                -3.8926716,
+                -13.8998241,
+                -24.4031677,
+                -21.1792698,
+                -13.9456282,
+                0.0,
+                -22.0470829,
+                -21.7864666,
+                -9.3277435,
+                -28.2154789,
+                -22.2680817,
+                -10.5254898,
+                -13.5473795,
+                -18.4357128,
+                -12.6498356,
+                -47.6325035,
+                -9.1378117,
+            ],
+            dtype=np.float32,
+        ).reshape(1, 19, 1, 1)
+        cityscapes_labels = (
+            "road",
+            "sidewalk",
+            "building",
+            "wall",
+            "fence",
+            "pole",
+            "traffic light",
+            "traffic sign",
+            "vegetation",
+            "terrain",
+            "sky",
+            "person",
+            "rider",
+            "car",
+            "truck",
+            "bus",
+            "train",
+            "motorcycle",
+            "bicycle",
+        )
+        model = _FakeModel(logits)
+        model.config = type(
+            "CityscapesConfig",
+            (),
+            {
+                "num_labels": len(cityscapes_labels),
+                "id2label": dict(enumerate(cityscapes_labels)),
+            },
+        )()
+        with patch(
+            "carla_vision.segmentation.segformer._load_huggingface_runtime",
+            return_value=(_FakeTorch(), _FakeProcessor(), model),
+        ):
+            segmenter = SegFormerSegmenter(SegmentationConfig())
+
+        result = segmenter.infer(np.zeros((1, 1, 3), dtype=np.uint8))
+
+        self.assertEqual(result.class_ids.tolist(), [[RoadClass.OTHER]])
+        self.assertEqual(result.confidence.tolist(), [[1.0]])
+
     def test_custom_five_class_checkpoint_is_mapped_by_label_name(self) -> None:
         logits = np.full((1, 5, 1, 2), -8.0, dtype=np.float32)
         logits[0, 3, 0, 0] = 8.0  # source id 3 is road
@@ -157,7 +246,11 @@ class SegFormerAdapterTests(unittest.TestCase):
             return_value=(_FakeTorch(), processor, model),
         ):
             segmenter = SegFormerSegmenter(
-                SegmentationConfig(checkpoint="local/custom-segformer-b0", device="mps")
+                SegmentationConfig(
+                    checkpoint="local/custom-segformer-b0",
+                    device="mps",
+                    options={"revision": "research-release-v1"},
+                )
             )
 
         image_bgr = np.array([[[1, 2, 3], [4, 5, 6]]], dtype=np.uint8)
@@ -169,6 +262,9 @@ class SegFormerAdapterTests(unittest.TestCase):
         self.assertEqual(processor.image_rgb.tolist(), [[[3, 2, 1], [6, 5, 4]]])
         self.assertEqual(segmenter.metadata.source_to_canonical[0], "road_line")
         self.assertEqual(segmenter.metadata.source_to_canonical[3], "road")
+        self.assertEqual(segmenter.metadata.revision, "research-release-v1")
+        self.assertEqual(segmenter.metadata.resolved_revision, "0123456789abcdef")
+        self.assertTrue(segmenter.metadata.as_dict()["supports_road_line"])
 
     def test_generic_checkpoint_labels_are_rejected(self) -> None:
         model = _FakeModel(np.zeros((1, 5, 1, 1), dtype=np.float32))
@@ -223,6 +319,7 @@ class SegFormerAdapterTests(unittest.TestCase):
         self.assertEqual(mapping[1], "sidewalk")
         self.assertEqual(mapping[9], "non_drivable_ground")
         self.assertNotIn("road_line", mapping.values())
+        self.assertFalse(segmenter.metadata.as_dict()["supports_road_line"])
 
     def test_infer_rejects_non_rgb_uint8_input(self) -> None:
         model = _FakeModel(np.zeros((1, 5, 1, 1), dtype=np.float32))
