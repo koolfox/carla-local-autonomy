@@ -6,6 +6,12 @@ import type {
   SystemSettings,
   WorkspaceOptions
 } from '$lib/domain/config';
+import type {
+  DriveControlRequest,
+  DriveState,
+  GarageOrbitRequest,
+  GaragePreviewConfig
+} from '$lib/domain/runtime';
 
 export interface BootstrapPayload {
   schema_version: string;
@@ -20,7 +26,7 @@ export interface BootstrapPayload {
     capabilities: Record<string, boolean>;
     weights?: string[];
   };
-  drive?: Record<string, unknown>;
+  drive?: DriveState;
 }
 
 export interface ConfigurationContractPayload {
@@ -79,16 +85,20 @@ export interface WorkspaceSnapshot {
   sessionDefaults: Partial<SessionConfig>;
   experimentPresets: ExperimentPresetDefinition[];
   driveCatalog: DriveCatalogPayload;
+  driveState: DriveState;
 }
 
-export interface DriveState {
-  status?: string;
-  session_id?: string;
-  run_id?: string;
-  garage_mode?: string;
-  control_mode?: string;
-  emergency_stop?: boolean;
-  [key: string]: unknown;
+interface ApiErrorPayload {
+  error?: {
+    type?: string;
+    message?: string;
+  };
+}
+
+function apiError(path: string, response: Response, payload: unknown): Error {
+  const typed = payload as ApiErrorPayload | null;
+  const message = typed?.error?.message || `${response.status} ${response.statusText}`;
+  return new Error(`Operator API ${path} failed: ${message}`);
 }
 
 async function readJson<T>(path: string): Promise<T> {
@@ -96,22 +106,17 @@ async function readJson<T>(path: string): Promise<T> {
     headers: { Accept: 'application/json' },
     cache: 'no-store'
   });
-  const payload = await response.json().catch(() => null);
-  if (!response.ok) {
-    const message =
-      payload && typeof payload === 'object' && 'error' in payload
-        ? JSON.stringify(payload.error)
-        : `${response.status} ${response.statusText}`;
-    throw new Error(`Operator API ${path} failed: ${message}`);
-  }
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok) throw apiError(path, response, payload);
   return payload as T;
 }
 
 export async function loadWorkspaceSnapshot(): Promise<WorkspaceSnapshot> {
-  const [bootstrap, configuration, driveCatalog, modelRegistry] = await Promise.all([
+  const [bootstrap, configuration, driveCatalog, driveState, modelRegistry] = await Promise.all([
     readJson<BootstrapPayload>('/api/bootstrap'),
     readJson<ConfigurationContractPayload>('/api/configuration'),
     readJson<DriveCatalogPayload>('/api/drive/catalog'),
+    readJson<DriveState>('/api/drive/state'),
     readJson<ModelRegistryPayload>('/api/models')
   ]);
 
@@ -160,14 +165,19 @@ export async function loadWorkspaceSnapshot(): Promise<WorkspaceSnapshot> {
     options,
     sessionDefaults: configuration.sessionDefaults,
     experimentPresets: configuration.experimentPresets,
-    driveCatalog
+    driveCatalog,
+    driveState
   };
 }
 
 export class OperatorApi {
   constructor(private readonly token: string) {}
 
-  async post<T>(path: string, body: Record<string, unknown>): Promise<T> {
+  getDriveState(): Promise<DriveState> {
+    return readJson<DriveState>('/api/drive/state');
+  }
+
+  async post<T>(path: string, body: Record<string, unknown>, keepalive = false): Promise<T> {
     const response = await fetch(path, {
       method: 'POST',
       headers: {
@@ -175,16 +185,11 @@ export class OperatorApi {
         'Content-Type': 'application/json',
         'X-Operator-Token': this.token
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      keepalive
     });
-    const payload = await response.json().catch(() => null);
-    if (!response.ok) {
-      const message =
-        payload && typeof payload === 'object' && 'error' in payload
-          ? JSON.stringify(payload.error)
-          : `${response.status} ${response.statusText}`;
-      throw new Error(`Operator API ${path} failed: ${message}`);
-    }
+    const payload: unknown = await response.json().catch(() => null);
+    if (!response.ok) throw apiError(path, response, payload);
     return payload as T;
   }
 
@@ -193,5 +198,33 @@ export class OperatorApi {
       schema_version: '1.0',
       session
     });
+  }
+
+  stopSession(sessionId: string): Promise<DriveState> {
+    return this.post<DriveState>('/api/drive/stop', { session_id: sessionId });
+  }
+
+  emergencyStop(sessionId: string): Promise<DriveState> {
+    return this.post<DriveState>('/api/drive/emergency-stop', { session_id: sessionId });
+  }
+
+  setDriveMode(sessionId: string, mode: 'manual' | 'autopilot'): Promise<DriveState> {
+    return this.post<DriveState>('/api/drive/mode', { session_id: sessionId, mode });
+  }
+
+  sendControl(control: DriveControlRequest, keepalive = false): Promise<DriveState> {
+    return this.post<DriveState>('/api/drive/control', { ...control }, keepalive);
+  }
+
+  configureGaragePreview(config: GaragePreviewConfig): Promise<Record<string, unknown>> {
+    return this.post<Record<string, unknown>>('/api/garage/preview/configure', { ...config });
+  }
+
+  stopGaragePreview(): Promise<Record<string, unknown>> {
+    return this.post<Record<string, unknown>>('/api/garage/preview/stop', {});
+  }
+
+  orbitGaragePreview(request: GarageOrbitRequest): Promise<Record<string, unknown>> {
+    return this.post<Record<string, unknown>>('/api/garage/preview/orbit', { ...request });
   }
 }

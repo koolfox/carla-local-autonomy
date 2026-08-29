@@ -6,13 +6,13 @@
   } from '$lib/stores/configuration';
 </script>
 
-<section class="config-card preset-card">
+<section id="intent" class="config-card preset-card scroll-section">
   <div class="section-heading">
     <div>
-      <span class="eyebrow">Intent</span>
+      <span class="eyebrow">01 · Intent</span>
       <h2>Experiment preset</h2>
     </div>
-    <span class="section-note">Preset = visible patch, never separate state</span>
+    <span class="section-note">A preset patches the visible SessionConfig; it never creates parallel state.</span>
   </div>
 
   <div class="preset-grid">

@@ -53,7 +53,7 @@ carla-verify-reproduction = "carla_vision.reproduction.verified:main"
 carla-verify-shadow = "carla_vision.policy.verified:main"
 carla-shadow-matrix = "carla_vision.shadow.matrix:main"
 carla-verify-shadow-matrix = "carla_vision.shadow.verified:main"
-carla-operator-ui = "carla_vision.operator.local_entrypoint:main"
+carla-operator-ui = "carla_vision.operator.product_console:main"
 carla-discover = "carla_vision.discovery:main"
 
 [dependency-groups]
