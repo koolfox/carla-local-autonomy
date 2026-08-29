@@ -9,7 +9,6 @@ contract. The legacy Imitation and Voxel modes remain untouched.
 from __future__ import annotations
 
 import importlib.util
-import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
@@ -18,12 +17,7 @@ from ..controller import ControlCommand
 from ..model_driver import ModelDriverConfig, ModelObservation, control_from_value, create_driving_model
 from ..model_registry import ModelPackage, resolve_model_package
 from .drive import _world_worker_health_ready
-from .garage_drive import (
-    GarageDriveSession,
-    GarageDriveSessionManager,
-    GarageDriveStartConfig,
-    _PolicyCamera,
-)
+from .garage_drive import GarageDriveSession, GarageDriveSessionManager, GarageDriveStartConfig, _PolicyCamera
 from .world_worker_client import WorldWorkerClient
 
 _TORCHSCRIPT_FACTORY = "carla_vision.torchscript_driver:create_driver"
@@ -98,6 +92,12 @@ class ExternalModelDriveStartConfig:
             "model_package_id": package.package_id,
             "model_package_version": package.version,
             "runtime": package.runtime,
+            "image": dict(package.inputs.get("image", {}))
+            if isinstance(package.inputs.get("image"), Mapping)
+            else {},
+            "speed": dict(package.inputs.get("speed", {}))
+            if isinstance(package.inputs.get("speed"), Mapping)
+            else {},
             "inputs": dict(package.inputs),
             "outputs": dict(package.outputs),
             "labels": package.labels,
@@ -272,74 +272,6 @@ class ExternalModelDriveSession(GarageDriveSession):
             self._policy = _ExternalModelPolicy(context, self.config)
 
 
-class ModelAwareGarageDriveSessionManager(GarageDriveSessionManager):
-    """Garage manager that adds registered external driving-policy packages."""
-
-    def catalog(self) -> dict[str, Any]:
-        payload = super().catalog()
-        if not self.experimental_enabled:
-            return payload
-        from ..model_registry import discover_model_packages
-
-        registry = discover_model_packages(self.workspace)
-        driving = [row for row in registry["packages"] if row["role"] == "driving_policy"]
-        pythonapi = _module_available("carla")
-        available = pythonapi and bool(driving)
-        payload.setdefault("capabilities", {})["garage_model_drive"] = available
-        payload.setdefault("control_modes", []).append(
-            {"id": "model", "label": "External model", "available": available}
-        )
-        payload["model_packages"] = driving
-        payload["invalid_model_packages"] = registry["invalid"]
-        return payload
-
-    def start(self, raw: Mapping[str, Any]) -> dict[str, Any]:
-        if str(raw.get("control_mode", "manual")).strip().lower() != "model":
-            return super().start(raw)
-        active_world_worker: WorldWorkerClient | None = None
-        if self._world_worker is not None:
-            try:
-                health = self._world_worker.health()
-                if not _world_worker_health_ready(health):
-                    raise RuntimeError("World Worker reports that CARLA is unavailable")
-            except Exception:
-                active_world_worker = None
-            else:
-                active_world_worker = self._world_worker
-        config = ExternalModelDriveStartConfig.from_mapping(
-            raw,
-            workspace=self.workspace,
-            expected_host=self.carla_host,
-            expected_port=self.carla_port,
-            world_worker_configured=active_world_worker is not None,
-            experimental_enabled=self.experimental_enabled,
-        )
-        catalog = self.catalog()
-        modes = {item["id"]: bool(item["available"]) for item in catalog["control_modes"]}
-        if not modes.get("model", False):
-            raise RuntimeError("registered external model driving is unavailable")
-        garage_capabilities = catalog["capabilities"]
-        if (config.traffic_vehicles and not garage_capabilities["garage_traffic_population"]) or (
-            config.walkers and not garage_capabilities["garage_walker_population"]
-        ):
-            raise RuntimeError("traffic and pedestrians require CARLA PythonAPI")
-        with self._lock:
-            if self._session is not None and self._session.snapshot()["status"] in {
-                "starting",
-                "running",
-                "stopping",
-            }:
-                raise RuntimeError("another interactive drive session is already active")
-            session = ExternalModelDriveSession(
-                config,
-                workspace=self.workspace,
-                world_worker=active_world_worker,
-            )
-            self._session = session
-            session.start()
-            return session.snapshot()
-
-
 def _module_available(name: str) -> bool:
     try:
         return importlib.util.find_spec(name) is not None
@@ -347,8 +279,72 @@ def _module_available(name: str) -> bool:
         return False
 
 
+def _start_registered_model_session(
+    manager: GarageDriveSessionManager,
+    raw: Mapping[str, Any],
+) -> dict[str, Any]:
+    if not _module_available("carla"):
+        raise RuntimeError("registered external model driving requires CARLA PythonAPI")
+    active_world_worker: WorldWorkerClient | None = None
+    if manager._world_worker is not None:
+        try:
+            health = manager._world_worker.health()
+            if not _world_worker_health_ready(health):
+                raise RuntimeError("World Worker reports that CARLA is unavailable")
+        except Exception:
+            active_world_worker = None
+        else:
+            active_world_worker = manager._world_worker
+    config = ExternalModelDriveStartConfig.from_mapping(
+        raw,
+        workspace=manager.workspace,
+        expected_host=manager.carla_host,
+        expected_port=manager.carla_port,
+        world_worker_configured=active_world_worker is not None,
+        experimental_enabled=manager.experimental_enabled,
+    )
+    catalog = manager.catalog()
+    capabilities = catalog.get("capabilities", {})
+    if not isinstance(capabilities, Mapping):
+        raise RuntimeError("Garage capabilities are malformed")
+    if config.traffic_vehicles and not bool(capabilities.get("garage_traffic_population")):
+        raise RuntimeError("traffic population requires CARLA PythonAPI")
+    if config.walkers and not bool(capabilities.get("garage_walker_population")):
+        raise RuntimeError("pedestrian population requires CARLA PythonAPI")
+    with manager._lock:
+        if manager._session is not None and manager._session.snapshot()["status"] in {
+            "starting",
+            "running",
+            "stopping",
+        }:
+            raise RuntimeError("another interactive drive session is already active")
+        session = ExternalModelDriveSession(
+            config,
+            workspace=manager.workspace,
+            world_worker=active_world_worker,
+        )
+        manager._session = session
+        session.start()
+        return session.snapshot()
+
+
+def start_registered_model_session(
+    manager: GarageDriveSessionManager,
+    raw: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Start one registered model session while preserving preview/drive exclusion."""
+
+    preview = getattr(manager, "_garage_preview", None)
+    world_mode_lock = getattr(manager, "_garage_world_mode_lock", None)
+    if preview is None or world_mode_lock is None:
+        return _start_registered_model_session(manager, raw)
+    with world_mode_lock:
+        preview.stop_for_drive()
+        return _start_registered_model_session(manager, raw)
+
+
 __all__ = [
     "ExternalModelDriveSession",
     "ExternalModelDriveStartConfig",
-    "ModelAwareGarageDriveSessionManager",
+    "start_registered_model_session",
 ]
