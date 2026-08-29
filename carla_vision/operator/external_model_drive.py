@@ -1,17 +1,20 @@
 """Registered external driving-model integration for the Garage.
 
 This module keeps the existing Garage safety/session engine and changes only the
-model source. Model packages are resolved from the manifest-backed registry,
-verified before actuation, and executed through the existing ModelDriver
-contract. The legacy Imitation and Voxel modes remain untouched.
+model source. Registered models consume the exact raw RGB stream already owned
+by the Drive session, so remote World Worker deployments do not need a second
+local CARLA PythonAPI camera. Model packages are verified before actuation and
+executed through the existing ModelDriver contract.
 """
 
 from __future__ import annotations
 
-import importlib.util
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
+
+import cv2
+import numpy as np
 
 from ..controller import ControlCommand
 from ..model_driver import (
@@ -22,12 +25,7 @@ from ..model_driver import (
 )
 from ..model_registry import ModelPackage, resolve_model_package
 from .drive import _world_worker_health_ready
-from .garage_drive import (
-    GarageDriveSession,
-    GarageDriveSessionManager,
-    GarageDriveStartConfig,
-    _PolicyCamera,
-)
+from .garage_drive import GarageDriveSession, GarageDriveSessionManager, GarageDriveStartConfig
 from .world_worker_client import WorldWorkerClient
 
 _TORCHSCRIPT_FACTORY = "carla_vision.torchscript_driver:create_driver"
@@ -145,6 +143,7 @@ class ExternalModelDriveStartConfig:
             {
                 "garage_mode": "model",
                 "control_owner": "external_model",
+                "runtime_sensor_contract": "existing_drive_front_rgb",
                 "autonomy_output_actuated": True,
                 "model_output_actuated": True,
                 "model_package_id": self.model_package_id,
@@ -168,12 +167,33 @@ def _factory_for(package: ModelPackage) -> str:
     )
 
 
-class _ExternalModelPolicy:
-    """Same fail-closed policy shell as Imitation, with a registry-selected factory."""
+@dataclass(frozen=True)
+class _DriveFrame:
+    sequence: int
+    received_monotonic: float
+    bgr: np.ndarray
 
-    def __init__(self, context: Any, config: ExternalModelDriveStartConfig) -> None:
+
+def _latest_drive_frame(session: GarageDriveSession) -> _DriveFrame | None:
+    with session._frame_condition:
+        sequence = int(session._raw_frame_sequence)
+        jpeg = session._raw_jpeg
+        received = session._frame_received_monotonic["raw"]
+    if jpeg is None or received is None or sequence < 0:
+        return None
+    pixels = np.frombuffer(jpeg, dtype=np.uint8)
+    bgr = cv2.imdecode(pixels, cv2.IMREAD_COLOR)
+    if bgr is None:
+        raise RuntimeError("Drive raw stream contains an invalid JPEG")
+    return _DriveFrame(sequence=sequence, received_monotonic=float(received), bgr=bgr)
+
+
+class _ExternalModelPolicy:
+    """Fail-closed model policy using the existing Drive camera stream."""
+
+    def __init__(self, session: GarageDriveSession, config: ExternalModelDriveStartConfig) -> None:
+        self.session = session
         self.config = config
-        self.camera = _PolicyCamera(context.carla, context.world, context.ego, config)
         self.model = create_driving_model(
             config.model_factory,
             ModelDriverConfig(
@@ -207,17 +227,27 @@ class _ExternalModelPolicy:
                 **detail,
                 "error": self.latched_error,
             }
-        frame = self.camera.latest()
+        try:
+            frame = _latest_drive_frame(self.session)
+        except Exception as error:
+            self.errors += 1
+            return ControlCommand.service_brake(), "model_frame_error", True, {
+                **detail,
+                "error": f"{type(error).__name__}: {error}",
+            }
         stale_limit = max(0.5, 4.0 / self.config.camera_fps)
         if frame is None or now - frame.received_monotonic > stale_limit:
             return ControlCommand.service_brake(), "model_camera_deadman", True, detail
-        if frame.frame == self.last_frame and now - self.last_command_at <= stale_limit:
-            return self.last_command, "external_model", False, {**detail, "frame": frame.frame}
+        if frame.sequence == self.last_frame and now - self.last_command_at <= stale_limit:
+            return self.last_command, "external_model", False, {
+                **detail,
+                "frame": frame.sequence,
+            }
         try:
             value = self.model.predict(
                 ModelObservation(
-                    frame=frame.frame,
-                    timestamp=frame.timestamp,
+                    frame=frame.sequence,
+                    timestamp=frame.received_monotonic,
                     image_bgr=frame.bgr,
                     speed_mps=max(0.0, speed_mps),
                     dt_seconds=max(1e-3, dt_s),
@@ -247,12 +277,15 @@ class _ExternalModelPolicy:
                 hand_brake=bool(control.hand_brake),
                 reverse=bool(control.reverse),
             )
-            self.last_frame = frame.frame
+            self.last_frame = frame.sequence
             self.last_command = command
             self.last_command_at = now
             self.previous_steer = steer
             self.errors = 0
-            return command, "external_model", False, {**detail, "frame": frame.frame}
+            return command, "external_model", False, {
+                **detail,
+                "frame": frame.sequence,
+            }
         except Exception as error:
             self.errors += 1
             if self.errors >= self.config.max_policy_errors:
@@ -264,10 +297,7 @@ class _ExternalModelPolicy:
             }
 
     def close(self) -> None:
-        try:
-            self.model.close()
-        finally:
-            self.camera.close()
+        self.model.close()
 
 
 class ExternalModelDriveSession(GarageDriveSession):
@@ -276,25 +306,17 @@ class ExternalModelDriveSession(GarageDriveSession):
     def _ensure_extensions(self) -> None:
         if self._garage_closed:
             raise RuntimeError("Garage extensions are closing")
-        context = self._ensure_context()
-        self._population.start(context, self.config)
+        if self.config.traffic_vehicles or self.config.walkers:
+            context = self._ensure_context()
+            self._population.start(context, self.config)
         if self._policy is None:
-            self._policy = _ExternalModelPolicy(context, self.config)
-
-
-def _module_available(name: str) -> bool:
-    try:
-        return importlib.util.find_spec(name) is not None
-    except (ImportError, ModuleNotFoundError, AttributeError):
-        return False
+            self._policy = _ExternalModelPolicy(self, self.config)
 
 
 def _start_registered_model_session(
     manager: GarageDriveSessionManager,
     raw: Mapping[str, Any],
 ) -> dict[str, Any]:
-    if not _module_available("carla"):
-        raise RuntimeError("registered external model driving requires CARLA PythonAPI")
     active_world_worker: WorldWorkerClient | None = None
     if manager._world_worker is not None:
         try:
