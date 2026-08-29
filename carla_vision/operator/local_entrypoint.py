@@ -22,6 +22,7 @@ from ..model_registry import discover_model_packages
 from . import garage_server
 from . import server as base
 from .configuration import build_configuration_contract
+from .external_model_drive import start_registered_model_session
 
 _ENV_FILE = ".env.local"
 _SUPPORTED_KEYS = frozenset(
@@ -309,6 +310,27 @@ class LocalConfigGarageRequestHandler(garage_server.GarageOperatorRequestHandler
                 self._error(error)
             return
         super().do_GET()
+
+    def do_POST(self) -> None:
+        if urlparse(self.path).path != "/api/session/start":
+            super().do_POST()
+            return
+        try:
+            if not self._authorized():
+                self._json(
+                    HTTPStatus.FORBIDDEN,
+                    {"error": {"type": "PermissionError", "message": "invalid UI token"}},
+                )
+                return
+            body = self._body()
+            request = garage_server._canonical_session_request(body, self.server.application)
+            if str(request.get("control_mode", "manual")) == "model":
+                result = start_registered_model_session(self.server.application.drive, request)
+            else:
+                result = self.server.application.drive.start(request)
+            self._json(HTTPStatus.ACCEPTED, result)
+        except BaseException as error:
+            self._error(error)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
