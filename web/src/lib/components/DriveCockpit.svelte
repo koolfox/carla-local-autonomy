@@ -26,6 +26,7 @@
   $: streamSource = running && drive.session_id
     ? `/api/drive/stream.mjpg?view=${view}&session=${encodeURIComponent(drive.session_id)}&t=${streamNonce}`
     : '';
+  $: viewFps = Number((view === 'overlay' ? stream.overlay_fps : stream.source_fps) || 0);
 
   function retryStream(): void {
     streamReady = false;
@@ -72,7 +73,7 @@
   });
 </script>
 
-<section class="cockpit-card" class:active={active}>
+<section id="cockpit" class="cockpit-card scroll-section" class:active={active}>
   <div class="cockpit-header">
     <div>
       <span class="eyebrow">Cockpit</span>
@@ -93,7 +94,7 @@
           <button type="button" class:active={view === 'raw'} onclick={() => chooseView('raw')}>Raw camera</button>
           <button type="button" class:active={view === 'overlay'} disabled={!detectorEnabled} onclick={() => chooseView('overlay')}>Detections</button>
         </div>
-        <span>{stream.resolution ?? 'camera'} · {Number(view === 'overlay' ? stream.overlay_fps : stream.source_fps || 0).toFixed(1)} FPS · {frameAge()}</span>
+        <span>{stream.resolution ?? 'camera'} · {viewFps.toFixed(1)} FPS · {frameAge()}</span>
       </div>
 
       <div class="drive-viewport">
