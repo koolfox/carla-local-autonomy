@@ -1,6 +1,11 @@
 <script lang="ts">
   import type { DetectorKind } from '$lib/domain/config';
-  import { patchSessionSection, sessionConfig, systemSettings, workspaceOptions } from '$lib/stores/configuration';
+  import {
+    patchSessionSection,
+    sessionConfig,
+    systemSettings,
+    workspaceOptions
+  } from '$lib/stores/configuration';
   import { fieldChecked, fieldNumber, fieldValue } from '$lib/ui/events';
 
   function setDetector(event: Event): void {
@@ -8,10 +13,10 @@
   }
 </script>
 
-<section class="config-card">
+<section id="vision" class="config-card scroll-section">
   <div class="section-heading">
     <div>
-      <span class="eyebrow">03 · Vision</span>
+      <span class="eyebrow">04 · Vision</span>
       <h2>Camera, perception & evidence</h2>
     </div>
     <span class:ok-text={$systemSettings?.visionRuntimeAvailable} class="capability">
@@ -27,7 +32,7 @@
         disabled={!$systemSettings?.visionRuntimeAvailable}
         onchange={(event) => patchSessionSection('perception', { enabled: fieldChecked(event) })}
       />
-      <span><strong>Detection overlay</strong><small>RT-DETR / YOLO advisory output</small></span>
+      <span><strong>Detection overlay</strong><small>Advisory RT-DETR / YOLO output</small></span>
     </label>
     <label class="switch-field">
       <input
@@ -43,8 +48,13 @@
         checked={$sessionConfig.camera.spectatorFollow}
         onchange={(event) => patchSessionSection('camera', { spectatorFollow: fieldChecked(event) })}
       />
-      <span><strong>Spectator follow</strong><small>Server-side observer camera</small></span>
+      <span><strong>Spectator follow</strong><small>Mirror the ego from CARLA</small></span>
     </label>
+  </div>
+
+  <div class="subsection-heading">
+    <span>Drive camera</span>
+    <small>The Operator may cap unsupported profiles to the runtime capability.</small>
   </div>
 
   <div class="field-grid three-columns">
@@ -71,7 +81,7 @@
       </select>
     </label>
     <label class="field">
-      <span>FOV</span>
+      <span>Field of view</span>
       <input
         type="number"
         min="30"
@@ -83,59 +93,64 @@
   </div>
 
   {#if $sessionConfig.perception.enabled}
-    <div class="field-grid three-columns nested-fields">
-      <label class="field">
+    <div class="detector-settings nested-fields">
+      <div class="subsection-heading compact-subsection">
         <span>Detector</span>
-        <select value={$sessionConfig.perception.detector} onchange={setDetector}>
-          <option value="rtdetr">RT-DETR</option>
-          <option value="yolo">YOLO</option>
-        </select>
-      </label>
-      <label class="field">
-        <span>Weights</span>
-        <select
-          value={$sessionConfig.perception.weights}
-          onchange={(event) => patchSessionSection('perception', { weights: fieldValue(event) })}
-        >
-          <option value="">Select a workspace .pt file</option>
-          {#each $workspaceOptions.detectorWeights as weights}
-            <option value={weights}>{weights}</option>
-          {/each}
-        </select>
-      </label>
-      <label class="field">
-        <span>Device</span>
-        <select
-          value={$sessionConfig.perception.device}
-          onchange={(event) => patchSessionSection('perception', { device: fieldValue(event) })}
-        >
-          <option value="cpu">CPU</option>
-          <option value="mps">MPS</option>
-          <option value="cuda">CUDA</option>
-        </select>
-      </label>
-      <label class="field">
-        <span>Image size</span>
-        <input
-          type="number"
-          min="64"
-          max="4096"
-          step="32"
-          value={$sessionConfig.perception.imageSize}
-          oninput={(event) => patchSessionSection('perception', { imageSize: fieldNumber(event) })}
-        />
-      </label>
-      <label class="field">
-        <span>Confidence</span>
-        <input
-          type="number"
-          min="0"
-          max="1"
-          step="0.05"
-          value={$sessionConfig.perception.confidence}
-          oninput={(event) => patchSessionSection('perception', { confidence: fieldNumber(event) })}
-        />
-      </label>
+        <small>Overlay remains advisory in manual and Traffic Manager sessions.</small>
+      </div>
+      <div class="field-grid three-columns">
+        <label class="field">
+          <span>Backend</span>
+          <select value={$sessionConfig.perception.detector} onchange={setDetector}>
+            <option value="rtdetr">RT-DETR</option>
+            <option value="yolo">YOLO</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Weights</span>
+          <select
+            value={$sessionConfig.perception.weights}
+            onchange={(event) => patchSessionSection('perception', { weights: fieldValue(event) })}
+          >
+            <option value="">Select workspace weights</option>
+            {#each $workspaceOptions.detectorWeights as weights}<option value={weights}>{weights}</option>{/each}
+          </select>
+          {#if !$workspaceOptions.detectorWeights.length}<small>No detector .pt files are currently catalogued.</small>{/if}
+        </label>
+        <label class="field">
+          <span>Device</span>
+          <select
+            value={$sessionConfig.perception.device}
+            onchange={(event) => patchSessionSection('perception', { device: fieldValue(event) })}
+          >
+            <option value="cpu">CPU</option>
+            <option value="mps">MPS</option>
+            <option value="cuda">CUDA</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Image size</span>
+          <input
+            type="number"
+            min="64"
+            max="4096"
+            step="32"
+            value={$sessionConfig.perception.imageSize}
+            oninput={(event) => patchSessionSection('perception', { imageSize: fieldNumber(event) })}
+          />
+        </label>
+        <label class="field">
+          <span>Confidence</span>
+          <input
+            type="number"
+            min="0"
+            max="1"
+            step="0.05"
+            value={$sessionConfig.perception.confidence}
+            oninput={(event) => patchSessionSection('perception', { confidence: fieldNumber(event) })}
+          />
+        </label>
+      </div>
     </div>
   {/if}
 </section>
