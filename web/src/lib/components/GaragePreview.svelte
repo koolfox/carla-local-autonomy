@@ -13,6 +13,7 @@
     top: { yaw: 325, pitch: -25, distance: 8 },
     cockpit: { yaw: 0, pitch: 0, distance: 4 }
   };
+  const presetNames: CameraPreset[] = ['orbit', 'front', 'rear', 'top', 'cockpit'];
 
   let active = false;
   let busy = false;
@@ -33,7 +34,9 @@
     (vehicle) => vehicle.id === $sessionConfig.vehicle.blueprint
   );
   $: driveActive = isDriveActive($garageRuntime.drive);
-  $: available = Boolean($systemSettings?.workerConnected && $sessionConfig.vehicle.blueprint && !driveActive);
+  $: available = Boolean(
+    $systemSettings?.workerConnected && $sessionConfig.vehicle.blueprint && !driveActive
+  );
   $: previewConfig = buildPreviewConfig();
   $: signature = JSON.stringify(previewConfig);
   $: dirty = active && signature !== appliedSignature;
@@ -44,6 +47,7 @@
     active = false;
     streamReady = false;
     appliedSignature = '';
+    pointer = null;
   }
 
   function cameraProfile(): GaragePreviewConfig['profile'] {
@@ -104,6 +108,7 @@
       active = false;
       streamReady = false;
       appliedSignature = '';
+      pointer = null;
       busy = false;
     }
   }
@@ -151,7 +156,11 @@
   function pointerDown(event: PointerEvent): void {
     if (!active) return;
     const element = event.currentTarget as HTMLElement;
-    element.setPointerCapture(event.pointerId);
+    try {
+      element.setPointerCapture(event.pointerId);
+    } catch {
+      return;
+    }
     pointer = { id: event.pointerId, x: event.clientX, y: event.clientY, yaw, pitch };
     event.preventDefault();
   }
@@ -179,7 +188,7 @@
   }
 </script>
 
-<section class="garage-preview-card">
+<section id="garage" class="garage-preview-card scroll-section">
   <div class="garage-preview-stage" class:live={active && streamReady}>
     {#if streamSource}
       <img
@@ -232,19 +241,19 @@
   <div class="garage-preview-toolbar">
     <div class="garage-preview-identity">
       <span class="eyebrow">Live Garage</span>
-      <strong>{selectedVehicle?.label ?? $sessionConfig.vehicle.blueprint || 'No vehicle selected'}</strong>
+      <strong>{selectedVehicle?.label ?? ($sessionConfig.vehicle.blueprint || 'No vehicle selected')}</strong>
       <small>
         {#if dirty}Settings changed · refresh explicitly{:else if active}CARLA preview matches the current form{:else}Preview is closed{/if}
       </small>
     </div>
 
     <div class="garage-camera-presets" aria-label="Garage camera presets">
-      {#each Object.keys(presets) as name}
+      {#each presetNames as name}
         <button
           type="button"
           class:active={preset === name}
           disabled={!active}
-          onclick={() => applyPreset(name as CameraPreset)}
+          onclick={() => applyPreset(name)}
         >{name}</button>
       {/each}
     </div>
