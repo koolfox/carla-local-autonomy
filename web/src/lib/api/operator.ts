@@ -1,5 +1,7 @@
 import type {
   ExperimentPresetDefinition,
+  InvalidModelPackage,
+  ModelPackage,
   SessionConfig,
   SystemSettings,
   WorkspaceOptions
@@ -36,6 +38,12 @@ export interface ConfigurationContractPayload {
   };
   sessionDefaults: Partial<SessionConfig>;
   experimentPresets: ExperimentPresetDefinition[];
+}
+
+export interface ModelRegistryPayload {
+  schema_version: string;
+  packages: ModelPackage[];
+  invalid: InvalidModelPackage[];
 }
 
 export interface DriveCatalogPayload {
@@ -100,11 +108,22 @@ async function readJson<T>(path: string): Promise<T> {
 }
 
 export async function loadWorkspaceSnapshot(): Promise<WorkspaceSnapshot> {
-  const [bootstrap, configuration, driveCatalog] = await Promise.all([
+  const [bootstrap, configuration, driveCatalog, modelRegistry] = await Promise.all([
     readJson<BootstrapPayload>('/api/bootstrap'),
     readJson<ConfigurationContractPayload>('/api/configuration'),
-    readJson<DriveCatalogPayload>('/api/drive/catalog')
+    readJson<DriveCatalogPayload>('/api/drive/catalog'),
+    readJson<ModelRegistryPayload>('/api/models')
   ]);
+
+  const drivingPackages = Array.isArray(modelRegistry.packages)
+    ? modelRegistry.packages.filter((model) => model.role === 'driving_policy')
+    : [];
+  const capabilities = { ...driveCatalog.capabilities };
+  capabilities.garage_model_drive = Boolean(
+    configuration.system.experimentalEnabled &&
+      capabilities.garage_imitation_drive &&
+      drivingPackages.length > 0
+  );
 
   const system: SystemSettings = {
     workspace: configuration.system.workspace,
@@ -119,7 +138,7 @@ export async function loadWorkspaceSnapshot(): Promise<WorkspaceSnapshot> {
     workerUrl: configuration.system.worldWorker.url,
     experimentalEnabled: Boolean(configuration.system.experimentalEnabled),
     visionRuntimeAvailable: driveCatalog.vision_runtime?.available !== false,
-    capabilities: { ...driveCatalog.capabilities }
+    capabilities
   };
 
   const options: WorkspaceOptions = {
@@ -132,7 +151,9 @@ export async function loadWorkspaceSnapshot(): Promise<WorkspaceSnapshot> {
     detectorWeights: Array.isArray(bootstrap.catalog.weights) ? bootstrap.catalog.weights : [],
     checkpoints: Array.isArray(driveCatalog.policy_checkpoints)
       ? driveCatalog.policy_checkpoints
-      : []
+      : [],
+    models: Array.isArray(modelRegistry.packages) ? modelRegistry.packages : [],
+    invalidModels: Array.isArray(modelRegistry.invalid) ? modelRegistry.invalid : []
   };
 
   return {
