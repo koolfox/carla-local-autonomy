@@ -55,10 +55,14 @@ Svelte changes:
 
 ```bash
 cd web
-npm install --no-audit --no-fund
+npm ci --no-audit --no-fund
 npm run check
 npm run build
 ```
+
+The production bundle in `carla_vision/operator/console_static/` is a reviewed
+release asset. Commit it with the Svelte source change; never edit it by hand.
+CI rebuilds it from `web/package-lock.json` and rejects stale output.
 
 Simulator-dependent behavior also needs a recorded live-CARLA acceptance run.
 Unit tests and fake actors do not prove map changes, vehicle control, stream

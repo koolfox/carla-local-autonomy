@@ -78,6 +78,10 @@ Everything, including experimental modules:
 uv sync --all-extras --all-groups
 ```
 
+The installed package already contains the production Svelte console. Node.js
+is needed only when changing the frontend; contributors rebuild the reviewed
+bundle with `npm ci && npm run build` from `web/`.
+
 ## Run the Windows World Worker
 
 Use the Python environment in which the matching CARLA 0.9.16 PythonAPI can be

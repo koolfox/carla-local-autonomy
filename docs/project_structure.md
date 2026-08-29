@@ -24,8 +24,10 @@ converges on one product surface.
 
 ## Migration boundaries
 
-- `web/` is the official frontend source. The generated Svelte artifact and
-  clean-checkout packaging contract are resolved by #53.
+- `web/` is the official frontend source. The reviewed release bundle under
+  `carla_vision/operator/console_static/` is generated from the locked frontend
+  dependencies, committed with its source change, and included in the wheel.
+  It must never be edited by hand.
 - `carla_vision/operator/static/` is a temporary rollback surface. It is not a
   second product to extend. It can be removed only after parity is verified.
 - Shared map, weather, vehicle, traffic, pedestrian, perception, recording,

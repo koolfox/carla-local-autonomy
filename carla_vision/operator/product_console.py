@@ -117,6 +117,22 @@ class ProductConsoleRequestHandler(LocalConfigGarageRequestHandler):
         )
         self.wfile.write(payload)
 
+    def _missing_console_index(self) -> None:
+        payload = (
+            "<!doctype html><html><head><meta charset=\"utf-8\">"
+            "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+            "<title>CARLA console unavailable</title></head><body><main>"
+            "<h1>Garage console build is missing</h1>"
+            "<p>Install a release package or run npm ci and npm run build in web.</p>"
+            "<p><a href=\"/legacy/\">Open the explicit legacy rollback UI</a></p>"
+            "</main></body></html>"
+        ).encode("utf-8")
+        self._bytes(
+            HTTPStatus.SERVICE_UNAVAILABLE,
+            payload,
+            content_type="text/html; charset=utf-8",
+        )
+
     def do_GET(self) -> None:
         path = urlparse(self.path).path
         if path in {"/legacy", "/legacy/"}:
@@ -130,7 +146,7 @@ class ProductConsoleRequestHandler(LocalConfigGarageRequestHandler):
                 if console_available(self.console_root):
                     self._console_index()
                 else:
-                    self._legacy_index()
+                    self._missing_console_index()
             except BaseException as error:
                 self._error(error)
             return
