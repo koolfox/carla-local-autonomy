@@ -52,6 +52,7 @@ jobs:
           tests/test_garage_research_bridge.py
           tests/test_garage_visual_contract.py
           tests/test_model_registry.py
+          tests/test_observable_world_worker.py
           tests/test_operator.py
           tests/test_operator_configuration.py
           tests/test_operator_local_config.py
@@ -65,6 +66,7 @@ jobs:
 
       - name: Check production entry points
         run: |
+          uv run carla-world-worker --help
           uv run carla-operator-ui --help
           uv run carla-discover --help
           uv run carla-vision --help
