@@ -69,9 +69,6 @@ jobs:
   frontend:
     name: SvelteKit console
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: web
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -82,13 +79,24 @@ jobs:
           node-version: "24"
 
       - name: Install frontend dependencies
+        working-directory: web
         run: npm install --no-audit --no-fund
 
       - name: Type-check Svelte console
+        working-directory: web
         run: npm run check
 
       - name: Build static console
+        working-directory: web
         run: npm run build
+
+      - name: Upload deployable Garage console
+        uses: actions/upload-artifact@v4
+        with:
+          name: garage-console-static
+          path: carla_vision/operator/console_static
+          if-no-files-found: error
+          retention-days: 7
 
   full-suite:
     name: Research and experimental suite
