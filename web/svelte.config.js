@@ -6,6 +6,8 @@ const config = {
   preprocess: vitePreprocess(),
   kit: {
     adapter: adapter({
+      pages: '../carla_vision/operator/console_static',
+      assets: '../carla_vision/operator/console_static',
       fallback: 'index.html',
       precompress: false
     })
