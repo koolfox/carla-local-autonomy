@@ -2,12 +2,17 @@
 
 Precedence is deterministic: explicit CLI > process environment > .env.local >
 existing built-in defaults. The actual HTTP/server lifecycle remains owned by
-``garage_server.main``; this module resolves local machine configuration and
-exposes the canonical, secret-free product configuration contract.
+``garage_server.main``; this module resolves local machine configuration,
+exposes the canonical secret-free product contract, and serves the packaged
+Svelte Garage when its static build is present. The legacy shell remains
+available at ``/legacy/`` and is also the fail-safe root fallback when the
+compiled console is absent.
 """
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import os
 import re
@@ -23,6 +28,11 @@ from . import server as base
 from .configuration import build_configuration_contract
 
 _ENV_FILE = ".env.local"
+CONSOLE_ROOT = Path(__file__).resolve().parent / "console_static"
+_CONSOLE_ASSET_SUFFIXES = frozenset(
+    {".css", ".gif", ".ico", ".jpeg", ".jpg", ".js", ".json", ".png", ".svg", ".webp", ".woff", ".woff2"}
+)
+_INLINE_SCRIPT = re.compile(r"<script(?:\s[^>]*)?>(?P<body>.*?)</script>", re.IGNORECASE | re.DOTALL)
 _SUPPORTED_KEYS = frozenset(
     {
         "CARLA_HOST",
@@ -240,7 +250,7 @@ def prepare_launch(
 
 
 def render_operator_index(html: str, *, detector_enabled: bool) -> str:
-    """Apply browser-only defaults without turning runtime telemetry into config."""
+    """Apply browser-only defaults to the legacy shell only."""
 
     match = _DETECTOR_INPUT.search(html)
     if match is None:
@@ -256,16 +266,92 @@ def render_operator_index(html: str, *, detector_enabled: bool) -> str:
     return html[: match.start()] + replacement + html[match.end() :]
 
 
+def console_available(root: Path = CONSOLE_ROOT) -> bool:
+    """Return whether a regular packaged Svelte entrypoint is available."""
+
+    index = root / "index.html"
+    return root.is_dir() and not root.is_symlink() and index.is_file() and not index.is_symlink()
+
+
+def console_content_security_policy(index_html: str) -> str:
+    """Allow only the exact generated inline bootstrap scripts by SHA-256 hash."""
+
+    hashes: list[str] = []
+    for match in _INLINE_SCRIPT.finditer(index_html):
+        body = match.group("body")
+        if not body.strip():
+            continue
+        digest = hashlib.sha256(body.encode("utf-8")).digest()
+        token = base64.b64encode(digest).decode("ascii")
+        hashes.append(f"'sha256-{token}'")
+    script_sources = " ".join(["'self'", *hashes])
+    return (
+        "default-src 'self'; "
+        f"script-src {script_sources}; "
+        "style-src 'self'; img-src 'self' data:; media-src 'self'; "
+        "object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+    )
+
+
+def resolve_console_asset(path: str, root: Path = CONSOLE_ROOT) -> Path:
+    """Resolve one generated ``/_app`` asset without allowing traversal or symlinks."""
+
+    if not path.startswith("/_app/"):
+        raise FileNotFoundError("console asset route not found")
+    parts = base._path_parts(path.removeprefix("/"), "console asset path")
+    if not parts or parts[0] != "_app":
+        raise FileNotFoundError("console asset route not found")
+    if not console_available(root):
+        raise FileNotFoundError("compiled Garage console is unavailable")
+    if base._walk_has_symlink(root, parts):
+        raise ValueError("console asset path must not contain symlinks")
+    candidate = root.joinpath(*parts)
+    if not candidate.is_file():
+        raise FileNotFoundError("console asset not found")
+    resolved_root = root.resolve(strict=True)
+    resolved = candidate.resolve(strict=True)
+    resolved.relative_to(resolved_root)
+    if resolved.suffix.lower() not in _CONSOLE_ASSET_SUFFIXES:
+        raise FileNotFoundError("console asset type is not served")
+    return resolved
+
+
 class LocalConfigGarageRequestHandler(garage_server.GarageOperatorRequestHandler):
-    """Serve the Garage shell and canonical local configuration contract."""
+    """Serve the canonical Garage, APIs, and explicit legacy rollback shell."""
 
     detector_enabled_default = True
+    console_root = CONSOLE_ROOT
 
     def _configuration_contract(self) -> dict[str, object]:
         return build_configuration_contract(
             self.server.application,
             detector_enabled=self.detector_enabled_default,
         )
+
+    def _legacy_index(self) -> None:
+        html = (base.STATIC_ROOT / "index.html").read_text(encoding="utf-8")
+        html = render_operator_index(
+            html,
+            detector_enabled=self.detector_enabled_default,
+        )
+        self._bytes(
+            HTTPStatus.OK,
+            html.encode("utf-8"),
+            content_type="text/html; charset=utf-8",
+        )
+
+    def _console_index(self) -> None:
+        index = self.console_root / "index.html"
+        html = index.read_text(encoding="utf-8")
+        payload = html.encode("utf-8")
+        self._headers(
+            HTTPStatus.OK,
+            content_type="text/html; charset=utf-8",
+            length=len(payload),
+            cache="no-cache",
+            content_security_policy=console_content_security_policy(html),
+        )
+        self.wfile.write(payload)
 
     def do_GET(self) -> None:
         path = urlparse(self.path).path
@@ -283,18 +369,30 @@ class LocalConfigGarageRequestHandler(garage_server.GarageOperatorRequestHandler
             except BaseException as error:
                 self._error(error)
             return
+        if path in {"/legacy", "/legacy/"}:
+            try:
+                self._legacy_index()
+            except BaseException as error:
+                self._error(error)
+            return
         if path == "/":
             try:
-                html = (base.STATIC_ROOT / "index.html").read_text(encoding="utf-8")
-                html = render_operator_index(
-                    html,
-                    detector_enabled=self.detector_enabled_default,
+                if console_available(self.console_root):
+                    self._console_index()
+                else:
+                    self._legacy_index()
+            except BaseException as error:
+                self._error(error)
+            return
+        if path.startswith("/_app/"):
+            try:
+                asset = resolve_console_asset(path, self.console_root)
+                cache = (
+                    "public, max-age=31536000, immutable"
+                    if "/immutable/" in path
+                    else "no-cache"
                 )
-                self._bytes(
-                    HTTPStatus.OK,
-                    html.encode("utf-8"),
-                    content_type="text/html; charset=utf-8",
-                )
+                self._file(asset, cache=cache)
             except BaseException as error:
                 self._error(error)
             return
@@ -323,10 +421,14 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 __all__ = [
+    "CONSOLE_ROOT",
     "LocalConfigGarageRequestHandler",
     "LocalLaunchPlan",
+    "console_available",
+    "console_content_security_policy",
     "load_local_env",
     "main",
     "prepare_launch",
     "render_operator_index",
+    "resolve_console_asset",
 ]
