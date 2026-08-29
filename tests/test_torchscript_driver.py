@@ -8,7 +8,6 @@ import pytest
 from carla_vision.model_driver import ModelDriverConfig, ModelObservation
 from carla_vision.torchscript_driver import create_driver
 
-
 torch = pytest.importorskip("torch")
 
 
@@ -23,6 +22,12 @@ class _SpeedPolicy(torch.nn.Module):
         mean = image.mean()
         speed_value = speed.reshape(-1)[0]
         return torch.stack((mean * 0.0 + 0.2, speed_value * 0.01, mean * 0.0 + 0.0))
+
+
+class _InvalidPolicy(torch.nn.Module):
+    def forward(self, image):
+        mean = image.mean()
+        return torch.stack((mean * 0.0 + 1.5, mean * 0.0, mean * 0.0))
 
 
 def _observation(speed_mps: float = 5.0) -> ModelObservation:
@@ -96,13 +101,8 @@ def test_torchscript_policy_can_receive_explicit_speed_input(tmp_path: Path) -> 
 
 
 def test_torchscript_invalid_control_is_rejected_by_model_control_validation(tmp_path: Path) -> None:
-    class InvalidPolicy(torch.nn.Module):
-        def forward(self, image):
-            mean = image.mean()
-            return torch.stack((mean * 0.0 + 1.5, mean * 0.0, mean * 0.0))
-
     checkpoint = tmp_path / "invalid.pt"
-    _save_script(InvalidPolicy(), checkpoint)
+    _save_script(_InvalidPolicy(), checkpoint)
     driver = create_driver(
         ModelDriverConfig(
             checkpoint=checkpoint,
