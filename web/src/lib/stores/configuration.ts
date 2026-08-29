@@ -23,7 +23,9 @@ export const workspaceOptions = writable<WorkspaceOptions>({
   weatherPresets: [],
   propPresets: [],
   detectorWeights: [],
-  checkpoints: []
+  checkpoints: [],
+  models: [],
+  invalidModels: []
 });
 export const experimentPresets = writable<ExperimentPresetDefinition[]>([]);
 export const operatorToken = writable('');
@@ -99,7 +101,10 @@ function reconcileCapabilities(config: SessionConfig, snapshot: WorkspaceSnapsho
     if (next.control.mode === 'autopilot') next.control.mode = 'manual';
   }
 
-  if (!snapshot.system.experimentalEnabled && ['behavior', 'imitation', 'voxel'].includes(next.control.mode)) {
+  if (
+    !snapshot.system.experimentalEnabled &&
+    ['behavior', 'imitation', 'voxel', 'model'].includes(next.control.mode)
+  ) {
     next.control.mode = 'manual';
     next.policy.acknowledgeAutonomy = false;
   }
@@ -108,12 +113,24 @@ function reconcileCapabilities(config: SessionConfig, snapshot: WorkspaceSnapsho
     autopilot: 'autopilot',
     behavior: 'garage_behavior_drive',
     imitation: 'garage_imitation_drive',
-    voxel: 'garage_voxel_drive'
+    voxel: 'garage_voxel_drive',
+    model: 'garage_model_drive'
   };
   const capability = modeCapability[next.control.mode];
   if (capability && !snapshot.system.capabilities[capability]) {
     next.control.mode = 'manual';
     next.policy.acknowledgeAutonomy = false;
+  }
+
+  const drivingModels = snapshot.options.models.filter((model) => model.role === 'driving_policy');
+  if (next.control.mode === 'model') {
+    const selected = drivingModels.find((model) => model.id === next.policy.modelId);
+    if (!selected) next.policy.modelId = drivingModels[0]?.id ?? '';
+    const active = drivingModels.find((model) => model.id === next.policy.modelId);
+    if (active && !active.devices.includes(next.policy.device)) {
+      next.policy.device = active.devices[0] ?? 'cpu';
+    }
+    if (!active?.requiresTrustedCode) next.policy.acknowledgeTrustedCode = false;
   }
 
   if (!snapshot.system.visionRuntimeAvailable) {

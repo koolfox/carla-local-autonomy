@@ -1,4 +1,4 @@
-export type ControlMode = 'manual' | 'autopilot' | 'behavior' | 'imitation' | 'voxel';
+export type ControlMode = 'manual' | 'autopilot' | 'behavior' | 'imitation' | 'voxel' | 'model';
 export type RouteMode = 'free' | 'random_destination';
 export type DetectorKind = 'rtdetr' | 'yolo';
 export type BehaviorStyle = 'cautious' | 'normal' | 'aggressive';
@@ -24,6 +24,30 @@ export interface SystemSettings {
   experimentalEnabled: boolean;
   visionRuntimeAvailable: boolean;
   capabilities: Record<string, boolean>;
+}
+
+export interface ModelPackage {
+  id: string;
+  name: string;
+  version: string;
+  role: 'detector' | 'driving_policy' | 'scene_perception' | 'perception_guard';
+  runtime: 'ultralytics' | 'python_factory' | 'torchscript_control_v1';
+  artifact: string;
+  expectedSha256: string | null;
+  factory: string | null;
+  devices: string[];
+  inputs: Record<string, unknown>;
+  outputs: Record<string, unknown>;
+  labels: Record<string, unknown> | unknown[];
+  source: string | null;
+  manifestPath: string;
+  requiresTrustedCode: boolean;
+}
+
+export interface InvalidModelPackage {
+  path: string;
+  errorType: string;
+  message: string;
 }
 
 export interface SessionConfig {
@@ -74,6 +98,8 @@ export interface SessionConfig {
   policy: {
     behavior: BehaviorStyle;
     acknowledgeAutonomy: boolean;
+    acknowledgeTrustedCode: boolean;
+    modelId: string;
     checkpoint: string;
     device: string;
     voxelReadinessReport: string;
@@ -112,6 +138,8 @@ export interface WorkspaceOptions {
   propPresets: Array<{ id: string; label: string }>;
   detectorWeights: string[];
   checkpoints: string[];
+  models: ModelPackage[];
+  invalidModels: InvalidModelPackage[];
 }
 
 export function newRunId(): string {
@@ -167,6 +195,8 @@ export function defaultSessionConfig(): SessionConfig {
     policy: {
       behavior: 'normal',
       acknowledgeAutonomy: false,
+      acknowledgeTrustedCode: false,
+      modelId: '',
       checkpoint: '',
       device: 'cpu',
       voxelReadinessReport: '',

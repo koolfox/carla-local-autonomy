@@ -113,6 +113,8 @@ _SECTION_KEYS = {
         {
             "behavior",
             "acknowledgeAutonomy",
+            "acknowledgeTrustedCode",
+            "modelId",
             "checkpoint",
             "device",
             "voxelReadinessReport",
@@ -188,6 +190,8 @@ def session_defaults(*, detector_enabled: bool) -> dict[str, Any]:
         "policy": {
             "behavior": "normal",
             "acknowledgeAutonomy": False,
+            "acknowledgeTrustedCode": False,
+            "modelId": "",
             "checkpoint": "",
             "device": "cpu",
             "voxelReadinessReport": "",
@@ -257,10 +261,10 @@ def build_legacy_drive_request(
     policy = session["policy"]
 
     user_control_mode = str(control["mode"]).strip().lower()
-    valid_modes = {"manual", "autopilot", "behavior", "imitation", "voxel"}
+    valid_modes = {"manual", "autopilot", "behavior", "imitation", "voxel", "model"}
     if user_control_mode not in valid_modes:
         raise ValueError(
-            "session.control.mode must be manual, autopilot, behavior, imitation, or voxel"
+            "session.control.mode must be manual, autopilot, behavior, imitation, voxel, or model"
         )
 
     traffic_count = scene["trafficCount"]
@@ -308,10 +312,15 @@ def build_legacy_drive_request(
 
     checkpoint = str(policy["checkpoint"]).strip()
     readiness = str(policy["voxelReadinessReport"]).strip()
+    model_id = str(policy["modelId"]).strip()
     if garage_mode not in {"imitation", "voxel"}:
         checkpoint = ""
     if garage_mode != "voxel":
         readiness = ""
+    if garage_mode != "model":
+        model_id = ""
+    elif not model_id:
+        raise ValueError("session.policy.modelId is required for control.mode=model")
 
     return {
         "run_id": str(identity["runId"]).strip(),
@@ -355,6 +364,8 @@ def build_legacy_drive_request(
         "max_policy_errors": policy["maxPolicyErrors"],
         "max_model_speed_kmh": policy["maxModelSpeedKmh"],
         "max_steer_rate": policy["maxSteerRate"],
+        "model_package_id": model_id,
+        "model_trusted_code_acknowledged": policy["acknowledgeTrustedCode"],
     }
 
 

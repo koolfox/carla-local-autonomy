@@ -82,6 +82,8 @@ def test_session_defaults_have_one_scene_drive_perception_recording_shape() -> N
     assert defaults["perception"]["detector"] == "rtdetr"
     assert defaults["recording"] == {"video": True}
     assert defaults["policy"]["acknowledgeAutonomy"] is False
+    assert defaults["policy"]["acknowledgeTrustedCode"] is False
+    assert defaults["policy"]["modelId"] == ""
 
 
 def test_connected_worker_is_the_only_population_owner() -> None:
@@ -160,6 +162,39 @@ def test_experimental_mode_maps_to_garage_policy_without_worker_autopilot() -> N
     assert request["acknowledge_autonomy"] is True
     assert request["policy_checkpoint"] == "models/imitation/best.pt"
     assert request["policy_device"] == "mps"
+
+
+def test_registered_model_mode_uses_package_identity_not_raw_checkpoint() -> None:
+    request = build_legacy_drive_request(
+        _session(
+            control__mode="model",
+            policy__acknowledgeAutonomy=True,
+            policy__acknowledgeTrustedCode=True,
+            policy__modelId="road-policy",
+            policy__device="cuda",
+        ),
+        carla_host="192.168.1.108",
+        carla_port=2000,
+        worker_connected=True,
+        capabilities={},
+    )
+
+    assert request["control_mode"] == "model"
+    assert request["model_package_id"] == "road-policy"
+    assert request["model_trusted_code_acknowledged"] is True
+    assert request["policy_checkpoint"] == ""
+    assert request["policy_device"] == "cuda"
+
+
+def test_registered_model_mode_requires_model_id() -> None:
+    with pytest.raises(ValueError, match="modelId"):
+        build_legacy_drive_request(
+            _session(control__mode="model", policy__acknowledgeAutonomy=True),
+            carla_host="192.168.1.108",
+            carla_port=2000,
+            worker_connected=True,
+            capabilities={},
+        )
 
 
 def test_worker_only_scene_features_fail_cleanly_when_worker_is_offline() -> None:
