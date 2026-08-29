@@ -120,9 +120,7 @@ export async function loadWorkspaceSnapshot(): Promise<WorkspaceSnapshot> {
     : [];
   const capabilities = { ...driveCatalog.capabilities };
   capabilities.garage_model_drive = Boolean(
-    configuration.system.experimentalEnabled &&
-      capabilities.garage_imitation_drive &&
-      drivingPackages.length > 0
+    configuration.system.experimentalEnabled && drivingPackages.length > 0 && driveCatalog.connected
   );
 
   const system: SystemSettings = {
