@@ -4,6 +4,7 @@
   import { loadWorkspaceSnapshot } from '$lib/api/operator';
   import ContextRail from '$lib/components/ContextRail.svelte';
   import DriveSettings from '$lib/components/DriveSettings.svelte';
+  import ModelLibrary from '$lib/components/ModelLibrary.svelte';
   import PolicySettings from '$lib/components/PolicySettings.svelte';
   import PresetSelector from '$lib/components/PresetSelector.svelte';
   import ResolvedSession from '$lib/components/ResolvedSession.svelte';
@@ -55,6 +56,7 @@
         <SceneSettings />
         <DriveSettings />
         <VisionSettings />
+        <ModelLibrary />
         <PolicySettings />
       {/if}
     </section>
