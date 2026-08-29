@@ -45,11 +45,13 @@ jobs:
           tests/test_bridge.py
           tests/test_discovery.py
           tests/test_drive_console.py
+          tests/test_external_model_drive.py
           tests/test_garage_drive.py
           tests/test_garage_preview.py
           tests/test_garage_research.py
           tests/test_garage_research_bridge.py
           tests/test_garage_visual_contract.py
+          tests/test_model_registry.py
           tests/test_operator.py
           tests/test_operator_configuration.py
           tests/test_operator_local_config.py
