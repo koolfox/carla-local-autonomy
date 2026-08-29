@@ -68,6 +68,9 @@
           <option value="voxel" disabled={!$systemSettings.capabilities.garage_voxel_drive}>
             Voxel Planner · Experimental
           </option>
+          <option value="model" disabled={!$systemSettings.capabilities.garage_model_drive}>
+            Registered PyTorch model · Experimental
+          </option>
         {/if}
       </select>
     </label>
