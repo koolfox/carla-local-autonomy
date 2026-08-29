@@ -55,6 +55,7 @@ jobs:
           tests/test_operator.py
           tests/test_operator_configuration.py
           tests/test_operator_local_config.py
+          tests/test_product_console.py
           tests/test_recording.py
           tests/test_runtime.py
           tests/test_standalone_world_bridge.py
