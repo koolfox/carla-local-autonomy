@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Mapping, Sequence
 from urllib.parse import urlparse
 
+from ..model_registry import discover_model_packages
 from . import garage_server
 from . import server as base
 from .configuration import build_configuration_contract
@@ -272,6 +273,15 @@ class LocalConfigGarageRequestHandler(garage_server.GarageOperatorRequestHandler
         if path == "/api/configuration":
             try:
                 self._json(HTTPStatus.OK, self._configuration_contract())
+            except BaseException as error:
+                self._error(error)
+            return
+        if path == "/api/models":
+            try:
+                self._json(
+                    HTTPStatus.OK,
+                    discover_model_packages(self.server.application.workspace),
+                )
             except BaseException as error:
                 self._error(error)
             return
