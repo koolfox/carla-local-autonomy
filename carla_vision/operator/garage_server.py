@@ -1,8 +1,9 @@
 """Garage APIs and lifecycle integration for the local operator server.
 
 The base operator application owns the single canonical browser shell and static
-assets. This wrapper adds the Garage drive manager, preview, and allow-listed
-research-job endpoint without changing how the shell itself is served.
+assets. This wrapper adds the Garage drive manager, preview, canonical unified
+session adapter, and allow-listed research-job endpoint without changing the
+underlying Drive execution contracts during migration.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from typing import Any, Sequence
 from urllib.parse import urlparse
 
 from . import server as base
+from .configuration import CONFIGURATION_SCHEMA_VERSION, build_legacy_drive_request
 from .garage_drive import GarageDriveSessionManager
 from .garage_preview import GaragePreviewManager
 from .garage_research import GarageResearchRequest, build_garage_research_plan
@@ -38,6 +40,33 @@ def _validate_research_runtime(
     dry_run = request.parameters.get("dry_run") is True
     if request.kind in _LIVE_RESEARCH_KINDS and not dry_run and status != "running":
         raise RuntimeError(f"{request.kind} requires a running Garage ego or dry_run=true")
+
+
+def _canonical_session_request(raw: Any, application: Any) -> dict[str, Any]:
+    if not isinstance(raw, Mapping):
+        raise TypeError("unified session request must be an object")
+    keys = frozenset(str(key) for key in raw)
+    if keys != {"schema_version", "session"}:
+        raise ValueError("unified session request must contain only schema_version and session")
+    if str(raw["schema_version"]) != CONFIGURATION_SCHEMA_VERSION:
+        raise ValueError(
+            f"unified session schema_version must be {CONFIGURATION_SCHEMA_VERSION!r}"
+        )
+
+    catalog = application.drive.catalog()
+    capabilities = catalog.get("capabilities", {})
+    if not isinstance(capabilities, Mapping):
+        raise RuntimeError("Drive catalog capabilities are malformed")
+    worker = catalog.get("world_worker", {})
+    if not isinstance(worker, Mapping):
+        worker = {}
+    return build_legacy_drive_request(
+        raw["session"],
+        carla_host=application.carla_host,
+        carla_port=application.carla_port,
+        worker_connected=bool(worker.get("connected")),
+        capabilities=capabilities,
+    )
 
 
 class GarageOperatorRequestHandler(base.OperatorRequestHandler):
@@ -110,7 +139,8 @@ class GarageOperatorRequestHandler(base.OperatorRequestHandler):
             "/api/garage/preview/orbit",
             "/api/garage/preview/stop",
         }
-        if path != "/api/garage/jobs" and path not in preview_routes:
+        handled_routes = {"/api/garage/jobs", "/api/session/start", *preview_routes}
+        if path not in handled_routes:
             super().do_POST()
             return
         try:
@@ -121,6 +151,13 @@ class GarageOperatorRequestHandler(base.OperatorRequestHandler):
                 )
                 return
             body = self._body()
+            if path == "/api/session/start":
+                request = _canonical_session_request(body, self.server.application)
+                self._json(
+                    HTTPStatus.ACCEPTED,
+                    self.server.application.drive.start(request),
+                )
+                return
             if path in preview_routes:
                 if not isinstance(body, Mapping):
                     raise TypeError("Garage preview request must be an object")

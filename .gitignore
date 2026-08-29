@@ -20,3 +20,6 @@ operator_sessions/
 .env.local
 /CARLA PY.zip
 /git.zip
+web/node_modules/
+web/.svelte-kit/
+web/build/

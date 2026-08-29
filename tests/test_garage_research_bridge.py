@@ -7,6 +7,7 @@ import urllib.request
 from pathlib import Path
 
 from carla_vision.operator import garage_server
+from carla_vision.operator.configuration import session_defaults
 from carla_vision.operator.garage_server import create_server
 
 STATIC_ROOT = Path(__file__).parents[1] / "carla_vision" / "operator" / "static"
@@ -208,6 +209,71 @@ def test_production_server_rejects_research_jobs(tmp_path: Path) -> None:
             assert "--enable-experimental" in response["error"]["message"]
         else:
             raise AssertionError("production server accepted an experimental research job")
+    finally:
+        server.shutdown()
+        thread.join(timeout=3.0)
+        server.server_close()
+        server.application.jobs.shutdown()
+
+
+def test_unified_session_api_maps_one_config_to_one_execution_request(tmp_path: Path) -> None:
+    server = create_server(
+        workspace=tmp_path,
+        bind="127.0.0.1",
+        port=0,
+        sessions_root=tmp_path / "operator_sessions",
+        carla_host="127.0.0.1",
+        carla_port=65534,
+    )
+    captured: dict[str, object] = {}
+    session = session_defaults(detector_enabled=False)
+    session["identity"]["runId"] = "unified-http-test"
+    session["vehicle"]["blueprint"] = "vehicle.tesla.model3"
+    session["scene"]["trafficCount"] = 3
+    session["scene"]["walkerCount"] = 2
+
+    def fake_catalog() -> dict[str, object]:
+        return {
+            "capabilities": {
+                "garage_traffic_population": True,
+                "garage_walker_population": True,
+            },
+            "world_worker": {"connected": False},
+        }
+
+    def fake_start(request: dict[str, object]) -> dict[str, object]:
+        captured.update(request)
+        return {"status": "starting", "session_id": "unified-http-test"}
+
+    server.application.drive.catalog = fake_catalog  # type: ignore[method-assign]
+    server.application.drive.start = fake_start  # type: ignore[method-assign]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        host, port = server.server_address[:2]
+        body = json.dumps({"schema_version": "1.0", "session": session}).encode("utf-8")
+        request = urllib.request.Request(
+            f"http://{host}:{port}/api/session/start",
+            data=body,
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "X-Operator-Token": server.application.token,
+            },
+        )
+        with urllib.request.urlopen(request, timeout=3.0) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+            assert response.status == 202
+            assert payload["status"] == "starting"
+
+        assert captured["host"] == "127.0.0.1"
+        assert captured["port"] == 65534
+        assert captured["traffic_count"] == 0
+        assert captured["walker_count"] == 0
+        assert captured["traffic_vehicles"] == 3
+        assert captured["walkers"] == 2
+        assert captured["control_mode"] == "manual"
+        assert captured["initial_control_mode"] == "manual"
     finally:
         server.shutdown()
         thread.join(timeout=3.0)
