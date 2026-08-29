@@ -1,13 +1,18 @@
 <script lang="ts">
-  import { patchSessionSection, sessionConfig, systemSettings, workspaceOptions } from '$lib/stores/configuration';
+  import {
+    patchSessionSection,
+    sessionConfig,
+    systemSettings,
+    workspaceOptions
+  } from '$lib/stores/configuration';
   import { fieldNumber, fieldValue } from '$lib/ui/events';
 </script>
 
-<section class="config-card">
+<section id="scene" class="config-card scroll-section">
   <div class="section-heading">
     <div>
-      <span class="eyebrow">01 · Scene</span>
-      <h2>World & traffic</h2>
+      <span class="eyebrow">02 · Scene</span>
+      <h2>World & population</h2>
     </div>
     {#if $systemSettings?.workerConnected}
       <span class="capability ok-text">World Worker owns world mutation</span>
@@ -31,6 +36,7 @@
           <option value={map}>{map.split('/').at(-1) ?? map}</option>
         {/each}
       </select>
+      {#if !$systemSettings?.workerConnected}<small>Map reload requires the World Worker.</small>{/if}
     </label>
 
     <label class="field">
@@ -68,7 +74,7 @@
     </label>
 
     <label class="field">
-      <span>Props</span>
+      <span>Road props</span>
       <select
         value={$sessionConfig.scene.propPreset}
         onchange={(event) => patchSessionSection('scene', { propPreset: fieldValue(event) })}
@@ -99,7 +105,7 @@
     <summary>Traffic dynamics</summary>
     <div class="field-grid three-columns">
       <label class="field">
-        <span>Crossing factor</span>
+        <span>Pedestrian crossing factor</span>
         <input
           type="number"
           min="0"
@@ -138,4 +144,6 @@
       </label>
     </div>
   </details>
+
+  <p class="section-footnote">Editing this section does not mutate CARLA. Use the explicit Garage preview action or Start session to apply it.</p>
 </section>
