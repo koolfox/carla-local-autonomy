@@ -8,6 +8,10 @@ Python for every session.
 This repository is a LAN research tool, not an internet-facing or multi-user
 service. The browser server deliberately binds to loopback only.
 
+Development workflow and current source ownership are documented in
+[`CONTRIBUTING.md`](CONTRIBUTING.md) and
+[`docs/project_structure.md`](docs/project_structure.md).
+
 ## Product boundary
 
 The production surface contains:
@@ -85,7 +89,7 @@ From the cloned repository in PowerShell:
 ```powershell
 $env:CARLA_WORLD_WORKER_TOKEN = "replace-with-a-new-random-secret"
 
-.\.worker-venv\Scripts\python.exe .\carla_vision\native\world_worker.py `
+.\.worker-venv\Scripts\python.exe .\carla_vision\native\observable_world_worker.py `
   --bind 172.20.10.7 `
   --port 8766 `
   --allow-lan `
