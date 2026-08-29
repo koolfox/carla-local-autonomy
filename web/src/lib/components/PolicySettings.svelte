@@ -1,6 +1,10 @@
 <script lang="ts">
   import type { BehaviorStyle } from '$lib/domain/config';
-  import { patchSessionSection, sessionConfig, workspaceOptions } from '$lib/stores/configuration';
+  import {
+    patchSessionSection,
+    sessionConfig,
+    workspaceOptions
+  } from '$lib/stores/configuration';
   import { fieldChecked, fieldNumber, fieldValue } from '$lib/ui/events';
 
   $: autonomous = ['behavior', 'imitation', 'voxel'].includes($sessionConfig.control.mode);
@@ -11,16 +15,20 @@
   }
 </script>
 
-{#if autonomous}
-  <section class="config-card">
-    <div class="section-heading">
-      <div>
-        <span class="eyebrow">04 · Experimental policy</span>
-        <h2>Autonomy runtime</h2>
-      </div>
-      <span class="capability">Explicit opt-in · fail-closed runtime</span>
+<section id="policy" class="config-card scroll-section">
+  <div class="section-heading">
+    <div>
+      <span class="eyebrow">05 · Policy</span>
+      <h2>Autonomy runtime</h2>
     </div>
+    {#if autonomous}
+      <span class="capability">Explicit opt-in · fail-closed runtime</span>
+    {:else}
+      <span class="capability">No research policy owns control</span>
+    {/if}
+  </div>
 
+  {#if autonomous}
     <div class="field-grid three-columns">
       {#if $sessionConfig.control.mode === 'behavior' || $sessionConfig.control.mode === 'voxel'}
         <label class="field">
@@ -41,9 +49,7 @@
             onchange={(event) => patchSessionSection('policy', { checkpoint: fieldValue(event) })}
           >
             <option value="">Select checkpoint</option>
-            {#each $workspaceOptions.checkpoints as checkpoint}
-              <option value={checkpoint}>{checkpoint}</option>
-            {/each}
+            {#each $workspaceOptions.checkpoints as checkpoint}<option value={checkpoint}>{checkpoint}</option>{/each}
           </select>
         </label>
 
@@ -131,8 +137,16 @@
       />
       <span>
         <strong>I acknowledge that this mode actuates the CARLA ego vehicle</strong>
-        <small>Required by the existing Garage safety contract before an autonomous session can start.</small>
+        <small>Required by the Garage safety contract before an autonomous session can start.</small>
       </span>
     </label>
-  </section>
-{/if}
+  {:else}
+    <div class="policy-empty">
+      <span class="policy-empty-icon">✓</span>
+      <div>
+        <strong>No experimental driving policy is selected.</strong>
+        <p>Manual Browser control and Traffic Manager use their own runtime paths. Choose an experimental control owner above to expose policy-specific settings here.</p>
+      </div>
+    </div>
+  {/if}
+</section>
