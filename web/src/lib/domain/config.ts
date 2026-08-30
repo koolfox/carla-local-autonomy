@@ -27,6 +27,7 @@ export interface SystemSettings {
 }
 
 export interface ModelPackage {
+  objectType: 'runtime_model_package';
   id: string;
   name: string;
   version: string;

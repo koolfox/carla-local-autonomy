@@ -356,6 +356,7 @@ class DriveSession:
             raise ValueError("drive configuration and World Worker availability disagree")
         self.session_id = config.run_id
         self._lock = threading.RLock()
+        self._actuation_lock = threading.RLock()
         self._worker_request_lock = threading.Lock()
         self._frame_condition = threading.Condition(self._lock)
         self._status = "starting"
@@ -434,6 +435,7 @@ class DriveSession:
         self._deadman_commands = 0
         self._marker_counts = {label: 0 for label in sorted(HUMAN_MARKER_LABELS)}
         self._cleanup_errors: list[str] = []
+        self._local_actuator: SafeActuator | None = None
 
     def start(self) -> None:
         self._thread.start()
@@ -515,43 +517,49 @@ class DriveSession:
         return self.snapshot()
 
     def emergency_stop(self) -> dict[str, Any]:
-        worker = self._world_worker
-        worker_scene: WorldWorkerScene | None
-        with self._lock:
-            self._emergency = True
-            self._deadman_active = True
-            self._control_source = "emergency_stop"
-            worker_scene = self._worker_scene
-        if worker is not None and worker_scene is not None and self._control_mode != "manual":
-            with self._worker_request_lock:
-                with self._lock:
-                    worker_scene = self._worker_scene
-                    previous_mode = self._control_mode
-                if worker_scene is None:
-                    raise RuntimeError("World Worker scene is not ready")
-                updated = worker.mode(worker_scene, "manual")
-                with self._lock:
-                    self._worker_control_sequence += 1
-                    worker_sequence = self._worker_control_sequence
-                emergency_command = ControlCommand.service_brake()
-                updated = worker.control(
-                    updated,
-                    {
-                        "sequence": worker_sequence,
-                        "throttle": emergency_command.throttle,
-                        "steer": emergency_command.steer,
-                        "brake": emergency_command.brake,
-                        "hand_brake": emergency_command.hand_brake,
-                        "reverse": emergency_command.reverse,
-                    },
-                )
-                with self._lock:
-                    self._worker_scene = updated
-                    self._route = dict(updated.route)
-                    self._destination = updated.destination
-                    self._control_mode = "manual"
-                    self._last_input = None
-                self._record_mode_change(previous_mode, "manual", "emergency_stop")
+        emergency_command = ControlCommand.service_brake()
+        with self._actuation_lock:
+            worker = self._world_worker
+            with self._lock:
+                self._emergency = True
+                self._deadman_active = True
+                self._control_source = "emergency_stop"
+                worker_scene = self._worker_scene
+                local_actuator = self._local_actuator
+            if worker is not None and worker_scene is not None:
+                with self._worker_request_lock:
+                    with self._lock:
+                        worker_scene = self._worker_scene
+                        previous_mode = self._control_mode
+                    if worker_scene is None:
+                        raise RuntimeError("World Worker scene is not ready")
+                    updated = worker_scene
+                    if previous_mode != "manual":
+                        updated = worker.mode(worker_scene, "manual")
+                    with self._lock:
+                        self._worker_control_sequence += 1
+                        worker_sequence = self._worker_control_sequence
+                    updated = worker.control(
+                        updated,
+                        {
+                            "sequence": worker_sequence,
+                            "throttle": emergency_command.throttle,
+                            "steer": emergency_command.steer,
+                            "brake": emergency_command.brake,
+                            "hand_brake": emergency_command.hand_brake,
+                            "reverse": emergency_command.reverse,
+                        },
+                    )
+                    with self._lock:
+                        self._worker_scene = updated
+                        self._route = dict(updated.route)
+                        self._destination = updated.destination
+                        self._control_mode = "manual"
+                        self._last_input = None
+                    if previous_mode != "manual":
+                        self._record_mode_change(previous_mode, "manual", "emergency_stop")
+            elif local_actuator is not None:
+                local_actuator.send(emergency_command)
         return self.snapshot()
 
     def request_mode(self, mode: str) -> dict[str, Any]:
@@ -570,24 +578,29 @@ class DriveSession:
             return self.snapshot()
         if worker_scene is None:
             raise RuntimeError("World Worker scene is not ready")
-        with self._worker_request_lock:
-            with self._lock:
-                worker_scene = self._worker_scene
-                previous_mode = self._control_mode
-            if worker_scene is None:
-                raise RuntimeError("World Worker scene is not ready")
-            updated = self._world_worker.mode(worker_scene, control_mode)
-            with self._lock:
-                self._worker_scene = updated
-                self._route = dict(updated.route)
-                self._destination = updated.destination
-                self._control_mode = control_mode
-                self._last_input = None
-                self._deadman_active = control_mode == "manual"
-                self._control_source = (
-                    "worker_autopilot" if control_mode == "autopilot" else "browser_deadman"
-                )
-            self._record_mode_change(previous_mode, control_mode, "operator_request")
+        with self._actuation_lock:
+            with self._worker_request_lock:
+                with self._lock:
+                    if self._emergency and control_mode != "manual":
+                        raise RuntimeError(
+                            "emergency brake is latched; autopilot cannot be re-enabled"
+                        )
+                    worker_scene = self._worker_scene
+                    previous_mode = self._control_mode
+                if worker_scene is None:
+                    raise RuntimeError("World Worker scene is not ready")
+                updated = self._world_worker.mode(worker_scene, control_mode)
+                with self._lock:
+                    self._worker_scene = updated
+                    self._route = dict(updated.route)
+                    self._destination = updated.destination
+                    self._control_mode = control_mode
+                    self._last_input = None
+                    self._deadman_active = control_mode == "manual"
+                    self._control_source = (
+                        "worker_autopilot" if control_mode == "autopilot" else "browser_deadman"
+                    )
+                self._record_mode_change(previous_mode, control_mode, "operator_request")
         return self.snapshot()
 
     def request_weather(self, preset: str) -> dict[str, Any]:
@@ -897,6 +910,18 @@ class DriveSession:
             for error in updated.cleanup_errors:
                 self._cleanup_errors.append(f"World Worker cleanup: {error}")
 
+    def _model_references(self) -> tuple[Mapping[str, Any], ...]:
+        references: list[Mapping[str, Any]] = []
+        if self.config.detector_enabled and self.config.weights is not None:
+            references.append(
+                {
+                    "kind": "advisory_object_detector",
+                    "actuation_authorized": False,
+                    **fingerprint_file(self.config.weights),
+                }
+            )
+        return tuple(references)
+
     def _run_tracked(self) -> None:
         try:
             if self._world_worker is not None:
@@ -904,15 +929,7 @@ class DriveSession:
             with CarlaRpc(self.config.host, self.config.port, timeout=4.0) as preflight_rpc:
                 preflight_version = str(preflight_rpc.value_call("version"))
                 preflight_map = str(preflight_rpc.value_call("get_map_info")[0])
-            model_refs: tuple[Mapping[str, Any], ...] = ()
-            if self.config.detector_enabled and self.config.weights is not None:
-                model_refs = (
-                    {
-                        "kind": "advisory_object_detector",
-                        "actuation_authorized": False,
-                        **fingerprint_file(self.config.weights),
-                    },
-                )
+            model_refs = self._model_references()
             tracker = RunArtifactTracker(
                 self.workspace / "runs",
                 run_id=self.config.run_id,
@@ -1143,6 +1160,8 @@ class DriveSession:
                     # and must tolerate normal LAN/UE scheduling.
                     heartbeat_timeout=1.5,
                 )
+                with self._actuation_lock:
+                    self._local_actuator = actuator
             if self.config.detector_enabled:
                 detector = create_detector(
                     DetectorConfig(
@@ -1345,36 +1364,43 @@ class DriveSession:
                             camera_stale=camera_stale,
                         )
                         command_sent = True
-                        if self._world_worker is not None:
-                            with self._worker_request_lock:
-                                with self._lock:
-                                    if self._control_mode != "manual":
-                                        command_sent = False
-                                        worker_scene = None
-                                        worker_sequence = 0
-                                    else:
-                                        worker_scene = self._worker_scene
-                                        self._worker_control_sequence += 1
-                                        worker_sequence = self._worker_control_sequence
-                                if command_sent:
-                                    if worker_scene is None:
-                                        raise RuntimeError("World Worker scene is not ready")
-                                    updated_scene = self._world_worker.control(
-                                        worker_scene,
-                                        {
-                                            "sequence": worker_sequence,
-                                            "throttle": command.throttle,
-                                            "steer": command.steer,
-                                            "brake": command.brake,
-                                            "hand_brake": command.hand_brake,
-                                            "reverse": command.reverse,
-                                        },
-                                    )
+                        with self._actuation_lock:
+                            with self._lock:
+                                if self._emergency:
+                                    command = ControlCommand.service_brake()
+                                    source = "emergency_stop"
+                                    self._deadman_active = True
+                                    self._control_source = source
+                            if self._world_worker is not None:
+                                with self._worker_request_lock:
                                     with self._lock:
-                                        self._worker_scene = updated_scene
-                        else:
-                            assert actuator is not None
-                            actuator.send(command)
+                                        if self._control_mode != "manual":
+                                            command_sent = False
+                                            worker_scene = None
+                                            worker_sequence = 0
+                                        else:
+                                            worker_scene = self._worker_scene
+                                            self._worker_control_sequence += 1
+                                            worker_sequence = self._worker_control_sequence
+                                    if command_sent:
+                                        if worker_scene is None:
+                                            raise RuntimeError("World Worker scene is not ready")
+                                        updated_scene = self._world_worker.control(
+                                            worker_scene,
+                                            {
+                                                "sequence": worker_sequence,
+                                                "throttle": command.throttle,
+                                                "steer": command.steer,
+                                                "brake": command.brake,
+                                                "hand_brake": command.hand_brake,
+                                                "reverse": command.reverse,
+                                            },
+                                        )
+                                        with self._lock:
+                                            self._worker_scene = updated_scene
+                            else:
+                                assert actuator is not None
+                                actuator.send(command)
                         if command_sent:
                             self._write_control(
                                 controls_stream,
@@ -1424,6 +1450,8 @@ class DriveSession:
                     self._cleanup_errors.append(f"World Worker stop: {error}")
             if actuator is not None:
                 try:
+                    with self._actuation_lock:
+                        self._local_actuator = None
                     actuator.stop()
                 except Exception as error:
                     self._cleanup_errors.append(f"actuator stop: {error}")

@@ -115,7 +115,7 @@ export function validateSession(
         issues.push({
           id: 'trusted-code-ack',
           severity: 'error',
-          message: 'This Python model adapter requires explicit trusted-code acknowledgement.'
+          message: 'This executable model package requires explicit trusted-code acknowledgement.'
         });
       }
     }

@@ -18,8 +18,13 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from .artifacts import fingerprint_file
+from .model_package_contracts import normalize_runtime_contract
+
 MODEL_REGISTRY_SCHEMA_VERSION = "1.0"
 MODEL_MANIFEST_SCHEMA_VERSION = "1.0"
+MODEL_RUNTIME_PACKAGE_OBJECT_TYPE = "runtime_model_package"
+_DETECTOR_RELEASE_OBJECT_TYPE = "detector_model_release"
 MODEL_ROLES = frozenset({"detector", "driving_policy", "scene_perception", "perception_guard"})
 MODEL_RUNTIMES = frozenset({"ultralytics", "python_factory", "torchscript_control_v1"})
 _MODEL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
@@ -28,6 +33,7 @@ _FACTORY = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]*:[A-Za-z_][A-Za-z0-9_]*$")
 _ALLOWED_MANIFEST_KEYS = frozenset(
     {
         "schema_version",
+        "object_type",
         "id",
         "name",
         "version",
@@ -113,10 +119,13 @@ class ModelPackage:
 
     @property
     def requires_trusted_code(self) -> bool:
-        return self.runtime == "python_factory"
+        # Every currently supported runtime deserializes executable content or
+        # imports executable Python.  A .pt suffix is not a sandbox boundary.
+        return self.runtime in MODEL_RUNTIMES
 
     def as_dict(self) -> dict[str, Any]:
         return {
+            "objectType": MODEL_RUNTIME_PACKAGE_OBJECT_TYPE,
             "id": self.package_id,
             "name": self.name,
             "version": self.version,
@@ -140,34 +149,82 @@ class ResolvedModelPackage:
     package: ModelPackage
     directory: Path
     artifact_path: Path
+    manifest_reference: Mapping[str, Any]
 
-    def verify_artifact(self) -> str:
-        digest = hashlib.sha256()
-        with self.artifact_path.open("rb") as stream:
-            while chunk := stream.read(1024 * 1024):
-                digest.update(chunk)
-        actual = digest.hexdigest()
+    @property
+    def manifest_path(self) -> Path:
+        return self.directory / "model.json"
+
+    def verify_artifact_reference(self) -> dict[str, Any]:
+        reference = fingerprint_file(self.artifact_path)
+        actual = str(reference["sha256"])
         expected = self.package.expected_sha256
         if expected is not None and actual != expected:
             raise ValueError(
                 f"model package {self.package.package_id!r} artifact SHA-256 does not match manifest"
             )
-        return actual
+        return reference
+
+    def verify_artifact(self) -> str:
+        """Verify the stable artifact fingerprint and return its digest."""
+
+        return str(self.verify_artifact_reference()["sha256"])
+
+    def verify_manifest_reference(self) -> dict[str, Any]:
+        current = fingerprint_file(self.manifest_path)
+        if (
+            current["sha256"] != self.manifest_reference["sha256"]
+            or current["size_bytes"] != self.manifest_reference["size_bytes"]
+        ):
+            raise ValueError(
+                f"model package {self.package.package_id!r} manifest changed while resolving"
+            )
+        return dict(self.manifest_reference)
 
 
-def _load_manifest(workspace: Path, directory: Path) -> ModelPackage:
+def _read_manifest_document(path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+    try:
+        before = path.stat()
+        data = path.read_bytes()
+        after = path.stat()
+    except OSError as error:
+        raise ValueError(f"could not read model.json: {error}") from error
+    before_signature = (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
+    after_signature = (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
+    if before_signature != after_signature:
+        raise RuntimeError(f"model.json changed while reading: {path}")
+    try:
+        payload = json.loads(data.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as error:
+        raise ValueError("model.json must be valid UTF-8 JSON") from error
+    if not isinstance(payload, Mapping):
+        raise TypeError("model.json must contain an object")
+    return (
+        {str(key): value for key, value in payload.items()},
+        {
+            "path": str(path.resolve(strict=True)),
+            "sha256": hashlib.sha256(data).hexdigest(),
+            "size_bytes": len(data),
+        },
+    )
+
+
+def _read_manifest(path: Path) -> dict[str, Any]:
+    return _read_manifest_document(path)[0]
+
+
+def _load_manifest(
+    workspace: Path,
+    directory: Path,
+    *,
+    payload: Mapping[str, Any] | None = None,
+) -> ModelPackage:
     if directory.is_symlink() or not directory.is_dir():
         raise ValueError("model package directory must be a regular non-symlink directory")
     manifest_path = directory / "model.json"
     if manifest_path.is_symlink() or not manifest_path.is_file():
         raise ValueError("model package requires a regular non-symlink model.json")
-    try:
-        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (UnicodeError, json.JSONDecodeError) as error:
-        raise ValueError("model.json must be valid UTF-8 JSON") from error
-    if not isinstance(payload, Mapping):
-        raise TypeError("model.json must contain an object")
-    payload = {str(key): value for key, value in payload.items()}
+    payload = _read_manifest(manifest_path) if payload is None else dict(payload)
     unknown = sorted(set(payload) - _ALLOWED_MANIFEST_KEYS)
     missing = sorted(_REQUIRED_MANIFEST_KEYS - set(payload))
     if unknown:
@@ -177,6 +234,11 @@ def _load_manifest(workspace: Path, directory: Path) -> ModelPackage:
     if payload["schema_version"] != MODEL_MANIFEST_SCHEMA_VERSION:
         raise ValueError(
             f"model.json schema_version must be {MODEL_MANIFEST_SCHEMA_VERSION!r}"
+        )
+    object_type = payload.get("object_type")
+    if object_type is not None and object_type != MODEL_RUNTIME_PACKAGE_OBJECT_TYPE:
+        raise ValueError(
+            f"model.json object_type must be {MODEL_RUNTIME_PACKAGE_OBJECT_TYPE!r}"
         )
 
     package_id = _text(payload["id"], "id", maximum=128)
@@ -202,6 +264,8 @@ def _load_manifest(workspace: Path, directory: Path) -> ModelPackage:
         expected_sha256 = _text(expected_sha256, "sha256", maximum=64).lower()
         if not _SHA256.fullmatch(expected_sha256):
             raise ValueError("sha256 must contain exactly 64 lowercase hexadecimal characters")
+    if role == "driving_policy" and expected_sha256 is None:
+        raise ValueError("driving_policy model packages require an artifact sha256")
 
     factory = payload.get("factory")
     if factory is not None:
@@ -225,6 +289,13 @@ def _load_manifest(workspace: Path, directory: Path) -> ModelPackage:
     if not isinstance(labels, (Mapping, list)):
         raise TypeError("labels must be an object or array when supplied")
 
+    inputs, outputs = normalize_runtime_contract(
+        runtime=runtime,
+        role=role,
+        inputs=_mapping(payload.get("inputs"), "inputs"),
+        outputs=_mapping(payload.get("outputs"), "outputs"),
+    )
+
     return ModelPackage(
         package_id=package_id,
         name=name,
@@ -235,8 +306,8 @@ def _load_manifest(workspace: Path, directory: Path) -> ModelPackage:
         expected_sha256=expected_sha256,
         factory=factory,
         devices=_string_list(payload.get("devices"), "devices"),
-        inputs=_mapping(payload.get("inputs"), "inputs"),
-        outputs=_mapping(payload.get("outputs"), "outputs"),
+        inputs=inputs,
+        outputs=outputs,
         labels=dict(labels) if isinstance(labels, Mapping) else list(labels),
         source=source,
         manifest_path=(manifest_path.relative_to(workspace)).as_posix(),
@@ -265,7 +336,10 @@ def discover_model_packages(workspace: str | Path) -> dict[str, Any]:
         if not manifest.exists():
             continue
         try:
-            valid.append(_load_manifest(root, directory))
+            payload = _read_manifest(manifest)
+            if payload.get("object_type") == _DETECTOR_RELEASE_OBJECT_TYPE:
+                continue
+            valid.append(_load_manifest(root, directory, payload=payload))
         except Exception as error:
             invalid.append(
                 {
@@ -318,13 +392,20 @@ def resolve_model_package(
             f"model package {package_id!r} has role {row['role']!r}, expected {required_role!r}"
         )
     manifest_path = root / str(row["manifestPath"])
-    package = _load_manifest(root, manifest_path.parent)
+    payload, manifest_reference = _read_manifest_document(manifest_path)
+    package = _load_manifest(root, manifest_path.parent, payload=payload)
     artifact = root / package.artifact
-    return ResolvedModelPackage(package=package, directory=manifest_path.parent, artifact_path=artifact)
+    return ResolvedModelPackage(
+        package=package,
+        directory=manifest_path.parent,
+        artifact_path=artifact,
+        manifest_reference=manifest_reference,
+    )
 
 
 __all__ = [
     "MODEL_MANIFEST_SCHEMA_VERSION",
+    "MODEL_RUNTIME_PACKAGE_OBJECT_TYPE",
     "MODEL_REGISTRY_SCHEMA_VERSION",
     "MODEL_ROLES",
     "MODEL_RUNTIMES",

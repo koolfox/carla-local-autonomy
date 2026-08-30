@@ -24,7 +24,7 @@
           <span>{model.id} · {model.version}</span>
           <small>{model.role} · {model.runtime} · {model.devices.join(', ')}</small>
           {#if model.requiresTrustedCode}
-            <small>Trusted Python adapter required</small>
+            <small>Executable package · explicit trust required</small>
           {/if}
         </article>
       {/each}

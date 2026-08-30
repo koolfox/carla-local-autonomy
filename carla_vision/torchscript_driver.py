@@ -8,52 +8,29 @@ must use the explicit trusted ``python_factory`` model-package runtime instead.
 
 from __future__ import annotations
 
-import math
-from collections.abc import Mapping
 from typing import Any
 
 import cv2
 import numpy as np
 
 from .model_driver import ModelControl, ModelDriverConfig, ModelObservation
-
-
-def _number_list(raw: Any, name: str, *, length: int) -> tuple[float, ...]:
-    if not isinstance(raw, (list, tuple)) or len(raw) != length:
-        raise ValueError(f"{name} must contain exactly {length} numbers")
-    values = tuple(float(value) for value in raw)
-    if not all(math.isfinite(value) for value in values):
-        raise ValueError(f"{name} must contain finite numbers")
-    return values
+from .model_package_contracts import normalize_torchscript_control_inputs
 
 
 class TorchScriptControlDriver:
     def __init__(self, config: ModelDriverConfig) -> None:
         if config.checkpoint is None:
             raise ValueError("TorchScript driving policy requires a checkpoint")
-        options = dict(config.options)
-        image = options.get("image")
-        if not isinstance(image, Mapping):
-            raise ValueError("torchscript_control_v1 requires options.image")
-        self.width = int(image.get("width", 0))
-        self.height = int(image.get("height", 0))
-        if not 32 <= self.width <= 4096 or not 32 <= self.height <= 4096:
-            raise ValueError("TorchScript image width/height must be in [32, 4096]")
-        self.color = str(image.get("color", "rgb")).strip().lower()
-        if self.color not in {"rgb", "bgr"}:
-            raise ValueError("TorchScript image color must be rgb or bgr")
-        self.mean = _number_list(image.get("mean", [0.0, 0.0, 0.0]), "image.mean", length=3)
-        self.std = _number_list(image.get("std", [1.0, 1.0, 1.0]), "image.std", length=3)
-        if any(value <= 0.0 for value in self.std):
-            raise ValueError("image.std values must be positive")
-        speed = options.get("speed", {})
-        if not isinstance(speed, Mapping):
-            raise ValueError("options.speed must be an object")
-        self.speed_enabled = bool(speed.get("enabled", False))
-        unit = str(speed.get("unit", "mps")).strip().lower()
-        if unit not in {"mps", "kmh"}:
-            raise ValueError("speed.unit must be mps or kmh")
-        self.speed_unit = unit
+        inputs = normalize_torchscript_control_inputs(config.options)
+        image = inputs["image"]
+        speed = inputs["speed"]
+        self.width = int(image["width"])
+        self.height = int(image["height"])
+        self.color = str(image["color"])
+        self.mean = tuple(float(value) for value in image["mean"])
+        self.std = tuple(float(value) for value in image["std"])
+        self.speed_enabled = bool(speed["enabled"])
+        self.speed_unit = str(speed["unit"])
 
         try:
             import torch

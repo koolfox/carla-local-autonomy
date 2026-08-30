@@ -156,7 +156,18 @@ def _load_factory(reference: str) -> Callable[[ModelDriverConfig], Any]:
 def create_driving_model(reference: str, config: ModelDriverConfig) -> DrivingModel:
     """Load and validate a custom driving model."""
 
-    candidate = _load_factory(reference)(config)
+    return create_driving_model_from_factory(_load_factory(reference), config)
+
+
+def create_driving_model_from_factory(
+    factory: Callable[[ModelDriverConfig], Any],
+    config: ModelDriverConfig,
+) -> DrivingModel:
+    """Instantiate and validate an already-resolved model factory."""
+
+    if not callable(factory):
+        raise TypeError("driving model factory must be callable")
+    candidate = factory(config)
     missing = [name for name in ("reset", "predict", "close") if not hasattr(candidate, name)]
     if missing:
         raise TypeError("driving model is missing required members: " + ", ".join(missing))
@@ -172,4 +183,5 @@ __all__ = [
     "ModelObservation",
     "control_from_value",
     "create_driving_model",
+    "create_driving_model_from_factory",
 ]

@@ -10,6 +10,7 @@ converges on one product surface.
 | `carla_vision/native/` | Thin CARLA-host processes, Worker protocol, preflight, and native capture |
 | `carla_vision/operator/` | Browser API, Garage and Drive session ownership, jobs, and Worker client |
 | `carla_vision/detectors/` | Model-neutral detector adapters and canonical detections |
+| `carla_vision/model_registry.py`, `model_package_contracts.py` | Runtime model discovery, executable package identity, and pure adapter contracts |
 | `carla_vision/dataset/` | Exact-frame dataset capture, labels, export, and QA |
 | `carla_vision/training/` | Detector training orchestration |
 | `carla_vision/evaluation/` | Offline detector evaluation |
@@ -39,6 +40,9 @@ converges on one product surface.
   relay through a versioned capability contract.
 - Research jobs consume a session reference plus job-specific values. They do
   not redefine shared world settings.
+- Executable external models enter through the manifest contract documented in
+  [`runtime_model_packages.md`](runtime_model_packages.md); a loose checkpoint
+  filename is never a runnable model identity.
 
 ## Runtime data
 

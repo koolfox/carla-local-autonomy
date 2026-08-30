@@ -129,8 +129,8 @@
               patchSessionSection('policy', { acknowledgeTrustedCode: fieldChecked(event) })}
           />
           <span>
-            <strong>I trust the Python factory code referenced by this model package</strong>
-            <small>Python factory adapters execute local Python code. TorchScript packages do not require this acknowledgement.</small>
+            <strong>I trust this executable model package and its adapter</strong>
+            <small>PyTorch checkpoints, TorchScript files, and Python adapters may execute code while loading or running.</small>
           </span>
         </label>
       {/if}
