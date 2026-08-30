@@ -115,3 +115,22 @@ def test_torchscript_invalid_control_is_rejected_by_model_control_validation(tmp
             driver.predict(_observation())
     finally:
         driver.close()
+
+
+def test_torchscript_runtime_rejects_non_boolean_speed_contract_before_loading(
+    tmp_path: Path,
+) -> None:
+    checkpoint = tmp_path / "policy.pt"
+    checkpoint.write_bytes(b"not-loaded")
+
+    with pytest.raises(TypeError, match="speed.enabled must be a boolean"):
+        create_driver(
+            ModelDriverConfig(
+                checkpoint=checkpoint,
+                device="cpu",
+                options={
+                    "image": {"width": 64, "height": 48},
+                    "speed": {"enabled": 1, "unit": "mps"},
+                },
+            )
+        )
