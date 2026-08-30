@@ -1,8 +1,16 @@
 # CARLA Vision Operator UI
 
-This document describes the current browser Operator/Garage code in the source
-tree. It separates software capability from live-simulator evidence: a UI option,
-code path, or passing test does not establish closed-loop driving quality.
+Status: shared runtime reference plus legacy rollback behavior.
+
+The packaged Svelte console from `web/` is the primary product at `/`. Sections
+below that describe the fullscreen drawers, five Research tabs, or
+`operator/static/` apply only to the temporary `/legacy/` rollback surface.
+New product work must follow [`development.md`](development.md) and must not be
+added to the legacy shell.
+
+This document also describes shared Operator/Garage runtime behavior. A UI
+option, code path, or passing test does not establish closed-loop driving
+quality.
 
 ## Start
 
@@ -26,16 +34,20 @@ retarget a running Operator. If exactly one server is found, `--carla-host auto`
 selects it during startup; zero or multiple servers fail with an explicit error.
 The World Worker URL/token are intentionally configured separately.
 
-The installed command points to:
+The installed command follows this backend chain:
 
 ```text
-carla_vision.operator.garage_server:main
+carla_vision.operator.product_console:main
+  -> carla_vision.operator.local_entrypoint
+  -> carla_vision.operator.garage_server
+  -> carla_vision.operator.server
 ```
 
-The Garage server wraps the existing operator server rather than replacing its
-core Drive, job, artifact, and research APIs. It serves the same canonical
-`static/index.html`, `app.css`, and `app.js`, uses `GarageDriveSessionManager`
-for Drive sessions, and adds one Garage-specific allow-listed research endpoint:
+`product_console` serves the packaged Svelte build from
+`operator/console_static/`. The Garage layer wraps the existing Operator server
+rather than replacing its core Drive, job, artifact, and research APIs. It uses
+`GarageDriveSessionManager` for Drive sessions and retains one Garage-specific
+allow-listed research endpoint:
 
 ```text
 POST /api/garage/jobs
@@ -61,23 +73,21 @@ research roots. The server rejects traversal, absolute paths, unsafe path
 components, symlink traversal, unregistered artifacts, and unsupported artifact
 types. Untrusted artifact responses use a restrictive content-security policy.
 
-## Two product surfaces
+## Primary and rollback surfaces
 
-The default surface is a fullscreen CARLA Garage/Drive shell. Research tools are
-opened explicitly and replace the game shell until the operator selects Back to
-Garage:
+The default `/` surface is the Svelte Garage/Drive product. The old fullscreen
+Garage plus Research workspace remains temporarily available at `/legacy/`:
 
 ```text
-Fullscreen Garage / Drive
-Research workspace
+/          packaged Svelte Garage / Drive
+/legacy/   legacy fullscreen Garage / Research workspace
 ```
 
-The running game shell removes the former dashboard header, static warning strip,
-and top-level tab bar. Its only persistent controls are the status HUD, setup,
-camera, experiments, research lab, vehicle carousel, and Start Drive. The base
-Research tools surface and its five tabs remain intact.
+The legacy surface is retained only for recovery/parity checks and is not a
+second product to extend. Its Research tools and five-tab behavior remain
+described below for operators who intentionally open `/legacy/`.
 
-## Human experiment layer
+## Legacy human experiment layer
 
 The Experiments drawer is part of the fullscreen Garage/Drive surface. It does
 not start a separate job or introduce another AI controller. A preset applies a

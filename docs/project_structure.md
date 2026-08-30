@@ -1,14 +1,14 @@
 # Project structure and ownership
 
-This document describes the intended source layout while the Operator console
-converges on one product surface.
+This document describes current source ownership and the incremental target
+while the Operator completes product and developer convergence.
 
 ## Source layout
 
 | Path | Responsibility |
 | --- | --- |
 | `carla_vision/native/` | Thin CARLA-host processes, Worker protocol, preflight, and native capture |
-| `carla_vision/operator/` | Browser API, Garage and Drive session ownership, jobs, and Worker client |
+| `carla_vision/operator/` | Browser transport, Operator application/session ownership, jobs, and Worker/model adapters |
 | `carla_vision/detectors/` | Model-neutral detector adapters and canonical detections |
 | `carla_vision/model_registry.py`, `model_package_contracts.py` | Runtime model discovery, executable package identity, and pure adapter contracts |
 | `carla_vision/dataset/` | Exact-frame dataset capture, labels, export, and QA |
@@ -29,8 +29,10 @@ converges on one product surface.
   `carla_vision/operator/console_static/` is generated from the locked frontend
   dependencies, committed with its source change, and included in the wheel.
   It must never be edited by hand.
-- `carla_vision/operator/static/` is a temporary rollback surface. It is not a
-  second product to extend. It can be removed only after parity is verified.
+- The packaged Svelte console is the primary product at `/`.
+  `carla_vision/operator/static/` is available only at `/legacy/` as a
+  temporary rollback surface. It is not a second product to extend and can be
+  removed only after parity is verified.
 - Shared map, weather, vehicle, traffic, pedestrian, perception, recording,
   and policy values belong to one `SessionConfig`; #54 completes that mapping.
 - Experiment presets are named patches over `SessionConfig`, not independent
@@ -43,6 +45,11 @@ converges on one product surface.
 - Executable external models enter through the manifest contract documented in
   [`runtime_model_packages.md`](runtime_model_packages.md); a loose checkpoint
   filename is never a runnable model identity.
+- The current HTTP request-handler inheritance is transport, not the desired
+  home for feature logic. Issue #67 extracts application use cases and stable
+  contracts incrementally before any backend-framework decision.
+- Architecture, control, privileged-data, topology, and artifact decisions use
+  the lightweight ADR process in [`adr/`](adr/).
 
 ## Runtime data
 
@@ -69,12 +76,18 @@ explicitly and must include provenance, size, license, and verification data.
 
 ## Convergence order
 
-1. #53 — deterministic Svelte packaging from a clean checkout.
-2. #54 and #55 — one session configuration and real experiment presets.
-3. #56 — responsive dense-scene preparation and maximum-setting evidence.
-4. #57 — stable preview quality, camera fit, and responsive controls.
-5. #48 and #27 — model-runtime hardening and live-CARLA acceptance.
-6. #58 and #33 — final structural cleanup and release-candidate audit.
+1. #66 — human developer map and feature-slice playbook.
+2. #54 — one shared SessionConfig for Garage and Research.
+3. #67 and #68 — stable Operator application seam and deterministic no-CARLA
+   development.
+4. #55, #56, and #57 — executable presets, dense-scene evidence, and stable
+   preview/control presentation.
+5. #69, #62, #70, and #63 — route intent, canonical scene perception,
+   ego-centric driver scene, and supervised Vision/Voxel control.
+6. #27, #29-#32, and #64 — real CARLA data, checkpoints, and closed-loop
+   acceptance.
+7. #58 and #33 — final structural cleanup and release-candidate audit.
 
-This order prevents final cleanup from deleting a legacy capability before its
-replacement is usable and verified.
+The milestones and issue bodies are authoritative if this summary becomes
+stale. This order prevents cleanup from deleting a working capability before
+its replacement is understandable, usable, and verified.

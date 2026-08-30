@@ -4,6 +4,10 @@ This project uses small, issue-scoped changes so the maintainer and Codex can
 work in parallel without losing features or creating long-lived integration
 branches.
 
+Read [`docs/development.md`](docs/development.md) before changing product
+behavior. It maps the runtime roles, authoritative sources, request/data paths,
+vertical-slice workflow, and live-CARLA evidence boundary.
+
 ## Start one task
 
 1. Pick one open issue with acceptance criteria.
@@ -26,19 +30,20 @@ branch another contributor is using.
 
 ## Parallel work
 
-The active convergence issues deliberately define file ownership:
+Do not copy a fixed ownership list into long-lived documentation. The active
+GitHub issue must name its branch, expected files, dependencies, and acceptance
+gate before implementation begins. The current roadmap is grouped into:
 
-- #53 owns frontend build and Python packaging.
-- #54 owns shared scene configuration and Research-to-Garage mapping.
-- #55 owns experiment preset state and serialization.
-- #56 owns dense scene preparation progress and Worker-facing runtime state.
-- #57 owns Garage preview presentation, camera fit, and responsive controls.
-- #48 owns external model runtime hardening.
-- #58 owns final structure and release cleanup, after feature parity.
+- **M1 — Developer-ready product convergence:** one SessionConfig, stable
+  Operator boundary, no-CARLA developer mode, and Svelte/Garage parity;
+- **M2 — Vision and voxel autonomy MVP:** NavigationIntent, canonical scene
+  perception, DriverSceneFrame, and supervised hybrid control; and
+- **M3 — Live evidence and OSS release:** real datasets/checkpoints,
+  closed-loop acceptance, final cleanup, and release audit.
 
 If two tasks need the same file, sequence them instead of resolving a large
-conflict after both are complete. GitHub issues are the source of truth for
-current ownership and dependencies.
+conflict after both are complete. GitHub issues and milestones are the source
+of truth for current ownership and dependencies.
 
 ## Verify before a pull request
 
@@ -91,4 +96,5 @@ small and add them deliberately through a release or sample-data decision.
 
 The final removal of legacy code belongs to #58. Until feature parity is
 verified, cleanup means removing proven duplication, not deleting the only
-working implementation of a capability.
+working implementation of a capability. Durable contract, safety, topology,
+or artifact decisions use the ADR process in [`docs/adr/`](docs/adr/).
