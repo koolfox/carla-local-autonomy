@@ -8,6 +8,7 @@ underlying Drive execution contracts during migration.
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import threading
 import webbrowser
@@ -26,6 +27,31 @@ from .garage_research import GarageResearchRequest, build_garage_research_plan
 _LIVE_RESEARCH_KINDS = frozenset(
     {"voxel_capture", "voxel_flow_capture", "voxel_shadow", "closed_loop_evaluate"}
 )
+_LAN_IPV4_NETWORKS = tuple(
+    ipaddress.ip_network(value)
+    for value in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16")
+)
+_LAN_IPV6_NETWORKS = tuple(
+    ipaddress.ip_network(value)
+    for value in ("fc00::/7", "fe80::/10")
+)
+_WILDCARD_BINDS = frozenset({"0.0.0.0", "::"})
+
+
+def _operator_bind_scope(bind: str) -> str:
+    """Classify an explicit Operator bind as loopback, LAN, or unsupported."""
+
+    value = str(bind).strip()
+    if value in base._LOCAL_BINDS:
+        return "loopback"
+    if value in _WILDCARD_BINDS:
+        return "lan"
+    try:
+        address = ipaddress.ip_address(value)
+    except ValueError:
+        return "unsupported"
+    networks = _LAN_IPV4_NETWORKS if address.version == 4 else _LAN_IPV6_NETWORKS
+    return "lan" if any(address in network for network in networks) else "unsupported"
 
 
 def _validate_research_runtime(
@@ -264,8 +290,11 @@ def create_server(
 ) -> base.OperatorHTTPServer:
     """Create the normal operator server and add Garage-only extensions."""
 
-    if bind not in base._LOCAL_BINDS:
-        raise ValueError("the operator UI is local-only; bind to loopback")
+    bind_scope = _operator_bind_scope(bind)
+    if bind_scope == "unsupported":
+        raise ValueError(
+            "the operator UI may bind only to loopback, wildcard, or a private/link-local LAN IP"
+        )
     if not 0 <= int(port) <= 65535:
         raise ValueError("port must be in [0, 65535]")
     if (world_worker_url is None) != (world_worker_token is None):
@@ -326,15 +355,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         enable_experimental=args.enable_experimental,
     )
     address, port = server.server_address[:2]
-    display_host = "127.0.0.1" if address in {"0.0.0.0", "::"} else address
+    bind_scope = _operator_bind_scope(args.bind)
+    display_host = "127.0.0.1" if address in _WILDCARD_BINDS else address
     url = f"http://{display_host}:{port}/"
     print(
         json.dumps(
             {
                 "status": "ready",
                 "url": url,
+                "bind": str(address),
+                "port": int(port),
                 "workspace": str(Path(args.workspace).expanduser().resolve()),
-                "local_only": True,
+                "local_only": bind_scope == "loopback",
+                "lan_enabled": bind_scope == "lan",
                 "world_worker_configured": world_worker_url is not None,
                 "garage_research_bridge": args.enable_experimental,
                 "garage_drive_modes": True,
@@ -362,6 +395,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 __all__ = [
     "GarageOperatorDriveManager",
     "GarageOperatorRequestHandler",
+    "_operator_bind_scope",
     "create_server",
     "main",
 ]
