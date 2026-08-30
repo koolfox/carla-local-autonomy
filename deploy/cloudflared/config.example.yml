@@ -1,0 +1,14 @@
+# Copy to ~/.cloudflared/config.yml after creating a named tunnel.
+# Replace both placeholders with values from `cloudflared tunnel create`.
+# Keep the CARLA Operator bound to loopback; cloudflared is the only public ingress.
+
+tunnel: <TUNNEL-UUID>
+credentials-file: /Users/<YOUR-USER>/.cloudflared/<TUNNEL-UUID>.json
+
+ingress:
+  - hostname: garage.example.com
+    service: http://127.0.0.1:8765
+    originRequest:
+      connectTimeout: 10s
+      tcpKeepAlive: 30s
+  - service: http_status:404
