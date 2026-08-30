@@ -2,6 +2,8 @@
 
 The Operator defaults to loopback. To expose the Garage to trusted devices on the same private network, bind it explicitly to `0.0.0.0` or to the Mac's private LAN address.
 
+For access from outside the LAN, do not open or port-forward 8765. Keep the Operator on `127.0.0.1` and use the Cloudflare Tunnel + Access path documented in [`cloudflare_tunnel.md`](cloudflare_tunnel.md).
+
 ## Recommended `.env.local`
 
 ```dotenv
