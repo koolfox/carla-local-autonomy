@@ -1,10 +1,16 @@
 # Unified Console Architecture
 
-Status: migration foundation for Issue #45
+Status: active product architecture; remaining convergence tracked by Issue #45
 
 ## Why this exists
 
-The current Operator/Garage grew through several working experiments. That produced useful capability, but configuration is now represented in several places: machine-local startup values, Drive start fields, experiment presets, Garage experimental controls, research job parameters, and World Worker capabilities. The migration goal is not to discard those capabilities. It is to give them one product model and one frontend.
+The Operator/Garage grew through several working experiments. The packaged
+Svelte console is now the primary product, but some configuration and
+application behavior is still represented in several places: machine-local
+startup values, Drive start fields, experiment presets, research job
+parameters, and World Worker capabilities. The remaining goal is not to
+discard those capabilities. It is to finish one product model and one
+application boundary.
 
 ## Configuration ownership
 
@@ -44,11 +50,15 @@ A preset is a named patch over this object. It must never own a parallel hidden 
 
 Research workflows add only parameters unique to that job: dataset ID, epochs, output ID, benchmark input, checkpoint selection, and similar values. Shared scene/session context should be referenced from SessionConfig or a retained SessionConfig artifact rather than re-entered in unrelated forms.
 
-## Frontend migration
+## Frontend
 
-`web/` is the new SvelteKit frontend. During migration it runs beside the existing Operator server and uses Vite's `/api` proxy in development. The legacy static shell remains the production UI until the new frontend reaches feature parity and its production build is served by the Python package.
+`web/` is the authoritative SvelteKit frontend. Its deterministic static build
+is packaged and served at `/` by the Python application. In development, Vite
+uses an `/api` proxy to the local Operator server. The old static shell remains
+only at `/legacy/` as a temporary rollback path until the remaining parity and
+live-acceptance issues pass.
 
-The first slice deliberately does not rewrite Drive endpoints. It establishes:
+The current foundation establishes:
 
 - a component-framework build boundary;
 - typed API reads for bootstrap and Drive catalog;
@@ -57,11 +67,21 @@ The first slice deliberately does not rewrite Drive endpoints. It establishes:
 - visible preset patches instead of independent experiment state; and
 - one visual settings surface for scene, drive, perception and recording.
 
-## Backend migration
+Issues #54-#57 complete shared Research/Garage configuration, executable
+presets, dense preparation, and preview/control quality. Issue #68 adds a
+deterministic no-CARLA developer surface against the same contracts.
 
-The frontend must depend on stable JSON contracts, not a Python web framework. Once the SvelteKit migration has captured the real API surface, the backend can move from `http.server` to a typed ASGI application (FastAPI is the current preferred candidate) without changing frontend semantics.
+## Backend convergence
 
-The backend migration should introduce versioned request/response models and OpenAPI, but should not change simulator ownership, safety gates or artifact semantics merely to fit the framework.
+The frontend depends on stable JSON contracts, not a Python web framework.
+Issue #67 first extracts explicit application use cases and adapters from the
+current HTTP request-handler hierarchy. Preview, Drive, research jobs, model
+execution, and artifact verification must be testable without starting an HTTP
+server.
+
+Do not combine that work with a framework rewrite. A later ASGI/FastAPI change
+is justified only if it reduces transport code while preserving the same
+contracts, simulator ownership, safety gates, and artifact semantics.
 
 ## World Worker boundary
 

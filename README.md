@@ -8,8 +8,9 @@ Python for every session.
 This repository is a LAN research tool, not an internet-facing or multi-user
 service. The browser server deliberately binds to loopback only.
 
-Development workflow and current source ownership are documented in
-[`CONTRIBUTING.md`](CONTRIBUTING.md) and
+New contributors should start with the
+[`Developer guide`](docs/development.md). Branch/PR rules and the current
+source map are documented in [`CONTRIBUTING.md`](CONTRIBUTING.md) and
 [`docs/project_structure.md`](docs/project_structure.md).
 
 ## Product boundary
@@ -262,11 +263,19 @@ Run the production checks:
 uv run ruff check carla_vision tests
 node --check carla_vision/operator/static/app.js
 uv run pytest -q
+cd web
+npm ci --no-audit --no-fund
+npm run check
+npm run build
+cd ..
+git status --porcelain --untracked-files=all -- carla_vision/operator/console_static
 ```
 
-CI has two jobs: a lean Operator profile and the complete research/experimental
-suite. Live CARLA acceptance remains a separate manual gate because unit tests
-use fake RPC/PythonAPI objects and do not prove simulator behavior.
+The final `git status` command must be empty when the committed Svelte source
+and deployable bundle are synchronized. CI has three jobs: a lean Operator
+profile, the SvelteKit console, and the complete research/experimental suite.
+Live CARLA acceptance remains a separate manual gate because unit tests use
+fake RPC/PythonAPI objects and do not prove simulator behavior.
 
 ## Production acceptance gate
 
