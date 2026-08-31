@@ -276,8 +276,8 @@ class SituationSpec:
             situation_id=situation_id,
             map_name=map_name,
             weather_preset=weather_preset,
-            vehicle_count=_integer(raw["vehicle_count"], "vehicle_count", 0, 200),
-            walker_count=_integer(raw["walker_count"], "walker_count", 0, 200),
+            vehicle_count=_integer(raw["vehicle_count"], "vehicle_count", 0, 250),
+            walker_count=_integer(raw["walker_count"], "walker_count", 0, 250),
             pedestrian_crossing_factor=_number(
                 raw["pedestrian_crossing_factor"],
                 "pedestrian_crossing_factor",

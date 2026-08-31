@@ -34,7 +34,9 @@ while the Operator completes product and developer convergence.
   temporary rollback surface. It is not a second product to extend and can be
   removed only after parity is verified.
 - Shared map, weather, vehicle, traffic, pedestrian, perception, recording,
-  and policy values belong to one `SessionConfig`; #54 completes that mapping.
+  and policy values belong to one `SessionConfig`. Garage preview, Drive, and
+  the Research Scene Builder all consume that object through canonical
+  adapters; recipe-only capture fields remain local to Scene Builder.
 - Experiment presets are named patches over `SessionConfig`, not independent
   configuration stores; #55 owns this boundary.
 - The Windows Worker remains thin and does not install Torch, Ultralytics, or
@@ -77,7 +79,8 @@ explicitly and must include provenance, size, license, and verification data.
 ## Convergence order
 
 1. #66 — human developer map and feature-slice playbook.
-2. #54 — one shared SessionConfig for Garage and Research.
+2. #54 — one shared SessionConfig for Garage and Research (implemented; live
+   acceptance remains part of closing the issue).
 3. #67 and #68 — stable Operator application seam and deterministic no-CARLA
    development.
 4. #55, #56, and #57 — executable presets, dense-scene evidence, and stable

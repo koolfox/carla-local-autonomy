@@ -1,16 +1,12 @@
 <script lang="ts">
+  import VehiclePicker from '$lib/components/VehiclePicker.svelte';
   import type { ControlMode } from '$lib/domain/config';
   import {
     patchSessionSection,
     sessionConfig,
-    systemSettings,
-    workspaceOptions
+    systemSettings
   } from '$lib/stores/configuration';
   import { fieldNumber, fieldValue } from '$lib/ui/events';
-
-  $: selectedVehicle = $workspaceOptions.vehicles.find(
-    (vehicle) => vehicle.id === $sessionConfig.vehicle.blueprint
-  );
 
   function setControlMode(mode: ControlMode): void {
     patchSessionSection('control', { mode });
@@ -26,32 +22,7 @@
     <span class="section-note">Exactly one owner reaches the ego control path for a session.</span>
   </div>
 
-  <div class="field-grid two-columns">
-    <label class="field">
-      <span>Vehicle</span>
-      <select
-        value={$sessionConfig.vehicle.blueprint}
-        onchange={(event) => patchSessionSection('vehicle', { blueprint: fieldValue(event), color: '' })}
-      >
-        {#if !$workspaceOptions.vehicles.length}<option value="">No vehicle catalog</option>{/if}
-        {#each $workspaceOptions.vehicles as vehicle}
-          <option value={vehicle.id}>{vehicle.label ?? vehicle.id}</option>
-        {/each}
-      </select>
-    </label>
-
-    <label class="field">
-      <span>Paint</span>
-      <select
-        value={$sessionConfig.vehicle.color}
-        disabled={!selectedVehicle?.colors?.length}
-        onchange={(event) => patchSessionSection('vehicle', { color: fieldValue(event) })}
-      >
-        <option value="">Blueprint default</option>
-        {#each selectedVehicle?.colors ?? [] as color}<option value={color}>{color}</option>{/each}
-      </select>
-    </label>
-  </div>
+  <VehiclePicker />
 
   <div class="subsection-heading">
     <span>Control owner</span>

@@ -24,6 +24,8 @@ export const workspaceOptions = writable<WorkspaceOptions>({
   propPresets: [],
   detectorWeights: [],
   checkpoints: [],
+  scenarioSuites: [],
+  splitPlans: [],
   models: [],
   invalidModels: []
 });
@@ -92,12 +94,14 @@ function reconcileCapabilities(config: SessionConfig, snapshot: WorkspaceSnapsho
     policy: { ...config.policy }
   };
 
+  if (next.scene.mapName !== 'current') {
+    const shortName = next.scene.mapName.replace(/\/+$/, '').split('/').at(-1) ?? '';
+    if (snapshot.options.maps.some((map) => map.id === shortName)) {
+      next.scene.mapName = shortName;
+    }
+  }
+
   if (!snapshot.system.workerConnected) {
-    next.scene.mapName = 'current';
-    next.route.mode = 'free';
-    next.scene.pedestrianCrossingFactor = 0.2;
-    next.scene.speedDifferencePercent = 12;
-    next.scene.followingDistanceMetres = 2;
     if (next.control.mode === 'autopilot') next.control.mode = 'manual';
   }
 

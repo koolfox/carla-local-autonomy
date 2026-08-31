@@ -51,6 +51,11 @@ export interface InvalidModelPackage {
   message: string;
 }
 
+export interface CatalogOption {
+  id: string;
+  label: string;
+}
+
 export interface SessionConfig {
   identity: {
     runId: string;
@@ -133,12 +138,14 @@ export interface ExperimentPresetDefinition {
 }
 
 export interface WorkspaceOptions {
-  maps: string[];
+  maps: CatalogOption[];
   vehicles: Array<{ id: string; label?: string; colors?: string[] }>;
   weatherPresets: Array<{ id: string; label: string }>;
   propPresets: Array<{ id: string; label: string }>;
   detectorWeights: string[];
   checkpoints: string[];
+  scenarioSuites: string[];
+  splitPlans: string[];
   models: ModelPackage[];
   invalidModels: InvalidModelPackage[];
 }

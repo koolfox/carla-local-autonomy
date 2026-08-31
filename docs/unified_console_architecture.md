@@ -65,10 +65,13 @@ The current foundation establishes:
 - a central Svelte store for SystemSettings and SessionConfig;
 - browser persistence for the editable SessionConfig;
 - visible preset patches instead of independent experiment state; and
-- one visual settings surface for scene, drive, perception and recording.
+- a Garage-first full-screen experience with responsibility-based modals;
+- shared Scene and Research controls backed by the same store; and
+- requested, resolved, and applied configuration evidence at execution
+  boundaries.
 
-Issues #54-#57 complete shared Research/Garage configuration, executable
-presets, dense preparation, and preview/control quality. Issue #68 adds a
+Issue #54 establishes shared Research/Garage configuration. Issues #55-#57
+complete executable presets, dense preparation, and preview/control quality. Issue #68 adds a
 deterministic no-CARLA developer surface against the same contracts.
 
 ## Backend convergence

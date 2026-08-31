@@ -2,9 +2,12 @@
 
 Status: shared runtime reference plus legacy rollback behavior.
 
-The packaged Svelte console from `web/` is the primary product at `/`. Sections
-below that describe the fullscreen drawers, five Research tabs, or
-`operator/static/` apply only to the temporary `/legacy/` rollback surface.
+The packaged Svelte console from `web/` is the primary product at `/`. It keeps
+the live Garage or Drive viewport as the main surface and opens Experiment,
+Scene, Vehicle, Vision, Research, and system Settings only when requested.
+Shared Scene and Research inputs edit one SessionConfig. Sections below that
+describe the old five Research tabs or `operator/static/` apply only to the
+temporary `/legacy/` rollback surface.
 New product work must follow [`development.md`](development.md) and must not be
 added to the legacy shell.
 
@@ -75,8 +78,8 @@ types. Untrusted artifact responses use a restrictive content-security policy.
 
 ## Primary and rollback surfaces
 
-The default `/` surface is the Svelte Garage/Drive product. The old fullscreen
-Garage plus Research workspace remains temporarily available at `/legacy/`:
+The default `/` surface is the Svelte Garage/Drive product. The old multi-tab
+Operator plus Research workspace remains temporarily available at `/legacy/`:
 
 ```text
 /          packaged Svelte Garage / Drive
@@ -87,7 +90,7 @@ The legacy surface is retained only for recovery/parity checks and is not a
 second product to extend. Its Research tools and five-tab behavior remain
 described below for operators who intentionally open `/legacy/`.
 
-## Legacy human experiment layer
+## Experiment layer
 
 The Experiments drawer is part of the fullscreen Garage/Drive surface. It does
 not start a separate job or introduce another AI controller. A preset applies a
@@ -123,7 +126,7 @@ writing the event to `events.jsonl`. The summary retains label counts and the
 total number of human markers. These are observational annotations;
 `model_output_actuated` remains false for the marker itself.
 
-The Research tools surface currently has five tabs:
+The legacy Research tools surface at `/legacy/` has five tabs:
 
 ```text
 Live capture

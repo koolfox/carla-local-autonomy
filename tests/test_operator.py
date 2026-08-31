@@ -15,6 +15,7 @@ from pathlib import Path
 
 from carla_vision.operator.catalog import build_catalog
 from carla_vision.operator.commands import CommandPlan, build_command_plan
+from carla_vision.operator.configuration import session_defaults
 from carla_vision.operator.contracts import OperatorJobRequest
 from carla_vision.operator.jobs import JobManager
 from carla_vision.operator.server import create_server
@@ -145,7 +146,7 @@ class SituationBuilderTests(unittest.TestCase):
 
     def test_situation_validation_and_non_overwriting_save(self) -> None:
         with self.assertRaisesRegex(ValueError, "vehicle_count"):
-            SituationSpec.from_mapping(valid_situation(vehicle_count=201))
+            SituationSpec.from_mapping(valid_situation(vehicle_count=251))
         with self.assertRaisesRegex(ValueError, "capture_fps"):
             SituationSpec.from_mapping(valid_situation(capture_fps=3))
         with self.assertRaisesRegex(ValueError, "situation_id"):
@@ -994,6 +995,60 @@ class OperatorServerTests(unittest.TestCase):
                     saved = json.loads(response.read())
                 self.assertEqual(saved["status"], "saved")
                 self.assertTrue((root / saved["path"]).is_file())
+
+                session = session_defaults(detector_enabled=False)
+                session["identity"]["runId"] = "canonical-situation-test"
+                session["identity"]["seed"] = 99
+                session["vehicle"]["blueprint"] = "vehicle.tesla.model3"
+                session["scene"].update(
+                    {
+                        "mapName": "Town10HD_Opt",
+                        "weatherPreset": "wet-day",
+                        "trafficCount": 250,
+                        "walkerCount": 220,
+                        "pedestrianCrossingFactor": 0.9,
+                        "speedDifferencePercent": -15.0,
+                        "followingDistanceMetres": 6.0,
+                    }
+                )
+                canonical_body = json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "session": session,
+                        "situation": {
+                            "situationId": "canonical-situation",
+                            "egoSpawnIndex": 4,
+                            "durationSeconds": 60,
+                            "captureFps": 10,
+                            "repetitions": 2,
+                        },
+                    }
+                ).encode("utf-8")
+                canonical_request = urllib.request.Request(
+                    f"{base}/api/situations",
+                    data=canonical_body,
+                    method="POST",
+                    headers={
+                        "Content-Type": "application/json",
+                        "X-Operator-Token": token,
+                    },
+                )
+                with urllib.request.urlopen(canonical_request, timeout=5) as response:
+                    canonical = json.loads(response.read())
+                self.assertEqual(canonical["configuration"]["requested"]["session"], session)
+                self.assertEqual(canonical["configuration"]["resolved"]["vehicle_count"], 250)
+                self.assertEqual(
+                    canonical["configuration"]["resolved"]["pedestrian_crossing_factor"],
+                    0.9,
+                )
+                self.assertEqual(
+                    canonical["configuration"]["applied"],
+                    {
+                        "status": "saved_offline",
+                        "carla_mutated": False,
+                        "path": canonical["path"],
+                    },
+                )
             finally:
                 server.shutdown()
                 server.server_close()

@@ -19,9 +19,14 @@ from typing import Any, Sequence
 from urllib.parse import urlparse
 
 from . import server as base
-from .configuration import CONFIGURATION_SCHEMA_VERSION, build_legacy_drive_request
+from .configuration import (
+    CONFIGURATION_SCHEMA_VERSION,
+    build_configuration_evidence,
+    build_garage_preview_request,
+    build_legacy_drive_request,
+)
 from .garage_drive import GarageDriveSessionManager
-from .garage_preview import GaragePreviewManager
+from .garage_preview import GaragePreviewConfig, GaragePreviewManager
 from .garage_research import GarageResearchRequest, build_garage_research_plan
 
 _LIVE_RESEARCH_KINDS = frozenset(
@@ -93,6 +98,38 @@ def _canonical_session_request(raw: Any, application: Any) -> dict[str, Any]:
         worker_connected=bool(worker.get("connected")),
         capabilities=capabilities,
     )
+
+
+def _canonical_preview_request(raw: Any) -> tuple[Mapping[str, Any] | None, dict[str, Any]]:
+    if not isinstance(raw, Mapping):
+        raise TypeError("Garage preview request must be an object")
+    keys = frozenset(str(key) for key in raw)
+    if keys != {"schema_version", "session"}:
+        return None, dict(raw)
+    if str(raw["schema_version"]) != CONFIGURATION_SCHEMA_VERSION:
+        raise ValueError(
+            f"Garage preview schema_version must be {CONFIGURATION_SCHEMA_VERSION!r}"
+        )
+    session = raw["session"]
+    if not isinstance(session, Mapping):
+        raise TypeError("Garage preview session must be an object")
+    return session, build_garage_preview_request(session)
+
+
+def _with_configuration_evidence(
+    result: Mapping[str, Any],
+    *,
+    requested: Any,
+    resolved: Any,
+    applied: Any | None = None,
+) -> dict[str, Any]:
+    response = dict(result)
+    response["configuration"] = build_configuration_evidence(
+        requested=requested,
+        resolved=resolved,
+        applied=result if applied is None else applied,
+    )
+    return response
 
 
 class GarageOperatorRequestHandler(base.OperatorRequestHandler):
@@ -179,16 +216,30 @@ class GarageOperatorRequestHandler(base.OperatorRequestHandler):
             body = self._body()
             if path == "/api/session/start":
                 request = _canonical_session_request(body, self.server.application)
+                result = self.server.application.drive.start(request)
                 self._json(
                     HTTPStatus.ACCEPTED,
-                    self.server.application.drive.start(request),
+                    _with_configuration_evidence(
+                        result,
+                        requested=body["session"],
+                        resolved=request,
+                    ),
                 )
                 return
             if path in preview_routes:
                 if not isinstance(body, Mapping):
                     raise TypeError("Garage preview request must be an object")
                 if path.endswith("/configure"):
-                    result = self.server.application.preview.configure(body)
+                    requested, preview_request = _canonical_preview_request(body)
+                    result = self.server.application.preview.configure(preview_request)
+                    if requested is not None:
+                        result = _with_configuration_evidence(
+                            result,
+                            requested=requested,
+                            resolved=GaragePreviewConfig.from_mapping(
+                                preview_request
+                            ).as_dict(),
+                        )
                     status = HTTPStatus.CREATED
                 elif path.endswith("/orbit"):
                     result = self.server.application.preview.orbit(body)

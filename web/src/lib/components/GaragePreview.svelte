@@ -1,5 +1,8 @@
 <script lang="ts">
-  import type { GarageOrbitRequest, GaragePreviewConfig } from '$lib/domain/runtime';
+  import type { ConfigurationEvidence } from '$lib/api/operator';
+  import SessionLaunchBar from '$lib/components/SessionLaunchBar.svelte';
+  import VehiclePicker from '$lib/components/VehiclePicker.svelte';
+  import type { GarageOrbitRequest } from '$lib/domain/runtime';
   import { isDriveActive } from '$lib/domain/runtime';
   import { sessionConfig, systemSettings, workspaceOptions } from '$lib/stores/configuration';
   import { garageRuntime, runtimeOperatorApi } from '$lib/stores/runtime';
@@ -15,9 +18,28 @@
   };
   const presetNames: CameraPreset[] = ['orbit', 'front', 'rear', 'top', 'cockpit'];
 
+  function recordNumber(
+    record: Record<string, unknown>,
+    key: string,
+    fallback: number
+  ): number {
+    const value = Number(record[key]);
+    return Number.isFinite(value) ? value : fallback;
+  }
+
+  function recordText(
+    record: Record<string, unknown>,
+    key: string,
+    fallback: string
+  ): string {
+    const value = record[key];
+    return typeof value === 'string' && value ? value : fallback;
+  }
+
   let active = false;
   let busy = false;
   let error = '';
+  let previewEvidence: ConfigurationEvidence | null = null;
   let appliedSignature = '';
   let streamNonce = 0;
   let streamReady = false;
@@ -37,9 +59,66 @@
   $: available = Boolean(
     $systemSettings?.workerConnected && $sessionConfig.vehicle.blueprint && !driveActive
   );
-  $: previewConfig = buildPreviewConfig();
-  $: signature = JSON.stringify(previewConfig);
+  $: signature = JSON.stringify({
+    identity: $sessionConfig.identity,
+    scene: $sessionConfig.scene,
+    vehicle: $sessionConfig.vehicle,
+    camera: $sessionConfig.camera
+  });
   $: dirty = active && signature !== appliedSignature;
+  $: requestedResolution = $sessionConfig.camera.resolution;
+  $: requestedFps = Number($sessionConfig.camera.fps);
+  $: resolvedResolution = previewEvidence
+    ? `${recordNumber(previewEvidence.resolved, 'width', 0)}x${recordNumber(previewEvidence.resolved, 'height', 0)}`
+    : requestedResolution;
+  $: resolvedFps = previewEvidence
+    ? recordNumber(previewEvidence.resolved, 'fps', requestedFps)
+    : requestedFps;
+  $: appliedResolution = previewEvidence
+    ? recordText(previewEvidence.applied, 'camera_resolution', resolvedResolution)
+    : requestedResolution;
+  $: appliedFps = previewEvidence
+    ? recordNumber(previewEvidence.applied, 'camera_target_fps', resolvedFps)
+    : requestedFps;
+  $: appliedTraffic = previewEvidence
+    ? recordNumber(
+        previewEvidence.applied,
+        'traffic_count',
+        $sessionConfig.scene.trafficCount
+      )
+    : $sessionConfig.scene.trafficCount;
+  $: appliedWalkers = previewEvidence
+    ? recordNumber(
+        previewEvidence.applied,
+        'walker_count',
+        $sessionConfig.scene.walkerCount
+      )
+    : $sessionConfig.scene.walkerCount;
+  $: appliedMap = previewEvidence
+    ? recordText(
+        previewEvidence.applied,
+        'map',
+        recordText(previewEvidence.resolved, 'map_name', $sessionConfig.scene.mapName)
+      )
+    : $sessionConfig.scene.mapName;
+  $: appliedWeather = previewEvidence
+    ? recordText(
+        previewEvidence.applied,
+        'weather_preset',
+        $sessionConfig.scene.weatherPreset
+      )
+    : $sessionConfig.scene.weatherPreset;
+  $: resolutionAdjusted = Boolean(
+    previewEvidence && (appliedResolution !== requestedResolution || appliedFps !== requestedFps)
+  );
+  $: populationAdjusted = Boolean(
+    previewEvidence &&
+      (appliedTraffic !== $sessionConfig.scene.trafficCount ||
+        appliedWalkers !== $sessionConfig.scene.walkerCount)
+  );
+  $: evidenceTitle = previewEvidence
+    ? `Requested: ${requestedResolution} at ${requestedFps} FPS, ${$sessionConfig.scene.trafficCount} cars, ${$sessionConfig.scene.walkerCount} walkers. Resolved: ${resolvedResolution} at ${resolvedFps} FPS. Applied: ${appliedResolution} at ${appliedFps} FPS, ${appliedTraffic} cars, ${appliedWalkers} walkers.`
+    : '';
   $: streamSource = active && !driveActive
     ? `/api/garage/preview/stream.mjpg?t=${streamNonce}`
     : '';
@@ -47,34 +126,8 @@
     active = false;
     streamReady = false;
     appliedSignature = '';
+    previewEvidence = null;
     pointer = null;
-  }
-
-  function cameraProfile(): GaragePreviewConfig['profile'] {
-    const resolution = $sessionConfig.camera.resolution;
-    const fps = Number($sessionConfig.camera.fps);
-    if (resolution === '640x384' && fps <= 10) return 'compatibility';
-    if (resolution === '1280x720' && fps >= 60) return 'high-refresh';
-    if (resolution === '1920x1080') return 'detail';
-    return 'balanced';
-  }
-
-  function buildPreviewConfig(): GaragePreviewConfig {
-    return {
-      map_name: $sessionConfig.scene.mapName,
-      weather_preset: $sessionConfig.scene.weatherPreset,
-      vehicle_blueprint: $sessionConfig.vehicle.blueprint,
-      color: $sessionConfig.vehicle.color,
-      seed: $sessionConfig.identity.seed,
-      traffic_count: $sessionConfig.scene.trafficCount,
-      walker_count: $sessionConfig.scene.walkerCount,
-      prop_preset: $sessionConfig.scene.propPreset,
-      pedestrian_crossing_factor: $sessionConfig.scene.pedestrianCrossingFactor,
-      speed_difference_percent: $sessionConfig.scene.speedDifferencePercent,
-      following_distance_metres: $sessionConfig.scene.followingDistanceMetres,
-      spectator_mirror: $sessionConfig.camera.spectatorFollow,
-      profile: cameraProfile()
-    };
   }
 
   async function configure(): Promise<void> {
@@ -83,13 +136,15 @@
     error = '';
     streamReady = false;
     try {
-      await runtimeOperatorApi().configureGaragePreview(previewConfig);
+      const response = await runtimeOperatorApi().configureGaragePreview($sessionConfig);
+      previewEvidence = response.configuration;
       active = true;
       appliedSignature = signature;
       streamNonce = Date.now();
       applyPreset('orbit', false);
     } catch (caught) {
       active = false;
+      previewEvidence = null;
       error = caught instanceof Error ? caught.message : String(caught);
     } finally {
       busy = false;
@@ -108,6 +163,7 @@
       active = false;
       streamReady = false;
       appliedSignature = '';
+      previewEvidence = null;
       pointer = null;
       busy = false;
     }
@@ -206,23 +262,21 @@
       />
     {/if}
 
-    <div
+    <button
+      type="button"
       class="garage-orbit-surface"
-      role="application"
-      tabindex="0"
       aria-label="Garage orbit camera"
       onpointerdown={pointerDown}
       onpointermove={pointerMove}
       onpointerup={pointerUp}
       onpointercancel={pointerUp}
       onwheel={wheel}
-    ></div>
+    ></button>
 
     {#if !active}
       <div class="garage-preview-placeholder">
         <span class="garage-preview-mark">CV</span>
-        <strong>{selectedVehicle?.label ?? 'Select a CARLA vehicle'}</strong>
-        <p>Open the live Garage when the scene is ready. Configuration edits stay local until you explicitly refresh it.</p>
+        <strong title="Configure the scene, open the live Garage, then start the session.">{selectedVehicle?.label ?? 'Select a CARLA vehicle'}</strong>
       </div>
     {:else if !streamReady}
       <div class="garage-preview-placeholder compact-placeholder">
@@ -232,20 +286,19 @@
     {/if}
 
     <div class="garage-stage-hud">
-      <span>{$sessionConfig.scene.mapName.split('/').at(-1) ?? 'current'}</span>
-      <span>{$sessionConfig.scene.weatherPreset.replaceAll('-', ' ')}</span>
-      <span>{$sessionConfig.scene.trafficCount} cars · {$sessionConfig.scene.walkerCount} walkers</span>
+      <span>{appliedMap.split('/').at(-1) ?? 'current'}</span>
+      <span>{appliedWeather.replaceAll('-', ' ')}</span>
+      <span class:adjusted={populationAdjusted}>{appliedTraffic} cars · {appliedWalkers} walkers</span>
+      {#if previewEvidence}
+        <span class:adjusted={resolutionAdjusted} title={evidenceTitle}>
+          Applied {appliedResolution} · {appliedFps} FPS{resolutionAdjusted ? ` · ${requestedFps} requested` : ''}
+        </span>
+      {/if}
     </div>
   </div>
 
   <div class="garage-preview-toolbar">
-    <div class="garage-preview-identity">
-      <span class="eyebrow">Live Garage</span>
-      <strong>{selectedVehicle?.label ?? ($sessionConfig.vehicle.blueprint || 'No vehicle selected')}</strong>
-      <small>
-        {#if dirty}Settings changed · refresh explicitly{:else if active}CARLA preview matches the current form{:else}Preview is closed{/if}
-      </small>
-    </div>
+    <VehiclePicker compact={true} />
 
     <div class="garage-camera-presets" aria-label="Garage camera presets">
       {#each presetNames as name}
@@ -259,6 +312,9 @@
     </div>
 
     <div class="garage-preview-actions">
+      <span class="preview-state">
+        {#if dirty}Scene changed{:else if active}Live CARLA{:else}Preview closed{/if}
+      </span>
       {#if active}
         <button type="button" class="button secondary-button" disabled={busy} onclick={close}>Close</button>
         <button type="button" class="button primary-button" disabled={busy || !dirty} onclick={configure}>
@@ -269,11 +325,19 @@
           {busy ? 'Preparing…' : 'Open live Garage'}
         </button>
       {/if}
+      <SessionLaunchBar compact={true} />
     </div>
   </div>
 
   {#if !$systemSettings?.workerConnected}
-    <p class="garage-preview-note">Live preview requires the connected World Worker. Session configuration remains available without it.</p>
+    <p
+      class="garage-preview-note"
+      title="The live Garage camera is served by carla-world-worker on the CARLA computer, normally port 8766."
+    >
+      {$systemSettings?.connected
+        ? 'CARLA online · connect the World Worker bridge for live Garage'
+        : 'CARLA and the World Worker bridge are offline'}
+    </p>
   {/if}
   {#if error}<p class="inline-error" role="alert">{error}</p>{/if}
 </section>
