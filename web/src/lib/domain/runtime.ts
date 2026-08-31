@@ -65,22 +65,6 @@ export interface DriveControlRequest {
   reverse: boolean;
 }
 
-export interface GaragePreviewConfig {
-  map_name: string;
-  weather_preset: string;
-  vehicle_blueprint: string;
-  color: string;
-  seed: number;
-  traffic_count: number;
-  walker_count: number;
-  prop_preset: string;
-  pedestrian_crossing_factor: number;
-  speed_difference_percent: number;
-  following_distance_metres: number;
-  spectator_mirror: boolean;
-  profile: 'balanced' | 'high-refresh' | 'detail' | 'compatibility';
-}
-
 export interface GarageOrbitRequest {
   sequence: number;
   yaw: number;

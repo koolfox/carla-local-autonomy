@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import threading
 import time
 import urllib.request
@@ -9,6 +10,7 @@ from typing import Any
 
 import pytest
 
+from carla_vision.operator.configuration import session_defaults
 from carla_vision.operator.garage_preview import (
     GarageOrbitRequest,
     GaragePreviewConfig,
@@ -59,11 +61,14 @@ def test_preview_config_is_strict_and_uses_authoritative_camera_defaults() -> No
             pedestrian_crossing_factor=0.9,
             speed_difference_percent=-25.0,
             following_distance_metres=9.5,
+            fov=105.0,
         )
     )
     assert tuned.pedestrian_crossing_factor == 0.9
     assert tuned.speed_difference_percent == -25.0
     assert tuned.following_distance_metres == 9.5
+    assert tuned.fov == 105.0
+    assert tuned.as_dict()["fov"] == 105.0
 
     with pytest.raises(ValueError, match="unknown fields"):
         GaragePreviewConfig.from_mapping(preview_payload(shell="anything"))
@@ -265,6 +270,77 @@ def test_garage_server_streams_multipart_preview_frames_without_polling(
         server.application.jobs.shutdown()
 
 
+def test_canonical_preview_api_resolves_one_session_and_reports_applied_values(
+    tmp_path,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    class Preview:
+        def configure(self, request: Mapping[str, Any]) -> dict[str, Any]:
+            captured.update(request)
+            return {
+                "status": "running",
+                "traffic_count": 12,
+                "walker_count": 7,
+                "pedestrian_crossing_factor": 0.95,
+            }
+
+        def shutdown(self) -> None:
+            pass
+
+    server = create_server(
+        workspace=tmp_path,
+        bind="127.0.0.1",
+        port=0,
+        sessions_root=tmp_path / "sessions",
+        carla_host="127.0.0.1",
+        carla_port=65534,
+    )
+    server.application.preview = Preview()  # type: ignore[assignment]
+    session = session_defaults(detector_enabled=False)
+    session["identity"]["runId"] = "preview-evidence-test"
+    session["vehicle"]["blueprint"] = "vehicle.tesla.model3"
+    session["scene"].update(
+        {
+            "mapName": "Town10HD_Opt",
+            "weatherPreset": "clear-day",
+            "trafficCount": 14,
+            "walkerCount": 9,
+            "pedestrianCrossingFactor": 0.95,
+        }
+    )
+    session["camera"].update({"resolution": "1920x1080", "fps": 60.0, "fov": 103.0})
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        host, port = server.server_address[:2]
+        request = urllib.request.Request(
+            f"http://{host}:{port}/api/garage/preview/configure",
+            data=json.dumps({"schema_version": "1.0", "session": session}).encode("utf-8"),
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "X-Operator-Token": server.application.token,
+            },
+        )
+        with urllib.request.urlopen(request, timeout=3.0) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+
+        assert captured["traffic_count"] == 14
+        assert captured["walker_count"] == 9
+        assert captured["pedestrian_crossing_factor"] == 0.95
+        assert captured["fov"] == 103.0
+        assert payload["configuration"]["requested"] == session
+        assert payload["configuration"]["resolved"]["profile"] == "detail"
+        assert payload["configuration"]["resolved"]["fps"] == 30.0
+        assert payload["configuration"]["applied"]["traffic_count"] == 12
+    finally:
+        server.shutdown()
+        thread.join(timeout=3.0)
+        server.server_close()
+        server.application.jobs.shutdown()
+
+
 def _scene() -> WorldWorkerScene:
     return WorldWorkerScene(
         scene_id="preview-scene",
@@ -286,6 +362,44 @@ def _scene() -> WorldWorkerScene:
         cleanup_errors=(),
         capabilities={},
     )
+
+
+def test_preview_snapshot_separates_requested_and_worker_applied_scene_values() -> None:
+    session = GaragePreviewSession(
+        GaragePreviewConfig.from_mapping(
+            preview_payload(
+                traffic_count=15,
+                walker_count=10,
+                pedestrian_crossing_factor=0.9,
+                speed_difference_percent=-25.0,
+                following_distance_metres=9.5,
+                fov=100.0,
+            )
+        ),
+        carla_host="127.0.0.1",
+        carla_port=2000,
+        world_worker=object(),  # type: ignore[arg-type]
+    )
+    with session._lock:
+        session._scene = replace(
+            _scene(),
+            traffic_count=13,
+            walker_count=8,
+            pedestrian_crossing_factor=0.9,
+            speed_difference_percent=-25.0,
+            following_distance_metres=9.5,
+        )
+
+    snapshot = session.snapshot()
+
+    assert snapshot["traffic_count_requested"] == 15
+    assert snapshot["walker_count_requested"] == 10
+    assert snapshot["traffic_count"] == 13
+    assert snapshot["walker_count"] == 8
+    assert snapshot["pedestrian_crossing_factor"] == 0.9
+    assert snapshot["speed_difference_percent"] == -25.0
+    assert snapshot["following_distance_metres"] == 9.5
+    assert snapshot["camera_fov"] == 100.0
 
 
 class _CleanupWorker:

@@ -2,18 +2,11 @@
   import { onMount } from 'svelte';
 
   import { loadWorkspaceSnapshot } from '$lib/api/operator';
-  import ContextRail from '$lib/components/ContextRail.svelte';
   import DriveCockpit from '$lib/components/DriveCockpit.svelte';
-  import DriveSettings from '$lib/components/DriveSettings.svelte';
+  import GarageMenu from '$lib/components/GarageMenu.svelte';
   import GaragePreview from '$lib/components/GaragePreview.svelte';
-  import ModelLibrary from '$lib/components/ModelLibrary.svelte';
-  import PolicySettings from '$lib/components/PolicySettings.svelte';
-  import PresetSelector from '$lib/components/PresetSelector.svelte';
-  import ResolvedSession from '$lib/components/ResolvedSession.svelte';
-  import SceneSettings from '$lib/components/SceneSettings.svelte';
   import SessionLaunchBar from '$lib/components/SessionLaunchBar.svelte';
   import StatusHeader from '$lib/components/StatusHeader.svelte';
-  import VisionSettings from '$lib/components/VisionSettings.svelte';
   import { isDriveActive } from '$lib/domain/runtime';
   import { hydrateWorkspace } from '$lib/stores/configuration';
   import {
@@ -50,7 +43,7 @@
   });
 
   $: sessionLocked = isDriveActive($garageRuntime.drive);
-  $: showCockpit = $garageRuntime.drive.status !== 'idle';
+  $: showCockpit = sessionLocked;
 </script>
 
 <svelte:head>
@@ -77,37 +70,14 @@
       <small>Start <code>uv run carla-operator-ui --open-browser</code> and reload this page.</small>
     </main>
   {:else}
-    <main class="workspace">
-      <ContextRail />
-
-      <section class="configuration-column">
+    <main class="garage-workspace">
+      <GarageMenu locked={sessionLocked} />
+      {#if showCockpit}
+        <DriveCockpit />
+        <SessionLaunchBar compact={true} />
+      {:else}
         <GaragePreview />
-
-        {#if showCockpit}
-          <DriveCockpit />
-        {/if}
-
-        <div class="setup-heading">
-          <div>
-            <span class="eyebrow">Session setup</span>
-            <h2>Build the next drive</h2>
-          </div>
-          {#if sessionLocked}<span class="status-pill pending"><i></i>Locked while session is active</span>{/if}
-        </div>
-
-        <div class:configuration-locked={sessionLocked} aria-disabled={sessionLocked}>
-          <PresetSelector />
-          <SceneSettings />
-          <DriveSettings />
-          <VisionSettings />
-          <ModelLibrary />
-          <PolicySettings />
-        </div>
-      </section>
-
-      <ResolvedSession />
+      {/if}
     </main>
-
-    <SessionLaunchBar />
   {/if}
 </div>

@@ -265,6 +265,9 @@ def test_unified_session_api_maps_one_config_to_one_execution_request(tmp_path: 
             payload = json.loads(response.read().decode("utf-8"))
             assert response.status == 202
             assert payload["status"] == "starting"
+            assert payload["configuration"]["requested"] == session
+            assert payload["configuration"]["resolved"]["traffic_vehicles"] == 3
+            assert payload["configuration"]["applied"]["status"] == "starting"
 
         assert captured["host"] == "127.0.0.1"
         assert captured["port"] == 65534

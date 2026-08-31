@@ -9,7 +9,10 @@ import pytest
 from carla_vision.operator.configuration import (
     EXPERIMENT_PRESETS,
     build_configuration_contract,
+    build_configuration_evidence,
+    build_garage_preview_request,
     build_legacy_drive_request,
+    build_situation_request,
     session_defaults,
 )
 from carla_vision.operator.drive_contracts import EXPERIMENT_PRESETS as DRIVE_EXPERIMENT_PRESETS
@@ -209,3 +212,136 @@ def test_worker_only_scene_features_fail_cleanly_when_worker_is_offline() -> Non
                 "garage_walker_population": True,
             },
         )
+
+
+def test_garage_preview_maps_every_shared_scene_and_camera_value() -> None:
+    request = build_garage_preview_request(
+        _session(
+            scene__mapName="Town03",
+            scene__weatherPreset="fog-night",
+            scene__propPreset="accident",
+            scene__trafficCount=80,
+            scene__walkerCount=55,
+            scene__pedestrianCrossingFactor=0.85,
+            scene__speedDifferencePercent=-20.0,
+            scene__followingDistanceMetres=7.5,
+            vehicle__color="20,40,60",
+            camera__resolution="1920x1080",
+            camera__fps=60.0,
+            camera__fov=104.0,
+            camera__spectatorFollow=True,
+        )
+    )
+
+    assert request == {
+        "map_name": "Town03",
+        "weather_preset": "fog-night",
+        "vehicle_blueprint": "vehicle.tesla.model3",
+        "color": "20,40,60",
+        "seed": 7,
+        "traffic_count": 80,
+        "walker_count": 55,
+        "prop_preset": "accident",
+        "pedestrian_crossing_factor": 0.85,
+        "speed_difference_percent": -20.0,
+        "following_distance_metres": 7.5,
+        "spectator_mirror": True,
+        "profile": "detail",
+        "fov": 104.0,
+    }
+
+
+def test_full_carla_map_paths_are_normalized_across_session_adapters() -> None:
+    session = _session(
+        scene__mapName="/Game/Carla/Maps/Town03",
+        scene__weatherPreset="clear-day",
+    )
+
+    preview = build_garage_preview_request(session)
+    drive = build_legacy_drive_request(
+        session,
+        carla_host="192.168.1.108",
+        carla_port=2000,
+        worker_connected=True,
+        capabilities={"autopilot": True},
+    )
+    situation = build_situation_request(
+        session,
+        {
+            "situationId": "normalized-map",
+            "egoSpawnIndex": 0,
+            "durationSeconds": 30,
+            "captureFps": 5,
+            "repetitions": 1,
+        },
+        current_map=None,
+    )
+
+    assert preview["map_name"] == "Town03"
+    assert drive["map_name"] == "Town03"
+    assert situation["map_name"] == "Town03"
+
+
+def test_situation_uses_shared_session_and_only_recipe_specific_fields() -> None:
+    request = build_situation_request(
+        _session(
+            scene__mapName="current",
+            scene__weatherPreset="wet-day",
+            scene__propPreset="construction",
+            scene__trafficCount=250,
+            scene__walkerCount=250,
+            scene__pedestrianCrossingFactor=1.0,
+            scene__speedDifferencePercent=-100.0,
+            scene__followingDistanceMetres=20.0,
+            camera__resolution="1920x1080",
+            camera__fov=110.0,
+        ),
+        {
+            "situationId": "shared-scene",
+            "egoSpawnIndex": 14,
+            "durationSeconds": 120,
+            "captureFps": 10,
+            "repetitions": 3,
+        },
+        current_map="/Game/Carla/Maps/Town10HD_Opt",
+    )
+
+    assert request["map_name"] == "Town10HD_Opt"
+    assert request["vehicle_count"] == 250
+    assert request["walker_count"] == 250
+    assert request["pedestrian_crossing_factor"] == 1.0
+    assert request["speed_difference_percent"] == -100.0
+    assert request["following_distance_metres"] == 20.0
+    assert request["ego_blueprint"] == "vehicle.tesla.model3"
+    assert (request["camera_width"], request["camera_height"]) == (1920, 1080)
+    assert request["camera_fov"] == 110.0
+    assert request["capture_fps"] == 10
+
+
+def test_situation_requires_named_weather_for_reproducibility() -> None:
+    with pytest.raises(ValueError, match="explicit weather"):
+        build_situation_request(
+            _session(scene__weatherPreset="keep"),
+            {
+                "situationId": "shared-scene",
+                "egoSpawnIndex": 0,
+                "durationSeconds": 30,
+                "captureFps": 5,
+                "repetitions": 1,
+            },
+            current_map="Town10HD_Opt",
+        )
+
+
+def test_configuration_evidence_does_not_alias_mutable_inputs() -> None:
+    requested = {"scene": {"trafficCount": 20}}
+    evidence = build_configuration_evidence(
+        requested=requested,
+        resolved={"traffic_count": 20},
+        applied={"traffic_count": 18},
+    )
+    requested["scene"]["trafficCount"] = 99
+
+    assert evidence["requested"]["scene"]["trafficCount"] == 20
+    assert evidence["resolved"]["traffic_count"] == 20
+    assert evidence["applied"]["traffic_count"] == 18

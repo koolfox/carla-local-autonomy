@@ -1,0 +1,251 @@
+<script lang="ts">
+  import { onDestroy } from 'svelte';
+
+  import type {
+    OperatorJobSnapshot,
+    SituationSaveResponse,
+    SituationSettings
+  } from '$lib/api/operator';
+  import SceneWorldFields from '$lib/components/SceneWorldFields.svelte';
+  import { sessionConfig, systemSettings, workspaceOptions } from '$lib/stores/configuration';
+  import { runtimeOperatorApi } from '$lib/stores/runtime';
+  import { fieldValue } from '$lib/ui/events';
+
+  export let useInGarage: () => void;
+
+  function token(prefix: string): string {
+    return `${prefix}-${new Date().toISOString().replace(/[-:.]/g, '').replace('Z', 'z').toLowerCase()}`;
+  }
+
+  let situationId = token('scene');
+  let egoSpawnIndex = 0;
+  let durationSeconds = 30;
+  let captureFps: SituationSettings['captureFps'] = 5;
+  let repetitions = 1;
+  let splitPlan = '';
+  let planRunId = token('plan');
+  let saved: SituationSaveResponse | null = null;
+  let savedSituationId = '';
+  let savedSignature = '';
+  let job: OperatorJobSnapshot | null = null;
+  let saving = false;
+  let planning = false;
+  let error = '';
+  let disposed = false;
+
+  $: if (!splitPlan && $workspaceOptions.splitPlans.length) {
+    splitPlan = $workspaceOptions.splitPlans[0];
+  }
+  $: situation = {
+    situationId,
+    egoSpawnIndex,
+    durationSeconds,
+    captureFps,
+    repetitions
+  } satisfies SituationSettings;
+  $: signature = currentSignature(situation);
+  $: recipeDirty = Boolean(saved && signature !== savedSignature);
+  $: reproducible = Boolean(
+    $sessionConfig.vehicle.blueprint &&
+      $sessionConfig.scene.weatherPreset !== 'keep' &&
+      ($sessionConfig.scene.mapName !== 'current' || $systemSettings?.currentMap)
+  );
+  $: resolved = saved?.configuration.resolved ?? {};
+
+  function currentSignature(settings: SituationSettings): string {
+    return JSON.stringify({
+      currentMap: $systemSettings?.currentMap,
+      identity: { seed: $sessionConfig.identity.seed },
+      scene: $sessionConfig.scene,
+      vehicle: $sessionConfig.vehicle,
+      camera: $sessionConfig.camera,
+      situation: settings
+    });
+  }
+
+  async function saveRecipe(): Promise<void> {
+    if (saving || !reproducible || Boolean(saved && !recipeDirty)) return;
+    saving = true;
+    error = '';
+    job = null;
+    try {
+      let nextSituation = situation;
+      if (saved && situation.situationId === savedSituationId) {
+        const nextId = token('scene');
+        situationId = nextId;
+        nextSituation = { ...situation, situationId: nextId };
+      }
+      const response = await runtimeOperatorApi().saveSituation($sessionConfig, nextSituation);
+      saved = response;
+      savedSituationId = nextSituation.situationId;
+      savedSignature = currentSignature(nextSituation);
+      planRunId = token(`plan-${nextSituation.situationId}`);
+    } catch (caught) {
+      error = caught instanceof Error ? caught.message : String(caught);
+    } finally {
+      saving = false;
+    }
+  }
+
+  async function buildPlan(): Promise<void> {
+    if (!saved || recipeDirty || !splitPlan || planning) return;
+    planning = true;
+    error = '';
+    try {
+      let current = await runtimeOperatorApi().startJob('scenario_plan', {
+        suite: saved.path,
+        split_plan: splitPlan,
+        run_id: planRunId
+      });
+      job = current;
+      while (!disposed && !['success', 'failed', 'stopped'].includes(current.status)) {
+        await new Promise((resolve) => window.setTimeout(resolve, 700));
+        current = await runtimeOperatorApi().getJob(current.job_id);
+        job = current;
+      }
+      if (current.status !== 'success') {
+        error = current.error || `Scenario planning ended with status ${current.status}.`;
+      }
+    } catch (caught) {
+      error = caught instanceof Error ? caught.message : String(caught);
+    } finally {
+      planning = false;
+    }
+  }
+
+  onDestroy(() => {
+    disposed = true;
+  });
+</script>
+
+<div class="research-builder">
+  <section class="builder-section">
+    <div class="section-heading">
+      <div>
+        <span class="eyebrow">Shared scene</span>
+        <h3>World and population</h3>
+      </div>
+      <span class="section-note">These are the same values used by Garage preview and Drive.</span>
+    </div>
+    <SceneWorldFields />
+  </section>
+
+  <section class="builder-section">
+    <div class="section-heading">
+      <div>
+        <span class="eyebrow">Recipe only</span>
+        <h3>Capture plan</h3>
+      </div>
+      <span class="section-note">Only offline dataset-planning fields live here.</span>
+    </div>
+
+    <div class="shared-config-summary">
+      <div><span>Ego vehicle</span><strong>{$sessionConfig.vehicle.blueprint.split('.').at(-1) || 'Not selected'}</strong></div>
+      <div><span>Camera</span><strong>{$sessionConfig.camera.resolution} · {$sessionConfig.camera.fov}°</strong></div>
+      <div><span>Session seed</span><strong>{$sessionConfig.identity.seed}</strong></div>
+    </div>
+
+    <div class="field-grid three-columns">
+      <label class="field">
+        <span>Situation ID</span>
+        <input bind:value={situationId} pattern="[a-z0-9-]+" />
+      </label>
+      <label class="field">
+        <span>Ego spawn index</span>
+        <input type="number" min="0" max="10000" bind:value={egoSpawnIndex} />
+      </label>
+      <label class="field">
+        <span>Repetitions</span>
+        <input type="number" min="1" max="100" bind:value={repetitions} />
+      </label>
+      <label class="field">
+        <span>Capture duration seconds</span>
+        <input type="number" min="5" max="3600" bind:value={durationSeconds} />
+      </label>
+      <label class="field">
+        <span>Dataset capture rate</span>
+        <select
+          value={captureFps}
+          onchange={(event) =>
+            (captureFps = Number(fieldValue(event)) as SituationSettings['captureFps'])}
+        >
+          <option value="1">1 FPS</option>
+          <option value="2">2 FPS</option>
+          <option value="5">5 FPS</option>
+          <option value="10">10 FPS</option>
+        </select>
+        <small>Independent from the live Garage camera FPS.</small>
+      </label>
+    </div>
+
+    {#if !reproducible}
+      <div class="notice warning-notice">
+        <strong>Choose explicit reproducible values</strong>
+        <span>Select a vehicle and a named weather preset. If the map is “current”, CARLA must report its current map.</span>
+      </div>
+    {/if}
+
+    <div class="builder-actions">
+      <button
+        type="button"
+        class="button primary-button"
+        disabled={!reproducible || saving || Boolean(saved && !recipeDirty)}
+        onclick={saveRecipe}
+      >
+        {saving ? 'Saving recipe…' : saved && !recipeDirty ? 'Recipe saved' : saved ? 'Save revised recipe' : 'Save situation recipe'}
+      </button>
+      <button type="button" class="button secondary-button" onclick={useInGarage}>Use these values in Garage</button>
+    </div>
+
+    {#if saved}
+      <div class:warning={recipeDirty} class="evidence-strip">
+        <div><span>Requested</span><strong>Shared SessionConfig</strong></div>
+        <div><span>Resolved</span><strong>{String(resolved.map_name ?? '—')} · {String(resolved.weather_preset ?? '—')}</strong></div>
+        <div><span>Applied</span><strong>{recipeDirty ? 'Changed · save a new recipe' : 'Offline recipe saved'}</strong></div>
+      </div>
+      <p class="saved-path">{saved.path}</p>
+    {/if}
+  </section>
+
+  <section class="builder-section plan-section">
+    <div class="section-heading">
+      <div>
+        <span class="eyebrow">Deterministic plan</span>
+        <h3>Build scenario plan</h3>
+      </div>
+      <span class="section-note">Planning is offline and does not mutate CARLA.</span>
+    </div>
+    <div class="field-grid two-columns">
+      <label class="field">
+        <span>Split plan</span>
+        <select bind:value={splitPlan}>
+          {#if !$workspaceOptions.splitPlans.length}<option value="">No split plan found</option>{/if}
+          {#each $workspaceOptions.splitPlans as path}<option value={path}>{path}</option>{/each}
+        </select>
+      </label>
+      <label class="field">
+        <span>Plan run ID</span>
+        <input bind:value={planRunId} pattern="[a-z0-9-]+" />
+      </label>
+    </div>
+    <div class="builder-actions">
+      <button
+        type="button"
+        class="button primary-button"
+        disabled={!saved || recipeDirty || !splitPlan || planning}
+        onclick={buildPlan}
+      >
+        {planning ? 'Building plan…' : 'Build scenario plan'}
+      </button>
+    </div>
+    {#if job}
+      <div class:ok={job.status === 'success'} class:bad={job.status === 'failed'} class="job-result">
+        <strong>{job.status === 'success' ? 'Scenario plan ready' : job.title}</strong>
+        <span>{job.status}</span>
+        {#if job.expected_output}<small>{job.expected_output}</small>{/if}
+      </div>
+    {/if}
+  </section>
+
+  {#if error}<p class="inline-error" role="alert">{error}</p>{/if}
+</div>

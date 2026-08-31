@@ -232,6 +232,12 @@ def prepare_launch(
         token = _nonempty(token, "CARLA_WORLD_WORKER_TOKEN")
         if "CARLA_WORLD_WORKER_TOKEN" not in process_env:
             env_updates["CARLA_WORLD_WORKER_TOKEN"] = token
+        worker_url_configured = "--world-worker-url" in prefix or any(
+            item == "--world-worker-url" or item.startswith("--world-worker-url=")
+            for item in user_argv
+        )
+        if not worker_url_configured:
+            prefix.extend(("--world-worker-url", "auto"))
 
     return LocalLaunchPlan(
         argv=tuple(prefix + user_argv),
@@ -328,7 +334,14 @@ class LocalConfigGarageRequestHandler(garage_server.GarageOperatorRequestHandler
                 result = start_registered_model_session(self.server.application.drive, request)
             else:
                 result = self.server.application.drive.start(request)
-            self._json(HTTPStatus.ACCEPTED, result)
+            self._json(
+                HTTPStatus.ACCEPTED,
+                garage_server._with_configuration_evidence(
+                    result,
+                    requested=body["session"],
+                    resolved=request,
+                ),
+            )
         except BaseException as error:
             self._error(error)
 

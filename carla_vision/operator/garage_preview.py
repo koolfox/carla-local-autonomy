@@ -158,6 +158,7 @@ class GaragePreviewConfig:
             "following_distance_metres",
             "spectator_mirror",
             "profile",
+            "fov",
         }
         _strict_keys(raw, allowed=allowed, required=required, name="Garage preview request")
 
@@ -224,7 +225,39 @@ class GaragePreviewConfig:
             height=height,
             fps=fps,
             profile=profile,
+            fov=_number(
+                raw.get("fov", 65.0),
+                name="fov",
+                minimum=30.0,
+                maximum=150.0,
+            ),
         )
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the exact bounded configuration sent to the preview runtime."""
+
+        return {
+            "map_name": self.map_name,
+            "weather_preset": self.weather_preset,
+            "vehicle_blueprint": self.vehicle_blueprint,
+            "color": self.color,
+            "seed": self.seed,
+            "traffic_count": self.traffic_count,
+            "walker_count": self.walker_count,
+            "prop_preset": self.prop_preset,
+            "pedestrian_crossing_factor": self.pedestrian_crossing_factor,
+            "speed_difference_percent": self.speed_difference_percent,
+            "following_distance_metres": self.following_distance_metres,
+            "spectator_mirror": self.spectator_mirror,
+            "width": self.width,
+            "height": self.height,
+            "fps": self.fps,
+            "profile": self.profile,
+            "fov": self.fov,
+            "yaw": self.yaw,
+            "pitch": self.pitch,
+            "distance": self.distance,
+        }
 
 
 @dataclass(frozen=True)
@@ -474,6 +507,7 @@ class GaragePreviewSession:
 
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
+            scene = self._scene
             source_fps = 0.0
             if len(self._frame_arrivals) >= 2:
                 elapsed = self._frame_arrivals[-1] - self._frame_arrivals[0]
@@ -505,7 +539,7 @@ class GaragePreviewSession:
                 "camera_preset": self._camera_preset,
                 "error": self._error,
                 "cleanup_errors": list(self._cleanup_errors),
-                "map": None if self._scene is None else self._scene.map_name,
+                "map": None if scene is None else scene.map_name,
                 "weather_preset": self.config.weather_preset,
                 "vehicle_blueprint": self.config.vehicle_blueprint,
                 "color": self.config.color,
@@ -514,13 +548,39 @@ class GaragePreviewSession:
                 "camera_transport": self._camera_transport,
                 "camera_resolution": f"{self._camera_width}x{self._camera_height}",
                 "camera_profile": self.config.profile,
+                "camera_fov": self.config.fov,
                 "camera_target_fps": self.config.fps,
                 "camera_source_fps": stream["source_fps"],
                 "camera_frame_age_seconds": stream["frame_age_seconds"],
                 "camera_stale": stream["stale"],
                 "stream": stream,
-                "traffic_count": self.config.traffic_count,
-                "walker_count": self.config.walker_count,
+                "traffic_count": (
+                    self.config.traffic_count
+                    if scene is None or scene.traffic_count is None
+                    else scene.traffic_count
+                ),
+                "walker_count": (
+                    self.config.walker_count
+                    if scene is None or scene.walker_count is None
+                    else scene.walker_count
+                ),
+                "traffic_count_requested": self.config.traffic_count,
+                "walker_count_requested": self.config.walker_count,
+                "pedestrian_crossing_factor": (
+                    self.config.pedestrian_crossing_factor
+                    if scene is None or scene.pedestrian_crossing_factor is None
+                    else scene.pedestrian_crossing_factor
+                ),
+                "speed_difference_percent": (
+                    self.config.speed_difference_percent
+                    if scene is None or scene.speed_difference_percent is None
+                    else scene.speed_difference_percent
+                ),
+                "following_distance_metres": (
+                    self.config.following_distance_metres
+                    if scene is None or scene.following_distance_metres is None
+                    else scene.following_distance_metres
+                ),
                 "prop_preset": self.config.prop_preset,
                 "spectator_mirror": self._spectator_mirror_active,
             }

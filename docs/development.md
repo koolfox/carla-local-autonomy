@@ -40,6 +40,10 @@ uv run carla-operator-ui \
   --open-browser
 ```
 
+When `.env.local` contains a Worker token and no Worker URL was supplied, the
+packaged entrypoint selects `auto` implicitly and follows the resolved CARLA
+host on port 8766. An explicit CLI or environment URL still wins.
+
 Automatic discovery intentionally fails when no CARLA server is present. For
 frontend/API work with the simulator offline, use an explicit unreachable local
 endpoint and omit the Worker:
@@ -99,6 +103,9 @@ adapter and must never be exposed to the public internet.
 | If you are changing... | Start here | Then inspect |
 | --- | --- | --- |
 | Svelte page composition | `web/src/routes/+page.svelte` | `web/src/lib/components/` |
+| Garage menus and modal ownership | `web/src/lib/components/GarageMenu.svelte` | `Modal.svelte`, task-specific components |
+| Shared Scene/Research fields | `web/src/lib/components/SceneWorldFields.svelte` | `SceneSettings.svelte`, `SceneBuilder.svelte` |
+| Shared Garage/Drive vehicle selector | `web/src/lib/components/VehiclePicker.svelte` | `GaragePreview.svelte`, `DriveSettings.svelte` |
 | Editable session state | `web/src/lib/domain/config.ts` | `web/src/lib/stores/configuration.ts` |
 | Browser API/runtime state | `web/src/lib/api/operator.ts` | `web/src/lib/stores/runtime.ts` |
 | Canonical Operator configuration | `carla_vision/operator/configuration.py` | `carla_vision/operator/drive_contracts.py` |
@@ -162,7 +169,8 @@ These traces are the quickest way to find the owner of a behavior.
 ```text
 GaragePreview.svelte
   -> OperatorApi.configureGaragePreview
-  -> POST /api/garage/preview/configure
+  -> POST /api/garage/preview/configure with one SessionConfig
+  -> operator/configuration.py canonical preview mapping
   -> GaragePreviewManager.configure
   -> WorldWorkerClient.prepare_scene / preview camera
   -> World Worker actor ownership
@@ -271,10 +279,11 @@ SceneSettings.svelte
 
 Do not add a separate Research-only crossing value. Research presets and
 situation recipes must patch or reference the same `SessionConfig` field.
-Currently Preview maps this value directly in `GaragePreview.svelte`, while
-Drive maps it through `operator/configuration.py`; Research convergence is
-still planned in #54. Treat that split as work to remove, not an additional
-pattern to copy.
+Preview, Drive, and Situation recipe creation now map this value through
+`operator/configuration.py`. `SceneWorldFields.svelte` is reused by the Scene
+and Research modals and edits the same store. New workflows must consume that
+field or a retained SessionConfig reference rather than introducing another
+crossing control.
 
 ## Where should a new file go?
 

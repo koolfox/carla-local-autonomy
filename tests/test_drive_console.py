@@ -546,6 +546,13 @@ class DriveSessionManagerTests(_WorkspaceTestCase):
         self.assertTrue(catalog["connected"])
         self.assertEqual(catalog["server_version"], "0.9.16")
         self.assertEqual(catalog["map"], "Town10HD_Opt")
+        self.assertEqual(
+            catalog["maps"],
+            [
+                {"id": "Town03", "label": "Town03"},
+                {"id": "Town10HD_Opt", "label": "Town10HD_Opt"},
+            ],
+        )
         self.assertEqual(catalog["spawn_count"], 1)
         self.assertEqual(
             catalog["vehicles"],

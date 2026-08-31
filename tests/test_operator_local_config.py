@@ -129,3 +129,17 @@ def test_missing_env_file_preserves_existing_defaults(tmp_path: Path) -> None:
     assert args.carla_host == "auto"
     assert args.carla_port == 2000
     assert args.port == 8765
+
+
+def test_worker_token_automatically_tracks_the_resolved_carla_host(tmp_path: Path) -> None:
+    write_env(
+        tmp_path,
+        "CARLA_WORLD_WORKER_TOKEN=abcdefghijklmnopqrstuvwxyz123456\n",
+    )
+
+    plan = prepare_launch([], cwd=tmp_path, environ={})
+    args = base.parse_args(plan.argv)
+
+    assert args.carla_host == "auto"
+    assert args.world_worker_url == "auto"
+    assert plan.env_updates["CARLA_WORLD_WORKER_TOKEN"] == "abcdefghijklmnopqrstuvwxyz123456"

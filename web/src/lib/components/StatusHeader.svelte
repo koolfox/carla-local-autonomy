@@ -11,13 +11,9 @@
     <div class="brand-mark" aria-hidden="true">CV</div>
     <div>
       <strong>CARLA Garage</strong>
-      <span>Vision research cockpit</span>
+      <span>Vision Research Console</span>
     </div>
   </a>
-
-  <div class="topbar-center" aria-hidden="true">
-    <span>GARAGE</span><i></i><span>COCKPIT</span><i></i><span>EVIDENCE</span>
-  </div>
 
   {#if $systemSettings}
     <div class="topbar-status" aria-label="runtime status">
@@ -25,7 +21,11 @@
         <i></i>{$systemSettings.connected ? 'CARLA online' : 'CARLA offline'}
       </span>
       <span class:ok={$systemSettings.workerConnected} class="status-pill">
-        <i></i>{$systemSettings.workerConnected ? 'Worker ready' : 'Worker unavailable'}
+        <i></i>{$systemSettings.workerConnected
+          ? 'Bridge ready'
+          : $systemSettings.workerConfigured
+            ? 'Bridge offline'
+            : 'Bridge not configured'}
       </span>
       <span class:running={active} class:ok={$garageRuntime.drive.status === 'success'} class:bad={$garageRuntime.drive.status === 'failed'} class="status-pill">
         <i></i>{driveStatusLabel($garageRuntime.drive.status)}

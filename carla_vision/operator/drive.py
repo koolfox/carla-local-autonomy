@@ -75,6 +75,25 @@ def _map_short_name(raw: str) -> str:
     return raw.rsplit("/", 1)[-1].removesuffix(".umap")
 
 
+def _map_catalog(raw: list[Any]) -> list[dict[str, str]]:
+    """Normalize direct RPC and Worker map catalogs onto one public shape."""
+
+    result: dict[str, dict[str, str]] = {}
+    for item in raw:
+        if isinstance(item, Mapping):
+            identifier = _map_short_name(str(item.get("id", "")).strip())
+            label = str(item.get("label", "")).strip()
+        else:
+            identifier = _map_short_name(str(item).strip())
+            label = ""
+        if identifier:
+            result[identifier] = {
+                "id": identifier,
+                "label": label or identifier,
+            }
+    return [result[key] for key in sorted(result)]
+
+
 def _world_worker_health_ready(payload: Mapping[str, Any]) -> bool:
     ready = payload.get("ready")
     if isinstance(ready, bool):
@@ -1834,7 +1853,7 @@ class DriveSessionManager:
                         "connected": True,
                         "server_version": str(rpc.value_call("version")),
                         "map": _map_short_name(str(map_info[0])),
-                        "maps": list(rpc.value_call("get_available_maps")),
+                        "maps": _map_catalog(list(rpc.value_call("get_available_maps"))),
                         "vehicles": _vehicle_catalog(rpc.value_call("get_actor_definitions")),
                         "spawn_count": len(map_info[1]),
                     }
@@ -1860,7 +1879,7 @@ class DriveSessionManager:
 
                 maps = worker_catalog.get("maps")
                 if isinstance(maps, list):
-                    base["maps"] = maps
+                    base["maps"] = _map_catalog(maps)
                 vehicles = worker_catalog.get("vehicles")
                 if isinstance(vehicles, list):
                     base["vehicles"] = vehicles

@@ -21,6 +21,11 @@ from urllib.parse import parse_qs, unquote, urlparse
 from ..discovery import discover_carla_servers
 from .catalog import RESEARCH_ROOTS, build_catalog
 from .commands import build_command_plan
+from .configuration import (
+    CONFIGURATION_SCHEMA_VERSION,
+    build_configuration_evidence,
+    build_situation_request,
+)
 from .contracts import OperatorJobRequest
 from .drive import DriveSessionManager
 from .jobs import JobManager
@@ -177,15 +182,50 @@ class OperatorApplication:
     def save_situation(self, raw: Any) -> dict[str, Any]:
         if not isinstance(raw, Mapping):
             raise TypeError("situation request must be an object")
-        spec = SituationSpec.from_mapping(raw)
+        canonical = frozenset(str(key) for key in raw) == {
+            "schema_version",
+            "session",
+            "situation",
+        }
+        if canonical:
+            if str(raw["schema_version"]) != CONFIGURATION_SCHEMA_VERSION:
+                raise ValueError(
+                    "situation schema_version must be "
+                    f"{CONFIGURATION_SCHEMA_VERSION!r}"
+                )
+            session_raw = raw["session"]
+            scene_raw = session_raw.get("scene") if isinstance(session_raw, Mapping) else None
+            current_map = None
+            if isinstance(scene_raw, Mapping) and str(scene_raw.get("mapName")) == "current":
+                catalog = self.drive.catalog()
+                current_map = catalog.get("map") if isinstance(catalog, Mapping) else None
+            resolved = build_situation_request(
+                raw["session"],
+                raw["situation"],
+                current_map=str(current_map) if current_map else None,
+            )
+        else:
+            resolved = dict(raw)
+        spec = SituationSpec.from_mapping(resolved)
         output = save_situation_suite(spec, workspace=self.workspace)
         suite = json.loads(output.read_text(encoding="utf-8"))
-        return {
+        response = {
             "status": "saved",
             "path": output.relative_to(self.workspace).as_posix(),
             "suite_id": suite["suite_id"],
             "recipe_id": suite["recipes"][0]["recipe_id"],
         }
+        if canonical:
+            response["configuration"] = build_configuration_evidence(
+                requested=raw,
+                resolved=spec.as_dict(),
+                applied={
+                    "status": "saved_offline",
+                    "carla_mutated": False,
+                    "path": response["path"],
+                },
+            )
+        return response
 
     def start_job(self, raw: Any) -> dict[str, Any]:
         if not isinstance(raw, Mapping):

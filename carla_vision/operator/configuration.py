@@ -153,6 +153,159 @@ def _validated_session(raw: Any) -> dict[str, Mapping[str, Any]]:
     return result
 
 
+def _camera_resolution(raw: Any) -> tuple[int, int]:
+    value = str(raw).strip().lower()
+    try:
+        width_text, height_text = value.split("x", 1)
+        width = int(width_text)
+        height = int(height_text)
+    except (TypeError, ValueError) as error:
+        raise ValueError("session.camera.resolution must look like 1280x720") from error
+    if not 320 <= width <= 3840 or not 180 <= height <= 2160:
+        raise ValueError("session.camera.resolution must be within 320x180 and 3840x2160")
+    return width, height
+
+
+def _garage_camera_profile(resolution: str, fps: Any) -> str:
+    if isinstance(fps, bool) or not isinstance(fps, (int, float)):
+        raise TypeError("session.camera.fps must be a number")
+    width, height = _camera_resolution(resolution)
+    rate = float(fps)
+    if (width, height) == (640, 384) and rate <= 10.0:
+        return "compatibility"
+    if (width, height) == (1280, 720) and rate >= 60.0:
+        return "high-refresh"
+    if (width, height) == (1920, 1080):
+        return "detail"
+    return "balanced"
+
+
+def _short_map_name(raw: Any, *, name: str) -> str:
+    value = str(raw or "").strip().rstrip("/")
+    if not value:
+        raise ValueError(f"{name} is empty")
+    return value.rsplit("/", 1)[-1]
+
+
+def _selected_map_name(raw: Any) -> str:
+    value = str(raw or "").strip()
+    if value == "current":
+        return value
+    return _short_map_name(value, name="session.scene.mapName")
+
+
+def _current_map_name(raw: Any) -> str:
+    try:
+        return _short_map_name(raw, name="current CARLA map")
+    except ValueError as error:
+        raise RuntimeError(
+            "the current CARLA map is unavailable; choose an explicit map before saving"
+        ) from error
+
+
+def build_configuration_evidence(
+    *,
+    requested: Any,
+    resolved: Any,
+    applied: Any,
+) -> dict[str, Any]:
+    """Return one JSON-safe account of configuration resolution and application."""
+
+    return {
+        "schema_version": CONFIGURATION_SCHEMA_VERSION,
+        "requested": deepcopy(requested),
+        "resolved": deepcopy(resolved),
+        "applied": deepcopy(applied),
+    }
+
+
+def build_garage_preview_request(raw: Any) -> dict[str, Any]:
+    """Map the canonical SessionConfig onto the bounded Garage preview contract."""
+
+    session = _validated_session(raw)
+    identity = session["identity"]
+    scene = session["scene"]
+    vehicle = session["vehicle"]
+    camera = session["camera"]
+    return {
+        "map_name": _selected_map_name(scene["mapName"]),
+        "weather_preset": str(scene["weatherPreset"]).strip(),
+        "vehicle_blueprint": str(vehicle["blueprint"]).strip(),
+        "color": str(vehicle["color"]).strip(),
+        "seed": identity["seed"],
+        "traffic_count": scene["trafficCount"],
+        "walker_count": scene["walkerCount"],
+        "prop_preset": str(scene["propPreset"]).strip(),
+        "pedestrian_crossing_factor": scene["pedestrianCrossingFactor"],
+        "speed_difference_percent": scene["speedDifferencePercent"],
+        "following_distance_metres": scene["followingDistanceMetres"],
+        "spectator_mirror": camera["spectatorFollow"],
+        "profile": _garage_camera_profile(
+            str(camera["resolution"]),
+            camera["fps"],
+        ),
+        "fov": camera["fov"],
+    }
+
+
+def build_situation_request(
+    raw: Any,
+    situation_raw: Any,
+    *,
+    current_map: str | None,
+) -> dict[str, Any]:
+    """Map shared SessionConfig plus recipe-only fields to SituationSpec input."""
+
+    session = _validated_session(raw)
+    situation = _mapping(situation_raw, "situation settings")
+    situation_fields = frozenset(
+        {
+            "situationId",
+            "egoSpawnIndex",
+            "durationSeconds",
+            "captureFps",
+            "repetitions",
+        }
+    )
+    _strict_keys(situation, situation_fields, "situation settings")
+
+    identity = session["identity"]
+    scene = session["scene"]
+    vehicle = session["vehicle"]
+    camera = session["camera"]
+    map_name = str(scene["mapName"]).strip()
+    if map_name == "current":
+        map_name = _current_map_name(current_map)
+    else:
+        map_name = _short_map_name(map_name, name="session.scene.mapName")
+    weather = str(scene["weatherPreset"]).strip()
+    if weather == "keep":
+        raise ValueError(
+            "saving a reproducible situation requires an explicit weather preset"
+        )
+    width, height = _camera_resolution(camera["resolution"])
+    return {
+        "situation_id": str(situation["situationId"]).strip(),
+        "map_name": map_name,
+        "weather_preset": weather,
+        "vehicle_count": scene["trafficCount"],
+        "walker_count": scene["walkerCount"],
+        "pedestrian_crossing_factor": scene["pedestrianCrossingFactor"],
+        "speed_difference_percent": scene["speedDifferencePercent"],
+        "following_distance_metres": scene["followingDistanceMetres"],
+        "prop_preset": str(scene["propPreset"]).strip(),
+        "ego_blueprint": str(vehicle["blueprint"]).strip(),
+        "ego_spawn_index": situation["egoSpawnIndex"],
+        "duration_seconds": situation["durationSeconds"],
+        "capture_fps": situation["captureFps"],
+        "repetitions": situation["repetitions"],
+        "master_seed": identity["seed"],
+        "camera_width": width,
+        "camera_height": height,
+        "camera_fov": camera["fov"],
+    }
+
+
 def session_defaults(*, detector_enabled: bool) -> dict[str, Any]:
     """Return the single editable session configuration defaults."""
 
@@ -342,7 +495,7 @@ def build_legacy_drive_request(
         "camera_fov": camera["fov"],
         "record_video": recording["video"],
         "spectator_follow": camera["spectatorFollow"],
-        "map_name": str(scene["mapName"]).strip(),
+        "map_name": _selected_map_name(scene["mapName"]),
         "traffic_count": worker_traffic,
         "walker_count": worker_walkers,
         "route_mode": str(route["mode"]).strip(),
@@ -372,7 +525,10 @@ def build_legacy_drive_request(
 __all__ = [
     "CONFIGURATION_SCHEMA_VERSION",
     "EXPERIMENT_PRESETS",
+    "build_configuration_evidence",
     "build_configuration_contract",
+    "build_garage_preview_request",
     "build_legacy_drive_request",
+    "build_situation_request",
     "session_defaults",
 ]

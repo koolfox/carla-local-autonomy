@@ -1,4 +1,5 @@
 import type {
+  CatalogOption,
   ExperimentPresetDefinition,
   InvalidModelPackage,
   ModelPackage,
@@ -9,9 +10,46 @@ import type {
 import type {
   DriveControlRequest,
   DriveState,
-  GarageOrbitRequest,
-  GaragePreviewConfig
+  GarageOrbitRequest
 } from '$lib/domain/runtime';
+
+export interface ConfigurationEvidence {
+  schema_version: string;
+  requested: unknown;
+  resolved: Record<string, unknown>;
+  applied: Record<string, unknown>;
+}
+
+export interface GaragePreviewResponse extends Record<string, unknown> {
+  configuration: ConfigurationEvidence;
+}
+
+export interface SituationSettings {
+  situationId: string;
+  egoSpawnIndex: number;
+  durationSeconds: number;
+  captureFps: 1 | 2 | 5 | 10;
+  repetitions: number;
+}
+
+export interface SituationSaveResponse {
+  status: 'saved';
+  path: string;
+  suite_id: string;
+  recipe_id: string;
+  configuration: ConfigurationEvidence;
+}
+
+export interface OperatorJobSnapshot {
+  job_id: string;
+  kind: string;
+  title: string;
+  status: string;
+  expected_output?: string | null;
+  expected_output_exists?: boolean;
+  error?: string | null;
+  [key: string]: unknown;
+}
 
 export interface BootstrapPayload {
   schema_version: string;
@@ -25,6 +63,8 @@ export interface BootstrapPayload {
     };
     capabilities: Record<string, boolean>;
     weights?: string[];
+    scenario_suites?: string[];
+    split_plans?: string[];
   };
   drive?: DriveState;
 }
@@ -59,7 +99,7 @@ export interface DriveCatalogPayload {
   port: number;
   server_version: string | null;
   map: string | null;
-  maps: string[];
+  maps: Array<string | { id: string; label?: string }>;
   vehicles: Array<{ id: string; label?: string; colors?: string[] }>;
   weather_presets: Array<{ id: string; label: string }>;
   prop_presets: Array<{ id: string; label: string }>;
@@ -99,6 +139,34 @@ function apiError(path: string, response: Response, payload: unknown): Error {
   const typed = payload as ApiErrorPayload | null;
   const message = typed?.error?.message || `${response.status} ${response.statusText}`;
   return new Error(`Operator API ${path} failed: ${message}`);
+}
+
+function shortMapName(value: string): string {
+  const normalized = value.trim().replace(/\/+$/, '');
+  return normalized.split('/').at(-1) ?? normalized;
+}
+
+function normalizedMapOptions(raw: unknown): CatalogOption[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const options: CatalogOption[] = [];
+  for (const value of raw) {
+    const rawId =
+      typeof value === 'string'
+        ? value
+        : value && typeof value === 'object' && 'id' in value
+          ? String(value.id)
+          : '';
+    const id = shortMapName(rawId);
+    if (!id || seen.has(id)) continue;
+    const rawLabel =
+      value && typeof value === 'object' && 'label' in value
+        ? String(value.label ?? '')
+        : '';
+    seen.add(id);
+    options.push({ id, label: rawLabel.trim() || id });
+  }
+  return options;
 }
 
 async function readJson<T>(path: string): Promise<T> {
@@ -145,7 +213,7 @@ export async function loadWorkspaceSnapshot(): Promise<WorkspaceSnapshot> {
   };
 
   const options: WorkspaceOptions = {
-    maps: Array.isArray(driveCatalog.maps) ? driveCatalog.maps : [],
+    maps: normalizedMapOptions(driveCatalog.maps),
     vehicles: Array.isArray(driveCatalog.vehicles) ? driveCatalog.vehicles : [],
     weatherPresets: Array.isArray(driveCatalog.weather_presets)
       ? driveCatalog.weather_presets
@@ -154,6 +222,12 @@ export async function loadWorkspaceSnapshot(): Promise<WorkspaceSnapshot> {
     detectorWeights: Array.isArray(bootstrap.catalog.weights) ? bootstrap.catalog.weights : [],
     checkpoints: Array.isArray(driveCatalog.policy_checkpoints)
       ? driveCatalog.policy_checkpoints
+      : [],
+    scenarioSuites: Array.isArray(bootstrap.catalog.scenario_suites)
+      ? bootstrap.catalog.scenario_suites
+      : [],
+    splitPlans: Array.isArray(bootstrap.catalog.split_plans)
+      ? bootstrap.catalog.split_plans
       : [],
     models: Array.isArray(modelRegistry.packages) ? modelRegistry.packages : [],
     invalidModels: Array.isArray(modelRegistry.invalid) ? modelRegistry.invalid : []
@@ -216,8 +290,11 @@ export class OperatorApi {
     return this.post<DriveState>('/api/drive/control', { ...control }, keepalive);
   }
 
-  configureGaragePreview(config: GaragePreviewConfig): Promise<Record<string, unknown>> {
-    return this.post<Record<string, unknown>>('/api/garage/preview/configure', { ...config });
+  configureGaragePreview(session: SessionConfig): Promise<GaragePreviewResponse> {
+    return this.post<GaragePreviewResponse>('/api/garage/preview/configure', {
+      schema_version: '1.0',
+      session
+    });
   }
 
   stopGaragePreview(): Promise<Record<string, unknown>> {
@@ -226,5 +303,28 @@ export class OperatorApi {
 
   orbitGaragePreview(request: GarageOrbitRequest): Promise<Record<string, unknown>> {
     return this.post<Record<string, unknown>>('/api/garage/preview/orbit', { ...request });
+  }
+
+  saveSituation(
+    session: SessionConfig,
+    situation: SituationSettings
+  ): Promise<SituationSaveResponse> {
+    return this.post<SituationSaveResponse>('/api/situations', {
+      schema_version: '1.0',
+      session,
+      situation
+    });
+  }
+
+  startJob(kind: string, parameters: Record<string, unknown>): Promise<OperatorJobSnapshot> {
+    return this.post<OperatorJobSnapshot>('/api/jobs', {
+      schema_version: '1.0',
+      kind,
+      parameters
+    });
+  }
+
+  getJob(jobId: string): Promise<OperatorJobSnapshot> {
+    return readJson<OperatorJobSnapshot>(`/api/jobs/${encodeURIComponent(jobId)}`);
   }
 }

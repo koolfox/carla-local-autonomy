@@ -140,6 +140,8 @@ uv run carla-operator-ui \
 `--carla-host auto` validates CARLA RPC on directly connected private LANs.
 `--world-worker-url auto` uses port 8766 on that same discovered host, avoiding
 stale Worker addresses after changing networks.
+If `.env.local` contains `CARLA_WORLD_WORKER_TOKEN` and no Worker URL is given,
+the packaged entrypoint selects this colocated `auto` behavior automatically.
 
 If only CARLA is running and the Worker is unavailable, omit
 `--world-worker-url`. Manual raw-bridge driving and vision remain available;
