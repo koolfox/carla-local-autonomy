@@ -1865,8 +1865,19 @@ class DriveSessionManager:
                 health = self._world_worker.health()
                 if not _world_worker_health_ready(health):
                     raise RuntimeError("World Worker reports that CARLA is unavailable")
-                worker_payload = self._world_worker.catalog()
-                worker_catalog = worker_payload.get("catalog", worker_payload)
+                health_status = str(health.get("status", "")).strip().lower()
+                if health_status == "busy":
+                    # A lifecycle mutation can hold the Worker world lock for
+                    # tens of seconds. Health remains authoritative for
+                    # reachability; do not queue a heavyweight catalog request
+                    # behind that mutation and then mislabel the bridge offline.
+                    worker_catalog: Any = {
+                        "capabilities": health.get("capabilities", {}),
+                        "carla": health.get("carla", {}),
+                    }
+                else:
+                    worker_payload = self._world_worker.catalog()
+                    worker_catalog = worker_payload.get("catalog", worker_payload)
                 if not isinstance(worker_catalog, Mapping):
                     raise RuntimeError("World Worker catalog must be an object")
                 worker_capabilities = worker_catalog.get("capabilities", {})
@@ -1912,6 +1923,7 @@ class DriveSessionManager:
                     "configured": True,
                     "connected": True,
                     "status": health.get("status", "reachable"),
+                    "worker_api_revision": health.get("worker_api_revision"),
                 }
             except Exception as error:
                 base["world_worker"] = {

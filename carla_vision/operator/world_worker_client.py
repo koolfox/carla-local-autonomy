@@ -480,6 +480,8 @@ class WorldWorkerClient:
         self.base_url = urlunsplit((parsed.scheme, netloc, "", "", ""))
         self._bearer_token = token
         self.timeout = float(timeout)
+        self._catalog_lock = threading.Lock()
+        self._cached_capabilities: dict[str, Any] | None = None
         # Connect directly to the explicitly configured LAN worker. Environment
         # proxy settings must never receive the bearer credential.
         self._opener = build_opener(ProxyHandler({}), _RejectRedirects())
@@ -488,7 +490,12 @@ class WorldWorkerClient:
         return self._request("GET", "/v1/health")
 
     def catalog(self) -> dict[str, Any]:
-        return self._request("GET", "/v1/catalog")
+        payload = self._request("GET", "/v1/catalog")
+        capabilities = payload.get("capabilities")
+        if isinstance(capabilities, Mapping):
+            with self._catalog_lock:
+                self._cached_capabilities = dict(capabilities)
+        return payload
 
     def current_scene(self) -> dict[str, Any]:
         return self._request("GET", "/v1/scenes/current")
@@ -505,8 +512,17 @@ class WorldWorkerClient:
                 detail.append(f"unknown {', '.join(unknown)}")
             raise ValueError(f"World Worker scene payload has {'; '.join(detail)}")
         if keys & _SCENE_PREPARE_OPTIONAL_KEYS:
-            catalog = self.catalog()
-            capabilities = catalog.get("capabilities", {})
+            with self._catalog_lock:
+                cached_capabilities = (
+                    None
+                    if self._cached_capabilities is None
+                    else dict(self._cached_capabilities)
+                )
+            capabilities = (
+                cached_capabilities
+                if cached_capabilities is not None
+                else self.catalog().get("capabilities", {})
+            )
             if not isinstance(capabilities, Mapping) or not bool(
                 capabilities.get("world_dynamics_controls")
             ):
@@ -845,19 +861,30 @@ class WorldWorkerClient:
             raise WorldWorkerError("World Worker camera metadata is invalid") from error
 
     def stop_scene(self, scene: WorldWorkerScene) -> WorldWorkerScene:
-        return self._scene_request(scene, "stop", {"lease_token": scene.lease_token})
+        # Population cleanup is a lifecycle operation, not a control-plane
+        # heartbeat. Hundreds of actors can legitimately take longer than the
+        # ordinary LAN timeout to stop and destroy on Windows.
+        return self._scene_request(
+            scene,
+            "stop",
+            {"lease_token": scene.lease_token},
+            timeout=max(self.timeout, 120.0),
+        )
 
     def _scene_request(
         self,
         scene: WorldWorkerScene,
         action: str,
         payload: Mapping[str, Any],
+        *,
+        timeout: float | None = None,
     ) -> WorldWorkerScene:
         scene_id = quote(scene.scene_id, safe="")
         response = self._request(
             "POST",
             f"/v1/scenes/{scene_id}/{action}",
             dict(payload),
+            timeout=timeout,
         )
         updated = WorldWorkerScene.from_response(response)
         if updated.scene_id != scene.scene_id:

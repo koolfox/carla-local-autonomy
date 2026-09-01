@@ -351,7 +351,7 @@ def test_production_catalog_and_start_hide_experimental_autonomy(
         manager.start(base_start(control_mode="behavior", acknowledge_autonomy=True))
 
 
-def test_manager_uses_ready_worker_and_falls_back_only_for_exact_defaults(
+def test_manager_uses_configured_worker_without_racy_health_preflight(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -372,21 +372,16 @@ def test_manager_uses_ready_worker_and_falls_back_only_for_exact_defaults(
             return {"status": "running", "session_id": self.session_id}
 
     class FakeWorker:
-        def __init__(self, *, ready: bool) -> None:
-            self.ready = ready
-
         def health(self) -> dict[str, object]:
-            if not self.ready:
-                raise RuntimeError("offline")
-            return {"ready": True}
+            raise AssertionError("start must not probe Worker health")
 
         def catalog(self) -> dict[str, object]:
-            return {"catalog": {"capabilities": {}}}
+            raise AssertionError("start must not probe Worker catalog")
 
     monkeypatch.setattr(garage_drive, "GarageDriveSession", FakeSession)
     monkeypatch.setattr(garage_drive, "_module_available", lambda _name: False)
 
-    ready_worker = FakeWorker(ready=True)
+    ready_worker = FakeWorker()
     ready_manager = GarageOperatorDriveManager(
         workspace=tmp_path,
         carla_host=CARLA_HOST,
@@ -404,14 +399,12 @@ def test_manager_uses_ready_worker_and_falls_back_only_for_exact_defaults(
     assert created[-1].config.base.traffic_count == 5  # type: ignore[attr-defined]
     assert created[-1].config.base.initial_control_mode == "autopilot"  # type: ignore[attr-defined]
 
-    unavailable_worker = FakeWorker(ready=False)
-    unavailable_manager = GarageOperatorDriveManager(
+    busy_worker = FakeWorker()
+    busy_manager = GarageOperatorDriveManager(
         workspace=tmp_path,
         carla_host=CARLA_HOST,
         carla_port=CARLA_PORT,
-        world_worker=unavailable_worker,  # type: ignore[arg-type]
+        world_worker=busy_worker,  # type: ignore[arg-type]
     )
-    with pytest.raises(ValueError, match="configured World Worker is required"):
-        unavailable_manager.start(base_start(traffic_count=1))
-    unavailable_manager.start(base_start())
-    assert created[-1].world_worker is None  # type: ignore[attr-defined]
+    busy_manager.start(base_start(traffic_count=1))
+    assert created[-1].world_worker is busy_worker  # type: ignore[attr-defined]

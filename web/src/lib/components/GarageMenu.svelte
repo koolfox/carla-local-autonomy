@@ -13,18 +13,26 @@
   export let locked = false;
 
   type Panel = 'experiment' | 'scene' | 'drive' | 'vision' | 'research' | 'system';
-  const items: Array<{ id: Panel; label: string; detail: string }> = [
-    { id: 'experiment', label: 'Experiment', detail: 'Purpose' },
-    { id: 'scene', label: 'Scene', detail: 'World & traffic' },
-    { id: 'drive', label: 'Vehicle', detail: 'Car & control' },
-    { id: 'vision', label: 'Vision', detail: 'Camera & models' },
-    { id: 'research', label: 'Research', detail: 'Recipe & plan' },
-    { id: 'system', label: 'Settings', detail: 'Connection & runtime' }
+  const items: Array<{ id: Panel; label: string; title: string }> = [
+    { id: 'experiment', label: 'Experiment', title: 'Experiment purpose and preset' },
+    { id: 'scene', label: 'Scene', title: 'Map, weather, traffic and pedestrians' },
+    { id: 'drive', label: 'Vehicle', title: 'Vehicle and control owner' },
+    { id: 'vision', label: 'Vision', title: 'Camera, perception and recording' },
+    { id: 'research', label: 'Research', title: 'Situation recipe and scenario plan' },
+    { id: 'system', label: 'System', title: 'Connection and runtime' }
   ];
-  let active: Panel | null = null;
+  let open = false;
+  let active: Panel = 'scene';
+
+  $: if (locked && active !== 'system') active = 'system';
 
   function close(): void {
-    active = null;
+    open = false;
+  }
+
+  function show(panel?: Panel): void {
+    active = locked ? 'system' : panel ?? active;
+    open = true;
   }
 
   function useInGarage(): void {
@@ -34,72 +42,54 @@
 </script>
 
 <nav class="garage-command-menu" aria-label="Garage tools">
-  {#each items as item}
-    <button
-      type="button"
-      disabled={locked && item.id !== 'system'}
-      class:active={active === item.id}
-      onclick={() => (active = item.id)}
-    >
-      <strong>{item.label}</strong>
-      <span>{item.detail}</span>
-    </button>
-  {/each}
+  <button
+    type="button"
+    class="garage-menu-trigger"
+    aria-expanded={open}
+    aria-controls="garage-control-tabs"
+    title="Open Garage controls"
+    onclick={() => show()}
+  >
+    <span aria-hidden="true">☰</span>
+    <strong>Menu</strong>
+  </button>
 </nav>
 
 <Modal
-  open={active === 'experiment'}
-  title="Choose an experiment"
-  description="Presets update the same visible session. You can refine every value afterward."
+  {open}
+  title="Garage controls"
   close={close}
 >
-  <PresetSelector />
-  <ResolvedSession />
-</Modal>
+  <div id="garage-control-tabs" class="garage-modal-tabs" role="tablist" aria-label="Garage control sections">
+    {#each items as item}
+      <button
+        type="button"
+        role="tab"
+        aria-selected={active === item.id}
+        class:active={active === item.id}
+        disabled={locked && item.id !== 'system'}
+        title={item.title}
+        onclick={() => (active = item.id)}
+      >{item.label}</button>
+    {/each}
+  </div>
 
-<Modal
-  open={active === 'scene'}
-  title="Scene"
-  description="Map, weather, traffic, pedestrians and fixed road items."
-  close={close}
->
-  <SceneSettings />
-</Modal>
-
-<Modal
-  open={active === 'drive'}
-  title="Vehicle and drive"
-  description="Choose the ego vehicle and the single owner of its controls."
-  close={close}
->
-  <DriveSettings />
-  <PolicySettings />
-  <ModelLibrary />
-</Modal>
-
-<Modal
-  open={active === 'vision'}
-  title="Vision and recording"
-  description="Live camera, detection overlay and retained video evidence."
-  close={close}
->
-  <VisionSettings />
-</Modal>
-
-<Modal
-  open={active === 'research'}
-  title="Research scene builder"
-  description="Turn the shared Garage scene into a reproducible situation recipe and scenario plan."
-  close={close}
->
-  <SceneBuilder useInGarage={useInGarage} />
-</Modal>
-
-<Modal
-  open={active === 'system'}
-  title="Settings"
-  description="Machine connection, runtime availability and workspace facts."
-  close={close}
->
-  <SystemSettings />
+  <div class="garage-modal-panel" role="tabpanel" aria-label={items.find((item) => item.id === active)?.title}>
+    {#if active === 'experiment'}
+      <PresetSelector />
+      <ResolvedSession />
+    {:else if active === 'scene'}
+      <SceneSettings />
+    {:else if active === 'drive'}
+      <DriveSettings />
+      <PolicySettings />
+      <ModelLibrary />
+    {:else if active === 'vision'}
+      <VisionSettings />
+    {:else if active === 'research'}
+      <SceneBuilder useInGarage={useInGarage} />
+    {:else}
+      <SystemSettings />
+    {/if}
+  </div>
 </Modal>

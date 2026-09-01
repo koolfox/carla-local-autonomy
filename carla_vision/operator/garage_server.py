@@ -84,19 +84,16 @@ def _canonical_session_request(raw: Any, application: Any) -> dict[str, Any]:
             f"unified session schema_version must be {CONFIGURATION_SCHEMA_VERSION!r}"
         )
 
-    catalog = application.drive.catalog()
-    capabilities = catalog.get("capabilities", {})
-    if not isinstance(capabilities, Mapping):
-        raise RuntimeError("Drive catalog capabilities are malformed")
-    worker = catalog.get("world_worker", {})
-    if not isinstance(worker, Mapping):
-        worker = {}
+    worker_configured = application.world_worker is not None
     return build_legacy_drive_request(
         raw["session"],
         carla_host=application.carla_host,
         carla_port=application.carla_port,
-        worker_connected=bool(worker.get("connected")),
-        capabilities=capabilities,
+        # Schema adaptation depends on the configured execution topology, not
+        # a racy health probe. The actual scene operation below remains the
+        # authoritative liveness check.
+        worker_connected=worker_configured,
+        capabilities={"autopilot": worker_configured},
     )
 
 

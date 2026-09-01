@@ -145,6 +145,25 @@ code {
   pointer-events: auto;
 }
 
+.topbar.compact {
+  left: auto;
+}
+
+.topbar.compact .brand-lockup {
+  display: none;
+}
+
+.topbar.compact .topbar-status .status-pill:not(:last-child) {
+  display: none;
+}
+
+.topbar.compact .status-pill {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(18, 22, 25, 0.74);
+  color: #eef1f3;
+  backdrop-filter: blur(10px);
+}
+
 .status-pill,
 .capability {
   color: var(--muted);
@@ -185,7 +204,6 @@ code {
 .garage-workspace {
   position: relative;
   height: 100dvh;
-  min-height: 560px;
   padding: 0;
 }
 
@@ -194,45 +212,51 @@ code {
   top: 76px;
   right: 18px;
   z-index: 15;
-  display: flex;
-  gap: 3px;
-  padding: 5px;
-  border: 1px solid rgba(255, 255, 255, 0.34);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 8px 28px rgba(18, 22, 26, 0.15);
-  backdrop-filter: blur(14px);
-  scrollbar-width: none;
+  margin: 0;
 }
 
-.garage-command-menu::-webkit-scrollbar {
+.garage-workspace.driving .garage-command-menu {
+  top: 50%;
+  right: auto;
+  left: 14px;
+  z-index: 45;
+  transform: translateY(-50%);
+}
+
+.garage-workspace.driving .garage-menu-trigger {
+  width: 40px;
+  justify-content: center;
+  padding: 0;
+}
+
+.garage-workspace.driving .garage-menu-trigger strong {
   display: none;
 }
 
-.garage-command-menu button {
-  display: grid;
-  min-width: 88px;
-  gap: 1px;
-  padding: 9px 11px;
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
-  text-align: left;
+.garage-menu-trigger {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 9px;
+  background: rgba(20, 24, 27, 0.76);
+  color: #ffffff;
+  box-shadow: 0 6px 20px rgba(10, 12, 14, 0.2);
+  backdrop-filter: blur(10px);
 }
 
-.garage-command-menu button:hover,
-.garage-command-menu button.active {
-  background: var(--surface-strong);
+.garage-menu-trigger:hover {
+  background: rgba(20, 24, 27, 0.92);
 }
 
-.garage-command-menu strong {
-  color: var(--text);
+.garage-menu-trigger span {
+  font-size: 15px;
+}
+
+.garage-menu-trigger strong {
   font-size: 12px;
-}
-
-.garage-command-menu span {
-  color: var(--muted);
-  font-size: 10px;
 }
 
 /* Live Garage */
@@ -333,12 +357,21 @@ code {
 
 .garage-stage-hud span,
 .preview-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 7px 9px;
   border-radius: 999px;
   background: rgba(25, 29, 33, 0.76);
   color: #eef1f3;
   font-size: 11px;
   backdrop-filter: blur(10px);
+}
+
+.preview-state .loading-ring {
+  width: 12px;
+  height: 12px;
+  border-width: 2px;
 }
 
 .garage-stage-hud span.adjusted {
@@ -476,7 +509,7 @@ code {
   grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 22px;
+  border-radius: 10px;
   background: var(--surface);
   box-shadow: var(--shadow);
 }
@@ -486,14 +519,14 @@ code {
   align-items: flex-start;
   justify-content: space-between;
   gap: 18px;
-  padding: 20px 22px 18px;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--line);
   background: var(--surface);
 }
 
 .modal-header h2 {
   margin: 0;
-  font-size: 22px;
+  font-size: 18px;
   letter-spacing: -0.025em;
 }
 
@@ -512,7 +545,7 @@ code {
   flex: 0 0 auto;
   place-items: center;
   border: 1px solid var(--line);
-  border-radius: 11px;
+  border-radius: 7px;
   background: var(--surface-soft);
   color: var(--muted);
   font-size: 24px;
@@ -520,8 +553,11 @@ code {
 }
 
 .modal-body {
-  overflow: auto;
-  padding: 20px;
+  display: grid;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  padding: 0;
   background: var(--surface-soft);
 }
 
@@ -529,13 +565,51 @@ code {
   max-width: 100%;
 }
 
+.garage-modal-tabs {
+  display: flex;
+  min-width: 0;
+  gap: 2px;
+  padding: 7px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  scrollbar-width: none;
+}
+
+.garage-modal-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.garage-modal-tabs button {
+  min-height: 36px;
+  flex: 1 0 auto;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.garage-modal-tabs button:hover:not(:disabled),
+.garage-modal-tabs button.active {
+  background: var(--surface-strong);
+  color: var(--text);
+}
+
+.garage-modal-panel {
+  min-height: 0;
+  padding: 14px;
+  overflow: auto;
+}
+
 /* Settings surfaces */
 .config-card,
 .builder-section,
 .resolved-panel {
-  padding: 21px;
+  padding: 16px;
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: 8px;
   background: var(--surface);
 }
 
@@ -1093,20 +1167,8 @@ code {
 
 /* Drive cockpit */
 .cockpit-card {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  background: var(--surface);
-}
-
-.cockpit-header {
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--line);
-  background: var(--surface);
-}
-
-.cockpit-header h2 {
-  margin: 3px 0 0;
-  font-size: 18px;
+  display: block;
+  background: #15191c;
 }
 
 .cockpit-badges,
@@ -1115,27 +1177,54 @@ code {
   gap: 5px;
 }
 
-.cockpit-layout {
-  display: grid;
-  min-height: 0;
-  grid-template-columns: minmax(0, 1fr) 280px;
+.cockpit-badges {
+  position: absolute;
+  top: 58px;
+  right: 14px;
+  z-index: 12;
+  align-items: center;
+}
+
+.cockpit-badges .status-pill,
+.hud-toggle {
+  min-height: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(18, 22, 25, 0.74);
+  color: #eef1f3;
+  backdrop-filter: blur(10px);
+}
+
+.cockpit-badges .recording i {
+  background: #e54848;
+}
+
+.hud-toggle {
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 11px;
 }
 
 .drive-viewport-panel {
-  display: grid;
-  min-height: 0;
-  grid-template-rows: auto minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
   background: #1f2428;
 }
 
 .viewport-toolbar {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  z-index: 12;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
-  padding: 10px 12px;
-  background: #282e33;
+  padding: 5px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 9px;
+  background: rgba(18, 22, 25, 0.74);
   color: #edf0f2;
+  backdrop-filter: blur(10px);
 }
 
 .viewport-toolbar > span {
@@ -1145,11 +1234,14 @@ code {
 
 .drive-viewport {
   position: relative;
-  min-height: 0;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
 }
 
 .drive-viewport img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: contain;
@@ -1167,8 +1259,9 @@ code {
 
 .drive-hud {
   position: absolute;
-  top: 14px;
+  bottom: 18px;
   left: 14px;
+  z-index: 10;
   display: flex;
   gap: 7px;
 }
@@ -1177,7 +1270,7 @@ code {
   display: grid;
   gap: 2px;
   padding: 8px 10px;
-  border-radius: 10px;
+  border-radius: 8px;
   background: rgba(22, 26, 29, 0.76);
   color: #ffffff;
 }
@@ -1193,11 +1286,19 @@ code {
 }
 
 .telemetry-panel {
-  min-height: 0;
+  position: absolute;
+  top: 96px;
+  right: 14px;
+  bottom: 76px;
+  z-index: 15;
+  width: min(270px, calc(100vw - 28px));
   overflow: auto;
-  padding: 14px;
-  border-left: 1px solid var(--line);
-  background: var(--surface);
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 9px;
+  background: rgba(18, 22, 25, 0.88);
+  color: #ffffff;
+  backdrop-filter: blur(12px);
 }
 
 .telemetry-row {
@@ -1206,67 +1307,85 @@ code {
   justify-content: space-between;
   gap: 12px;
   padding: 10px 0;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .telemetry-row span {
-  color: var(--muted);
+  color: #aeb7bd;
   font-size: 11px;
 }
 
 .telemetry-row strong {
+  max-width: 165px;
+  overflow: hidden;
   font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Touch controls */
 .manual-control-panel {
-  margin-top: 14px;
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: 13px;
-  background: var(--surface-soft);
+  position: absolute;
+  inset: 0;
+  z-index: 11;
+  border: 0;
+  pointer-events: none;
 }
 
-.manual-control-heading strong {
-  font-size: 13px;
+.manual-control-heading {
+  position: absolute;
+  bottom: 18px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 11px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(18, 22, 25, 0.74);
+  color: #eef1f3;
+  font-size: 12px;
+  pointer-events: auto;
+  backdrop-filter: blur(10px);
 }
 
 .control-surface {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-top: 12px;
+  display: contents;
 }
 
 .control-keys {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
+  display: none;
 }
 
 .control-keys button {
-  min-height: 46px;
-  border: 1px solid var(--line-strong);
-  border-radius: 10px;
-  background: var(--surface);
-}
-
-.control-keys .wide-key {
-  grid-column: span 2;
+  color: #ffffff;
+  touch-action: none;
+  user-select: none;
 }
 
 .control-readout {
-  display: grid;
-  align-content: start;
-  gap: 7px;
-  color: var(--muted);
+  display: none;
+}
+
+.model-control-note,
+.cockpit-error {
+  position: absolute;
+  bottom: 18px;
+  left: 50%;
+  z-index: 12;
+  margin: 0;
+  padding: 8px 11px;
+  transform: translateX(-50%);
+  border-radius: 8px;
+  background: rgba(18, 22, 25, 0.82);
+  color: #eef1f3;
   font-size: 11px;
 }
 
-.deadman-note {
-  margin: 10px 0 0;
-  color: var(--warning);
-  font-size: 11px;
+.cockpit-error {
+  bottom: 64px;
+  color: #ffd6d6;
 }
 
 /* Fixed, stable session action */
@@ -1441,7 +1560,6 @@ code {
 
   .garage-workspace {
     height: 100dvh;
-    min-height: 520px;
     padding: 0;
   }
 
@@ -1453,14 +1571,13 @@ code {
   .garage-command-menu {
     top: 66px;
     right: 8px;
-    left: 8px;
-    justify-content: flex-start;
-    max-width: none;
+    left: auto;
   }
 
-  .garage-command-menu button {
-    min-width: 74px;
-    padding: 8px;
+  .garage-workspace.driving .garage-command-menu {
+    top: 50%;
+    right: auto;
+    left: 8px;
   }
 
   .garage-preview-toolbar {
@@ -1489,10 +1606,6 @@ code {
     flex: 1;
   }
 
-  .preview-state {
-    display: none;
-  }
-
   .garage-stage-hud {
     top: 118px;
     right: 8px;
@@ -1515,17 +1628,17 @@ code {
   }
 
   .app-modal {
-    width: calc(100vw - 16px);
-    max-height: calc(100dvh - 16px);
+    width: 100vw;
+    max-height: 100dvh;
   }
 
   .modal-surface {
-    max-height: calc(100dvh - 16px);
-    border-radius: 16px;
+    max-height: 100dvh;
+    border-radius: 0;
   }
 
   .modal-header {
-    padding: 16px;
+    padding: 12px;
   }
 
   .modal-header h2 {
@@ -1533,7 +1646,7 @@ code {
   }
 
   .modal-body {
-    padding: 10px;
+    padding: 0;
   }
 
   .config-card,
@@ -1572,10 +1685,6 @@ code {
 
   .cockpit-layout {
     overflow: auto;
-  }
-
-  .drive-viewport-panel {
-    min-height: 340px;
   }
 
   .telemetry-panel {
@@ -1636,6 +1745,119 @@ code {
 
   .garage-preview-placeholder p {
     font-size: 12px;
+  }
+}
+
+@media (hover: none), (pointer: coarse) {
+  .control-keys {
+    position: absolute;
+    inset: 0;
+    display: block;
+    pointer-events: none;
+  }
+
+  .control-keys button {
+    position: absolute;
+    display: grid;
+    width: 68px;
+    height: 68px;
+    place-content: center;
+    gap: 1px;
+    border: 1px solid rgba(255, 255, 255, 0.34);
+    border-radius: 50%;
+    background: rgba(18, 22, 25, 0.62);
+    box-shadow: 0 6px 20px rgba(10, 12, 14, 0.2);
+    pointer-events: auto;
+    backdrop-filter: blur(8px);
+  }
+
+  .control-keys button.active {
+    background: rgba(49, 91, 234, 0.86);
+  }
+
+  .control-keys button strong {
+    font-size: 20px;
+  }
+
+  .control-keys button small {
+    font-size: 9px;
+  }
+
+  .touch-left {
+    bottom: 22px;
+    left: 20px;
+  }
+
+  .touch-right {
+    bottom: 22px;
+    left: 96px;
+  }
+
+  .touch-throttle {
+    right: 20px;
+    bottom: 22px;
+  }
+
+  .touch-brake {
+    right: 96px;
+    bottom: 22px;
+  }
+
+  .control-keys .touch-reverse,
+  .control-keys .touch-handbrake {
+    width: 52px;
+    height: 52px;
+    bottom: 98px;
+  }
+
+  .touch-reverse {
+    right: 20px;
+  }
+
+  .touch-handbrake {
+    right: 80px;
+  }
+
+  .manual-control-heading {
+    top: 58px;
+    bottom: auto;
+    left: 14px;
+    display: flex;
+    transform: none;
+  }
+
+  .drive-hud {
+    top: 106px;
+    bottom: auto;
+  }
+
+  .garage-workspace.driving > .launch-bar.compact {
+    top: 96px;
+    right: 14px;
+    bottom: auto;
+  }
+}
+
+@media (max-width: 430px) {
+  .control-keys button {
+    width: 58px;
+    height: 58px;
+  }
+
+  .touch-left {
+    left: 10px;
+  }
+
+  .touch-right {
+    left: 74px;
+  }
+
+  .touch-throttle {
+    right: 10px;
+  }
+
+  .touch-brake {
+    right: 74px;
   }
 }
 

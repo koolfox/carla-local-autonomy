@@ -22,6 +22,8 @@ export interface ConfigurationEvidence {
 
 export interface GaragePreviewResponse extends Record<string, unknown> {
   configuration: ConfigurationEvidence;
+  applied_config?: Record<string, unknown> | null;
+  configure_action?: 'noop' | 'weather' | 'started' | 'restarted';
 }
 
 export interface SituationSettings {
@@ -146,7 +148,7 @@ function shortMapName(value: string): string {
   return normalized.split('/').at(-1) ?? normalized;
 }
 
-function normalizedMapOptions(raw: unknown): CatalogOption[] {
+function normalizeMapOptions(raw: unknown): CatalogOption[] {
   if (!Array.isArray(raw)) return [];
   const seen = new Set<string>();
   const options: CatalogOption[] = [];
@@ -213,7 +215,7 @@ export async function loadWorkspaceSnapshot(): Promise<WorkspaceSnapshot> {
   };
 
   const options: WorkspaceOptions = {
-    maps: normalizedMapOptions(driveCatalog.maps),
+    maps: normalizeMapOptions(driveCatalog.maps),
     vehicles: Array.isArray(driveCatalog.vehicles) ? driveCatalog.vehicles : [],
     weatherPresets: Array.isArray(driveCatalog.weather_presets)
       ? driveCatalog.weather_presets
@@ -295,6 +297,10 @@ export class OperatorApi {
       schema_version: '1.0',
       session
     });
+  }
+
+  getGaragePreviewState(): Promise<GaragePreviewResponse> {
+    return readJson<GaragePreviewResponse>('/api/garage/preview/state');
   }
 
   stopGaragePreview(): Promise<Record<string, unknown>> {

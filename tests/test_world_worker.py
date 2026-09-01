@@ -604,8 +604,30 @@ class WorldWorkerTest(unittest.TestCase):
         self.assertTrue(catalog["capabilities"]["asynchronous_world"])
         self.assertTrue(catalog["capabilities"]["world_dynamics_controls"])
         self.assertTrue(catalog["capabilities"]["garage_camera_presets"])
-        self.assertEqual(catalog["worker_api_revision"], 2)
+        self.assertEqual(catalog["worker_api_revision"], 3)
         self.assertEqual(catalog["carla"]["current_map"], "Town10HD_Opt")
+
+    def test_health_reports_busy_without_waiting_for_world_lock(self) -> None:
+        acquired = threading.Event()
+        release = threading.Event()
+
+        def hold_world_lock() -> None:
+            with self.worker._lock:
+                acquired.set()
+                release.wait(timeout=2.0)
+
+        thread = threading.Thread(target=hold_world_lock)
+        thread.start()
+        self.assertTrue(acquired.wait(timeout=1.0))
+        try:
+            health = self.worker.health()
+        finally:
+            release.set()
+            thread.join(timeout=2.0)
+
+        self.assertEqual(health["status"], "busy")
+        self.assertTrue(health["ready"])
+        self.assertTrue(health["capabilities"]["nonblocking_health"])
 
     def test_population_capacity_fails_before_returning_a_partial_scene(self) -> None:
         with self.assertRaisesRegex(WorkerError, "maximum of 7") as raised:
@@ -727,6 +749,16 @@ class WorldWorkerTest(unittest.TestCase):
             )
         )
         original_destroy()
+
+    def test_stop_is_idempotent_after_a_lost_response(self) -> None:
+        prepared = self.worker.prepare({"traffic_count": 1, "walker_count": 1})
+        scene_id, lease_token = self.lease(prepared)
+
+        first = self.worker.stop(scene_id, {"lease_token": lease_token})
+        second = self.worker.stop(scene_id, {"lease_token": lease_token})
+
+        self.assertEqual(second, first)
+        self.assertEqual(second["status"], "stopped")
 
     def test_garage_autoframing_scales_with_vehicle_bounds(self) -> None:
         prepared = self.worker.prepare({})

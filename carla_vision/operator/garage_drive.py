@@ -34,7 +34,6 @@ from .drive import (
     DriveSessionManager,
     _json_line,
     _utc_now,
-    _world_worker_health_ready,
     _write_json,
 )
 from .drive_contracts import DriveInput, DriveStartConfig
@@ -1144,16 +1143,10 @@ class GarageDriveSessionManager(DriveSessionManager):
         return payload
 
     def start(self, raw: Mapping[str, Any]) -> dict[str, Any]:
-        active_world_worker: WorldWorkerClient | None = None
-        if self._world_worker is not None:
-            try:
-                health = self._world_worker.health()
-                if not _world_worker_health_ready(health):
-                    raise RuntimeError("World Worker reports that CARLA is unavailable")
-            except Exception:
-                active_world_worker = None
-            else:
-                active_world_worker = self._world_worker
+        # Configuration is a stable deployment fact. Do not turn a transient
+        # busy/health timeout into "Worker not configured" before the actual
+        # scene operation gets its lifecycle timeout and authoritative error.
+        active_world_worker = self._world_worker
         config = GarageDriveStartConfig.from_mapping(
             raw,
             workspace=self.workspace,
@@ -1162,16 +1155,19 @@ class GarageDriveSessionManager(DriveSessionManager):
             world_worker_configured=active_world_worker is not None,
             experimental_enabled=self.experimental_enabled,
         )
-        catalog = self.catalog()
-        modes = {item["id"]: bool(item["available"]) for item in catalog["control_modes"]}
+        pythonapi = _module_available("carla")
+        behavior_agent = _module_available("agents.navigation.behavior_agent")
+        modes = {
+            "manual": True,
+            "behavior": self.experimental_enabled and pythonapi and behavior_agent,
+            "imitation": self.experimental_enabled and pythonapi,
+            "voxel": self.experimental_enabled and pythonapi and behavior_agent,
+        }
         if not modes.get(config.control_mode, False):
             raise RuntimeError(
                 f"control mode {config.control_mode!r} is unavailable in this operator environment"
             )
-        garage_capabilities = catalog["capabilities"]
-        if (config.traffic_vehicles and not garage_capabilities["garage_traffic_population"]) or (
-            config.walkers and not garage_capabilities["garage_walker_population"]
-        ):
+        if (config.traffic_vehicles or config.walkers) and not pythonapi:
             raise RuntimeError("traffic and pedestrians require CARLA PythonAPI")
         with self._lock:
             if self._session is not None and self._session.snapshot()["status"] in {

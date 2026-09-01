@@ -31,7 +31,7 @@
             {$systemSettings.workerConnected
               ? 'Connected'
               : $systemSettings.workerConfigured
-                ? 'Configured · offline'
+                ? 'Configured · busy or reconnecting'
                 : 'Not configured'}
           </dd>
         </div>

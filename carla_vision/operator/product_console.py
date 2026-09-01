@@ -35,6 +35,9 @@ _CONSOLE_ASSET_SUFFIXES = frozenset(
 _INLINE_SCRIPT = re.compile(
     r"<script(?:\s[^>]*)?>(?P<body>.*?)</script>", re.IGNORECASE | re.DOTALL
 )
+# SvelteKit's accessibility announcer uses this one generated style attribute.
+# Keep the CSP strict while authorizing only that exact attribute value.
+_SVELTE_ANNOUNCER_STYLE_HASH = "'sha256-S8qMpvofolR8Mpjy4kQvEm7m1q8clzU4dfDH0AmvZjo='"
 
 
 def console_available(root: Path = CONSOLE_ROOT) -> bool:
@@ -59,7 +62,9 @@ def console_content_security_policy(index_html: str) -> str:
     return (
         "default-src 'self'; "
         f"script-src {script_sources}; "
-        "style-src 'self'; img-src 'self' data:; media-src 'self'; "
+        "style-src 'self'; "
+        f"style-src-attr 'unsafe-hashes' {_SVELTE_ANNOUNCER_STYLE_HASH}; "
+        "img-src 'self' data:; media-src 'self'; "
         "object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
     )
 

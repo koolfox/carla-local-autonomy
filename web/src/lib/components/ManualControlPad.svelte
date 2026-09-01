@@ -8,6 +8,8 @@
     takeManualControl
   } from '$lib/stores/runtime';
 
+  export let armRequest = 0;
+
   type DriveKey = 'forward' | 'brake' | 'left' | 'right' | 'handBrake' | 'reverseModifier';
   type DriveKeys = Record<DriveKey, boolean>;
 
@@ -20,7 +22,6 @@
     reverseModifier: false
   });
 
-  let surface: HTMLElement;
   let focused = false;
   let keys = emptyKeys();
   let touchKeys = emptyKeys();
@@ -30,6 +31,7 @@
   let inFlight = false;
   let pending = false;
   let lastSafetyStopAt = 0;
+  let handledArmRequest = armRequest;
 
   $: drive = $garageRuntime.drive;
   $: running = isDriveRunning(drive);
@@ -41,6 +43,10 @@
   $: manualAvailable = running && !extensionOwnsControl && !emergencyLatched;
   $: combined = combineKeys();
   $: command = currentCommand();
+  $: if (armRequest !== handledArmRequest) {
+    handledArmRequest = armRequest;
+    if (manualAvailable) void focusControl();
+  }
 
   function combineKeys(): DriveKeys {
     return {
@@ -116,6 +122,15 @@
   }
 
   function clearKeys(): void {
+    for (const [pointerId, item] of touchPointers) {
+      try {
+        if (item.element.hasPointerCapture(pointerId)) {
+          item.element.releasePointerCapture(pointerId);
+        }
+      } catch {
+        // The browser may already have released capture during teardown.
+      }
+    }
     keys = emptyKeys();
     touchKeys = emptyKeys();
     touchPointers = new Map();
@@ -137,9 +152,14 @@
   async function focusControl(): Promise<void> {
     if (!manualAvailable) return;
     if (autopilot && !(await takeManualControl())) return;
-    surface?.focus({ preventScroll: true });
     focused = true;
     void sendControl();
+  }
+
+  function editableTarget(target: EventTarget | null): boolean {
+    return target instanceof Element && Boolean(
+      target.closest('input, select, textarea, [contenteditable="true"]')
+    );
   }
 
   function keyName(event: KeyboardEvent): DriveKey | null {
@@ -208,6 +228,13 @@
     if (!released) return;
     event.preventDefault();
     touchPointers.delete(event.pointerId);
+    try {
+      if (released.element.hasPointerCapture(event.pointerId)) {
+        released.element.releasePointerCapture(event.pointerId);
+      }
+    } catch {
+      // Pointer capture may already have been released.
+    }
     const forwardStillHeld = [...touchPointers.values()].some((item) => item.control === 'forward');
     if (released.control === 'reverseModifier' && forwardStillHeld) touchForwardSuppressed = true;
     if (released.control === 'forward' && !forwardStillHeld) touchForwardSuppressed = false;
@@ -219,22 +246,42 @@
     return `${Math.round(value * 100)}%`;
   }
 
+  function preventContextMenu(event: MouseEvent): void {
+    event.preventDefault();
+  }
+
   onMount(() => {
     const interval = window.setInterval(() => void sendControl(), 67);
     const release = () => releaseControl();
+    const keyDown = (event: KeyboardEvent) => {
+      if (!editableTarget(event.target)) handleKey(event, true);
+    };
     const keyUp = (event: KeyboardEvent) => handleKey(event, false);
+    const pointerDown = (event: PointerEvent) => {
+      if (
+        focused &&
+        event.target instanceof Element &&
+        !event.target.closest('.drive-viewport, .manual-control-panel')
+      ) {
+        releaseControl();
+      }
+    };
     const visibility = () => {
       if (document.hidden) releaseControl();
     };
+    window.addEventListener('keydown', keyDown);
     window.addEventListener('keyup', keyUp);
     window.addEventListener('blur', release);
     window.addEventListener('pagehide', release);
+    document.addEventListener('pointerdown', pointerDown, true);
     document.addEventListener('visibilitychange', visibility);
     return () => {
       window.clearInterval(interval);
+      window.removeEventListener('keydown', keyDown);
       window.removeEventListener('keyup', keyUp);
       window.removeEventListener('blur', release);
       window.removeEventListener('pagehide', release);
+      document.removeEventListener('pointerdown', pointerDown, true);
       document.removeEventListener('visibilitychange', visibility);
       releaseControl(false);
     };
@@ -243,51 +290,41 @@
 
 <section class="manual-control-panel" class:armed={focused} class:disabled={!manualAvailable}>
   <div class="manual-control-heading">
-    <div>
-      <span class="eyebrow">Manual control</span>
-      <h3>{extensionOwnsControl ? 'Autonomous policy owns control' : autopilot ? 'Traffic Manager owns control' : focused ? 'Keyboard armed' : 'Deadman brake armed'}</h3>
-    </div>
-    <button
-      type="button"
-      class="button compact-button"
-      disabled={!manualAvailable || $garageRuntime.action === 'takeover'}
-      onclick={focusControl}
-    >
-      {autopilot ? 'Take control' : focused ? 'Control active' : 'Arm controls'}
-    </button>
+    <span class="manual-control-state">
+      {extensionOwnsControl
+        ? 'Policy control'
+        : autopilot
+          ? 'Traffic Manager'
+          : focused
+            ? 'Keyboard active'
+            : 'Click camera to drive'}
+    </span>
+    {#if autopilot}
+      <button
+        type="button"
+        class="button compact-button"
+        disabled={!manualAvailable || $garageRuntime.action === 'takeover'}
+        onclick={focusControl}
+      >
+        Take control
+      </button>
+    {/if}
   </div>
 
-  <div
-    class="control-surface"
-    bind:this={surface}
-    role="application"
-    tabindex="0"
-    aria-label="CARLA manual driving surface"
-    onfocus={() => {
-      if (!autopilot && manualAvailable) focused = true;
-    }}
-    onblur={() => releaseControl()}
-    onkeydown={(event) => handleKey(event, true)}
-    onkeyup={(event) => handleKey(event, false)}
-    onclick={() => void focusControl()}
-  >
-    <div class="control-readout">
-      <span><small>Throttle</small><strong>{percent(command.throttle)}</strong></span>
-      <span><small>Steer</small><strong>{percent(command.steer)}</strong></span>
-      <span><small>Brake</small><strong>{percent(command.brake)}</strong></span>
+  <div class="control-surface" aria-label="CARLA manual driving controls">
+    <div class="control-readout" aria-label="manual control output">
+      <span>T {percent(command.throttle)}</span>
+      <span>S {percent(command.steer)}</span>
+      <span>B {percent(command.brake)}</span>
     </div>
 
     <div class="control-keys" aria-label="touch driving controls">
-      <button class:active={combined.forward} onpointerdown={(event) => pointerDown(event, 'forward')} onpointerup={pointerUp} onpointercancel={pointerUp}>W<small>Throttle</small></button>
-      <button class:active={combined.left} onpointerdown={(event) => pointerDown(event, 'left')} onpointerup={pointerUp} onpointercancel={pointerUp}>A<small>Left</small></button>
-      <button class:active={combined.brake} onpointerdown={(event) => pointerDown(event, 'brake')} onpointerup={pointerUp} onpointercancel={pointerUp}>S<small>Brake</small></button>
-      <button class:active={combined.right} onpointerdown={(event) => pointerDown(event, 'right')} onpointerup={pointerUp} onpointercancel={pointerUp}>D<small>Right</small></button>
-      <button class:active={combined.reverseModifier} class="wide-key" onpointerdown={(event) => pointerDown(event, 'reverseModifier')} onpointerup={pointerUp} onpointercancel={pointerUp}>Shift<small>+ W reverse</small></button>
-      <button class:active={combined.handBrake} class="wide-key" onpointerdown={(event) => pointerDown(event, 'handBrake')} onpointerup={pointerUp} onpointercancel={pointerUp}>Space<small>Handbrake</small></button>
+      <button class="touch-left" class:active={combined.left} aria-label="Steer left" onpointerdown={(event) => pointerDown(event, 'left')} onpointerup={pointerUp} onpointercancel={pointerUp} onlostpointercapture={pointerUp} oncontextmenu={preventContextMenu}><strong>←</strong><small>Left</small></button>
+      <button class="touch-right" class:active={combined.right} aria-label="Steer right" onpointerdown={(event) => pointerDown(event, 'right')} onpointerup={pointerUp} onpointercancel={pointerUp} onlostpointercapture={pointerUp} oncontextmenu={preventContextMenu}><strong>→</strong><small>Right</small></button>
+      <button class="touch-brake" class:active={combined.brake} aria-label="Brake" onpointerdown={(event) => pointerDown(event, 'brake')} onpointerup={pointerUp} onpointercancel={pointerUp} onlostpointercapture={pointerUp} oncontextmenu={preventContextMenu}><strong>■</strong><small>Brake</small></button>
+      <button class="touch-throttle" class:active={combined.forward} aria-label="Throttle" onpointerdown={(event) => pointerDown(event, 'forward')} onpointerup={pointerUp} onpointercancel={pointerUp} onlostpointercapture={pointerUp} oncontextmenu={preventContextMenu}><strong>▲</strong><small>Go</small></button>
+      <button class="touch-reverse" class:active={combined.reverseModifier} aria-label="Hold for reverse" onpointerdown={(event) => pointerDown(event, 'reverseModifier')} onpointerup={pointerUp} onpointercancel={pointerUp} onlostpointercapture={pointerUp} oncontextmenu={preventContextMenu}><strong>R</strong><small>Reverse</small></button>
+      <button class="touch-handbrake" class:active={combined.handBrake} aria-label="Handbrake" onpointerdown={(event) => pointerDown(event, 'handBrake')} onpointerup={pointerUp} onpointercancel={pointerUp} onlostpointercapture={pointerUp} oncontextmenu={preventContextMenu}><strong>P</strong><small>Brake</small></button>
     </div>
-
-    <p class="deadman-note">
-      Leaving this control surface or the browser requests full brake. Arrow keys mirror W/S/A/D.
-    </p>
   </div>
 </section>

@@ -55,7 +55,7 @@
 </svelte:head>
 
 <div class="app-shell">
-  <StatusHeader />
+  <StatusHeader compact={showCockpit} />
 
   {#if loading}
     <main class="loading-shell" aria-busy="true">
@@ -70,7 +70,7 @@
       <small>Start <code>uv run carla-operator-ui --open-browser</code> and reload this page.</small>
     </main>
   {:else}
-    <main class="garage-workspace">
+    <main class="garage-workspace" class:driving={showCockpit}>
       <GarageMenu locked={sessionLocked} />
       {#if showCockpit}
         <DriveCockpit />

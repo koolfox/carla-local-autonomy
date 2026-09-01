@@ -212,7 +212,9 @@ def prepare_launch(
         "detector.enabled",
         "CARLA_DETECTOR_ENABLED",
     )
-    detector_enabled = True if raw_detector is None else _bool_value(raw_detector, "detector.enabled")
+    detector_enabled = (
+        False if raw_detector is None else _bool_value(raw_detector, "detector.enabled")
+    )
 
     raw_experimental = _effective(file_values, process_env, "CARLA_ENABLE_EXPERIMENTAL")
     experimental_enabled = (
@@ -267,7 +269,7 @@ def render_operator_index(html: str, *, detector_enabled: bool) -> str:
 class LocalConfigGarageRequestHandler(garage_server.GarageOperatorRequestHandler):
     """Serve the Garage shell and canonical local configuration contract."""
 
-    detector_enabled_default = True
+    detector_enabled_default = False
 
     def _configuration_contract(self) -> dict[str, object]:
         return build_configuration_contract(

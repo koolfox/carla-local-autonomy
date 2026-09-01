@@ -125,7 +125,7 @@ def test_missing_env_file_preserves_existing_defaults(tmp_path: Path) -> None:
     args = base.parse_args(plan.argv)
 
     assert plan.env_file is None
-    assert plan.detector_enabled is True
+    assert plan.detector_enabled is False
     assert args.carla_host == "auto"
     assert args.carla_port == 2000
     assert args.port == 8765

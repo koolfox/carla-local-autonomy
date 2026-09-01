@@ -19,9 +19,10 @@ EXPERIMENT_PRESETS: tuple[dict[str, Any], ...] = (
     {
         "id": "free_drive",
         "label": "Free Drive",
-        "description": "Clean manual baseline",
+        "description": "Traffic Manager baseline without perception inference",
         "patch": {
-            "control": {"mode": "manual"},
+            "control": {"mode": "autopilot"},
+            "perception": {"enabled": False},
             "scene": {"trafficCount": 0, "walkerCount": 0},
         },
     },
@@ -306,7 +307,11 @@ def build_situation_request(
     }
 
 
-def session_defaults(*, detector_enabled: bool) -> dict[str, Any]:
+def session_defaults(
+    *,
+    detector_enabled: bool,
+    worker_configured: bool = False,
+) -> dict[str, Any]:
     """Return the single editable session configuration defaults."""
 
     return {
@@ -323,7 +328,7 @@ def session_defaults(*, detector_enabled: bool) -> dict[str, Any]:
         },
         "vehicle": {"blueprint": "", "color": ""},
         "route": {"mode": "free"},
-        "control": {"mode": "manual"},
+        "control": {"mode": "autopilot" if worker_configured else "manual"},
         "camera": {
             "resolution": "1280x720",
             "fps": 30.0,
@@ -380,7 +385,10 @@ def build_configuration_contract(
                 getattr(application, "experimental_enabled", False)
             ),
         },
-        "sessionDefaults": session_defaults(detector_enabled=detector_enabled),
+        "sessionDefaults": session_defaults(
+            detector_enabled=detector_enabled,
+            worker_configured=worker is not None,
+        ),
         "experimentPresets": deepcopy(EXPERIMENT_PRESETS),
     }
 
@@ -475,7 +483,7 @@ def build_legacy_drive_request(
     elif not model_id:
         raise ValueError("session.policy.modelId is required for control.mode=model")
 
-    return {
+    request = {
         "run_id": str(identity["runId"]).strip(),
         "host": str(carla_host),
         "port": int(carla_port),
@@ -517,9 +525,15 @@ def build_legacy_drive_request(
         "max_policy_errors": policy["maxPolicyErrors"],
         "max_model_speed_kmh": policy["maxModelSpeedKmh"],
         "max_steer_rate": policy["maxSteerRate"],
-        "model_package_id": model_id,
-        "model_trusted_code_acknowledged": policy["acknowledgeTrustedCode"],
     }
+    if garage_mode == "model":
+        request.update(
+            {
+                "model_package_id": model_id,
+                "model_trusted_code_acknowledged": policy["acknowledgeTrustedCode"],
+            }
+        )
+    return request
 
 
 __all__ = [

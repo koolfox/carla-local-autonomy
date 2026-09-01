@@ -23,19 +23,28 @@
   $: running = $garageRuntime.drive.status === 'running';
   $: terminal = ['success', 'failed'].includes($garageRuntime.drive.status);
   $: freshRunId = !terminal || $sessionConfig.identity.runId !== $garageRuntime.drive.run_id;
-  $: disabled = blockers.length > 0 || active || $garageRuntime.action !== null || !freshRunId;
+  $: disabled = blockers.length > 0 || active || $garageRuntime.action !== null;
   $: hint = $garageRuntime.error
     ?? blockers[0]?.message
     ?? (running
       ? 'Emergency braking and Stop & Save remain available while driving.'
       : terminal && !freshRunId
-        ? 'Prepare a fresh run ID before starting another session.'
+        ? 'Start another session with a fresh run ID.'
         : `Start ${$sessionConfig.identity.runId}.`);
 
   async function launch(): Promise<void> {
     if (disabled) return;
+    let config = $sessionConfig;
+    if (terminal && !freshRunId) {
+      const runId = newRunId();
+      patchSessionSection('identity', { runId });
+      config = {
+        ...config,
+        identity: { ...config.identity, runId }
+      };
+    }
     try {
-      await startDrive($sessionConfig);
+      await startDrive(config);
     } catch {
       // The runtime store exposes the backend error in the action bar.
     }
@@ -57,9 +66,6 @@
     }
   }
 
-  function prepareAnotherRun(): void {
-    patchSessionSection('identity', { runId: newRunId() });
-  }
 </script>
 
 <section class:compact class="launch-bar" aria-label={`Session actions. ${hint}`} title={hint}>
@@ -75,7 +81,7 @@
       <small>{$garageRuntime.drive.run_id ?? $sessionConfig.identity.runId}</small>
     {:else if terminal && !freshRunId}
       <strong>{$garageRuntime.drive.status === 'success' ? 'Run saved.' : 'The previous run failed.'}</strong>
-      <small>Prepare a new run ID before starting another session.</small>
+      <small>The next start creates a fresh run ID automatically.</small>
     {:else if terminal}
       <strong>Next run is ready to start.</strong>
       <small>{$sessionConfig.identity.runId}</small>
@@ -105,8 +111,6 @@
       >
         {$garageRuntime.action === 'stop' ? 'Saving…' : 'Stop & Save'}
       </button>
-    {:else if terminal && !freshRunId}
-      <button type="button" class="button primary-button" title={hint} onclick={prepareAnotherRun}>Prepare next run</button>
     {:else}
       <button type="button" class="button primary-button" title={hint} disabled={disabled} onclick={launch}>
         {$garageRuntime.action === 'start' ? 'Starting Garage…' : terminal ? 'Start next run' : 'Start session'}

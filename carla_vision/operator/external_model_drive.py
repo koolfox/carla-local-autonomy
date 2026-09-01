@@ -30,7 +30,6 @@ from ..model_driver import (
     create_driving_model_from_factory,
 )
 from ..model_registry import ModelPackage, resolve_model_package
-from .drive import _world_worker_health_ready
 from .garage_drive import GarageDriveSession, GarageDriveSessionManager, GarageDriveStartConfig
 from .world_worker_client import WorldWorkerClient
 
@@ -553,16 +552,7 @@ def _start_registered_model_session(
     manager: GarageDriveSessionManager,
     raw: Mapping[str, Any],
 ) -> dict[str, Any]:
-    active_world_worker: WorldWorkerClient | None = None
-    if manager._world_worker is not None:
-        try:
-            health = manager._world_worker.health()
-            if not _world_worker_health_ready(health):
-                raise RuntimeError("World Worker reports that CARLA is unavailable")
-        except Exception:
-            active_world_worker = None
-        else:
-            active_world_worker = manager._world_worker
+    active_world_worker = manager._world_worker
     config = ExternalModelDriveStartConfig.from_mapping(
         raw,
         workspace=manager.workspace,
@@ -571,14 +561,9 @@ def _start_registered_model_session(
         world_worker_configured=active_world_worker is not None,
         experimental_enabled=manager.experimental_enabled,
     )
-    catalog = manager.catalog()
-    capabilities = catalog.get("capabilities", {})
-    if not isinstance(capabilities, Mapping):
-        raise RuntimeError("Garage capabilities are malformed")
-    if config.traffic_vehicles and not bool(capabilities.get("garage_traffic_population")):
-        raise RuntimeError("traffic population requires CARLA PythonAPI")
-    if config.walkers and not bool(capabilities.get("garage_walker_population")):
-        raise RuntimeError("pedestrian population requires CARLA PythonAPI")
+    pythonapi = importlib.util.find_spec("carla") is not None
+    if (config.traffic_vehicles or config.walkers) and not pythonapi:
+        raise RuntimeError("traffic and pedestrians require CARLA PythonAPI")
     with manager._lock:
         if manager._session is not None and manager._session.snapshot()["status"] in {
             "starting",
