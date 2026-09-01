@@ -165,6 +165,22 @@ def test_experimental_mode_maps_to_garage_policy_without_worker_autopilot() -> N
     assert request["acknowledge_autonomy"] is True
     assert request["policy_checkpoint"] == "models/imitation/best.pt"
     assert request["policy_device"] == "mps"
+    assert "model_package_id" not in request
+    assert "model_trusted_code_acknowledged" not in request
+
+
+def test_manual_and_autopilot_requests_do_not_leak_registered_model_fields() -> None:
+    for mode in ("manual", "autopilot"):
+        request = build_legacy_drive_request(
+            _session(control__mode=mode),
+            carla_host="192.168.1.108",
+            carla_port=2000,
+            worker_connected=True,
+            capabilities={"autopilot": True},
+        )
+
+        assert "model_package_id" not in request
+        assert "model_trusted_code_acknowledged" not in request
 
 
 def test_registered_model_mode_uses_package_identity_not_raw_checkpoint() -> None:

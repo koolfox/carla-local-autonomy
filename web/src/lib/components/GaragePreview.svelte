@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte';
+
   import type { ConfigurationEvidence } from '$lib/api/operator';
   import SessionLaunchBar from '$lib/components/SessionLaunchBar.svelte';
   import VehiclePicker from '$lib/components/VehiclePicker.svelte';
@@ -17,6 +19,7 @@
     cockpit: { yaw: 0, pitch: 0, distance: 4 }
   };
   const presetNames: CameraPreset[] = ['orbit', 'front', 'rear', 'top', 'cockpit'];
+  const autoApplyDelayMs = 1500;
 
   function recordNumber(
     record: Record<string, unknown>,
@@ -51,20 +54,30 @@
   let pointer: { id: number; x: number; y: number; yaw: number; pitch: number } | null = null;
   let orbitInFlight = false;
   let orbitPending = false;
+  let attemptedAutoStart = '';
+  let configureRetryDelay = 1000;
+  let configureRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  let streamRetryDelay = 1000;
+  let streamRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  let autoApplyTimer: ReturnType<typeof setTimeout> | null = null;
+  let scheduledAutoApplySignature = '';
 
   $: selectedVehicle = $workspaceOptions.vehicles.find(
     (vehicle) => vehicle.id === $sessionConfig.vehicle.blueprint
   );
   $: driveActive = isDriveActive($garageRuntime.drive);
   $: available = Boolean(
-    $systemSettings?.workerConnected && $sessionConfig.vehicle.blueprint && !driveActive
+    $systemSettings?.workerConfigured && $sessionConfig.vehicle.blueprint && !driveActive
   );
   $: signature = JSON.stringify({
-    identity: $sessionConfig.identity,
+    seed: $sessionConfig.identity.seed,
     scene: $sessionConfig.scene,
     vehicle: $sessionConfig.vehicle,
     camera: $sessionConfig.camera
   });
+  $: autoStartKey = available
+    ? `${$systemSettings?.workerUrl ?? 'worker'}:${signature}`
+    : '';
   $: dirty = active && signature !== appliedSignature;
   $: requestedResolution = $sessionConfig.camera.resolution;
   $: requestedFps = Number($sessionConfig.camera.fps);
@@ -122,7 +135,92 @@
   $: streamSource = active && !driveActive
     ? `/api/garage/preview/stream.mjpg?t=${streamNonce}`
     : '';
-  $: if (driveActive && active) {
+  $: if (!available) {
+    attemptedAutoStart = '';
+    cancelAutoApply();
+    cancelConfigureRetry();
+    cancelStreamRetry();
+    if (active) detachPreview();
+  }
+  $: if (
+    available &&
+    !active &&
+    !busy &&
+    !configureRetryTimer &&
+    attemptedAutoStart !== autoStartKey
+  ) {
+    attemptedAutoStart = autoStartKey;
+    void configure();
+  }
+  $: if (
+    available &&
+    active &&
+    dirty &&
+    !busy &&
+    scheduledAutoApplySignature !== signature
+  ) {
+    scheduleAutoApply(signature);
+  }
+  $: if ((!available || !active || !dirty) && autoApplyTimer) cancelAutoApply();
+
+  onDestroy(() => {
+    cancelAutoApply();
+    cancelConfigureRetry();
+    cancelStreamRetry();
+  });
+
+  function cancelAutoApply(): void {
+    if (autoApplyTimer) clearTimeout(autoApplyTimer);
+    autoApplyTimer = null;
+    scheduledAutoApplySignature = '';
+  }
+
+  function scheduleAutoApply(nextSignature: string): void {
+    if (autoApplyTimer) clearTimeout(autoApplyTimer);
+    scheduledAutoApplySignature = nextSignature;
+    autoApplyTimer = setTimeout(() => {
+      autoApplyTimer = null;
+      scheduledAutoApplySignature = '';
+      if (available && active && !busy && signature === nextSignature && dirty) {
+        void configure();
+      }
+    }, autoApplyDelayMs);
+  }
+
+  function cancelConfigureRetry(resetDelay = true): void {
+    if (configureRetryTimer) clearTimeout(configureRetryTimer);
+    configureRetryTimer = null;
+    if (resetDelay) configureRetryDelay = 1000;
+  }
+
+  function scheduleConfigureRetry(): void {
+    if (!available || configureRetryTimer) return;
+    const delay = configureRetryDelay;
+    configureRetryDelay = Math.min(configureRetryDelay * 2, 30000);
+    configureRetryTimer = setTimeout(() => {
+      configureRetryTimer = null;
+      if (available && !active) attemptedAutoStart = '';
+    }, delay);
+  }
+
+  function cancelStreamRetry(resetDelay = true): void {
+    if (streamRetryTimer) clearTimeout(streamRetryTimer);
+    streamRetryTimer = null;
+    if (resetDelay) streamRetryDelay = 1000;
+  }
+
+  function scheduleStreamRetry(): void {
+    if (!active || streamRetryTimer) return;
+    const delay = streamRetryDelay;
+    streamRetryDelay = Math.min(streamRetryDelay * 2, 30000);
+    streamRetryTimer = setTimeout(() => {
+      streamRetryTimer = null;
+      if (active && available) streamNonce = Date.now();
+    }, delay);
+  }
+
+  function detachPreview(): void {
+    cancelAutoApply();
     active = false;
     streamReady = false;
     appliedSignature = '';
@@ -132,39 +230,39 @@
 
   async function configure(): Promise<void> {
     if (!available || busy) return;
+    cancelAutoApply();
+    cancelConfigureRetry(false);
+    cancelStreamRetry();
+    const requestedSignature = signature;
+    const requestedSession = $sessionConfig;
+    attemptedAutoStart = autoStartKey;
     busy = true;
     error = '';
-    streamReady = false;
     try {
-      const response = await runtimeOperatorApi().configureGaragePreview($sessionConfig);
+      const response = await runtimeOperatorApi().configureGaragePreview(requestedSession);
       previewEvidence = response.configuration;
       active = true;
-      appliedSignature = signature;
-      streamNonce = Date.now();
-      applyPreset('orbit', false);
-    } catch (caught) {
-      active = false;
-      previewEvidence = null;
-      error = caught instanceof Error ? caught.message : String(caught);
-    } finally {
-      busy = false;
-    }
-  }
-
-  async function close(): Promise<void> {
-    if (busy) return;
-    busy = true;
-    error = '';
-    try {
-      await runtimeOperatorApi().stopGaragePreview();
+      systemSettings.update((current) =>
+        current ? { ...current, workerConnected: true } : current
+      );
+      configureRetryDelay = 1000;
+      appliedSignature = requestedSignature;
+      if (response.configure_action === 'started' || response.configure_action === 'restarted') {
+        streamNonce = Date.now();
+        applyPreset('orbit', false);
+      }
     } catch (caught) {
       error = caught instanceof Error ? caught.message : String(caught);
+      try {
+        const state = await runtimeOperatorApi().getGaragePreviewState();
+        active = state.active === true;
+        if (!active) previewEvidence = null;
+      } catch {
+        active = false;
+        previewEvidence = null;
+      }
+      if (!active) scheduleConfigureRetry();
     } finally {
-      active = false;
-      streamReady = false;
-      appliedSignature = '';
-      previewEvidence = null;
-      pointer = null;
       busy = false;
     }
   }
@@ -253,11 +351,15 @@
         draggable="false"
         onload={() => {
           streamReady = true;
+          cancelStreamRetry();
           error = '';
         }}
         onerror={() => {
-          streamReady = false;
-          if (active) error = 'The live Garage stream stopped. Refresh the Garage preview.';
+          if (active) {
+            error = 'The live Garage stream stopped.';
+            streamReady = false;
+            scheduleStreamRetry();
+          }
         }}
       />
     {/if}
@@ -276,7 +378,7 @@
     {#if !active}
       <div class="garage-preview-placeholder">
         <span class="garage-preview-mark">CV</span>
-        <strong title="Configure the scene, open the live Garage, then start the session.">{selectedVehicle?.label ?? 'Select a CARLA vehicle'}</strong>
+        <strong title="The live Garage opens automatically when the World Worker is ready.">{selectedVehicle?.label ?? 'Select a CARLA vehicle'}</strong>
       </div>
     {:else if !streamReady}
       <div class="garage-preview-placeholder compact-placeholder">
@@ -312,24 +414,19 @@
     </div>
 
     <div class="garage-preview-actions">
-      <span class="preview-state">
-        {#if dirty}Scene changed{:else if active}Live CARLA{:else}Preview closed{/if}
+      <span
+        class="preview-state"
+        class:updating={Boolean(autoApplyTimer || busy)}
+        aria-live="polite"
+      >
+        {#if autoApplyTimer || busy}<span class="loading-ring" aria-hidden="true"></span>{/if}
+        {#if busy}Applying…{:else if autoApplyTimer || dirty}Updating…{:else if configureRetryTimer || streamRetryTimer}Reconnecting…{:else if active}Live CARLA{:else}Waiting for bridge{/if}
       </span>
-      {#if active}
-        <button type="button" class="button secondary-button" disabled={busy} onclick={close}>Close</button>
-        <button type="button" class="button primary-button" disabled={busy || !dirty} onclick={configure}>
-          {busy ? 'Updating…' : 'Refresh Garage'}
-        </button>
-      {:else}
-        <button type="button" class="button primary-button" disabled={!available || busy} onclick={configure}>
-          {busy ? 'Preparing…' : 'Open live Garage'}
-        </button>
-      {/if}
       <SessionLaunchBar compact={true} />
     </div>
   </div>
 
-  {#if !$systemSettings?.workerConnected}
+  {#if !$systemSettings?.workerConnected && !active}
     <p
       class="garage-preview-note"
       title="The live Garage camera is served by carla-world-worker on the CARLA computer, normally port 8766."

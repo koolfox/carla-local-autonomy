@@ -232,20 +232,14 @@ def test_unified_session_api_maps_one_config_to_one_execution_request(tmp_path: 
     session["scene"]["trafficCount"] = 3
     session["scene"]["walkerCount"] = 2
 
-    def fake_catalog() -> dict[str, object]:
-        return {
-            "capabilities": {
-                "garage_traffic_population": True,
-                "garage_walker_population": True,
-            },
-            "world_worker": {"connected": False},
-        }
-
     def fake_start(request: dict[str, object]) -> dict[str, object]:
         captured.update(request)
         return {"status": "starting", "session_id": "unified-http-test"}
 
-    server.application.drive.catalog = fake_catalog  # type: ignore[method-assign]
+    # Canonical request mapping uses the configured topology and leaves the
+    # actual Worker operation to the drive manager. It must not issue a racy
+    # catalog probe while a lifecycle operation is busy.
+    server.application.world_worker = object()  # type: ignore[assignment]
     server.application.drive.start = fake_start  # type: ignore[method-assign]
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -266,15 +260,16 @@ def test_unified_session_api_maps_one_config_to_one_execution_request(tmp_path: 
             assert response.status == 202
             assert payload["status"] == "starting"
             assert payload["configuration"]["requested"] == session
-            assert payload["configuration"]["resolved"]["traffic_vehicles"] == 3
+            assert payload["configuration"]["resolved"]["traffic_count"] == 3
+            assert payload["configuration"]["resolved"]["traffic_vehicles"] == 0
             assert payload["configuration"]["applied"]["status"] == "starting"
 
         assert captured["host"] == "127.0.0.1"
         assert captured["port"] == 65534
-        assert captured["traffic_count"] == 0
-        assert captured["walker_count"] == 0
-        assert captured["traffic_vehicles"] == 3
-        assert captured["walkers"] == 2
+        assert captured["traffic_count"] == 3
+        assert captured["walker_count"] == 2
+        assert captured["traffic_vehicles"] == 0
+        assert captured["walkers"] == 0
         assert captured["control_mode"] == "manual"
         assert captured["initial_control_mode"] == "manual"
     finally:

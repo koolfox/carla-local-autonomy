@@ -39,7 +39,7 @@ from typing import Any, Self
 from urllib.parse import urlparse
 
 SCHEMA_VERSION = "1.0"
-WORKER_API_REVISION = 2
+WORKER_API_REVISION = 3
 EXPECTED_CARLA_VERSION = "0.9.16"
 DEFAULT_BIND = "127.0.0.1"
 DEFAULT_PORT = 8766
@@ -1102,6 +1102,8 @@ class WorldWorker:
             "world_dynamics_controls": True,
             "exact_scene_population": True,
             "bounded_scene_cleanup": True,
+            "nonblocking_health": True,
+            "idempotent_scene_stop": True,
         }
 
     @staticmethod
@@ -1118,7 +1120,29 @@ class WorldWorker:
     def health(self) -> dict[str, Any]:
         """Return authenticated readiness without exposing credentials."""
 
-        with self._lock:
+        # Long scene prepare/cleanup operations intentionally retain the world
+        # lifecycle lock. Health must still answer immediately so a healthy,
+        # busy Worker is never misreported as disconnected by the Operator.
+        if not self._lock.acquire(blocking=False):
+            client = self._client
+            return {
+                "schema_version": SCHEMA_VERSION,
+                "worker_api_revision": WORKER_API_REVISION,
+                "status": "busy",
+                "ready": True,
+                "error_code": None,
+                "carla": {
+                    "connected": client is not None,
+                    "host": self.carla_host,
+                    "port": self.carla_port,
+                    "client_version": None,
+                    "server_version": None,
+                    "current_map": None,
+                },
+                "active_scene": self._scene_summary(self._scene),
+                "capabilities": self._capabilities(client),
+            }
+        try:
             try:
                 client, world, _ = self._ensure_client()
                 facts = self._carla_facts(
@@ -1155,6 +1179,8 @@ class WorldWorker:
                 "active_scene": self._scene_summary(self._scene),
                 "capabilities": capabilities,
             }
+        finally:
+            self._lock.release()
 
     def catalog(self) -> dict[str, Any]:
         with self._lock:
@@ -1436,6 +1462,9 @@ class WorldWorker:
         destroyed_actor_ids: set[int] = set()
         for actor in actors:
             if actor is None:
+                continue
+            if cls._actor_is_confirmed_absent(world, actor):
+                destroyed_actor_ids.add(int(actor.id))
                 continue
             try:
                 if str(getattr(actor, "type_id", "")).startswith("controller.ai.walker"):
@@ -2621,6 +2650,22 @@ class WorldWorker:
     def stop(self, scene_id: str, raw: Mapping[str, Any]) -> dict[str, Any]:
         lease_token = self._lease_token(raw, allowed={"lease_token"})
         with self._lock:
+            if self._scene is None and self._last_scene is not None:
+                previous_scene_id = str(self._last_scene.get("scene_id", ""))
+                if previous_scene_id == scene_id:
+                    previous_token = str(self._last_scene.get("lease_token", ""))
+                    if not hmac.compare_digest(previous_token, lease_token):
+                        raise WorkerError(
+                            HTTPStatus.CONFLICT,
+                            "lease_mismatch",
+                            "scene lease does not match",
+                        )
+                    return {
+                        "schema_version": SCHEMA_VERSION,
+                        "worker_api_revision": WORKER_API_REVISION,
+                        "status": "stopped",
+                        "scene": dict(self._last_scene),
+                    }
             scene = self._require_scene(scene_id, lease_token)
             snapshot = self._cleanup_resources(scene, reason="operator_stop")
             self._last_scene = snapshot
@@ -2745,6 +2790,8 @@ class WorldWorker:
         # Manager connection, so restore async mode and reuse that connection.
 
     def _cleanup_resources(self, scene: SceneLease, *, reason: str) -> dict[str, Any]:
+        if scene.status == "stopped":
+            return self._scene_snapshot(scene)
         scene.status = "stopping"
         scene.stop_reason = reason
         if scene.camera_relay is not None:
@@ -2767,13 +2814,17 @@ class WorldWorker:
             scene.status = "stopped"
             return self._scene_snapshot(scene)
 
-        if scene.ego is not None:
+        if scene.ego is not None and not self._actor_is_confirmed_absent(
+            current_world, scene.ego
+        ):
             try:
                 scene.ego.set_autopilot(False, int(scene.traffic_manager.get_port()))
                 self._apply_full_brake(scene.ego)
             except Exception as error:
                 scene.cleanup_errors.append(f"ego stop failed: {error}")
         for controller in scene.walker_controllers:
+            if self._actor_is_confirmed_absent(current_world, controller):
+                continue
             try:
                 controller.stop()
             except Exception as error:
@@ -3084,6 +3135,8 @@ class WorldWorkerRequestHandler(BaseHTTPRequestHandler):
                 self._send_json(HTTPStatus.OK, self.server.worker.current_scene())
             else:
                 raise WorkerError(HTTPStatus.NOT_FOUND, "route_not_found", "route not found")
+        except (BrokenPipeError, ConnectionResetError):
+            return
         except WorkerError as error:
             self._error(error)
         except Exception:
@@ -3119,6 +3172,8 @@ class WorldWorkerRequestHandler(BaseHTTPRequestHandler):
             operation = getattr(self.server.worker, action)
             result = operation(scene_id, body)
             self._send_json(HTTPStatus.OK, result)
+        except (BrokenPipeError, ConnectionResetError):
+            return
         except WorkerError as error:
             self._error(error)
         except Exception:

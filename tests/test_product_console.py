@@ -45,6 +45,8 @@ def test_console_csp_hashes_exact_bootstrap_without_unsafe_inline(tmp_path: Path
     assert "'unsafe-inline'" not in policy
     assert "script-src 'self'" in policy
     assert "style-src 'self'" in policy
+    assert "style-src-attr 'unsafe-hashes'" in policy
+    assert "'sha256-S8qMpvofolR8Mpjy4kQvEm7m1q8clzU4dfDH0AmvZjo='" in policy
 
 
 def test_console_asset_resolution_is_allow_listed_and_symlink_safe(tmp_path: Path) -> None:

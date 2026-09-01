@@ -22,7 +22,7 @@
         <option value={map.id}>{map.label}</option>
       {/each}
     </select>
-    {#if !$systemSettings?.workerConnected}<small>Saved locally; live map reload needs the World Worker.</small>{/if}
+    {#if !$systemSettings?.workerConfigured}<small>Saved locally; live map reload needs the World Worker.</small>{/if}
   </label>
 
   <label class="field">
@@ -84,7 +84,7 @@
         <option value="free">Free drive</option>
         <option value="random_destination">Random destination</option>
       </select>
-      {#if !$systemSettings?.workerConnected}<small>Saved locally; route generation needs the World Worker.</small>{/if}
+      {#if !$systemSettings?.workerConfigured}<small>Saved locally; route generation needs the World Worker.</small>{/if}
     </label>
   {/if}
 </div>
@@ -129,7 +129,7 @@
       />
     </label>
   </div>
-  {#if !$systemSettings?.workerConnected}
-    <p class="inline-note">These values remain in the shared session. A connected World Worker is required to apply them to live CARLA.</p>
+  {#if !$systemSettings?.workerConfigured}
+    <p class="inline-note">These values remain in the shared session and sync when the World Worker connects.</p>
   {/if}
 </details>

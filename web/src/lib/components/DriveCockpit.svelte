@@ -2,7 +2,6 @@
   import { onDestroy } from 'svelte';
 
   import {
-    driveStatusLabel,
     isDriveActive,
     isDriveRunning,
     recordingActive,
@@ -15,6 +14,9 @@
   let streamReady = false;
   let streamNonce = Date.now();
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  let manualArmRequest = 0;
+  let initializedViewSession = '';
+  let telemetryOpen = false;
 
   $: drive = $garageRuntime.drive;
   $: running = isDriveRunning(drive);
@@ -24,6 +26,16 @@
   $: stream = drive.stream ?? {};
   $: detectorEnabled = Boolean(drive.detector?.enabled);
   $: if (!detectorEnabled && view === 'overlay') view = 'raw';
+  $: if (
+    running &&
+    drive.session_id &&
+    initializedViewSession !== drive.session_id
+  ) {
+    initializedViewSession = drive.session_id;
+    view = 'raw';
+    streamReady = false;
+    streamNonce = Date.now();
+  }
   $: streamSource = running && drive.session_id
     ? `/api/drive/stream.mjpg?view=${view}&session=${encodeURIComponent(drive.session_id)}&t=${streamNonce}`
     : '';
@@ -69,87 +81,99 @@
     return `${Math.round(Number(value) * 1000)} ms`;
   }
 
+  function armFromViewport(event: PointerEvent): void {
+    if (event.target instanceof Element && event.target.closest('button')) return;
+    manualArmRequest += 1;
+  }
+
   onDestroy(() => {
     if (retryTimer) clearTimeout(retryTimer);
   });
 </script>
 
 <section id="cockpit" class="cockpit-card scroll-section" class:active={active}>
-  <div class="cockpit-header">
-    <div>
-      <span class="eyebrow">Cockpit</span>
-      <h2>{driveStatusLabel(drive.status)}</h2>
-      <p>{drive.run_id ?? 'No active run'}</p>
-    </div>
-    <div class="cockpit-badges">
-      <span class:ok={running} class="status-pill"><i></i>{drive.control_mode ?? drive.garage_mode ?? 'manual'}</span>
-      <span class:ok={recordingActive(drive)} class="status-pill"><i></i>{recordingActive(drive) ? 'REC' : 'Recording off'}</span>
-      <span class:bad={Boolean(stream.stale)} class:ok={running && !stream.stale} class="status-pill"><i></i>{stream.stale ? 'Stream stale' : 'Stream live'}</span>
-    </div>
-  </div>
+  <div class="drive-viewport-panel">
+    <!-- The camera is the deliberate keyboard-driving surface. -->
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+    <div
+      class="drive-viewport"
+      role="application"
+      tabindex="0"
+      aria-label="Live CARLA driving camera. Click or tap to take keyboard control."
+      onpointerdown={armFromViewport}
+    >
+      {#if streamSource}
+        <img
+          src={streamSource}
+          alt="Live CARLA drive camera"
+          class:ready={streamReady}
+          onload={() => (streamReady = true)}
+          onerror={retryStream}
+        />
+      {/if}
 
-  <div class="cockpit-layout">
-    <div class="drive-viewport-panel">
+      {#if !streamReady}
+        <div class="viewport-placeholder">
+          {#if drive.status === 'starting'}
+            <span class="loading-ring"></span><strong>Starting camera…</strong>
+          {:else if drive.status === 'stopping'}
+            <strong>Saving run…</strong>
+          {:else if drive.status === 'success'}
+            <strong>Run saved</strong>
+          {:else if drive.status === 'failed'}
+            <strong>Drive failed</strong><p>{drive.error ?? 'No additional error detail was returned.'}</p>
+          {:else}
+            <strong>Camera waiting</strong>
+          {/if}
+        </div>
+      {/if}
+
       <div class="viewport-toolbar">
         <div class="segmented-control" aria-label="camera view">
-          <button type="button" class:active={view === 'raw'} onclick={() => chooseView('raw')}>Raw camera</button>
+          <button type="button" class:active={view === 'raw'} onclick={() => chooseView('raw')}>Raw</button>
           <button type="button" class:active={view === 'overlay'} disabled={!detectorEnabled} onclick={() => chooseView('overlay')}>Detections</button>
         </div>
         <span>{stream.resolution ?? 'camera'} · {viewFps.toFixed(1)} FPS · {frameAge()}</span>
       </div>
 
-      <div class="drive-viewport">
-        {#if streamSource}
-          <img
-            src={streamSource}
-            alt="Live CARLA drive camera"
-            class:ready={streamReady}
-            onload={() => (streamReady = true)}
-            onerror={retryStream}
-          />
-        {/if}
-        {#if !streamReady}
-          <div class="viewport-placeholder">
-            {#if drive.status === 'starting'}
-              <span class="loading-ring"></span><strong>Starting camera stream…</strong>
-            {:else if drive.status === 'stopping'}
-              <strong>Saving the run…</strong><p>Controls are released while artifacts finalize.</p>
-            {:else if drive.status === 'success'}
-              <strong>Run saved</strong><p>{drive.output_path ?? 'Artifacts were finalized by the Operator.'}</p>
-            {:else if drive.status === 'failed'}
-              <strong>Drive failed</strong><p>{drive.error ?? 'No additional error detail was returned.'}</p>
-            {:else}
-              <strong>Camera waiting</strong><p>The stream appears when the Drive session reaches running.</p>
-            {/if}
-          </div>
-        {/if}
-
-        <div class="drive-hud">
-          <div><span>Speed</span><strong>{speedKmh.toFixed(1)}<small> km/h</small></strong></div>
-          <div><span>Gear</span><strong>{gearLabel(drive.telemetry?.gear)}</strong></div>
-          <div><span>Elapsed</span><strong>{elapsed(drive.elapsed_seconds)}</strong></div>
-        </div>
+      <div class="drive-hud" aria-label="driving HUD">
+        <div><span>Speed</span><strong>{speedKmh.toFixed(1)}<small> km/h</small></strong></div>
+        <div><span>Gear</span><strong>{gearLabel(drive.telemetry?.gear)}</strong></div>
+        <div><span>Elapsed</span><strong>{elapsed(drive.elapsed_seconds)}</strong></div>
       </div>
+
+      <div class="cockpit-badges">
+        <span class:ok={running} class="status-pill"><i></i>{drive.control_mode ?? drive.garage_mode ?? 'manual'}</span>
+        {#if recordingActive(drive)}<span class="status-pill recording"><i></i>REC</span>{/if}
+        <button
+          type="button"
+          class="hud-toggle"
+          aria-expanded={telemetryOpen}
+          onclick={() => (telemetryOpen = !telemetryOpen)}
+        >HUD</button>
+      </div>
+
+      {#if telemetryOpen}
+        <aside class="telemetry-panel">
+          <div class="telemetry-row"><span>Run</span><strong>{drive.run_id ?? '—'}</strong></div>
+          <div class="telemetry-row"><span>Control</span><strong>{drive.control_source ?? '—'}</strong></div>
+          <div class="telemetry-row"><span>Throttle</span><strong>{percent(drive.telemetry?.throttle)}</strong></div>
+          <div class="telemetry-row"><span>Steer</span><strong>{percent(drive.telemetry?.steer)}</strong></div>
+          <div class="telemetry-row"><span>Brake</span><strong>{percent(drive.telemetry?.brake)}</strong></div>
+          <div class="telemetry-row"><span>Traffic</span><strong>{drive.traffic_count_actual ?? '—'}</strong></div>
+          <div class="telemetry-row"><span>Walkers</span><strong>{drive.walker_count_actual ?? '—'}</strong></div>
+          <div class="telemetry-row"><span>Deadman</span><strong class:warning-text={drive.deadman_active}>{drive.deadman_active ? 'Braking' : 'Clear'}</strong></div>
+          <div class="telemetry-row"><span>Frame</span><strong>{view === 'overlay' ? drive.overlay_frame_sequence ?? '—' : drive.raw_frame_sequence ?? '—'}</strong></div>
+        </aside>
+      {/if}
+
+      {#if running && !modelOwnsControl}
+        <ManualControlPad armRequest={manualArmRequest} />
+      {:else if running && modelOwnsControl}
+        <p class="model-control-note">Model control active · Emergency Brake remains available</p>
+      {/if}
+
+      {#if drive.error}<p class="cockpit-error" role="alert">{drive.error}</p>{/if}
     </div>
-
-    <aside class="telemetry-panel">
-      <div class="telemetry-row"><span>Control source</span><strong>{drive.control_source ?? '—'}</strong></div>
-      <div class="telemetry-row"><span>Throttle</span><strong>{percent(drive.telemetry?.throttle)}</strong></div>
-      <div class="telemetry-row"><span>Steer</span><strong>{percent(drive.telemetry?.steer)}</strong></div>
-      <div class="telemetry-row"><span>Brake</span><strong>{percent(drive.telemetry?.brake)}</strong></div>
-      <div class="telemetry-row"><span>Traffic</span><strong>{drive.traffic_count_actual ?? '—'}</strong></div>
-      <div class="telemetry-row"><span>Walkers</span><strong>{drive.walker_count_actual ?? '—'}</strong></div>
-      <div class="telemetry-row"><span>Deadman</span><strong class:warning-text={drive.deadman_active}>{drive.deadman_active ? 'Braking' : 'Clear'}</strong></div>
-      <div class="telemetry-row"><span>Frame</span><strong>{view === 'overlay' ? drive.overlay_frame_sequence ?? '—' : drive.raw_frame_sequence ?? '—'}</strong></div>
-    </aside>
   </div>
-
-  {#if running && !modelOwnsControl}
-    <ManualControlPad />
-  {:else if running && modelOwnsControl}
-    <p class="deadman-note">Registered model owns ego actuation. Emergency Brake remains available in the session action bar.</p>
-  {/if}
-
-  {#if drive.error}<p class="inline-error" role="alert">{drive.error}</p>{/if}
-  {#if drive.output_path && !running}<p class="saved-path">Saved to <code>{drive.output_path}</code></p>{/if}
 </section>

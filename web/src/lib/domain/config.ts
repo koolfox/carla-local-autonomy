@@ -178,7 +178,7 @@ export function defaultSessionConfig(): SessionConfig {
       mode: 'free'
     },
     control: {
-      mode: 'manual'
+      mode: 'autopilot'
     },
     camera: {
       resolution: '1280x720',
@@ -187,7 +187,7 @@ export function defaultSessionConfig(): SessionConfig {
       spectatorFollow: true
     },
     perception: {
-      enabled: true,
+      enabled: false,
       detector: 'rtdetr',
       weights: '',
       device: 'cpu',

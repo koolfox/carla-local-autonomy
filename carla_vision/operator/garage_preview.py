@@ -13,7 +13,7 @@ import threading
 import time
 from collections import deque
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import cv2
@@ -37,6 +37,7 @@ _MAP_NAME = re.compile(r"^[A-Za-z0-9_./-]{1,160}$")
 _PRESET_NAME = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
 _COLOR = re.compile(r"^\d{1,3},\d{1,3},\d{1,3}$")
 _HEARTBEAT_SECONDS = 2.0
+_HEARTBEAT_FAILURE_LIMIT = 3
 _EXPECTED_CARLA_VERSION = "0.9.16"
 _CAMERA_PROFILES: dict[str, tuple[int, int, float]] = {
     "balanced": (1280, 720, 30.0),
@@ -530,6 +531,7 @@ class GaragePreviewSession:
             }
             return {
                 "schema_version": "1.0",
+                "applied_config": self.config.as_dict(),
                 "status": self._status,
                 "active": self._status in {"starting", "running"} and not self._closed,
                 "frame_sequence": self._frame_sequence,
@@ -679,6 +681,30 @@ class GaragePreviewSession:
                     self._cleanup_errors.append(f"spectator preview orbit: {error}")
             return self.snapshot()
 
+    def update_weather(self, weather_preset: str) -> dict[str, Any]:
+        """Update weather without replacing the active scene or camera."""
+
+        preset = str(weather_preset).strip()
+        if preset != "keep" and not _PRESET_NAME.fullmatch(preset):
+            raise ValueError("weather_preset must be a bounded preset identifier")
+        with self._lifecycle_lock:
+            with self._lock:
+                if self._status != "running" or self._closed:
+                    raise RuntimeError("Garage preview is not running")
+                if preset == self.config.weather_preset:
+                    return self.snapshot()
+                scene = self._scene
+            if scene is None:
+                raise RuntimeError("Garage preview Worker scene is not ready")
+            if preset != "keep":
+                with self._worker_request_lock:
+                    updated = self.world_worker.weather(scene, preset)
+                with self._lock:
+                    self._scene = updated
+            with self._lock:
+                self.config = replace(self.config, weather_preset=preset)
+                return self.snapshot()
+
     def _start_heartbeat(self) -> None:
         self._heartbeat_thread = threading.Thread(
             target=self._heartbeat_loop,
@@ -754,6 +780,8 @@ class GaragePreviewSession:
                 return
 
     def _heartbeat_loop(self) -> None:
+        consecutive_failures = 0
+        transient_error: str | None = None
         while not self._heartbeat_stop.wait(_HEARTBEAT_SECONDS):
             try:
                 with self._worker_request_lock:
@@ -765,9 +793,25 @@ class GaragePreviewSession:
                     updated = self.world_worker.heartbeat(scene)
                     with self._lock:
                         self._scene = updated
+                        if transient_error is not None and self._error == transient_error:
+                            self._error = None
+                    consecutive_failures = 0
+                    transient_error = None
             except BaseException as error:
+                if self._heartbeat_stop.is_set():
+                    return
+                consecutive_failures += 1
+                message = (
+                    "World Worker heartbeat failed: "
+                    f"{type(error).__name__}: {error} "
+                    f"({consecutive_failures}/{_HEARTBEAT_FAILURE_LIMIT})"
+                )
                 with self._lock:
-                    self._error = f"World Worker heartbeat failed: {type(error).__name__}: {error}"
+                    self._error = message
+                transient_error = message
+                if consecutive_failures < _HEARTBEAT_FAILURE_LIMIT:
+                    continue
+                with self._lock:
                     self._status = "failed"
                 self.close(reason="heartbeat_failed")
                 return
@@ -886,6 +930,7 @@ class GaragePreviewManager:
         self._world_mode_lock = world_mode_lock
         self._session_factory = session_factory
         self._lock = threading.RLock()
+        self._configure_lock = threading.Lock()
         self._session: GaragePreviewSession | None = None
         self._last_error: str | None = None
 
@@ -904,6 +949,7 @@ class GaragePreviewManager:
                 "distance": 6.5,
                 "error": last_error,
                 "cleanup_errors": [],
+                "applied_config": None,
                 "map": None,
                 "weather_preset": None,
                 "vehicle_blueprint": None,
@@ -921,26 +967,53 @@ class GaragePreviewManager:
         config = GaragePreviewConfig.from_mapping(raw)
         if self.world_worker is None:
             raise RuntimeError("Garage preview requires a configured World Worker")
-        with self._world_mode_lock:
-            drive_status = str(self._drive_state().get("status", "idle"))
-            if drive_status in _ACTIVE_DRIVE_STATES:
-                raise RuntimeError("end the active Drive before starting Garage preview")
-            self._stop_locked(reason="reconfigure")
-            session = self._session_factory(
-                config,
-                carla_host=self.carla_host,
-                carla_port=self.carla_port,
-                world_worker=self.world_worker,
+        if not self._configure_lock.acquire(blocking=False):
+            raise RuntimeError(
+                "Garage configuration is already in progress; retry the latest settings"
             )
-            with self._lock:
-                self._session = session
-                self._last_error = None
-            try:
-                return session.start()
-            except BaseException as error:
+        try:
+            with self._world_mode_lock:
+                drive_status = str(self._drive_state().get("status", "idle"))
+                if drive_status in _ACTIVE_DRIVE_STATES:
+                    raise RuntimeError("end the active Drive before starting Garage preview")
                 with self._lock:
-                    self._last_error = f"{type(error).__name__}: {error}"
-                raise
+                    current = self._session
+                current_active = current is not None and current.snapshot().get("active") is True
+                if current_active:
+                    if current.config == config:
+                        result = dict(current.snapshot())
+                        result["configure_action"] = "noop"
+                        return result
+                    weather_only = replace(
+                        config,
+                        weather_preset=current.config.weather_preset,
+                    ) == current.config
+                    if weather_only:
+                        result = dict(current.update_weather(config.weather_preset))
+                        result["configure_action"] = "weather"
+                        return result
+                self._stop_locked(reason="reconfigure")
+                session = self._session_factory(
+                    config,
+                    carla_host=self.carla_host,
+                    carla_port=self.carla_port,
+                    world_worker=self.world_worker,
+                )
+                with self._lock:
+                    self._session = session
+                    self._last_error = None
+                try:
+                    result = dict(session.start())
+                    result["configure_action"] = (
+                        "restarted" if current_active else "started"
+                    )
+                    return result
+                except BaseException as error:
+                    with self._lock:
+                        self._last_error = f"{type(error).__name__}: {error}"
+                    raise
+        finally:
+            self._configure_lock.release()
 
     def orbit(self, raw: Mapping[str, Any]) -> dict[str, Any]:
         request = GarageOrbitRequest.from_mapping(raw)

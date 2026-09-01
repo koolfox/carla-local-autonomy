@@ -13,8 +13,10 @@ import {
 } from '$lib/domain/config';
 import type { WorkspaceSnapshot } from '$lib/api/operator';
 
-const STORAGE_KEY = 'carla-vision-console.session-config.v1';
+const STORAGE_KEY = 'carla-vision-console.session-config.v2';
+const LEGACY_STORAGE_KEY = 'carla-vision-console.session-config.v1';
 let resolvedDefaults = defaultSessionConfig();
+let configurationHydrated = false;
 
 export const systemSettings = writable<SystemSettings | null>(null);
 export const workspaceOptions = writable<WorkspaceOptions>({
@@ -40,11 +42,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function readStoredConfig(base: SessionConfig): SessionConfig | null {
   if (!browser) return null;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const current = localStorage.getItem(STORAGE_KEY);
+    const legacy = current === null ? localStorage.getItem(LEGACY_STORAGE_KEY) : null;
+    const raw = current ?? legacy;
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
     if (!isRecord(parsed)) return null;
-    return {
+    const config = {
       ...base,
       ...parsed,
       identity: { ...base.identity, ...(isRecord(parsed.identity) ? parsed.identity : {}) },
@@ -70,6 +74,11 @@ function readStoredConfig(base: SessionConfig): SessionConfig | null {
         ...(isRecord(parsed.policy) ? parsed.policy : {})
       }
     } as SessionConfig;
+    if (legacy !== null && config.experiment.preset === 'free_drive') {
+      config.control.mode = 'autopilot';
+      config.perception.enabled = false;
+    }
+    return config;
   } catch {
     return null;
   }
@@ -81,7 +90,9 @@ function persist(config: SessionConfig): void {
 }
 
 if (browser) {
-  sessionConfig.subscribe((config) => persist(config));
+  sessionConfig.subscribe((config) => {
+    if (configurationHydrated) persist(config);
+  });
 }
 
 function reconcileCapabilities(config: SessionConfig, snapshot: WorkspaceSnapshot): SessionConfig {
@@ -101,7 +112,7 @@ function reconcileCapabilities(config: SessionConfig, snapshot: WorkspaceSnapsho
     }
   }
 
-  if (!snapshot.system.workerConnected) {
+  if (!snapshot.system.workerConfigured) {
     if (next.control.mode === 'autopilot') next.control.mode = 'manual';
   }
 
@@ -121,9 +132,18 @@ function reconcileCapabilities(config: SessionConfig, snapshot: WorkspaceSnapsho
     model: 'garage_model_drive'
   };
   const capability = modeCapability[next.control.mode];
-  if (capability && !snapshot.system.capabilities[capability]) {
+  const configuredAutopilot =
+    next.control.mode === 'autopilot' && snapshot.system.workerConfigured;
+  if (capability && !configuredAutopilot && !snapshot.system.capabilities[capability]) {
     next.control.mode = 'manual';
     next.policy.acknowledgeAutonomy = false;
+  }
+
+  if (
+    next.route.mode === 'random_destination' &&
+    !snapshot.system.capabilities.random_route
+  ) {
+    next.route.mode = 'free';
   }
 
   const drivingModels = snapshot.options.models.filter((model) => model.role === 'driving_policy');
@@ -161,7 +181,10 @@ export function hydrateWorkspace(snapshot: WorkspaceSnapshot): void {
 
   resolvedDefaults = mergeSessionDefaults(defaultSessionConfig(), snapshot.sessionDefaults);
   const stored = readStoredConfig(resolvedDefaults);
-  sessionConfig.set(reconcileCapabilities(stored ?? resolvedDefaults, snapshot));
+  const hydrated = reconcileCapabilities(stored ?? resolvedDefaults, snapshot);
+  sessionConfig.set(hydrated);
+  configurationHydrated = true;
+  persist(hydrated);
 }
 
 export function patchSessionSection<K extends keyof SessionConfig>(

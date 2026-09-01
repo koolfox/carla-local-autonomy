@@ -8,7 +8,7 @@
   } from '$lib/stores/configuration';
   import { garageRuntime } from '$lib/stores/runtime';
 
-  $: populationOwner = $systemSettings?.workerConnected
+  $: populationOwner = $systemSettings?.workerConfigured
     ? 'World Worker'
     : $systemSettings?.capabilities.garage_traffic_population
       ? 'Garage PythonAPI fallback'
@@ -69,7 +69,7 @@
   <div class="architecture-note">
     <strong>One SessionConfig.</strong>
     <p>
-      The backend adapter resolves this exact object onto the World Worker or Garage fallback. The preview is explicit and does not create a second configuration source.
+      The backend adapter resolves this exact object onto the World Worker or Garage fallback. The live preview uses the same configuration source.
     </p>
   </div>
 </aside>

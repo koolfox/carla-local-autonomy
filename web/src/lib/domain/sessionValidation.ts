@@ -38,7 +38,7 @@ export function validateSession(
     });
   }
 
-  if (session.control.mode === 'autopilot' && (!system.workerConnected || !capability(system, 'autopilot'))) {
+  if (session.control.mode === 'autopilot' && !system.workerConfigured) {
     issues.push({
       id: 'autopilot-unavailable',
       severity: 'error',
@@ -137,7 +137,7 @@ export function validateSession(
     }
   }
 
-  if (!system.workerConnected) {
+  if (!system.workerConfigured) {
     if (session.scene.mapName !== 'current') {
       issues.push({
         id: 'worker-map',
@@ -165,7 +165,7 @@ export function validateSession(
     }
   }
 
-  if (session.scene.trafficCount > 0 && !system.workerConnected && !capability(system, 'garage_traffic_population')) {
+  if (session.scene.trafficCount > 0 && !system.workerConfigured && !capability(system, 'garage_traffic_population')) {
     issues.push({
       id: 'traffic-unavailable',
       severity: 'error',
@@ -173,7 +173,7 @@ export function validateSession(
     });
   }
 
-  if (session.scene.walkerCount > 0 && !system.workerConnected && !capability(system, 'garage_walker_population')) {
+  if (session.scene.walkerCount > 0 && !system.workerConfigured && !capability(system, 'garage_walker_population')) {
     issues.push({
       id: 'walkers-unavailable',
       severity: 'error',
