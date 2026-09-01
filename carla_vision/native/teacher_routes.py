@@ -8,8 +8,17 @@ from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from typing import Any
 
+from ..navigation_intent import (
+    NAVIGATION_INTENT_SCHEMA_VERSION,
+    NavigationCommand,
+    NavigationIntent,
+    command_from_road_option,
+)
+
 BEHAVIOR_TEACHER_CONTROL_SCHEMA_VERSION = "1.0"
 BEHAVIOR_ROUTE_SCHEMA_VERSION = "1.0"
+_NAVIGATION_ROUTE_HORIZON_M = 60.0
+_NAVIGATION_ROUTE_MAX_POINTS = 24
 
 
 def _location_xyz(value: Any) -> tuple[float, float, float]:
@@ -38,6 +47,102 @@ def _distance(left: Any, right: Any) -> float:
     lx, ly, lz = _location_xyz(left)
     rx, ry, rz = _location_xyz(right)
     return math.sqrt((lx - rx) ** 2 + (ly - ry) ** 2 + (lz - rz) ** 2)
+
+
+def _ego_relative_xy(ego_transform: Any, location: Any) -> tuple[float, float]:
+    """Project one CARLA world location into the ego ground plane."""
+
+    origin = ego_transform.location
+    yaw = math.radians(float(ego_transform.rotation.yaw))
+    dx = float(location.x) - float(origin.x)
+    dy = float(location.y) - float(origin.y)
+    return (
+        math.cos(yaw) * dx + math.sin(yaw) * dy,
+        -math.sin(yaw) * dx + math.cos(yaw) * dy,
+    )
+
+
+def navigation_intent_from_plan(
+    *,
+    ego_transform: Any,
+    plan: Sequence[Any],
+    carla_frame: int,
+    route_id: str,
+    source: str = "carla_global_route_planner_via_behavior_agent",
+) -> NavigationIntent:
+    """Convert a CARLA LocalPlanner plan to the canonical route contract.
+
+    ``plan`` contains ``(Waypoint, RoadOption)`` pairs, but the returned object
+    contains only numbers and strings.  The first non-lane-follow command within
+    the bounded horizon is the conditional-imitation command for this frame.
+    """
+
+    entries = list(plan)
+    if not entries:
+        raise ValueError("BehaviorAgent local plan is empty")
+
+    polyline: list[tuple[float, float]] = [(0.0, 0.0)]
+    previous = polyline[0]
+    cumulative_distance = 0.0
+    maneuver: tuple[NavigationCommand, tuple[float, float], float] | None = None
+    fallback_target: tuple[float, float] | None = None
+
+    for entry in entries:
+        if not isinstance(entry, Sequence) or len(entry) < 2:
+            raise TypeError("BehaviorAgent plan entries must be waypoint/road-option pairs")
+        waypoint, road_option = entry[0], entry[1]
+        transform = getattr(waypoint, "transform", None)
+        location = getattr(transform, "location", None)
+        if location is None:
+            raise TypeError("BehaviorAgent plan waypoint has no transform location")
+        point = _ego_relative_xy(ego_transform, location)
+        segment = math.hypot(point[0] - previous[0], point[1] - previous[1])
+        if segment < 0.05:
+            continue
+        cumulative_distance += segment
+        previous = point
+        if cumulative_distance > _NAVIGATION_ROUTE_HORIZON_M:
+            break
+        if point[0] >= -2.0:
+            fallback_target = point
+            if (
+                len(polyline) < _NAVIGATION_ROUTE_MAX_POINTS
+                and cumulative_distance <= _NAVIGATION_ROUTE_HORIZON_M
+            ):
+                polyline.append(point)
+        command = command_from_road_option(road_option)
+        if (
+            maneuver is None
+            and command is not NavigationCommand.FOLLOW_LANE
+            and point[0] >= -2.0
+            and cumulative_distance <= _NAVIGATION_ROUTE_HORIZON_M
+        ):
+            maneuver = (command, point, cumulative_distance)
+
+    if fallback_target is None:
+        raise ValueError("BehaviorAgent local plan has no usable ego-relative waypoint")
+    if maneuver is None:
+        command = NavigationCommand.FOLLOW_LANE
+        target = fallback_target
+        distance_to_maneuver = 0.0
+    else:
+        command, target, distance_to_maneuver = maneuver
+    magnitude = math.hypot(*target)
+    if magnitude < 1e-6:
+        raise ValueError("BehaviorAgent navigation target coincides with the ego origin")
+
+    return NavigationIntent(
+        source_frame_id=int(carla_frame),
+        command=command,
+        direction=(target[0] / magnitude, target[1] / magnitude),
+        target_point_m=target,
+        distance_to_maneuver_m=distance_to_maneuver,
+        route_polyline_m=tuple(polyline),
+        route_id=route_id,
+        source=source,
+        confidence=1.0,
+        privileged=True,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -194,15 +299,33 @@ def validate_behavior_sample_context(context: Mapping[str, Any], *, carla_frame:
                 errors.append(f"teacher control {name} must be finite")
             elif not minimum <= float(value) <= maximum:
                 errors.append(f"teacher control {name} is outside [{minimum}, {maximum}]")
+    navigation = context.get("navigation_intent")
+    if navigation is not None:
+        if not isinstance(navigation, Mapping):
+            errors.append("context.navigation_intent must be an object")
+        else:
+            try:
+                intent = NavigationIntent.from_mapping(navigation)
+            except (TypeError, ValueError) as error:
+                errors.append(f"navigation intent is invalid: {error}")
+            else:
+                if intent.source_frame_id != carla_frame:
+                    errors.append("navigation intent source frame must match sample")
+                if isinstance(route, Mapping) and intent.route_id != route.get("route_id"):
+                    errors.append("navigation intent route_id must match context.route")
+                if not intent.privileged:
+                    errors.append("CARLA teacher navigation intent must declare privileged=true")
     return errors
 
 
 __all__ = [
     "BEHAVIOR_ROUTE_SCHEMA_VERSION",
     "BEHAVIOR_TEACHER_CONTROL_SCHEMA_VERSION",
+    "NAVIGATION_INTENT_SCHEMA_VERSION",
     "BehaviorRouteLeg",
     "build_route_leg",
     "choose_destination_index",
+    "navigation_intent_from_plan",
     "serialize_behavior_control",
     "validate_behavior_sample_context",
 ]

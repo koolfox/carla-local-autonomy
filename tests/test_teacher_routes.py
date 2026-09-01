@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from enum import IntEnum
 from types import SimpleNamespace
 
 import pytest
@@ -7,6 +8,7 @@ import pytest
 from carla_vision.native.teacher_routes import (
     build_route_leg,
     choose_destination_index,
+    navigation_intent_from_plan,
     serialize_behavior_control,
     validate_behavior_sample_context,
 )
@@ -88,3 +90,30 @@ def test_invalid_control_is_rejected() -> None:
     control = SimpleNamespace(throttle=1.2, steer=0.0, brake=0.0)
     with pytest.raises(ValueError, match="throttle"):
         serialize_behavior_control(control, carla_frame=1, route_id="route")
+
+
+def test_behavior_plan_becomes_an_exact_frame_conditional_command() -> None:
+    class RoadOption(IntEnum):
+        LEFT = 1
+        LANEFOLLOW = 4
+
+    ego = _transform(0, 0)
+    plan = [
+        (SimpleNamespace(transform=_transform(5, 0)), RoadOption.LANEFOLLOW),
+        (SimpleNamespace(transform=_transform(15, -5)), RoadOption.LEFT),
+        (SimpleNamespace(transform=_transform(25, -15)), RoadOption.LEFT),
+    ]
+
+    intent = navigation_intent_from_plan(
+        ego_transform=ego,
+        plan=plan,
+        carla_frame=901,
+        route_id="route-ep-001-leg-000-d001",
+    )
+
+    assert intent.command.value == "left"
+    assert intent.source_frame_id == 901
+    assert intent.distance_to_maneuver_m == pytest.approx(16.180, abs=0.001)
+    assert intent.target_point_m == pytest.approx((15.0, -5.0))
+    assert intent.route_polyline_m[0] == (0.0, 0.0)
+    assert intent.privileged is True

@@ -13,7 +13,7 @@ from typing import Any
 
 import cv2
 
-from .teacher_routes import validate_behavior_sample_context
+from .teacher_routes import NAVIGATION_INTENT_SCHEMA_VERSION, validate_behavior_sample_context
 
 TEACHER_EPISODE_VERIFICATION_SCHEMA_VERSION = "1.0"
 
@@ -116,6 +116,7 @@ def verify_teacher_dataset(dataset_dir: str | Path) -> dict[str, Any]:
     frames_by_episode: dict[str, list[int]] = defaultdict(list)
     timestamps_by_episode: dict[str, list[float]] = defaultdict(list)
     route_ids: set[str] = set()
+    navigation_intent_count = 0
 
     for index, sample in enumerate(samples):
         prefix = f"sample[{index}]"
@@ -205,6 +206,8 @@ def verify_teacher_dataset(dataset_dir: str | Path) -> dict[str, Any]:
         route = context.get("route")
         if isinstance(route, Mapping) and isinstance(route.get("route_id"), str):
             route_ids.add(str(route["route_id"]))
+        if isinstance(context.get("navigation_intent"), Mapping):
+            navigation_intent_count += 1
         ego_state = context.get("privileged_evaluation")
         speed = None
         if isinstance(ego_state, Mapping):
@@ -231,6 +234,32 @@ def verify_teacher_dataset(dataset_dir: str | Path) -> dict[str, Any]:
         actual_episodes = sorted(frames_by_episode)
         if isinstance(declared_episodes, list) and sorted(declared_episodes) != actual_episodes:
             errors.append("release_metadata.episode_ids does not match sample episodes")
+        navigation_release = release.get("navigation_intent")
+        if isinstance(navigation_release, Mapping):
+            if navigation_release.get("schema_version") != NAVIGATION_INTENT_SCHEMA_VERSION:
+                errors.append("release navigation_intent schema_version is unsupported")
+            if navigation_release.get("privileged") is not True:
+                errors.append("release navigation_intent must declare privileged=true")
+            if navigation_release.get("runtime_model_input") is not False:
+                errors.append(
+                    "release navigation_intent must declare runtime_model_input=false"
+                )
+            if navigation_release.get("strict_rgb_only_input") is not False:
+                errors.append(
+                    "release navigation_intent must declare strict_rgb_only_input=false"
+                )
+            if navigation_release.get("route_conditioned_vision_input") is not True:
+                errors.append(
+                    "release navigation_intent must declare "
+                    "route_conditioned_vision_input=true"
+                )
+            if navigation_release.get("available_for_every_sample") is True and (
+                navigation_intent_count != len(samples)
+            ):
+                errors.append(
+                    "release declares navigation intent for every sample but "
+                    f"found {navigation_intent_count}/{len(samples)}"
+                )
 
     if not route_ids and samples:
         warnings.append("no route IDs were observed")
@@ -243,6 +272,7 @@ def verify_teacher_dataset(dataset_dir: str | Path) -> dict[str, Any]:
         "sample_count": len(samples),
         "episode_count": len(frames_by_episode),
         "route_leg_count": len(route_ids),
+        "navigation_intent_count": navigation_intent_count,
         "checksum_entry_count": len(checksums),
         "errors": errors,
         "warnings": warnings,

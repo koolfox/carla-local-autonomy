@@ -25,8 +25,10 @@ from ..scenarios.verified_plan import VerifiedScenarioPlan, load_verified_scenar
 from .synchronization import image_to_bridge_frame
 from .teacher_routes import (
     BEHAVIOR_TEACHER_CONTROL_SCHEMA_VERSION,
+    NAVIGATION_INTENT_SCHEMA_VERSION,
     build_route_leg,
     choose_destination_index,
+    navigation_intent_from_plan,
     serialize_behavior_control,
 )
 from .teacher_verify import verify_teacher_dataset
@@ -152,6 +154,17 @@ class BehaviorRouteController:
             "remaining_straight_line_distance_m": remaining,
             "sample_carla_frame": int(carla_frame),
         }
+
+    def sample_navigation_intent(self, *, carla_frame: int) -> dict[str, Any]:
+        if self._current_leg is None:
+            raise RuntimeError("route controller has no current leg")
+        local_planner = self._agent.get_local_planner()
+        return navigation_intent_from_plan(
+            ego_transform=self.ego.get_transform(),
+            plan=list(local_planner.get_plan()),
+            carla_frame=carla_frame,
+            route_id=str(self._current_leg["route_id"]),
+        ).as_dict()
 
     @property
     def history(self) -> list[dict[str, Any]]:
@@ -284,11 +297,16 @@ class BehaviorTeacherSession(NativeCarlaSession):
                     "capture_every_ticks must be a multiple of the camera sensor period"
                 )
 
-            def controlled_tick() -> tuple[int, Any, dict[str, Any]]:
+            def controlled_tick() -> tuple[int, Any, dict[str, Any], dict[str, Any]]:
                 snapshot = world.get_snapshot()
                 control = controller.apply_before_tick(current_world_frame=int(snapshot.frame))
                 frame = int(world.tick())
-                return frame, control, controller.sample_route_context(carla_frame=frame)
+                return (
+                    frame,
+                    control,
+                    controller.sample_route_context(carla_frame=frame),
+                    controller.sample_navigation_intent(carla_frame=frame),
+                )
 
             for _ in range(sensor_tick_multiple):
                 controlled_tick()
@@ -305,7 +323,7 @@ class BehaviorTeacherSession(NativeCarlaSession):
             for _ in range(recipe.capture.warmup_ticks):
                 controlled_tick()
 
-            first_capture: tuple[int, Any, dict[str, Any]] | None = None
+            first_capture: tuple[int, Any, dict[str, Any], dict[str, Any]] | None = None
             alignment_ticks = 0
             for _ in range(sensor_tick_multiple):
                 candidate = controlled_tick()
@@ -319,11 +337,12 @@ class BehaviorTeacherSession(NativeCarlaSession):
             sample_ids: list[str] = []
             captured_frames: list[int] = []
             route_ids: list[str] = []
+            navigation_commands: Counter[str] = Counter()
             annotation_count = 0
             first_timestamp: float | None = None
             last_timestamp: float | None = None
             for tick_index in range(recipe.capture.duration_ticks):
-                world_frame, applied_control, route_context = (
+                world_frame, applied_control, route_context, navigation_intent = (
                     first_capture if tick_index == 0 else controlled_tick()
                 )
                 if tick_index % recipe.capture.capture_every_ticks:
@@ -373,6 +392,7 @@ class BehaviorTeacherSession(NativeCarlaSession):
                         "teacher_uses_privileged_simulator_state": True,
                         "runtime_sensor_contract": "front_monocular_rgb_only",
                         "route": route_context,
+                        "navigation_intent": navigation_intent,
                         "actors": {
                             "ego": actors.ego_id,
                             "rgb_camera": actors.rgb_sensor_id,
@@ -385,6 +405,7 @@ class BehaviorTeacherSession(NativeCarlaSession):
                 sample_ids.append(sample.sample_id)
                 captured_frames.append(world_frame)
                 route_ids.append(route_id)
+                navigation_commands[str(navigation_intent["command"])] += 1
                 annotation_count += sample.annotation_count
                 first_timestamp = (
                     rgb_frame.timestamp if first_timestamp is None else first_timestamp
@@ -408,6 +429,7 @@ class BehaviorTeacherSession(NativeCarlaSession):
                     "behavior": self.behavior,
                     "target_speed_kmh": self.target_speed_kmh,
                     "control_schema_version": BEHAVIOR_TEACHER_CONTROL_SCHEMA_VERSION,
+                    "navigation_intent_schema_version": NAVIGATION_INTENT_SCHEMA_VERSION,
                     "control_alignment": "BehaviorAgent.run_step applied before captured world.tick",
                 },
                 "route": {
@@ -434,6 +456,7 @@ class BehaviorTeacherSession(NativeCarlaSession):
                     "sample_ids": sample_ids,
                     "carla_frames": captured_frames,
                     "route_ids": route_ids,
+                    "navigation_command_counts": dict(sorted(navigation_commands.items())),
                     "annotation_count": annotation_count,
                     "first_simulation_timestamp_seconds": first_timestamp,
                     "last_simulation_timestamp_seconds": last_timestamp,
@@ -584,6 +607,15 @@ def collect_behavior_teacher(args: argparse.Namespace) -> dict[str, Any]:
             "target_speed_kmh": args.target_speed_kmh,
             "teacher_uses_privileged_simulator_state": True,
             "runtime_sensor_contract": "front_monocular_rgb_only",
+            "navigation_intent": {
+                "schema_version": NAVIGATION_INTENT_SCHEMA_VERSION,
+                "source": "carla_global_route_planner_via_behavior_agent",
+                "available_for_every_sample": True,
+                "privileged": True,
+                "runtime_model_input": False,
+                "strict_rgb_only_input": False,
+                "route_conditioned_vision_input": True,
+            },
         },
         repository_root=Path.cwd(),
         minimum_pixels=minimum_pixels,
@@ -663,6 +695,28 @@ def collect_behavior_teacher(args: argparse.Namespace) -> dict[str, Any]:
                         "source": "BehaviorAgent.run_step",
                         "sample_alignment": "applied before exact captured world.tick",
                         "runtime_model_input": False,
+                    },
+                    "navigation_intent": {
+                        "schema_version": NAVIGATION_INTENT_SCHEMA_VERSION,
+                        "available_for_every_sample": True,
+                        "source": "carla_global_route_planner_via_behavior_agent",
+                        "privileged": True,
+                        "runtime_model_input": False,
+                        "strict_rgb_only_input": False,
+                        "route_conditioned_vision_input": True,
+                        "command_counts": dict(
+                            sorted(
+                                sum(
+                                    (
+                                        Counter(
+                                            result["samples"]["navigation_command_counts"]
+                                        )
+                                        for result in episode_results
+                                    ),
+                                    Counter(),
+                                ).items()
+                            )
+                        ),
                     },
                     "world_restored_to_asynchronous_mode": True,
                 }
