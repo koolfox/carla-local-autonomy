@@ -18,6 +18,7 @@ import torch
 from torch.utils.data import Dataset
 
 from ..native.teacher_verify import verify_teacher_dataset
+from ..navigation_intent import NAVIGATION_COMMAND_ORDER, NavigationIntent
 
 Partition = Literal["train", "val", "test"]
 
@@ -95,14 +96,17 @@ class ImitationSampleRef:
     brake: float
     route_group_key: str
     partition: Partition
+    navigation_intent: NavigationIntent | None
 
 
 class BehaviorImitationDataset(Dataset[dict[str, Any]]):
-    """Load RGB, ego speed, and BehaviorAgent controls from teacher datasets.
+    """Load RGB and privileged teacher labels from BehaviorAgent datasets.
 
     Split assignment is derived from a stable route/seed group key so all
     samples from the same route and static layout remain in one partition even
-    when multiple dataset roots are combined.
+    when multiple dataset roots are combined. Ego speed and navigation intent
+    are retained as privileged labels/optional experiment features; their
+    presence does not make them inputs to the strict front-RGB model track.
     """
 
     def __init__(
@@ -122,6 +126,7 @@ class BehaviorImitationDataset(Dataset[dict[str, Any]]):
         horizontal_flip_probability: float = 0.0,
         verify: bool = True,
         max_samples: int | None = None,
+        require_navigation_intent: bool = False,
     ) -> None:
         if partition not in {"train", "val", "test"}:
             raise ValueError("partition must be train, val, or test")
@@ -156,6 +161,7 @@ class BehaviorImitationDataset(Dataset[dict[str, Any]]):
         self.brightness = float(brightness)
         self.contrast = float(contrast)
         self.horizontal_flip_probability = float(horizontal_flip_probability)
+        self.require_navigation_intent = bool(require_navigation_intent)
         self.samples: list[ImitationSampleRef] = []
         self.group_partitions: dict[str, Partition] = {}
 
@@ -207,6 +213,21 @@ class BehaviorImitationDataset(Dataset[dict[str, Any]]):
                 if not 0.0 <= brake <= 1.0:
                     raise ValueError(f"invalid teacher brake: {metadata_path}")
                 episode_id = str(raw_sample["episode_id"])
+                raw_navigation = context.get("navigation_intent")
+                if raw_navigation is None:
+                    navigation_intent = None
+                    if self.require_navigation_intent:
+                        raise ValueError(
+                            f"route-conditioned sample lacks navigation intent: {metadata_path}"
+                        )
+                elif not isinstance(raw_navigation, Mapping):
+                    raise ValueError(f"sample navigation intent is invalid: {metadata_path}")
+                else:
+                    navigation_intent = NavigationIntent.from_mapping(raw_navigation)
+                    if navigation_intent.source_frame_id != int(raw_sample["carla_frame"]):
+                        raise ValueError(
+                            f"navigation intent frame does not match sample: {metadata_path}"
+                        )
                 group_key = _route_group_key(context=context, episode_id=episode_id)
                 assigned = _group_partition(
                     group_key,
@@ -235,6 +256,7 @@ class BehaviorImitationDataset(Dataset[dict[str, Any]]):
                         brake=brake,
                         route_group_key=group_key,
                         partition=assigned,
+                        navigation_intent=navigation_intent,
                     )
                 )
         self.samples.sort(
@@ -262,13 +284,14 @@ class BehaviorImitationDataset(Dataset[dict[str, Any]]):
         ).digest()[:8]
         return random.Random(int.from_bytes(digest, byteorder="big", signed=False))
 
-    def _load_image(self, sample: ImitationSampleRef) -> tuple[np.ndarray, float]:
+    def _load_image(self, sample: ImitationSampleRef) -> tuple[np.ndarray, float, bool]:
         image = cv2.imread(str(sample.image_path), cv2.IMREAD_COLOR)
         if image is None or image.size == 0:
             raise RuntimeError(f"could not decode RGB image {sample.image_path}")
         height, width = self.image_size
         image = cv2.resize(image, (width, height), interpolation=cv2.INTER_AREA)
         steer = sample.steer
+        flipped = False
         if self.augment:
             rng = self._augmentation_rng(sample)
             if self.brightness:
@@ -283,15 +306,36 @@ class BehaviorImitationDataset(Dataset[dict[str, Any]]):
             if rng.random() < self.horizontal_flip_probability:
                 image = cv2.flip(image, 1)
                 steer = -steer
+                flipped = True
         rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         chw = np.ascontiguousarray(rgb.transpose(2, 0, 1), dtype=np.float32) / 255.0
-        return chw, float(steer)
+        return chw, float(steer), flipped
 
     def __getitem__(self, index: int) -> dict[str, Any]:
         sample = self.samples[index]
-        image, steer = self._load_image(sample)
+        image, steer, flipped = self._load_image(sample)
         speed_normalized = min(sample.speed_mps / self.speed_scale_mps, 2.0)
         target = np.asarray([steer, sample.longitudinal], dtype=np.float32)
+        navigation_intent = sample.navigation_intent
+        if navigation_intent is not None and flipped:
+            navigation_intent = navigation_intent.mirrored()
+        if navigation_intent is None:
+            navigation_command = -1
+            navigation_features = np.zeros(
+                len(NAVIGATION_COMMAND_ORDER) + 3,
+                dtype=np.float32,
+            )
+            navigation_direction = np.zeros(2, dtype=np.float32)
+            navigation_distance = np.zeros(1, dtype=np.float32)
+        else:
+            navigation_command = navigation_intent.command_index
+            navigation_features = np.asarray(
+                navigation_intent.model_features(), dtype=np.float32
+            )
+            navigation_direction = np.asarray(navigation_intent.direction, dtype=np.float32)
+            navigation_distance = np.asarray(
+                [navigation_intent.distance_to_maneuver_m], dtype=np.float32
+            )
         return {
             "image": torch.from_numpy(image),
             "speed": torch.tensor([speed_normalized], dtype=torch.float32),
@@ -303,6 +347,11 @@ class BehaviorImitationDataset(Dataset[dict[str, Any]]):
             "episode_id": sample.episode_id,
             "route_group_key": sample.route_group_key,
             "carla_frame": sample.carla_frame,
+            "navigation_available": torch.tensor(navigation_intent is not None),
+            "navigation_command": torch.tensor(navigation_command, dtype=torch.long),
+            "navigation_features": torch.from_numpy(navigation_features),
+            "navigation_direction": torch.from_numpy(navigation_direction),
+            "navigation_distance_m": torch.from_numpy(navigation_distance),
         }
 
 

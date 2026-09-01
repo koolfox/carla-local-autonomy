@@ -8,6 +8,11 @@ import cv2
 import numpy as np
 
 from carla_vision.native.teacher_verify import verify_teacher_dataset
+from carla_vision.navigation_intent import (
+    NAVIGATION_INTENT_SCHEMA_VERSION,
+    NavigationCommand,
+    NavigationIntent,
+)
 
 
 def _sha(path: Path) -> str:
@@ -123,3 +128,72 @@ def test_teacher_dataset_verifier_detects_incomplete_route_metadata(tmp_path: Pa
     report = verify_teacher_dataset(root)
     assert report["status"] == "failed"
     assert any("destination_world_transform" in error for error in report["errors"])
+
+
+def test_teacher_dataset_verifier_rejects_missing_declared_navigation_intent(
+    tmp_path: Path,
+) -> None:
+    root = _build_dataset(tmp_path / "dataset")
+    dataset_path = root / "dataset.json"
+    dataset = json.loads(dataset_path.read_text(encoding="utf-8"))
+    dataset["release_metadata"]["navigation_intent"] = {
+        "schema_version": NAVIGATION_INTENT_SCHEMA_VERSION,
+        "available_for_every_sample": True,
+        "privileged": True,
+        "runtime_model_input": False,
+        "strict_rgb_only_input": False,
+        "route_conditioned_vision_input": True,
+    }
+    dataset_path.write_text(json.dumps(dataset), encoding="utf-8")
+
+    report = verify_teacher_dataset(root)
+
+    assert report["status"] == "failed"
+    assert report["navigation_intent_count"] == 0
+    assert any("found 0/1" in error for error in report["errors"])
+
+
+def test_teacher_dataset_verifier_accepts_exact_frame_navigation_teacher_label(
+    tmp_path: Path,
+) -> None:
+    root = _build_dataset(tmp_path / "dataset")
+    metadata_path = root / "metadata" / "00000001.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["context"]["navigation_intent"] = NavigationIntent(
+        source_frame_id=100,
+        command=NavigationCommand.FOLLOW_LANE,
+        direction=(1.0, 0.0),
+        target_point_m=(20.0, 0.0),
+        distance_to_maneuver_m=0.0,
+        route_polyline_m=((0.0, 0.0), (20.0, 0.0)),
+        route_id="route-ep-a-leg-000-d001",
+        source="carla_global_route_planner_via_behavior_agent",
+        confidence=1.0,
+        privileged=True,
+    ).as_dict()
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+    dataset_path = root / "dataset.json"
+    dataset = json.loads(dataset_path.read_text(encoding="utf-8"))
+    dataset["samples"][0]["metadata"]["sha256"] = _sha(metadata_path)
+    dataset["samples"][0]["metadata"]["size_bytes"] = metadata_path.stat().st_size
+    dataset["release_metadata"]["navigation_intent"] = {
+        "schema_version": NAVIGATION_INTENT_SCHEMA_VERSION,
+        "available_for_every_sample": True,
+        "privileged": True,
+        "runtime_model_input": False,
+        "strict_rgb_only_input": False,
+        "route_conditioned_vision_input": True,
+    }
+    dataset_path.write_text(json.dumps(dataset), encoding="utf-8")
+    image_path = root / "images" / "train" / "00000001.png"
+    (root / "checksums.sha256").write_text(
+        f"{_sha(image_path)}  images/train/00000001.png\n"
+        f"{_sha(metadata_path)}  metadata/00000001.json\n",
+        encoding="utf-8",
+    )
+
+    report = verify_teacher_dataset(root)
+
+    assert report["status"] == "passed"
+    assert report["navigation_intent_count"] == 1

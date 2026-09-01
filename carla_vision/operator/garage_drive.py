@@ -29,6 +29,7 @@ from ..model_driver import (
     control_from_value,
     create_driving_model,
 )
+from ..native.teacher_routes import navigation_intent_from_plan
 from .drive import (
     DriveSession,
     DriveSessionManager,
@@ -505,6 +506,7 @@ class _BehaviorPolicy:
             opt_dict={"target_speed": float(config.target_speed_kmh)},
         )
         self.destination_index: int | None = None
+        self.route_generation = 0
         self._set_destination()
 
     def _set_destination(self) -> None:
@@ -516,12 +518,28 @@ class _BehaviorPolicy:
         ] or list(enumerate(self.context.spawn_points))
         self.destination_index, destination = self.context.rng.choice(candidates)
         self.agent.set_destination(destination.location)
+        self.route_generation += 1
 
     def step(self, *_: Any, **__: Any) -> tuple[ControlCommand, str, bool, dict[str, Any]]:
         if self.agent.done():
             self._set_destination()
         command = _command_from_carla(self.agent.run_step(debug=False))
-        return command, "behavior_agent", False, {"destination_index": self.destination_index}
+        detail: dict[str, Any] = {"destination_index": self.destination_index}
+        try:
+            local_planner = self.agent.get_local_planner()
+            frame = int(self.context.world.get_snapshot().frame)
+            detail["navigation_intent"] = navigation_intent_from_plan(
+                ego_transform=self.context.ego.get_transform(),
+                plan=list(local_planner.get_plan()),
+                carla_frame=frame,
+                route_id=(
+                    f"live-behavior-route-{self.route_generation:04d}-"
+                    f"d{int(self.destination_index or 0):03d}"
+                ),
+            ).as_dict()
+        except Exception as error:
+            detail["navigation_intent_error"] = f"{type(error).__name__}: {error}"
+        return command, "behavior_agent", False, detail
 
     def close(self) -> None:
         return None

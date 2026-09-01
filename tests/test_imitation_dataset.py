@@ -5,12 +5,19 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import pytest
 import torch
 
 from carla_vision.imitation.dataset import BehaviorImitationDataset, split_summary
+from carla_vision.navigation_intent import NavigationCommand, NavigationIntent
 
 
-def _build_dataset(root: Path, *, groups: int = 12) -> Path:
+def _build_dataset(
+    root: Path,
+    *,
+    groups: int = 12,
+    with_navigation: bool = False,
+) -> Path:
     samples = []
     for index in range(groups):
         sample_id = f"{index + 1:08d}"
@@ -46,6 +53,19 @@ def _build_dataset(root: Path, *, groups: int = 12) -> Path:
                 },
             }
         }
+        if with_navigation:
+            metadata["context"]["navigation_intent"] = NavigationIntent(
+                source_frame_id=100 + index,
+                command=NavigationCommand.LEFT,
+                direction=(0.8, -0.6),
+                target_point_m=(20.0, -15.0),
+                distance_to_maneuver_m=12.0,
+                route_polyline_m=((0.0, 0.0), (20.0, -15.0)),
+                route_id=f"route-ep-{index}-leg-000-d{index + 1:03d}",
+                source="carla_global_route_planner_via_behavior_agent",
+                confidence=1.0,
+                privileged=True,
+            ).as_dict()
         metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
         samples.append(
             {
@@ -129,3 +149,50 @@ def test_horizontal_flip_inverts_teacher_steer(tmp_path: Path) -> None:
     )
     assert flipped[0]["target"][0].item() == -plain[0]["target"][0].item()
     assert not torch.equal(flipped[0]["image"], plain[0]["image"])
+
+
+def test_route_conditioned_sample_loads_exact_intent_and_mirrors_left_right(
+    tmp_path: Path,
+) -> None:
+    root = _build_dataset(tmp_path / "teacher", groups=2, with_navigation=True)
+    plain = BehaviorImitationDataset(
+        [root],
+        partition="train",
+        image_size=(16, 24),
+        val_fraction=0.0,
+        test_fraction=0.0,
+        verify=False,
+        require_navigation_intent=True,
+    )
+    flipped = BehaviorImitationDataset(
+        [root],
+        partition="train",
+        image_size=(16, 24),
+        val_fraction=0.0,
+        test_fraction=0.0,
+        augment=True,
+        brightness=0.0,
+        contrast=0.0,
+        horizontal_flip_probability=1.0,
+        verify=False,
+        require_navigation_intent=True,
+    )
+
+    assert plain[0]["navigation_available"].item() is True
+    assert plain[0]["navigation_command"].item() == 1
+    assert flipped[0]["navigation_command"].item() == 2
+    assert plain[0]["navigation_direction"].tolist() == pytest.approx([0.8, -0.6])
+    assert flipped[0]["navigation_direction"].tolist() == pytest.approx([0.8, 0.6])
+
+
+def test_route_conditioned_loader_rejects_legacy_sample_without_intent(tmp_path: Path) -> None:
+    root = _build_dataset(tmp_path / "teacher", groups=1)
+    with pytest.raises(ValueError, match="lacks navigation intent"):
+        BehaviorImitationDataset(
+            [root],
+            partition="train",
+            val_fraction=0.0,
+            test_fraction=0.0,
+            verify=False,
+            require_navigation_intent=True,
+        )
