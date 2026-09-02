@@ -429,6 +429,7 @@ class WorkerCameraSensor(FakeActor):
         self.fail_listen = False
         self.fail_stop = False
         self.stop_attempts = 0
+        self.parent: FakeActor | None = None
 
     def listen(self, callback: Any) -> None:
         self.callback = callback
@@ -459,8 +460,8 @@ class WorkerCameraWorld(FakeWorld):
         transform: FakeTransform,
         attach_to: FakeActor | None = None,
     ) -> WorkerCameraSensor:
-        del attach_to
         sensor = WorkerCameraSensor(self, self.next_actor_id, blueprint, transform)
+        sensor.parent = attach_to
         self.next_actor_id += 1
         sensor.fail_listen = self.fail_camera_listen
         sensor.fail_stop = self.fail_camera_stop
@@ -470,7 +471,10 @@ class WorkerCameraWorld(FakeWorld):
 
 
 @pytest.fixture
-def worker_camera(monkeypatch: pytest.MonkeyPatch) -> Iterator[SimpleNamespace]:
+def worker_camera(
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+) -> Iterator[SimpleNamespace]:
     library = FakeBlueprintLibrary()
     library.blueprints["sensor.camera.rgb"] = FakeBlueprint(
         "sensor.camera.rgb", {"role_name": FakeAttribute("")}
@@ -485,7 +489,7 @@ def worker_camera(monkeypatch: pytest.MonkeyPatch) -> Iterator[SimpleNamespace]:
         "carla_vision.native.world_worker._load_in_memory_jpeg_encoder",
         lambda: lambda image, quality: b"jpeg",
     )
-    prepared = worker.prepare({})
+    prepared = worker.prepare(getattr(request, "param", {}))
     scene = worker._scene
     assert scene is not None
     payload = {
@@ -717,3 +721,176 @@ def test_worker_close_retries_retained_camera_without_reopening_worker(
     assert sensor.destroyed
     assert relay is not None and relay._close_complete
     assert world.actors == {}
+
+
+@pytest.mark.parametrize(
+    "worker_camera",
+    [{"traffic_count": 2, "walker_count": 2, "prop_preset": "cones"}],
+    indirect=True,
+)
+def test_prepared_garage_to_drive_replaces_only_camera_and_preserves_scene(
+    worker_camera: SimpleNamespace,
+) -> None:
+    worker, world, scene = worker_camera.worker, worker_camera.world, worker_camera.scene
+    population = dict(world.actors)
+    population_ids = set(population)
+    original_owned_ids = {owned.actor_id for owned in scene.owned_actors}
+    assert {owned.kind for owned in scene.owned_actors} == {
+        "ego",
+        "traffic",
+        "walker",
+        "walker_controller",
+        "prop",
+    }
+    original_scene_id, original_lease = scene.scene_id, scene.lease_token
+    original_config = scene.config
+    original_ego = scene.ego
+    original_episode = scene.episode_marker
+    garage = worker.camera(scene.scene_id, {**worker_camera.payload, "mode": "garage"})
+    old_sensor = world.cameras[-1]
+    old_relay = scene.camera_relay
+    assert old_sensor.parent is None
+    assert garage["camera"]["actor_id"] == old_sensor.id
+
+    with (
+        mock.patch.object(scene.client, "load_world") as reload_world,
+        mock.patch.object(worker, "_run_isolated_map_load") as reload_process,
+    ):
+        drive = worker.camera(scene.scene_id, worker_camera.payload)
+
+    reload_world.assert_not_called()
+    reload_process.assert_not_called()
+    sensor = world.cameras[-1]
+    assert sensor is not old_sensor
+    assert sensor.parent is original_ego
+    assert old_sensor.destroyed
+    assert old_sensor.stop_attempts == 1
+    assert old_relay is not None and old_relay._close_complete
+    assert old_relay._encoder_thread is not None and not old_relay._encoder_thread.is_alive()
+    assert set(world.actors) == population_ids | {sensor.id}
+    assert all(world.get_actor(actor_id) is actor for actor_id, actor in population.items())
+    assert all(actor.is_alive and not actor.destroyed for actor in population.values())
+    assert {owned.actor_id for owned in scene.owned_actors} == original_owned_ids | {sensor.id}
+    assert worker._scene is scene
+    assert scene.status == "prepared"
+    assert (scene.scene_id, scene.lease_token) == (original_scene_id, original_lease)
+    assert scene.config is original_config
+    assert scene.ego is original_ego
+    assert scene.episode_marker == original_episode
+    assert scene.camera_relay is not old_relay
+    assert scene.camera_relay is not None and scene.camera_relay.sensor is sensor
+    assert scene.camera_config is not None and scene.camera_config.mode == "drive"
+    assert drive["scene_id"] == original_scene_id
+    assert drive["camera"]["actor_id"] == sensor.id
+    assert scene.client.loaded_maps == []
+
+
+@pytest.mark.parametrize("scene_status", ["prepared", "running"])
+def test_duplicate_or_running_camera_replacement_keeps_existing_camera(
+    worker_camera: SimpleNamespace,
+    scene_status: str,
+) -> None:
+    worker, world, scene = worker_camera.worker, worker_camera.world, worker_camera.scene
+    garage_payload = {**worker_camera.payload, "mode": "garage"}
+    worker.camera(scene.scene_id, garage_payload)
+    sensor = world.cameras[0]
+    relay = scene.camera_relay
+    camera_config = scene.camera_config
+    original_ids = set(world.actors)
+    if scene_status == "running":
+        worker.start(scene.scene_id, {"lease_token": scene.lease_token})
+        replacement = worker_camera.payload
+    else:
+        replacement = garage_payload
+
+    with pytest.raises(WorkerError) as raised:
+        worker.camera(scene.scene_id, replacement)
+
+    assert raised.value.code == "camera_already_active"
+    assert scene.camera_relay is relay
+    assert scene.camera_config is camera_config
+    assert scene.status == scene_status
+    assert world.cameras == [sensor]
+    assert set(world.actors) == original_ids
+    assert sensor.stop_attempts == 0
+    assert not sensor.destroyed
+
+
+@pytest.mark.parametrize(
+    "worker_camera",
+    [{"traffic_count": 2, "walker_count": 2, "prop_preset": "cones"}],
+    indirect=True,
+)
+def test_failed_handoff_close_retains_old_camera_lease_and_all_scene_actors(
+    worker_camera: SimpleNamespace,
+) -> None:
+    worker, world, scene = worker_camera.worker, worker_camera.world, worker_camera.scene
+    worker.camera(scene.scene_id, {**worker_camera.payload, "mode": "garage"})
+    sensor = world.cameras[0]
+    relay = scene.camera_relay
+    config = scene.camera_config
+    actors = dict(world.actors)
+    owned = list(scene.owned_actors)
+    original_lease = scene.lease_token
+    sensor.fail_stop = True
+
+    with pytest.raises(RuntimeError, match="camera detach failed"):
+        worker.camera(scene.scene_id, worker_camera.payload)
+
+    assert worker._scene is scene
+    assert scene.status == "prepared"
+    assert scene.lease_token == original_lease
+    assert scene.camera_relay is relay
+    assert scene.camera_config is config
+    assert scene.owned_actors == owned
+    assert world.actors == actors
+    assert all(actor.is_alive and not actor.destroyed for actor in actors.values())
+    assert world.cameras == [sensor]
+
+    sensor.fail_stop = False
+    worker.camera(scene.scene_id, worker_camera.payload)
+    assert sensor.destroyed
+    assert scene.camera_config is not None and scene.camera_config.mode == "drive"
+    assert scene.lease_token == original_lease
+
+
+def test_changed_episode_rejects_camera_handoff_without_touching_old_sensor(
+    worker_camera: SimpleNamespace,
+) -> None:
+    worker, world, scene = worker_camera.worker, worker_camera.world, worker_camera.scene
+    worker.camera(scene.scene_id, {**worker_camera.payload, "mode": "garage"})
+    sensor = world.cameras[0]
+    relay = scene.camera_relay
+    config = scene.camera_config
+    original_world_id = world.id
+    original_ids = set(world.actors)
+    world.id += 1
+    try:
+        with pytest.raises(WorkerError) as raised:
+            worker.camera(scene.scene_id, worker_camera.payload)
+
+        assert raised.value.code == "episode_changed"
+        assert worker._scene is scene
+        assert scene.camera_relay is relay
+        assert scene.camera_config is config
+        assert world.cameras == [sensor]
+        assert set(world.actors) == original_ids
+        assert sensor.stop_attempts == 0
+        assert not sensor.destroyed
+    finally:
+        world.id = original_world_id
+
+
+@pytest.mark.parametrize("encoder_present", [False, True])
+def test_prepared_scene_handoff_capability_requires_compressed_encoder(
+    worker_camera: SimpleNamespace,
+    encoder_present: bool,
+) -> None:
+    with mock.patch(
+        "carla_vision.native.world_worker._camera_encoder_modules_present",
+        return_value=encoder_present,
+    ):
+        capabilities = worker_camera.worker._capabilities(worker_camera.scene.client)
+
+    assert capabilities["prepared_scene_handoff"] is encoder_present
+    assert capabilities["compressed_camera_relay"] is encoder_present

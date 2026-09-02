@@ -210,10 +210,24 @@ ownership rollback, camera switching and standalone execution. These fakes do
 the existing Worker command and compare the same map/seed/population on a real
 run. No new dependency, endpoint, UI or control mode is introduced.
 
-Next stabilization gate: Garage-to-Drive-to-Garage still reconstructs the scene.
-Population batching does not remove that second source of startup time. Lease
-handoff and camera-only replacement need a separate ownership-tested change;
-fresh seeded experiment resets must remain distinct from continuing a scene.
+For **Free Drive**, Start transfers a matching ready Garage lease to the Drive
+session. It does not stop/prepare the population again. Preview transports and
+heartbeat close before transfer; Drive renews ownership and replaces only the
+unparented Garage camera with an ego-attached front camera. The ego remains
+braked until Drive has a frame and activates the selected control mode. Random
+Destination is planned during Garage preparation rather than at Start.
+
+This requires the Worker's `prepared_scene_handoff` capability. Older Workers,
+changed scene settings, and controlled experiment presets retain the fresh
+prepare path. Validation runs before consuming the preview. Runtime status
+reports `reused_garage_scene`; the recorded config states
+`scene_origin: garage_preview` or `fresh`. Continuing a preview is not a fresh
+seeded experiment reset.
+
+Remaining stabilization work: Stop & Save still releases the Drive scene and
+reopening Garage creates a fresh scene. Non-weather scene changes still rebuild
+the population; incremental vehicle/population editing is a separate change.
+Do not mistake batching or start handoff for completion of those acceptance gates.
 
 ### Drive
 

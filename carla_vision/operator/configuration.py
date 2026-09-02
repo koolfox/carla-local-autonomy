@@ -237,6 +237,7 @@ def build_garage_preview_request(raw: Any) -> dict[str, Any]:
         "traffic_count": scene["trafficCount"],
         "walker_count": scene["walkerCount"],
         "prop_preset": str(scene["propPreset"]).strip(),
+        "route_mode": str(session["route"]["mode"]).strip(),
         "pedestrian_crossing_factor": scene["pedestrianCrossingFactor"],
         "speed_difference_percent": scene["speedDifferencePercent"],
         "following_distance_metres": scene["followingDistanceMetres"],

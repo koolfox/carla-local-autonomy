@@ -310,6 +310,19 @@ def test_dense_prepare_uses_19_spawn_round_trips_for_454_population_actors(
     assert_exact_population(population, 88, 183)
 
 
+def test_maximum_configured_population_is_not_clamped(population: PopulationHarness) -> None:
+    population.world.map.spawn_points = [
+        FakeTransform(FakeLocation(float(index * 8), 0.0, 0.5)) for index in range(260)
+    ]
+    prepared = population.worker.prepare({"traffic_count": 250, "walker_count": 250})
+    assert prepared["scene"]["traffic_count"] == 250
+    assert prepared["scene"]["walker_count"] == 250
+    assert_exact_population(population, 250, 250)
+    client = population.client
+    assert isinstance(client, BatchClient)
+    assert len(client.batches) == 8 + 11 + 11
+
+
 @pytest.mark.parametrize("missing", ["command", "client", "both"])
 def test_missing_batch_capability_retains_exact_serial_population(missing: str) -> None:
     harness = make_population_harness(

@@ -1140,6 +1140,7 @@ class WorldWorker:
             # when this exact Worker interpreter can load its encoder.
             "compressed_camera_relay": in_memory_encoder,
             "persistent_mjpeg_camera_relay": in_memory_encoder,
+            "prepared_scene_handoff": in_memory_encoder,
             "in_memory_jpeg_encoder_available": in_memory_encoder,
             "camera_60_fps": in_memory_encoder,
             "garage_camera_presets": True,
@@ -2594,14 +2595,31 @@ class WorldWorker:
         with self._lock:
             scene = self._require_scene(scene_id, lease_token)
             if scene.camera_relay is not None:
-                raise WorkerError(
-                    HTTPStatus.CONFLICT,
-                    "camera_already_active",
-                    "compressed camera is already active for this scene",
-                )
+                if scene.status != "prepared" or scene.camera_config == config:
+                    raise WorkerError(
+                        HTTPStatus.CONFLICT,
+                        "camera_already_active",
+                        "compressed camera is already active for this scene",
+                    )
+                if self._episode_marker(scene.client.get_world()) != scene.episode_marker:
+                    raise WorkerError(
+                        HTTPStatus.CONFLICT,
+                        "episode_changed",
+                        "CARLA episode changed before camera handoff",
+                    )
             # Resolve the optional encoder before spawning an actor so a
             # missing or broken OpenCV installation cannot leak a CARLA sensor.
             jpeg_encoder = _load_in_memory_jpeg_encoder()
+            if scene.camera_relay is not None:
+                relay = scene.camera_relay
+                owned = next(
+                    item for item in scene.owned_actors if item.actor_id == relay.sensor.id
+                )
+                relay.close()
+                self._destroy_owned_actor(scene.world, owned)
+                scene.owned_actors.remove(owned)
+                scene.camera_relay = None
+                scene.camera_config = None
             assert self._carla is not None
             blueprint = scene.world.get_blueprint_library().find("sensor.camera.rgb")
             attributes = {

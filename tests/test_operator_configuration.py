@@ -246,6 +246,7 @@ def test_garage_preview_maps_every_shared_scene_and_camera_value() -> None:
             camera__fps=60.0,
             camera__fov=104.0,
             camera__spectatorFollow=True,
+            route__mode="random_destination",
         )
     )
 
@@ -258,6 +259,7 @@ def test_garage_preview_maps_every_shared_scene_and_camera_value() -> None:
         "traffic_count": 80,
         "walker_count": 55,
         "prop_preset": "accident",
+        "route_mode": "random_destination",
         "pedestrian_crossing_factor": 0.85,
         "speed_difference_percent": -20.0,
         "following_distance_metres": 7.5,
