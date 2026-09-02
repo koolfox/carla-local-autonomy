@@ -39,7 +39,7 @@ from typing import Any, Self
 from urllib.parse import urlparse
 
 SCHEMA_VERSION = "1.0"
-WORKER_API_REVISION = 4
+WORKER_API_REVISION = 5
 EXPECTED_CARLA_VERSION = "0.9.16"
 DEFAULT_BIND = "127.0.0.1"
 DEFAULT_PORT = 8766
@@ -2895,25 +2895,53 @@ class WorldWorker:
             message = str(getattr(responses[index], "error", "") or "").strip()
             if message:
                 response_errors[owned.actor_id] = message
+
+        # ``World.get_actors(ids)`` reads LibCarla's latest episode snapshot,
+        # not the authoritative command response.  In an asynchronous world
+        # that snapshot can still contain every actor immediately after a
+        # successful batch.  Wait for one natural server tick before dropping
+        # the owned proxies or checking the commands that returned an error.
+        wait_for_tick = getattr(current_world, "wait_for_tick", None)
+        if callable(wait_for_tick):
+            barrier_timeout = min(self.timeout, 5.0)
+            try:
+                wait_for_tick(seconds=barrier_timeout)
+            except TypeError:
+                try:
+                    wait_for_tick(barrier_timeout)
+                except Exception as error:
+                    scene.cleanup_errors.append(
+                        "batch destroy snapshot barrier failed: "
+                        f"{type(error).__name__}: {error}"
+                    )
+            except Exception as error:
+                scene.cleanup_errors.append(
+                    "batch destroy snapshot barrier failed: "
+                    f"{type(error).__name__}: {error}"
+                )
+
+        # An empty command response is CARLA's authoritative success result.
+        # Re-query only failed or missing responses after the snapshot barrier;
+        # this keeps idempotent "not found" destroys quiet when the actor is
+        # now absent while retaining genuine survivor diagnostics.
+        if not response_errors:
+            return
         survivors, verification_errors = self._bulk_current_actors(
             current_world,
-            [owned.actor_id for owned in verified],
+            list(response_errors),
         )
         for owned in verified:
+            if owned.actor_id not in response_errors:
+                continue
+            detail = response_errors[owned.actor_id]
             if owned.actor_id in verification_errors:
-                detail = response_errors.get(owned.actor_id)
-                response_detail = "" if detail is None else f"; batch response: {detail}"
                 scene.cleanup_errors.append(
                     f"destroy {owned.kind} {owned.actor_id}: verification failed "
-                    f"({verification_errors[owned.actor_id]}){response_detail}"
+                    f"({verification_errors[owned.actor_id]}); batch response: {detail}"
                 )
                 continue
             if owned.actor_id not in survivors:
                 continue
-            detail = response_errors.get(
-                owned.actor_id,
-                "batch destroy was not confirmed and actor remains registered",
-            )
             scene.cleanup_errors.append(
                 f"destroy {owned.kind} {owned.actor_id}: {detail}"
             )

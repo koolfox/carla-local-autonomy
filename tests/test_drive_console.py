@@ -404,6 +404,46 @@ class DriveSessionControlTests(_WorkspaceTestCase):
         self.assertEqual(second_stop["status"], "stopping")
         self.assertEqual(second_stop["stop_reason"], "operator_stop")
 
+    def test_live_snapshot_bounds_cleanup_errors_and_freezes_terminal_input_age(self) -> None:
+        session = self.session()
+        with session._lock:
+            session._cleanup_errors.extend(f"cleanup failure {index}" for index in range(100))
+            session._last_input = (DriveInput.from_mapping(valid_control()), 90.0)
+            session._finished_monotonic = 100.0
+
+        first = session.snapshot()
+        with mock.patch.object(drive_module.time, "monotonic", return_value=500.0):
+            later = session.snapshot()
+
+        self.assertEqual(first["cleanup_error_count"], 100)
+        self.assertEqual(first["cleanup_errors_omitted"], 76)
+        self.assertEqual(len(first["cleanup_errors"]), 24)
+        self.assertEqual(first["cleanup_errors"][:2], ["cleanup failure 0", "cleanup failure 1"])
+        self.assertEqual(
+            first["cleanup_errors"][-2:],
+            ["cleanup failure 98", "cleanup failure 99"],
+        )
+        self.assertEqual(len(session._cleanup_errors), 100)
+        self.assertEqual(first["input_age_seconds"], 10.0)
+        self.assertEqual(later["input_age_seconds"], 10.0)
+
+        tracker = mock.Mock()
+        summary_path = self.workspace / "summary.json"
+        tracker.artifact_path.return_value = summary_path
+        session._finalize(tracker, None)
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        self.assertEqual(summary["cleanup_errors"], session._cleanup_errors)
+
+    def test_small_cleanup_error_lists_remain_lossless_in_live_state(self) -> None:
+        session = self.session()
+        session._cleanup_errors.extend(["first failure", "second failure"])
+
+        snapshot = session.snapshot()
+
+        self.assertEqual(snapshot["cleanup_errors"], session._cleanup_errors)
+        self.assertEqual(snapshot["cleanup_error_count"], 2)
+        self.assertEqual(snapshot["cleanup_errors_omitted"], 0)
+
     def test_human_moment_is_bounded_and_retained_with_frame_context(self) -> None:
         session = self.session()
         with session._lock:

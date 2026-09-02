@@ -607,7 +607,7 @@ class WorldWorkerTest(unittest.TestCase):
         self.assertTrue(catalog["capabilities"]["asynchronous_world"])
         self.assertTrue(catalog["capabilities"]["world_dynamics_controls"])
         self.assertTrue(catalog["capabilities"]["garage_camera_presets"])
-        self.assertEqual(catalog["worker_api_revision"], 4)
+        self.assertEqual(catalog["worker_api_revision"], 5)
         self.assertTrue(catalog["capabilities"]["batch_scene_cleanup"])
         self.assertEqual(catalog["carla"]["current_map"], "Town10HD_Opt")
 
@@ -813,6 +813,74 @@ class WorldWorkerTest(unittest.TestCase):
         self.assertEqual(individual_lookups, [])
         self.assertEqual(self.world.actors, {})
         self.assertEqual(first["scene"]["cleanup_errors"], [])
+
+    def test_batch_destroy_waits_for_async_snapshot_before_confirmation(self) -> None:
+        prepared = self.worker.prepare({"traffic_count": 2, "walker_count": 2})
+        scene_id, lease_token = self.lease(prepared)
+        pending_destroy: list[int] = []
+        barrier_calls: list[float] = []
+
+        class Command:
+            @staticmethod
+            def DestroyActor(actor_id: int) -> int:  # noqa: N802
+                return actor_id
+
+        class Response:
+            error = ""
+
+        def apply_batch_sync(commands: list[int], due_tick_cue: bool) -> list[Response]:
+            self.assertFalse(due_tick_cue)
+            pending_destroy.extend(commands)
+            return [Response() for _ in commands]
+
+        def wait_for_tick(seconds: float) -> None:
+            barrier_calls.append(seconds)
+            for actor_id in pending_destroy:
+                actor = self.world.actors.get(actor_id)
+                if actor is not None:
+                    actor.destroy()
+
+        self.carla.command = Command  # type: ignore[attr-defined]
+        self.client.apply_batch_sync = apply_batch_sync  # type: ignore[attr-defined]
+        self.world.wait_for_tick = wait_for_tick  # type: ignore[method-assign]
+
+        stopped = self.worker.stop(scene_id, {"lease_token": lease_token})
+
+        self.assertEqual(len(barrier_calls), 1)
+        self.assertLessEqual(barrier_calls[0], 5.0)
+        self.assertEqual(self.world.actors, {})
+        self.assertEqual(stopped["scene"]["cleanup_errors"], [])
+
+    def test_successful_batch_is_not_rejected_when_snapshot_barrier_times_out(self) -> None:
+        prepared = self.worker.prepare({"traffic_count": 2})
+        scene_id, lease_token = self.lease(prepared)
+
+        class Command:
+            @staticmethod
+            def DestroyActor(actor_id: int) -> int:  # noqa: N802
+                return actor_id
+
+        class Response:
+            error = ""
+
+        def apply_batch_sync(commands: list[int], due_tick_cue: bool) -> list[Response]:
+            self.assertFalse(due_tick_cue)
+            # The authoritative server response succeeded, but this fake
+            # deliberately retains the old client-side actor snapshot.
+            return [Response() for _ in commands]
+
+        def wait_for_tick(seconds: float) -> None:
+            self.assertLessEqual(seconds, 5.0)
+            raise TimeoutError("next episode snapshot did not arrive")
+
+        self.carla.command = Command  # type: ignore[attr-defined]
+        self.client.apply_batch_sync = apply_batch_sync  # type: ignore[attr-defined]
+        self.world.wait_for_tick = wait_for_tick  # type: ignore[method-assign]
+
+        stopped = self.worker.stop(scene_id, {"lease_token": lease_token})
+
+        self.assertEqual(len(stopped["scene"]["cleanup_errors"]), 1)
+        self.assertIn("snapshot barrier failed", stopped["scene"]["cleanup_errors"][0])
 
     def test_stop_uses_owned_proxies_when_actor_lookup_state_is_unknown(self) -> None:
         prepared = self.worker.prepare({"traffic_count": 1})
