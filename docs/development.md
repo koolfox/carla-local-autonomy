@@ -180,6 +180,55 @@ GaragePreview.svelte
 Editing a form must not mutate CARLA. Preview is an explicit application of the
 current session configuration.
 
+#### Native population and camera lifecycle
+
+`native/world_worker.py` uses the official `carla.command.SpawnActor` /
+`client.apply_batch_sync` pattern from
+[generate_traffic.py](https://github.com/carla-simulator/carla/blob/0a5ce0d5b4952bd8294a163c12d49f197bdb2aba/PythonAPI/examples/generate_traffic.py).
+Vehicles are prepared in chunks of at most 32; walkers and their controllers
+use separate batches of at most 24. Every live batch passes `do_tick=False`.
+The Worker observes natural ticks before resolving newly created actors; it
+never becomes a synchronous tick owner. Clients without the command API retain
+the serial compatibility path.
+
+Spawn responses establish ownership before snapshot lookup. Known command
+failures may retry only the deficit. A timed-out batch, unobserved successful
+ID, or unconfirmed rollback aborts preparation instead of blindly spawning
+replacements. Timeout recovery can identify current scene-tagged actors and
+controllers attached to owned walkers; it cannot prove cleanup if CARLA stays
+unreachable. Requested population counts are never silently reduced.
+
+Camera close gates new callbacks, stops the listener, checks encoder shutdown,
+and allows the 0.4-second native drain interval used by CARLA's
+[rapid camera-switch fix](https://github.com/carla-simulator/carla/commit/ffd9d275cb07d0f9cdc49c45c1e3e31c110d1d67).
+Failed detach/drain retains ownership for retry instead of destroying the
+sensor underneath a callback. A confirmed-dead sensor still drains queued work.
+
+Regression tests cover command counts, delayed snapshots, failed commands,
+ownership rollback, camera switching and standalone execution. These fakes do
+**not** establish Windows simulator latency. After pulling on Windows, restart
+the existing Worker command and compare the same map/seed/population on a real
+run. No new dependency, endpoint, UI or control mode is introduced.
+
+For **Free Drive**, Start transfers a matching ready Garage lease to the Drive
+session. It does not stop/prepare the population again. Preview transports and
+heartbeat close before transfer; Drive renews ownership and replaces only the
+unparented Garage camera with an ego-attached front camera. The ego remains
+braked until Drive has a frame and activates the selected control mode. Random
+Destination is planned during Garage preparation rather than at Start.
+
+This requires the Worker's `prepared_scene_handoff` capability. Older Workers,
+changed scene settings, and controlled experiment presets retain the fresh
+prepare path. Validation runs before consuming the preview. Runtime status
+reports `reused_garage_scene`; the recorded config states
+`scene_origin: garage_preview` or `fresh`. Continuing a preview is not a fresh
+seeded experiment reset.
+
+Remaining stabilization work: Stop & Save still releases the Drive scene and
+reopening Garage creates a fresh scene. Non-weather scene changes still rebuild
+the population; incremental vehicle/population editing is a separate change.
+Do not mistake batching or start handoff for completion of those acceptance gates.
+
 ### Drive
 
 ```text

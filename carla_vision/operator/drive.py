@@ -379,12 +379,15 @@ class DriveSession:
         *,
         workspace: Path,
         world_worker: WorldWorkerClient | None = None,
+        prepared_scene: WorldWorkerScene | None = None,
     ) -> None:
         self.config = config
         self.workspace = workspace
         self._world_worker = world_worker
         if config.world_worker_enabled != (world_worker is not None):
             raise ValueError("drive configuration and World Worker availability disagree")
+        if prepared_scene is not None and world_worker is None:
+            raise ValueError("prepared scene requires its World Worker")
         self.session_id = config.run_id
         self._lock = threading.RLock()
         self._actuation_lock = threading.RLock()
@@ -418,7 +421,8 @@ class DriveSession:
             }
         ]
         self._pending_events: list[dict[str, Any]] = []
-        self._worker_scene: WorldWorkerScene | None = None
+        self._worker_scene: WorldWorkerScene | None = prepared_scene
+        self._reused_garage_scene = prepared_scene is not None
         self._worker_scene_id: str | None = None
         self._worker_scene_stopped = False
         self._worker_cleanup_guard_passed: bool | None = None
@@ -510,6 +514,7 @@ class DriveSession:
                     "scene_id": self._worker_scene_id,
                     "status": (None if self._worker_scene is None else self._worker_scene.status),
                     "cleanup_guard_passed": self._worker_cleanup_guard_passed,
+                    "reused_garage_scene": self._reused_garage_scene,
                 },
                 "traffic_count_actual": self._traffic_count_actual,
                 "walker_count_actual": self._walker_count_actual,
@@ -838,7 +843,14 @@ class DriveSession:
             if value != default:
                 scene_payload[field_name] = value
         with self._worker_request_lock:
-            prepared = worker.prepare_scene(scene_payload)
+            prepared = self._worker_scene
+            if prepared is None:
+                prepared = worker.prepare_scene(scene_payload)
+            else:
+                if prepared.status != "prepared":
+                    raise RuntimeError("transferred Garage scene must still be prepared")
+                if prepared.control_mode != self.config.initial_control_mode:
+                    prepared = worker.mode(prepared, self.config.initial_control_mode)
         with self._lock:
             self._worker_scene = prepared
             self._worker_scene_id = prepared.scene_id
@@ -971,7 +983,10 @@ class DriveSession:
                 self.workspace / "runs",
                 run_id=self.config.run_id,
                 cli_args={"source": "operator_drive_console"},
-                config=self.config.manifest_config(),
+                config={
+                    **self.config.manifest_config(),
+                    "scene_origin": "garage_preview" if self._reused_garage_scene else "fresh",
+                },
                 repository_root=self.workspace,
                 carla_endpoint={"host": self.config.host, "port": self.config.port},
                 carla_version=preflight_version,

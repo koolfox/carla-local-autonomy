@@ -38,7 +38,7 @@ from .drive import (
     _write_json,
 )
 from .drive_contracts import DriveInput, DriveStartConfig
-from .world_worker_client import WorldWorkerClient
+from .world_worker_client import WorldWorkerClient, WorldWorkerScene
 
 _PRODUCTION_CONTROL_MODES = frozenset({"manual"})
 _EXPERIMENTAL_CONTROL_MODES = frozenset({"behavior", "imitation", "voxel"})
@@ -781,11 +781,13 @@ class GarageDriveSession(DriveSession):
         *,
         workspace: Path,
         world_worker: WorldWorkerClient | None = None,
+        prepared_scene: WorldWorkerScene | None = None,
     ) -> None:
         super().__init__(  # type: ignore[arg-type]
             config,
             workspace=workspace,
             world_worker=world_worker,
+            prepared_scene=prepared_scene,
         )
         self._garage_context: _CarlaContext | None = None
         self._population = _Population()
@@ -1121,6 +1123,34 @@ class GarageDriveSessionManager(DriveSessionManager):
     def __init__(self, *, experimental_enabled: bool = False, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.experimental_enabled = bool(experimental_enabled)
+        self._pending_start_cleanup: tuple[WorldWorkerClient, WorldWorkerScene] | None = None
+
+    def _retry_start_cleanup(self) -> None:
+        pending = self._pending_start_cleanup
+        if pending is not None:
+            worker, scene = pending
+            stopped = worker.stop_scene(scene)
+            if stopped.status != "stopped":
+                raise RuntimeError("World Worker did not confirm a terminal scene stop")
+            # Terminal responses are cached by the Worker. Report diagnostics
+            # once; retrying that same response cannot clear its old warnings.
+            self._pending_start_cleanup = None
+            if stopped.cleanup_errors:
+                raise RuntimeError(
+                    "Drive startup cleanup failed: " + "; ".join(stopped.cleanup_errors)
+                )
+
+    def shutdown(self) -> None:
+        try:
+            super().shutdown()
+        finally:
+            with self._lock:
+                self._retry_start_cleanup()
+
+    def _prepare_worker_scene(self, config: GarageDriveStartConfig) -> WorldWorkerScene | None:
+        """The Garage wrapper may transfer a ready scene after validation."""
+
+        return None
 
     def catalog(self) -> dict[str, Any]:
         payload = super().catalog()
@@ -1194,13 +1224,30 @@ class GarageDriveSessionManager(DriveSessionManager):
                 "stopping",
             }:
                 raise RuntimeError("another interactive drive session is already active")
-            session = GarageDriveSession(
-                config,
-                workspace=self.workspace,
-                world_worker=active_world_worker,
-            )
-            self._session = session
-            session.start()
+            self._retry_start_cleanup()
+            prepared = self._prepare_worker_scene(config)
+            previous_session = self._session
+            try:
+                kwargs: dict[str, Any] = {}
+                if prepared is not None:
+                    kwargs["prepared_scene"] = prepared
+                session = GarageDriveSession(
+                    config,
+                    workspace=self.workspace,
+                    world_worker=active_world_worker,
+                    **kwargs,
+                )
+                self._session = session
+                session.start()
+            except BaseException as error:
+                self._session = previous_session
+                if prepared is not None and active_world_worker is not None:
+                    self._pending_start_cleanup = (active_world_worker, prepared)
+                    try:
+                        self._retry_start_cleanup()
+                    except BaseException as cleanup_error:
+                        error.add_note(f"Drive handoff cleanup failed: {cleanup_error}")
+                raise
             return session.snapshot()
 
 

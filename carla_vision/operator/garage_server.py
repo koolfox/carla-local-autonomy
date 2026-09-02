@@ -25,9 +25,10 @@ from .configuration import (
     build_garage_preview_request,
     build_legacy_drive_request,
 )
-from .garage_drive import GarageDriveSessionManager
+from .garage_drive import GarageDriveSessionManager, GarageDriveStartConfig
 from .garage_preview import GaragePreviewConfig, GaragePreviewManager
 from .garage_research import GarageResearchRequest, build_garage_research_plan
+from .world_worker_client import WorldWorkerScene
 
 _LIVE_RESEARCH_KINDS = frozenset(
     {"voxel_capture", "voxel_flow_capture", "voxel_shadow", "closed_loop_evaluate"}
@@ -287,8 +288,24 @@ class GarageOperatorDriveManager(GarageDriveSessionManager):
         if preview is None or world_mode_lock is None:
             return super().start(raw)
         with world_mode_lock:
-            preview.stop_for_drive()
             return super().start(raw)
+
+    def _prepare_worker_scene(self, config: GarageDriveStartConfig) -> WorldWorkerScene | None:
+        preview = getattr(self, "_garage_preview", None)
+        if preview is None:
+            return None
+        # Experimental policies/population and reproducibility presets retain
+        # their fresh-scene path. Free Drive continues the scene being viewed.
+        if (
+            config.control_mode == "manual"
+            and not (config.traffic_vehicles or config.walkers)
+            and preview.world_worker is self._world_worker
+        ):
+            scene = preview.take_for_drive(config.base)
+            if scene is not None:
+                return scene
+        preview.stop_for_drive()
+        return None
 
     def catalog(self) -> dict[str, Any]:
         payload = super().catalog()

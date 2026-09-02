@@ -723,12 +723,13 @@ class WorldWorkerTest(unittest.TestCase):
         with (
             mock.patch.object(FakeActor, "start", reject_controller_start),
             mock.patch.object(FakeActor, "destroy", flaky_destroy),
-            self.assertRaisesRegex(WorkerError, "walkers 0/1") as raised,
+            self.assertRaisesRegex(WorkerError, "rollback was not confirmed") as raised,
         ):
             self.worker.prepare({"walker_count": 1})
 
-        self.assertEqual(raised.exception.code, "scene_population_shortfall")
-        self.assertEqual(set(first_failure_modes.values()), {"false", "exception"})
+        self.assertEqual(raised.exception.code, "scene_prepare_failed")
+        # Do not replenish a failed pair while its controller still exists.
+        self.assertEqual(set(first_failure_modes.values()), {"false"})
         self.assertTrue(all(destroy_attempts[actor_id] >= 2 for actor_id in first_failure_modes))
         self.assertIsNone(self.worker.current_scene()["scene"])
         self.assertEqual(self.world.actors, {})

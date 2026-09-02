@@ -25,6 +25,7 @@ from ..bridge import (
     garage_orbit_camera_transform,
     spawn_unparented_rgb_camera,
 )
+from .drive_contracts import DriveStartConfig
 from .world_worker_client import (
     WorldWorkerCameraStream,
     WorldWorkerClient,
@@ -140,6 +141,7 @@ class GaragePreviewConfig:
     yaw: float = 325.0
     pitch: float = -10.0
     distance: float = 6.5
+    route_mode: str = "free"
 
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any]) -> "GaragePreviewConfig":
@@ -160,6 +162,7 @@ class GaragePreviewConfig:
             "spectator_mirror",
             "profile",
             "fov",
+            "route_mode",
         }
         _strict_keys(raw, allowed=allowed, required=required, name="Garage preview request")
 
@@ -186,6 +189,9 @@ class GaragePreviewConfig:
             raise ValueError("prop_preset must be a bounded preset identifier")
 
         profile = str(raw.get("profile", "balanced")).strip().lower()
+        route_mode = str(raw.get("route_mode", "free")).strip()
+        if route_mode not in {"free", "random_destination"}:
+            raise ValueError("route_mode must be free or random_destination")
         try:
             width, height, fps = _CAMERA_PROFILES[profile]
         except KeyError as error:
@@ -226,6 +232,7 @@ class GaragePreviewConfig:
             height=height,
             fps=fps,
             profile=profile,
+            route_mode=route_mode,
             fov=_number(
                 raw.get("fov", 65.0),
                 name="fov",
@@ -246,6 +253,7 @@ class GaragePreviewConfig:
             "traffic_count": self.traffic_count,
             "walker_count": self.walker_count,
             "prop_preset": self.prop_preset,
+            "route_mode": self.route_mode,
             "pedestrian_crossing_factor": self.pedestrian_crossing_factor,
             "speed_difference_percent": self.speed_difference_percent,
             "following_distance_metres": self.following_distance_metres,
@@ -359,7 +367,7 @@ class GaragePreviewSession:
                     "traffic_count": self.config.traffic_count,
                     "walker_count": self.config.walker_count,
                     "prop_preset": self.config.prop_preset,
-                    "route_mode": "free",
+                    "route_mode": self.config.route_mode,
                     "initial_control_mode": "manual",
                 }
                 for field_name, default in (
@@ -816,10 +824,14 @@ class GaragePreviewSession:
                 self.close(reason="heartbeat_failed")
                 return
 
-    def close(self, *, reason: str = "operator_stop") -> dict[str, Any]:
+    def close(
+        self, *, reason: str = "operator_stop", release_scene: bool = True
+    ) -> dict[str, Any]:
         with self._lifecycle_lock:
             with self._lock:
-                if self._closed:
+                if self._closed and (
+                    not release_scene or self._scene is None or self._scene.status == "stopped"
+                ):
                     return self.snapshot()
                 self._closed = True
                 if self._status not in {"failed", "stopped"}:
@@ -892,7 +904,7 @@ class GaragePreviewSession:
             with self._worker_request_lock:
                 with self._lock:
                     scene = self._scene
-                if scene is not None:
+                if scene is not None and release_scene:
                     try:
                         stopped = self.world_worker.stop_scene(scene)
                         with self._lock:
@@ -908,6 +920,69 @@ class GaragePreviewSession:
                 if self._status != "failed":
                     self._status = "stopped"
                 return self.snapshot()
+
+    def take_for_drive(self, config: DriveStartConfig) -> WorldWorkerScene | None:
+        """Transfer the parked lease, not its local preview transports."""
+
+        with self._lifecycle_lock:
+            with self._lock:
+                scene = self._scene
+                if (
+                    self._closed
+                    or self._status != "running"
+                    or scene is None
+                    or scene.status != "prepared"
+                    or self._cleanup_errors
+                    or scene.ego_actor_id is None
+                    or scene.episode_id is None
+                    or not self._worker_camera
+                    or not scene.capabilities.get("prepared_scene_handoff")
+                    or config.experiment_preset != "free_drive"
+                ):
+                    return None
+                scene_fields = (
+                    "map_name",
+                    "weather_preset",
+                    "vehicle_blueprint",
+                    "color",
+                    "seed",
+                    "traffic_count",
+                    "walker_count",
+                    "prop_preset",
+                    "route_mode",
+                    "pedestrian_crossing_factor",
+                    "speed_difference_percent",
+                    "following_distance_metres",
+                )
+                if any(getattr(self.config, key) != getattr(config, key) for key in scene_fields):
+                    return None
+            self.close(reason="drive_handoff", release_scene=False)
+            with self._worker_request_lock:
+                try:
+                    if self._cleanup_errors:
+                        raise RuntimeError("Garage preview transports did not close cleanly")
+                    # This also orders handoff after the final preview heartbeat
+                    # and gives the new owner a full lease interval to start.
+                    renewed = self.world_worker.heartbeat(scene)
+                    if (
+                        renewed.status != "prepared"
+                        or renewed.ego_actor_id != scene.ego_actor_id
+                        or renewed.episode_id != scene.episode_id
+                    ):
+                        raise RuntimeError("Garage scene changed before handoff")
+                    scene = renewed
+                except BaseException as error:
+                    try:
+                        stopped = self.world_worker.stop_scene(scene)
+                    except BaseException as cleanup_error:
+                        error.add_note(f"Garage handoff cleanup failed: {cleanup_error}")
+                    else:
+                        with self._lock:
+                            self._scene = stopped
+                    raise
+                with self._lock:
+                    self._scene = None
+                return scene
 
 
 class GaragePreviewManager:
@@ -1140,6 +1215,26 @@ class GaragePreviewManager:
         with self._world_mode_lock:
             self._cancel_configure_requests(reason="Drive startup")
             self._stop_locked(reason="drive_start")
+
+    def take_for_drive(self, config: DriveStartConfig) -> WorldWorkerScene | None:
+        with self._world_mode_lock:
+            self._cancel_configure_requests(reason="Drive startup")
+            with self._lock:
+                session = self._session
+            if session is None:
+                return None
+            if (
+                session.world_worker is not self.world_worker
+                or session.carla_host != self.carla_host
+                or session.carla_port != self.carla_port
+            ):
+                return None
+            scene = session.take_for_drive(config)
+            if scene is not None:
+                with self._lock:
+                    self._session = None
+                    self._last_error = None
+            return scene
 
     def shutdown(self) -> None:
         with self._world_mode_lock:
