@@ -16,6 +16,7 @@
   } from '$lib/stores/runtime';
 
   export let compact = false;
+  export let configurationPending = false;
 
   $: issues = validateSession($sessionConfig, $systemSettings, $workspaceOptions);
   $: blockers = blockingIssues(issues);
@@ -23,9 +24,10 @@
   $: running = $garageRuntime.drive.status === 'running';
   $: terminal = ['success', 'failed'].includes($garageRuntime.drive.status);
   $: freshRunId = !terminal || $sessionConfig.identity.runId !== $garageRuntime.drive.run_id;
-  $: disabled = blockers.length > 0 || active || $garageRuntime.action !== null;
+  $: disabled = configurationPending || blockers.length > 0 || active || $garageRuntime.action !== null;
   $: hint = $garageRuntime.error
     ?? blockers[0]?.message
+    ?? (configurationPending ? 'Apply the pending Garage settings before starting.' : null)
     ?? (running
       ? 'Emergency braking and Stop & Save remain available while driving.'
       : terminal && !freshRunId

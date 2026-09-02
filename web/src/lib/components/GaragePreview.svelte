@@ -19,7 +19,6 @@
     cockpit: { yaw: 0, pitch: 0, distance: 4 }
   };
   const presetNames: CameraPreset[] = ['orbit', 'front', 'rear', 'top', 'cockpit'];
-  const autoApplyDelayMs = 1500;
 
   function recordNumber(
     record: Record<string, unknown>,
@@ -59,8 +58,6 @@
   let configureRetryTimer: ReturnType<typeof setTimeout> | null = null;
   let streamRetryDelay = 1000;
   let streamRetryTimer: ReturnType<typeof setTimeout> | null = null;
-  let autoApplyTimer: ReturnType<typeof setTimeout> | null = null;
-  let scheduledAutoApplySignature = '';
 
   $: selectedVehicle = $workspaceOptions.vehicles.find(
     (vehicle) => vehicle.id === $sessionConfig.vehicle.blueprint
@@ -73,10 +70,16 @@
     seed: $sessionConfig.identity.seed,
     scene: $sessionConfig.scene,
     vehicle: $sessionConfig.vehicle,
-    camera: $sessionConfig.camera
+    route: $sessionConfig.route,
+    control: $sessionConfig.control,
+    camera: $sessionConfig.camera,
+    perception: $sessionConfig.perception,
+    recording: $sessionConfig.recording,
+    experiment: $sessionConfig.experiment,
+    policy: $sessionConfig.policy
   });
   $: autoStartKey = available
-    ? `${$systemSettings?.workerUrl ?? 'worker'}:${signature}`
+    ? `${$systemSettings?.workerUrl ?? 'worker'}:ready`
     : '';
   $: dirty = active && signature !== appliedSignature;
   $: requestedResolution = $sessionConfig.camera.resolution;
@@ -137,7 +140,6 @@
     : '';
   $: if (!available) {
     attemptedAutoStart = '';
-    cancelAutoApply();
     cancelConfigureRetry();
     cancelStreamRetry();
     if (active) detachPreview();
@@ -152,40 +154,11 @@
     attemptedAutoStart = autoStartKey;
     void configure();
   }
-  $: if (
-    available &&
-    active &&
-    dirty &&
-    !busy &&
-    scheduledAutoApplySignature !== signature
-  ) {
-    scheduleAutoApply(signature);
-  }
-  $: if ((!available || !active || !dirty) && autoApplyTimer) cancelAutoApply();
 
   onDestroy(() => {
-    cancelAutoApply();
     cancelConfigureRetry();
     cancelStreamRetry();
   });
-
-  function cancelAutoApply(): void {
-    if (autoApplyTimer) clearTimeout(autoApplyTimer);
-    autoApplyTimer = null;
-    scheduledAutoApplySignature = '';
-  }
-
-  function scheduleAutoApply(nextSignature: string): void {
-    if (autoApplyTimer) clearTimeout(autoApplyTimer);
-    scheduledAutoApplySignature = nextSignature;
-    autoApplyTimer = setTimeout(() => {
-      autoApplyTimer = null;
-      scheduledAutoApplySignature = '';
-      if (available && active && !busy && signature === nextSignature && dirty) {
-        void configure();
-      }
-    }, autoApplyDelayMs);
-  }
 
   function cancelConfigureRetry(resetDelay = true): void {
     if (configureRetryTimer) clearTimeout(configureRetryTimer);
@@ -220,7 +193,6 @@
   }
 
   function detachPreview(): void {
-    cancelAutoApply();
     active = false;
     streamReady = false;
     appliedSignature = '';
@@ -230,7 +202,6 @@
 
   async function configure(): Promise<void> {
     if (!available || busy) return;
-    cancelAutoApply();
     cancelConfigureRetry(false);
     cancelStreamRetry();
     const requestedSignature = signature;
@@ -414,15 +385,22 @@
     </div>
 
     <div class="garage-preview-actions">
+      <button
+        type="button"
+        class="button primary-button"
+        disabled={!active || !dirty || busy}
+        title={dirty ? 'Apply the pending Garage settings' : 'Garage settings are already applied'}
+        onclick={() => void configure()}
+      >Apply changes</button>
       <span
         class="preview-state"
-        class:updating={Boolean(autoApplyTimer || busy)}
+        class:updating={busy}
         aria-live="polite"
       >
-        {#if autoApplyTimer || busy}<span class="loading-ring" aria-hidden="true"></span>{/if}
-        {#if busy}Applying…{:else if autoApplyTimer || dirty}Updating…{:else if configureRetryTimer || streamRetryTimer}Reconnecting…{:else if active}Live CARLA{:else}Waiting for bridge{/if}
+        {#if busy}<span class="loading-ring" aria-hidden="true"></span>{/if}
+        {#if busy}Applying…{:else if dirty}Changes pending{:else if configureRetryTimer || streamRetryTimer}Reconnecting…{:else if active}Live CARLA{:else}Waiting for bridge{/if}
       </span>
-      <SessionLaunchBar compact={true} />
+      <SessionLaunchBar compact={true} configurationPending={dirty} />
     </div>
   </div>
 
