@@ -527,6 +527,18 @@ class OwnedActor:
 
 
 @dataclass(frozen=True)
+class ActorSpawnRequest:
+    """A prepared spawn; CARLA commands snapshot mutable blueprint attributes."""
+
+    blueprint: Any
+    transform: Any
+    kind: str
+    role_name: str | None
+    parent: Any = None
+    command: Any = None
+
+
+@dataclass(frozen=True)
 class CompressedCameraConfig:
     mode: str
     width: int
@@ -641,6 +653,9 @@ def _load_in_memory_jpeg_encoder() -> Callable[[Any, int], bytes]:
 class CompressedCameraRelay:
     """Keep only the newest in-memory JPEG produced beside the simulator."""
 
+    _STOP_DRAIN_SECONDS = 0.4
+    _ENCODER_JOIN_TIMEOUT_SECONDS = 2.0
+
     def __init__(
         self,
         sensor: Any,
@@ -654,7 +669,10 @@ class CompressedCameraRelay:
         self._jpeg_quality = int(jpeg_quality)
         self._clock = clock
         self._condition = threading.Condition()
+        self._lifecycle_lock = threading.RLock()
         self._closed = False
+        self._close_complete = False
+        self._stopped_at: float | None = None
         self._pending_image: Any | None = None
         self._encoder_thread: threading.Thread | None = None
         self._sequence = -1
@@ -670,33 +688,29 @@ class CompressedCameraRelay:
         self._encode_completed_at: list[float] = []
 
     def listen(self) -> None:
-        with self._condition:
-            if self._closed:
-                raise RuntimeError("cannot listen on a closed camera relay")
-            if self._encoder_thread is not None:
-                raise RuntimeError("camera relay is already listening")
-            encoder_thread = threading.Thread(
-                target=self._encode_loop,
-                name=f"carla-camera-encoder-{int(self.sensor.id)}",
-                daemon=True,
-            )
-            self._encoder_thread = encoder_thread
-        try:
-            self.sensor.listen(self._on_image)
-            encoder_thread.start()
-        except BaseException:
+        # Do not let close() stop the sensor before listen() registers its
+        # callback, or join a thread whose start is still pending.
+        with self._lifecycle_lock:
             with self._condition:
-                self._closed = True
-                self._pending_image = None
-                self._encoder_thread = None
-                self._condition.notify_all()
+                if self._closed:
+                    raise RuntimeError("cannot listen on a closed camera relay")
+                if self._encoder_thread is not None:
+                    raise RuntimeError("camera relay is already listening")
+                encoder_thread = threading.Thread(
+                    target=self._encode_loop,
+                    name=f"carla-camera-encoder-{int(self.sensor.id)}",
+                    daemon=True,
+                )
+                self._encoder_thread = encoder_thread
             try:
-                self.sensor.stop()
-            except Exception:
-                pass
-            if encoder_thread.is_alive():
-                encoder_thread.join(timeout=2.0)
-            raise
+                encoder_thread.start()
+                self.sensor.listen(self._on_image)
+            except BaseException as error:
+                try:
+                    self.close()
+                except BaseException as cleanup_error:
+                    error.add_note(f"camera relay cleanup failed: {cleanup_error}")
+                raise
 
     def _on_image(self, image: Any) -> None:
         with self._condition:
@@ -755,6 +769,8 @@ class CompressedCameraRelay:
                     self._condition.notify_all()
             except Exception as error:
                 with self._condition:
+                    if self._closed:
+                        return
                     self._error = f"{type(error).__name__}: {error}"
                     self._condition.notify_all()
 
@@ -810,19 +826,48 @@ class CompressedCameraRelay:
             }
 
     def close(self) -> None:
-        with self._condition:
-            if self._closed:
+        if self._encoder_thread is threading.current_thread():
+            raise RuntimeError("camera relay cannot be closed by its encoder thread")
+        # Every concurrent caller must observe the completed drain, not just
+        # the flag that prevents callbacks from handing off another image.
+        with self._lifecycle_lock:
+            if self._close_complete:
                 return
-            self._closed = True
-            self._pending_image = None
-            self._condition.notify_all()
-        try:
-            self.sensor.stop()
-        except Exception:
-            pass
-        encoder_thread = self._encoder_thread
-        if encoder_thread is not None and encoder_thread is not threading.current_thread():
-            encoder_thread.join(timeout=2.0)
+            with self._condition:
+                self._closed = True
+                self._pending_image = None
+                self._condition.notify_all()
+            if self._stopped_at is None:
+
+                def confirmed_dead() -> bool:
+                    try:
+                        return self.sensor.is_alive is False
+                    except Exception:
+                        return False
+
+                # A map change or external destroy can invalidate the sensor
+                # before cleanup. Unknown state is not proof of detachment.
+                if not confirmed_dead():
+                    try:
+                        self.sensor.stop()
+                    except Exception:
+                        # Destruction may race stop(); still drain below when
+                        # the sensor explicitly confirms it is no longer alive.
+                        if not confirmed_dead():
+                            raise
+                self._stopped_at = time.monotonic()
+            encoder_thread = self._encoder_thread
+            if encoder_thread is not None and encoder_thread.is_alive():
+                encoder_thread.join(timeout=self._ENCODER_JOIN_TIMEOUT_SECONDS)
+                if encoder_thread.is_alive():
+                    raise RuntimeError("camera encoder did not stop before the teardown timeout")
+            # CARLA manual_control.py (ffd9d275c) allows 0.4s after stop() for
+            # queued native callbacks to drain before the caller destroys the
+            # sensor. Time spent joining the encoder counts toward this grace.
+            remaining = self._STOP_DRAIN_SECONDS - (time.monotonic() - self._stopped_at)
+            if remaining > 0.0:
+                time.sleep(remaining)
+            self._close_complete = True
 
 
 @dataclass
@@ -1508,6 +1553,14 @@ class WorldWorker:
                 continue
         return registered
 
+    def _rollback_population(self, world: Any, owned: list[OwnedActor], *actors: Any) -> None:
+        self._discard_actor_group(world, owned, *actors)
+        rejected_ids = {int(actor.id) for actor in actors if actor is not None}
+        if any(item.actor_id in rejected_ids for item in owned):
+            raise RuntimeError(
+                "CARLA population rollback was not confirmed; refusing replacement actors"
+            )
+
     def _spawn_ego(
         self,
         world: Any,
@@ -1556,6 +1609,152 @@ class WorldWorker:
                 safe.append(blueprint)
         return safe or candidates
 
+    def _supports_spawn_batches(self) -> bool:
+        commands = getattr(self._carla, "command", None)
+        return callable(getattr(commands, "SpawnActor", None)) and callable(
+            getattr(self._client, "apply_batch_sync", None)
+        )
+
+    def _spawn_request(
+        self,
+        blueprint: Any,
+        transform: Any,
+        *,
+        kind: str,
+        role_name: str | None = None,
+        parent: Any = None,
+    ) -> ActorSpawnRequest:
+        command = None
+        if self._supports_spawn_batches():
+            spawn = self._carla.command.SpawnActor
+            command = (
+                spawn(blueprint, transform)
+                if parent is None
+                else spawn(blueprint, transform, int(parent.id))
+            )
+        return ActorSpawnRequest(blueprint, transform, kind, role_name, parent, command)
+
+    def _wait_population_snapshot(self, world: Any) -> None:
+        """Observe a natural tick; this live worker must never tick the server."""
+
+        wait = getattr(world, "wait_for_tick", None)
+        if callable(wait):
+            try:
+                wait(seconds=min(self.timeout, 5.0))
+            except TypeError:
+                wait(min(self.timeout, 5.0))
+
+    def _recover_uncertain_spawns(
+        self, world: Any, requests: Sequence[ActorSpawnRequest], owned: list[OwnedActor]
+    ) -> None:
+        """Retain identifiable actors for rollback, never replay a timed-out batch."""
+
+        try:
+            self._wait_population_snapshot(world)
+            actors = list(world.get_actors())
+        except Exception:
+            return
+        known = {item.actor_id for item in owned}
+        for actor in actors:
+            if int(actor.id) in known:
+                continue
+            for request in requests:
+                if str(actor.type_id) != str(request.blueprint.id):
+                    continue
+                if request.parent is not None:
+                    parent = getattr(actor, "parent", None)
+                    matches = parent is not None and int(parent.id) == int(request.parent.id)
+                else:
+                    matches = request.role_name is not None and (
+                        self._actor_attribute(actor, "role_name") == request.role_name
+                    )
+                if matches:
+                    self._record_actor(owned, actor, kind=request.kind, role_name=request.role_name)
+                    known.add(int(actor.id))
+                    break
+
+    def _spawn_owned_batch(
+        self, world: Any, requests: Sequence[ActorSpawnRequest], owned: list[OwnedActor]
+    ) -> list[Any | None]:
+        """Return position-matched actors, retaining every successful ID for cleanup."""
+
+        if not requests:
+            return []
+        if requests[0].command is None:
+            # Compatibility clients have no command API. Callers prepare one
+            # request at a time so blueprint mutations cannot leak across spawns.
+            assert len(requests) == 1
+            request = requests[0]
+            try:
+                if request.parent is None:
+                    actor = world.try_spawn_actor(request.blueprint, request.transform)
+                else:
+                    actor = world.try_spawn_actor(
+                        request.blueprint, request.transform, attach_to=request.parent
+                    )
+            except Exception:
+                actor = None
+            if actor is not None:
+                self._record_actor(owned, actor, kind=request.kind, role_name=request.role_name)
+            return [actor]
+
+        try:
+            # Spawn only: a chained autopilot error must not hide a created ID.
+            responses = list(
+                self._client.apply_batch_sync([item.command for item in requests], False)
+            )
+        except Exception:
+            self._recover_uncertain_spawns(world, requests, owned)
+            raise
+
+        spawned: dict[int, OwnedActor] = {}
+        malformed = len(responses) != len(requests)
+        for index, (request, response) in enumerate(zip(requests, responses, strict=False)):
+            if str(getattr(response, "error", "") or "").strip():
+                continue
+            try:
+                actor_id = int(response.actor_id)
+                if actor_id <= 0 or any(item.actor_id == actor_id for item in owned):
+                    raise ValueError("invalid or repeated actor ID")
+            except (AttributeError, TypeError, ValueError):
+                malformed = True
+                continue
+            item = OwnedActor(
+                actor=None,
+                actor_id=actor_id,
+                type_id=str(request.blueprint.id),
+                kind=request.kind,
+                role_name=request.role_name,
+            )
+            owned.append(item)
+            spawned[index] = item
+        if malformed:
+            self._recover_uncertain_spawns(world, requests, owned)
+            raise RuntimeError("CARLA spawn batch returned an incomplete or invalid response")
+        if not spawned:
+            return [None] * len(requests)
+
+        # get_actors reads the episode snapshot, which may predate the command.
+        # Register IDs above *before* waiting, so a failed barrier can roll back.
+        self._wait_population_snapshot(world)
+        actors, errors = self._bulk_current_actors(
+            world, [item.actor_id for item in spawned.values()]
+        )
+        if errors:
+            raise RuntimeError("CARLA spawn snapshot lookup failed")
+        result: list[Any | None] = [None] * len(requests)
+        for index, item in spawned.items():
+            actor = actors.get(item.actor_id)
+            if actor is not None:
+                self._validate_owned_actor_identity(actor, item)
+                item.actor = actor
+                result[index] = actor
+        if any(actor is None for index, actor in enumerate(result) if index in spawned):
+            # A successful command with no observed actor is uncertain, not a
+            # failed spawn. Abort/rollback instead of creating duplicate NPCs.
+            raise RuntimeError("CARLA spawned actors were not visible after the snapshot barrier")
+        return result
+
     def _spawn_traffic(
         self,
         scene_id: str,
@@ -1579,28 +1778,33 @@ class WorldWorker:
         indices = [index for index in range(len(spawn_points)) if index != ego_spawn_index]
         rng.shuffle(indices)
         actors: list[Any] = []
-        for index in indices:
-            if len(actors) >= count:
-                break
-            blueprint = rng.choice(blueprints)
-            role_name = self._set_role(blueprint, f"world_worker_npc_{scene_id}")
-            self._set_random_attribute(blueprint, "color", rng)
-            self._set_random_attribute(blueprint, "driver_id", rng)
-            try:
-                actor = world.try_spawn_actor(blueprint, spawn_points[index])
-            except Exception:
-                actor = None
-            if actor is None:
-                continue
-            self._record_actor(owned, actor, kind="traffic", role_name=role_name)
-            try:
-                actor.set_autopilot(True, int(traffic_manager.get_port()))
-                if hasattr(traffic_manager, "update_vehicle_lights"):
-                    traffic_manager.update_vehicle_lights(actor, True)
-            except Exception:
-                self._discard_actor_group(world, owned, actor)
-                continue
-            actors.append(actor)
+        batch_size = 32 if self._supports_spawn_batches() else 1
+        offset = 0
+        while offset < len(indices) and len(actors) < count:
+            selected = indices[offset : offset + min(batch_size, count - len(actors))]
+            offset += len(selected)
+            requests: list[ActorSpawnRequest] = []
+            for index in selected:
+                blueprint = rng.choice(blueprints)
+                role_name = self._set_role(blueprint, f"world_worker_npc_{scene_id}")
+                self._set_random_attribute(blueprint, "color", rng)
+                self._set_random_attribute(blueprint, "driver_id", rng)
+                requests.append(
+                    self._spawn_request(
+                        blueprint, spawn_points[index], kind="traffic", role_name=role_name
+                    )
+                )
+            for actor in self._spawn_owned_batch(world, requests, owned):
+                if actor is None:
+                    continue
+                try:
+                    actor.set_autopilot(True, int(traffic_manager.get_port()))
+                    if hasattr(traffic_manager, "update_vehicle_lights"):
+                        traffic_manager.update_vehicle_lights(actor, True)
+                except Exception:
+                    self._rollback_population(world, owned, actor)
+                    continue
+                actors.append(actor)
         return actors
 
     @staticmethod
@@ -1645,6 +1849,7 @@ class WorldWorker:
         # pairs independently instead of aborting the whole scene with CARLA's
         # opaque "actor not found in registry" error.
         activation_batch_size = 24
+        batch_spawning = self._supports_spawn_batches()
         maximum_rounds = max(3, math.ceil(count / activation_batch_size) * 3)
         for _round in range(maximum_rounds):
             needed = count - len(walkers)
@@ -1652,8 +1857,10 @@ class WorldWorker:
                 break
             batch_target = min(activation_batch_size, needed)
             pending: list[tuple[Any, Any, float]] = []
+            requests: list[ActorSpawnRequest] = []
+            speeds: list[float] = []
             for _ in range(batch_target * 3):
-                if len(pending) >= batch_target:
+                if len(pending) + len(requests) >= batch_target:
                     break
                 location = world.get_random_location_from_navigation()
                 if location is None:
@@ -1666,31 +1873,55 @@ class WorldWorker:
                     pass
                 role_name = self._set_role(blueprint, f"world_worker_walker_{scene_id}")
                 transform = self._carla.Transform(location)
-                try:
-                    walker = world.try_spawn_actor(blueprint, transform)
-                except Exception:
-                    walker = None
+                request = self._spawn_request(
+                    blueprint, transform, kind="walker", role_name=role_name
+                )
+                if batch_spawning:
+                    requests.append(request)
+                    speeds.append(self._walker_speed(blueprint, rng.random() < 0.05))
+                    continue
+                walker = self._spawn_owned_batch(world, [request], owned)[0]
                 if walker is None:
                     continue
-                self._record_actor(owned, walker, kind="walker", role_name=role_name)
-                try:
-                    controller = world.try_spawn_actor(
-                        controller_blueprint,
-                        self._carla.Transform(),
-                        attach_to=walker,
-                    )
-                except Exception:
-                    controller = None
+                controller_request = self._spawn_request(
+                    controller_blueprint,
+                    self._carla.Transform(),
+                    kind="walker_controller",
+                    parent=walker,
+                )
+                controller = self._spawn_owned_batch(world, [controller_request], owned)[0]
                 if controller is None:
-                    self._discard_actor_group(world, owned, walker)
+                    self._rollback_population(world, owned, walker)
                     continue
-                self._record_actor(owned, controller, kind="walker_controller")
                 pending.append(
                     (walker, controller, self._walker_speed(blueprint, rng.random() < 0.05))
                 )
 
+            if batch_spawning:
+                spawned = self._spawn_owned_batch(world, requests, owned)
+                pairs = [
+                    (walker, speed)
+                    for walker, speed in zip(spawned, speeds, strict=True)
+                    if walker is not None
+                ]
+                controller_requests = [
+                    self._spawn_request(
+                        controller_blueprint,
+                        self._carla.Transform(),
+                        kind="walker_controller",
+                        parent=walker,
+                    )
+                    for walker, _speed in pairs
+                ]
+                attached = self._spawn_owned_batch(world, controller_requests, owned)
+                for (walker, speed), controller in zip(pairs, attached, strict=True):
+                    if controller is None:
+                        self._rollback_population(world, owned, walker)
+                    else:
+                        pending.append((walker, controller, speed))
+
             barrier_ready = True
-            if pending and hasattr(world, "wait_for_tick"):
+            if pending and not batch_spawning and hasattr(world, "wait_for_tick"):
                 try:
                     world.wait_for_tick(seconds=min(self.timeout, 5.0))
                 except TypeError:
@@ -1702,7 +1933,7 @@ class WorldWorker:
                     barrier_ready = False
             if not barrier_ready:
                 for walker, controller, _speed in pending:
-                    self._discard_actor_group(world, owned, controller, walker)
+                    self._rollback_population(world, owned, controller, walker)
                 continue
             for walker, controller, speed in pending:
                 try:
@@ -1717,7 +1948,7 @@ class WorldWorker:
                     controller.go_to_location(destination)
                     controller.set_max_speed(speed)
                 except Exception:
-                    self._discard_actor_group(world, owned, controller, walker)
+                    self._rollback_population(world, owned, controller, walker)
                     continue
                 walkers.append(walker)
                 controllers.append(controller)
@@ -2082,6 +2313,14 @@ class WorldWorker:
                         lease_deadline=self._clock(),
                     )
                 self._cleanup_resources(partial, reason="prepare_failed")
+                if partial.cleanup_errors:
+                    raise WorkerError(
+                        HTTPStatus.SERVICE_UNAVAILABLE,
+                        "scene_prepare_failed",
+                        f"CARLA scene preparation failed: {type(error).__name__}: {error}. "
+                        "Cleanup could not be fully confirmed: "
+                        + "; ".join(partial.cleanup_errors),
+                    ) from error
                 if isinstance(error, WorkerError):
                     raise
                 raise WorkerError(
@@ -2417,9 +2656,15 @@ class WorldWorker:
             try:
                 relay.listen()
             except BaseException as error:
+                try:
+                    relay.close()
+                except BaseException as cleanup_error:
+                    # Keep the drain guard and sensor ownership for a later
+                    # stop retry. Destroying while callbacks run is unsafe.
+                    error.add_note(f"camera relay shutdown failed: {cleanup_error}")
+                    raise error from cleanup_error
                 scene.camera_relay = None
                 scene.camera_config = None
-                relay.close()
                 try:
                     self._destroy_owned_actor(scene.world, owned)
                 except BaseException as cleanup_error:
@@ -2748,6 +2993,11 @@ class WorldWorker:
         except Exception:
             current = owned.actor
         if current is None:
+            if owned.actor is None:
+                raise RuntimeError(
+                    f"spawned actor {owned.actor_id} has no snapshot proxy; "
+                    "command cleanup is required"
+                )
             return
         self._validate_owned_actor_identity(current, owned)
         if hasattr(current, "is_alive") and not bool(current.is_alive):
@@ -2828,6 +3078,13 @@ class WorldWorker:
         )
         verified: list[OwnedActor] = []
         for owned in ordered:
+            # A successful SpawnActor response establishes ownership even when
+            # a failed snapshot barrier prevented obtaining a proxy. IDs are
+            # never reused inside an episode; cleanup's episode guard has
+            # already passed. Retain these IDs for authoritative batch destroy.
+            if owned.actor is None and owned.actor_id not in current_by_id:
+                verified.append(owned)
+                continue
             if owned.actor_id in lookup_errors:
                 # A failed lookup is not proof that an actor is absent. Use the
                 # retained, ownership-recorded proxy as the conservative
@@ -2846,9 +3103,7 @@ class WorldWorker:
             try:
                 self._validate_owned_actor_identity(current, owned)
             except Exception as error:
-                scene.cleanup_errors.append(
-                    f"destroy {owned.kind} {owned.actor_id}: {error}"
-                )
+                scene.cleanup_errors.append(f"destroy {owned.kind} {owned.actor_id}: {error}")
                 continue
             verified.append(owned)
         if not verified:
@@ -2862,9 +3117,7 @@ class WorldWorker:
                 try:
                     self._destroy_owned_actor(current_world, owned)
                 except Exception as error:
-                    scene.cleanup_errors.append(
-                        f"destroy {owned.kind} {owned.actor_id}: {error}"
-                    )
+                    scene.cleanup_errors.append(f"destroy {owned.kind} {owned.actor_id}: {error}")
             return
 
         try:
@@ -2911,13 +3164,11 @@ class WorldWorker:
                     wait_for_tick(barrier_timeout)
                 except Exception as error:
                     scene.cleanup_errors.append(
-                        "batch destroy snapshot barrier failed: "
-                        f"{type(error).__name__}: {error}"
+                        f"batch destroy snapshot barrier failed: {type(error).__name__}: {error}"
                     )
             except Exception as error:
                 scene.cleanup_errors.append(
-                    "batch destroy snapshot barrier failed: "
-                    f"{type(error).__name__}: {error}"
+                    f"batch destroy snapshot barrier failed: {type(error).__name__}: {error}"
                 )
 
         # An empty command response is CARLA's authoritative success result.
@@ -2941,10 +3192,12 @@ class WorldWorker:
                 )
                 continue
             if owned.actor_id not in survivors:
+                if owned.actor is None:
+                    scene.cleanup_errors.append(
+                        f"destroy unobserved {owned.kind} {owned.actor_id}: {detail}"
+                    )
                 continue
-            scene.cleanup_errors.append(
-                f"destroy {owned.kind} {owned.actor_id}: {detail}"
-            )
+            scene.cleanup_errors.append(f"destroy {owned.kind} {owned.actor_id}: {detail}")
 
     @staticmethod
     def _release_traffic_manager(
@@ -2969,10 +3222,6 @@ class WorldWorker:
             return self._scene_snapshot(scene)
         scene.status = "stopping"
         scene.stop_reason = reason
-        if scene.camera_relay is not None:
-            scene.camera_relay.close()
-            scene.camera_relay = None
-        scene.camera_config = None
         try:
             current_world = scene.client.get_world()
             same_episode = self._episode_marker(current_world) == scene.episode_marker
@@ -2982,6 +3231,10 @@ class WorldWorker:
             scene.cleanup_errors.append(f"episode guard query failed: {error}")
         scene.cleanup_guard_passed = same_episode
         if not same_episode:
+            if scene.camera_relay is not None:
+                scene.camera_relay.close()
+                scene.camera_relay = None
+            scene.camera_config = None
             self._release_traffic_manager(scene.traffic_manager, scene.cleanup_errors)
             scene.cleanup_errors.append(
                 "CARLA episode changed; actor and weather cleanup intentionally skipped"
@@ -3008,10 +3261,19 @@ class WorldWorker:
             if ego is not None:
                 try:
                     self._validate_owned_actor_identity(ego, owned_by_id[ego_id])
-                    ego.set_autopilot(False, int(scene.traffic_manager.get_port()))
-                    self._apply_full_brake(ego)
                 except Exception as error:
                     scene.cleanup_errors.append(f"ego stop failed: {error}")
+                else:
+                    try:
+                        ego.set_autopilot(False, int(scene.traffic_manager.get_port()))
+                        scene.route["enforced"] = False
+                    except Exception as error:
+                        scene.cleanup_errors.append(f"ego autopilot disable failed: {error}")
+                    try:
+                        self._apply_full_brake(ego)
+                        scene.deadman_active = True
+                    except Exception as error:
+                        scene.cleanup_errors.append(f"ego brake failed: {error}")
         for controller in scene.walker_controllers:
             controller_id = int(controller.id)
             current = live_control_actors.get(controller_id)
@@ -3027,6 +3289,13 @@ class WorldWorker:
                 current.stop()
             except Exception as error:
                 scene.cleanup_errors.append(f"walker controller stop failed: {error}")
+        # Apply the guarded safety stop before camera detach can fail. Keep all
+        # actor ownership intact until the relay has finished draining so a
+        # failed detach remains retryable without leaving the ego driving.
+        if scene.camera_relay is not None:
+            scene.camera_relay.close()
+            scene.camera_relay = None
+        scene.camera_config = None
         self._destroy_owned_actors(scene, current_world)
         try:
             current_world.set_weather(scene.original_weather)
@@ -3078,7 +3347,7 @@ class WorldWorker:
         if self._monitor is not None and self._monitor is not threading.current_thread():
             self._monitor.join(timeout=2.0)
         with self._lock:
-            if self._closed:
+            if self._closed and self._scene is None:
                 return
             self._closed = True
             if self._scene is not None:

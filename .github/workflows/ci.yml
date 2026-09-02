@@ -43,6 +43,7 @@ jobs:
         run: >-
           uv run pytest -q
           tests/test_bridge.py
+          tests/test_camera_relay_teardown.py
           tests/test_discovery.py
           tests/test_drive_console.py
           tests/test_external_model_drive.py
@@ -61,6 +62,8 @@ jobs:
           tests/test_runtime.py
           tests/test_standalone_world_bridge.py
           tests/test_world_worker.py
+          tests/test_world_worker_population.py
+          tests/test_world_worker_spawn_failures.py
           tests/test_world_worker_client.py
           tests/test_world_worker_ui.py
 
