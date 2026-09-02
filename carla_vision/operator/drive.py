@@ -53,6 +53,7 @@ _BROWSER_LEASE_SECONDS = 0.40
 _CONTROL_PERIOD_SECONDS = 0.05
 _TELEMETRY_PERIOD_SECONDS = 0.20
 _WORKER_HEARTBEAT_SECONDS = 0.50
+_LIVE_CLEANUP_ERROR_LIMIT = 24
 # CARLA's native camera transport is uncompressed BGRA. Keep that legacy
 # fallback near 100 Mbit/s; higher profiles require the Worker-side encoder.
 _MAX_RAW_CAMERA_BYTES_PER_SECOND = 12 * 1024 * 1024
@@ -65,6 +66,17 @@ HUMAN_MARKER_LABELS = frozenset(
         "scene_issue",
     }
 )
+
+
+def _live_cleanup_error_projection(errors: list[str]) -> tuple[list[str], int]:
+    """Bound live JSON while the complete diagnostics remain in run artifacts."""
+
+    count = len(errors)
+    if count <= _LIVE_CLEANUP_ERROR_LIMIT:
+        return list(errors), 0
+    head = _LIVE_CLEANUP_ERROR_LIMIT // 2
+    tail = _LIVE_CLEANUP_ERROR_LIMIT - head
+    return [*errors[:head], *errors[-tail:]], count - _LIVE_CLEANUP_ERROR_LIMIT
 
 
 def _utc_now() -> str:
@@ -469,9 +481,13 @@ class DriveSession:
             input_age = (
                 None
                 if self._last_input is None
-                else max(0.0, time.monotonic() - self._last_input[1])
+                else max(0.0, now - self._last_input[1])
             )
             stream = self._stream_snapshot(now)
+            cleanup_error_snapshot = list(self._cleanup_errors)
+            cleanup_errors, cleanup_errors_omitted = _live_cleanup_error_projection(
+                cleanup_error_snapshot
+            )
             return {
                 "schema_version": "1.0",
                 "status": self._status,
@@ -519,7 +535,9 @@ class DriveSession:
                 "experiment_preset": self.config.experiment_preset,
                 "human_marker_counts": dict(self._marker_counts),
                 "human_markers_written": sum(self._marker_counts.values()),
-                "cleanup_errors": list(self._cleanup_errors),
+                "cleanup_errors": cleanup_errors,
+                "cleanup_error_count": len(cleanup_error_snapshot),
+                "cleanup_errors_omitted": cleanup_errors_omitted,
             }
 
     def submit_control(self, control: DriveInput) -> dict[str, Any]:
