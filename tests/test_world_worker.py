@@ -406,6 +406,9 @@ class FakeWorld:
     def get_actor(self, actor_id: int) -> FakeActor | None:
         return self.actors.get(actor_id)
 
+    def get_actors(self, actor_ids: list[int]) -> list[FakeActor]:
+        return [self.actors[actor_id] for actor_id in actor_ids if actor_id in self.actors]
+
     def get_random_location_from_navigation(self) -> FakeLocation:
         return FakeLocation(float(self.next_actor_id % 100), 7.0, 0.5)
 
@@ -604,7 +607,8 @@ class WorldWorkerTest(unittest.TestCase):
         self.assertTrue(catalog["capabilities"]["asynchronous_world"])
         self.assertTrue(catalog["capabilities"]["world_dynamics_controls"])
         self.assertTrue(catalog["capabilities"]["garage_camera_presets"])
-        self.assertEqual(catalog["worker_api_revision"], 3)
+        self.assertEqual(catalog["worker_api_revision"], 4)
+        self.assertTrue(catalog["capabilities"]["batch_scene_cleanup"])
         self.assertEqual(catalog["carla"]["current_map"], "Town10HD_Opt")
 
     def test_health_reports_busy_without_waiting_for_world_lock(self) -> None:
@@ -759,6 +763,169 @@ class WorldWorkerTest(unittest.TestCase):
 
         self.assertEqual(second, first)
         self.assertEqual(second["status"], "stopped")
+
+    def test_dense_stop_batches_unique_live_owned_actors_once(self) -> None:
+        prepared = self.worker.prepare({"traffic_count": 7, "walker_count": 7})
+        scene_id, lease_token = self.lease(prepared)
+        scene = self.worker._scene
+        assert scene is not None
+        scene.owned_actors.append(scene.owned_actors[-1])
+        absent = next(owned for owned in scene.owned_actors if owned.kind == "traffic")
+        absent.actor.destroy()
+        batches: list[tuple[list[int], bool]] = []
+        individual_lookups: list[int] = []
+
+        class Command:
+            @staticmethod
+            def DestroyActor(actor_id: int) -> int:  # noqa: N802
+                return actor_id
+
+        class Response:
+            error = ""
+
+        def apply_batch_sync(commands: list[int], due_tick_cue: bool) -> list[Response]:
+            batches.append((list(commands), due_tick_cue))
+            for actor_id in commands:
+                actor = self.world.actors.get(actor_id)
+                self.assertIsNotNone(actor)
+                assert actor is not None
+                self.assertTrue(actor.is_alive)
+                actor.destroy()
+            return [Response() for _ in commands]
+
+        def reject_individual_lookup(actor_id: int) -> FakeActor | None:
+            individual_lookups.append(actor_id)
+            raise AssertionError("batch cleanup must use World.get_actors(ids)")
+
+        self.carla.command = Command  # type: ignore[attr-defined]
+        self.client.apply_batch_sync = apply_batch_sync  # type: ignore[attr-defined]
+        self.world.get_actor = reject_individual_lookup  # type: ignore[method-assign]
+
+        first = self.worker.stop(scene_id, {"lease_token": lease_token})
+        second = self.worker.stop(scene_id, {"lease_token": lease_token})
+
+        self.assertEqual(second, first)
+        self.assertEqual(len(batches), 1)
+        destroyed_ids, due_tick_cue = batches[0]
+        self.assertFalse(due_tick_cue)
+        self.assertEqual(len(destroyed_ids), len(set(destroyed_ids)))
+        self.assertNotIn(absent.actor_id, destroyed_ids)
+        self.assertEqual(individual_lookups, [])
+        self.assertEqual(self.world.actors, {})
+        self.assertEqual(first["scene"]["cleanup_errors"], [])
+
+    def test_stop_uses_owned_proxies_when_actor_lookup_state_is_unknown(self) -> None:
+        prepared = self.worker.prepare({"traffic_count": 1})
+        scene_id, lease_token = self.lease(prepared)
+
+        def fail_bulk_lookup(actor_ids: list[int]) -> list[FakeActor]:
+            del actor_ids
+            raise TimeoutError("bulk actor lookup stalled")
+
+        def fail_actor_lookup(actor_id: int) -> FakeActor | None:
+            del actor_id
+            raise TimeoutError("actor lookup stalled")
+
+        self.world.get_actors = fail_bulk_lookup  # type: ignore[method-assign]
+        self.world.get_actor = fail_actor_lookup  # type: ignore[method-assign]
+
+        stopped = self.worker.stop(scene_id, {"lease_token": lease_token})
+
+        self.assertEqual(self.world.actors, {})
+        self.assertTrue(
+            any(
+                "ego stop lookup failed" in value
+                and "bulk actor lookup stalled" in value
+                for value in stopped["scene"]["cleanup_errors"]
+            )
+        )
+
+    def test_batch_destroy_reports_only_errors_for_confirmed_survivors(self) -> None:
+        prepared = self.worker.prepare({"traffic_count": 1})
+        scene_id, lease_token = self.lease(prepared)
+        scene = self.worker._scene
+        assert scene is not None
+        survivor = next(owned for owned in scene.owned_actors if owned.kind == "traffic")
+
+        class Command:
+            @staticmethod
+            def DestroyActor(actor_id: int) -> int:  # noqa: N802
+                return actor_id
+
+        class Response:
+            def __init__(self, error: str) -> None:
+                self.error = error
+
+        def apply_batch_sync(commands: list[int], due_tick_cue: bool) -> list[Response]:
+            self.assertFalse(due_tick_cue)
+            responses: list[Response] = []
+            for actor_id in commands:
+                if actor_id == survivor.actor_id:
+                    responses.append(Response("actor remained registered"))
+                    continue
+                actor = self.world.actors[actor_id]
+                actor.destroy()
+                responses.append(Response("stale server warning"))
+            return responses
+
+        self.carla.command = Command  # type: ignore[attr-defined]
+        self.client.apply_batch_sync = apply_batch_sync  # type: ignore[attr-defined]
+
+        stopped = self.worker.stop(scene_id, {"lease_token": lease_token})
+
+        self.assertIn(survivor.actor_id, self.world.actors)
+        matching = [
+            value
+            for value in stopped["scene"]["cleanup_errors"]
+            if value.startswith("destroy ")
+        ]
+        self.assertEqual(
+            matching,
+            [
+                f"destroy traffic {survivor.actor_id}: actor remained registered",
+            ],
+        )
+        survivor.actor.destroy()
+
+    def test_batch_destroy_refuses_actor_whose_owned_identity_changed(self) -> None:
+        prepared = self.worker.prepare({"traffic_count": 1})
+        scene_id, lease_token = self.lease(prepared)
+        scene = self.worker._scene
+        assert scene is not None
+        replaced = next(owned for owned in scene.owned_actors if owned.kind == "traffic")
+        replaced.actor.type_id = "vehicle.replaced"
+        destroyed_ids: list[int] = []
+
+        class Command:
+            @staticmethod
+            def DestroyActor(actor_id: int) -> int:  # noqa: N802
+                return actor_id
+
+        class Response:
+            error = ""
+
+        def apply_batch_sync(commands: list[int], due_tick_cue: bool) -> list[Response]:
+            self.assertFalse(due_tick_cue)
+            destroyed_ids.extend(commands)
+            for actor_id in commands:
+                self.world.actors[actor_id].destroy()
+            return [Response() for _ in commands]
+
+        self.carla.command = Command  # type: ignore[attr-defined]
+        self.client.apply_batch_sync = apply_batch_sync  # type: ignore[attr-defined]
+
+        stopped = self.worker.stop(scene_id, {"lease_token": lease_token})
+
+        self.assertNotIn(replaced.actor_id, destroyed_ids)
+        self.assertIn(replaced.actor_id, self.world.actors)
+        self.assertTrue(
+            any(
+                f"destroy traffic {replaced.actor_id}" in value
+                and "type changed" in value
+                for value in stopped["scene"]["cleanup_errors"]
+            )
+        )
+        replaced.actor.destroy()
 
     def test_garage_autoframing_scales_with_vehicle_bounds(self) -> None:
         prepared = self.worker.prepare({})

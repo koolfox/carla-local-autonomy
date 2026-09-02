@@ -39,7 +39,7 @@ from typing import Any, Self
 from urllib.parse import urlparse
 
 SCHEMA_VERSION = "1.0"
-WORKER_API_REVISION = 3
+WORKER_API_REVISION = 4
 EXPECTED_CARLA_VERSION = "0.9.16"
 DEFAULT_BIND = "127.0.0.1"
 DEFAULT_PORT = 8766
@@ -1102,6 +1102,7 @@ class WorldWorker:
             "world_dynamics_controls": True,
             "exact_scene_population": True,
             "bounded_scene_cleanup": True,
+            "batch_scene_cleanup": True,
             "nonblocking_health": True,
             "idempotent_scene_stop": True,
         }
@@ -2748,12 +2749,7 @@ class WorldWorker:
             current = owned.actor
         if current is None:
             return
-        if str(getattr(current, "type_id", "")) != owned.type_id:
-            raise RuntimeError(f"actor {owned.actor_id} type changed; refusing destroy")
-        if owned.role_name is not None:
-            current_role = self._actor_attribute(current, "role_name")
-            if current_role != owned.role_name:
-                raise RuntimeError(f"actor {owned.actor_id} role changed; refusing destroy")
+        self._validate_owned_actor_identity(current, owned)
         if hasattr(current, "is_alive") and not bool(current.is_alive):
             return
         try:
@@ -2770,6 +2766,157 @@ class WorldWorker:
         raise RuntimeError(
             f"actor {owned.actor_id} destroy was not confirmed and actor remains registered"
         )
+
+    def _validate_owned_actor_identity(self, current: Any, owned: OwnedActor) -> None:
+        if str(getattr(current, "type_id", "")) != owned.type_id:
+            raise RuntimeError(f"actor {owned.actor_id} type changed; refusing destroy")
+        if owned.role_name is not None:
+            current_role = self._actor_attribute(current, "role_name")
+            if current_role != owned.role_name:
+                raise RuntimeError(f"actor {owned.actor_id} role changed; refusing destroy")
+
+    @staticmethod
+    def _bulk_current_actors(
+        current_world: Any,
+        actor_ids: Sequence[int],
+    ) -> tuple[dict[int, Any], dict[int, str]]:
+        unique_ids = list(dict.fromkeys(int(actor_id) for actor_id in actor_ids))
+        if not unique_ids:
+            return {}, {}
+        get_actors = getattr(current_world, "get_actors", None)
+        bulk_error: str | None = None
+        if callable(get_actors):
+            try:
+                actors = get_actors(unique_ids)
+                current = {
+                    int(actor.id): actor
+                    for actor in actors
+                    if actor is not None and bool(getattr(actor, "is_alive", True))
+                }
+            except Exception as error:
+                bulk_error = f"{type(error).__name__}: {error}"
+            else:
+                return current, {}
+        current: dict[int, Any] = {}
+        lookup_errors: dict[int, str] = {}
+        for actor_id in unique_ids:
+            try:
+                actor = current_world.get_actor(actor_id)
+            except Exception as error:
+                detail = f"{type(error).__name__}: {error}"
+                if bulk_error is not None:
+                    detail = f"bulk lookup failed ({bulk_error}); actor lookup failed ({detail})"
+                lookup_errors[actor_id] = detail
+                continue
+            if actor is not None and bool(getattr(actor, "is_alive", True)):
+                current[actor_id] = actor
+        return current, lookup_errors
+
+    def _destroy_owned_actors(self, scene: SceneLease, current_world: Any) -> None:
+        """Destroy a verified scene population in one CARLA command batch."""
+
+        ordered: list[OwnedActor] = []
+        seen: set[int] = set()
+        for owned in reversed(scene.owned_actors):
+            if owned.actor_id in seen:
+                continue
+            seen.add(owned.actor_id)
+            ordered.append(owned)
+        current_by_id, lookup_errors = self._bulk_current_actors(
+            current_world,
+            [owned.actor_id for owned in ordered],
+        )
+        verified: list[OwnedActor] = []
+        for owned in ordered:
+            if owned.actor_id in lookup_errors:
+                # A failed lookup is not proof that an actor is absent. Use the
+                # retained, ownership-recorded proxy as the conservative
+                # compatibility path so the scene cannot silently leak actors.
+                try:
+                    self._destroy_owned_actor(current_world, owned)
+                except Exception as error:
+                    scene.cleanup_errors.append(
+                        f"destroy {owned.kind} {owned.actor_id}: "
+                        f"lookup failed ({lookup_errors[owned.actor_id]}); {error}"
+                    )
+                continue
+            current = current_by_id.get(owned.actor_id)
+            if current is None:
+                continue
+            try:
+                self._validate_owned_actor_identity(current, owned)
+            except Exception as error:
+                scene.cleanup_errors.append(
+                    f"destroy {owned.kind} {owned.actor_id}: {error}"
+                )
+                continue
+            verified.append(owned)
+        if not verified:
+            return
+
+        command_module = None if self._carla is None else getattr(self._carla, "command", None)
+        destroy_actor = getattr(command_module, "DestroyActor", None)
+        apply_batch_sync = getattr(scene.client, "apply_batch_sync", None)
+        if not callable(destroy_actor) or not callable(apply_batch_sync):
+            for owned in verified:
+                try:
+                    self._destroy_owned_actor(current_world, owned)
+                except Exception as error:
+                    scene.cleanup_errors.append(
+                        f"destroy {owned.kind} {owned.actor_id}: {error}"
+                    )
+            return
+
+        try:
+            responses = list(
+                apply_batch_sync(
+                    [destroy_actor(owned.actor_id) for owned in verified],
+                    False,
+                )
+            )
+        except Exception as error:
+            scene.cleanup_errors.append(
+                f"batch actor destroy failed; using compatibility cleanup: {error}"
+            )
+            for owned in verified:
+                try:
+                    self._destroy_owned_actor(current_world, owned)
+                except Exception as fallback_error:
+                    scene.cleanup_errors.append(
+                        f"destroy {owned.kind} {owned.actor_id}: {fallback_error}"
+                    )
+            return
+
+        response_errors: dict[int, str] = {}
+        for index, owned in enumerate(verified):
+            if index >= len(responses):
+                response_errors[owned.actor_id] = "batch response was missing"
+                continue
+            message = str(getattr(responses[index], "error", "") or "").strip()
+            if message:
+                response_errors[owned.actor_id] = message
+        survivors, verification_errors = self._bulk_current_actors(
+            current_world,
+            [owned.actor_id for owned in verified],
+        )
+        for owned in verified:
+            if owned.actor_id in verification_errors:
+                detail = response_errors.get(owned.actor_id)
+                response_detail = "" if detail is None else f"; batch response: {detail}"
+                scene.cleanup_errors.append(
+                    f"destroy {owned.kind} {owned.actor_id}: verification failed "
+                    f"({verification_errors[owned.actor_id]}){response_detail}"
+                )
+                continue
+            if owned.actor_id not in survivors:
+                continue
+            detail = response_errors.get(
+                owned.actor_id,
+                "batch destroy was not confirmed and actor remains registered",
+            )
+            scene.cleanup_errors.append(
+                f"destroy {owned.kind} {owned.actor_id}: {detail}"
+            )
 
     @staticmethod
     def _release_traffic_manager(
@@ -2814,26 +2961,45 @@ class WorldWorker:
             scene.status = "stopped"
             return self._scene_snapshot(scene)
 
-        if scene.ego is not None and not self._actor_is_confirmed_absent(
-            current_world, scene.ego
-        ):
-            try:
-                scene.ego.set_autopilot(False, int(scene.traffic_manager.get_port()))
-                self._apply_full_brake(scene.ego)
-            except Exception as error:
-                scene.cleanup_errors.append(f"ego stop failed: {error}")
+        control_actor_ids = [
+            *([] if scene.ego is None else [int(scene.ego.id)]),
+            *(int(controller.id) for controller in scene.walker_controllers),
+        ]
+        live_control_actors, control_lookup_errors = self._bulk_current_actors(
+            current_world,
+            control_actor_ids,
+        )
+        owned_by_id = {owned.actor_id: owned for owned in scene.owned_actors}
+        if scene.ego is not None:
+            ego_id = int(scene.ego.id)
+            ego = live_control_actors.get(ego_id)
+            if ego_id in control_lookup_errors:
+                scene.cleanup_errors.append(
+                    f"ego stop lookup failed: {control_lookup_errors[ego_id]}"
+                )
+            if ego is not None:
+                try:
+                    self._validate_owned_actor_identity(ego, owned_by_id[ego_id])
+                    ego.set_autopilot(False, int(scene.traffic_manager.get_port()))
+                    self._apply_full_brake(ego)
+                except Exception as error:
+                    scene.cleanup_errors.append(f"ego stop failed: {error}")
         for controller in scene.walker_controllers:
-            if self._actor_is_confirmed_absent(current_world, controller):
+            controller_id = int(controller.id)
+            current = live_control_actors.get(controller_id)
+            if controller_id in control_lookup_errors:
+                scene.cleanup_errors.append(
+                    "walker controller stop lookup failed "
+                    f"{controller_id}: {control_lookup_errors[controller_id]}"
+                )
+            if current is None:
                 continue
             try:
-                controller.stop()
+                self._validate_owned_actor_identity(current, owned_by_id[controller_id])
+                current.stop()
             except Exception as error:
                 scene.cleanup_errors.append(f"walker controller stop failed: {error}")
-        for owned in reversed(scene.owned_actors):
-            try:
-                self._destroy_owned_actor(current_world, owned)
-            except Exception as error:
-                scene.cleanup_errors.append(f"destroy {owned.kind} {owned.actor_id}: {error}")
+        self._destroy_owned_actors(scene, current_world)
         try:
             current_world.set_weather(scene.original_weather)
         except Exception as error:

@@ -930,7 +930,16 @@ class GaragePreviewManager:
         self._world_mode_lock = world_mode_lock
         self._session_factory = session_factory
         self._lock = threading.RLock()
-        self._configure_lock = threading.Lock()
+        self._configure_condition = threading.Condition()
+        self._configure_running = False
+        self._configure_requested_revision = 0
+        self._configure_completed_revision = 0
+        self._configure_requested_config: GaragePreviewConfig | None = None
+        self._configure_shutdown = False
+        self._configure_outcomes: dict[
+            int,
+            tuple[GaragePreviewConfig | None, dict[str, Any] | None, BaseException | None],
+        ] = {}
         self._session: GaragePreviewSession | None = None
         self._last_error: str | None = None
 
@@ -967,53 +976,135 @@ class GaragePreviewManager:
         config = GaragePreviewConfig.from_mapping(raw)
         if self.world_worker is None:
             raise RuntimeError("Garage preview requires a configured World Worker")
-        if not self._configure_lock.acquire(blocking=False):
-            raise RuntimeError(
-                "Garage configuration is already in progress; retry the latest settings"
-            )
-        try:
-            with self._world_mode_lock:
-                drive_status = str(self._drive_state().get("status", "idle"))
-                if drive_status in _ACTIVE_DRIVE_STATES:
-                    raise RuntimeError("end the active Drive before starting Garage preview")
-                with self._lock:
-                    current = self._session
-                current_active = current is not None and current.snapshot().get("active") is True
-                if current_active:
-                    if current.config == config:
-                        result = dict(current.snapshot())
-                        result["configure_action"] = "noop"
-                        return result
-                    weather_only = replace(
-                        config,
-                        weather_preset=current.config.weather_preset,
-                    ) == current.config
-                    if weather_only:
-                        result = dict(current.update_weather(config.weather_preset))
-                        result["configure_action"] = "weather"
-                        return result
-                self._stop_locked(reason="reconfigure")
-                session = self._session_factory(
-                    config,
-                    carla_host=self.carla_host,
-                    carla_port=self.carla_port,
-                    world_worker=self.world_worker,
+        with self._configure_condition:
+            if self._configure_shutdown:
+                raise RuntimeError("Garage preview manager is shutting down")
+            self._configure_requested_revision += 1
+            request_revision = self._configure_requested_revision
+            self._configure_requested_config = config
+            runner = not self._configure_running
+            if runner:
+                self._configure_running = True
+            self._configure_condition.notify_all()
+
+        if runner:
+            self._drain_configure_requests()
+
+        with self._configure_condition:
+            while request_revision not in self._configure_outcomes:
+                self._configure_condition.wait()
+            applied_config, result, error = self._configure_outcomes.pop(request_revision)
+        if error is not None:
+            raise error
+        if result is None:
+            raise RuntimeError("Garage configuration completed without a result")
+        response = dict(result)
+        if applied_config != config:
+            response["requested_config_superseded"] = True
+        return response
+
+    def _drain_configure_requests(self) -> None:
+        """Apply one in-flight configuration and then only the newest pending one."""
+
+        while True:
+            with self._configure_condition:
+                if self._configure_completed_revision >= self._configure_requested_revision:
+                    self._configure_running = False
+                    self._configure_condition.notify_all()
+                    return
+                target_revision = self._configure_requested_revision
+                config = self._configure_requested_config
+            if config is None:
+                error: BaseException | None = RuntimeError(
+                    "Garage configuration queue lost its pending request"
                 )
-                with self._lock:
-                    self._session = session
-                    self._last_error = None
+                result: dict[str, Any] | None = None
+            else:
                 try:
-                    result = dict(session.start())
-                    result["configure_action"] = (
-                        "restarted" if current_active else "started"
+                    result = self._apply_config(config, request_revision=target_revision)
+                    error = None
+                except BaseException as caught:
+                    result = None
+                    error = caught
+
+            with self._configure_condition:
+                if target_revision <= self._configure_completed_revision:
+                    # Stop or shutdown cancelled this request while it waited
+                    # for the CARLA world-mode lock.
+                    if (
+                        self._configure_completed_revision
+                        >= self._configure_requested_revision
+                    ):
+                        self._configure_running = False
+                        self._configure_condition.notify_all()
+                        return
+                    continue
+                if self._configure_requested_revision != target_revision:
+                    # A newer request supersedes both this result and this
+                    # failure. Intermediate settings are deliberately skipped.
+                    continue
+                first_revision = self._configure_completed_revision + 1
+                outcome_config = config
+                for revision in range(first_revision, target_revision + 1):
+                    self._configure_outcomes[revision] = (
+                        outcome_config,
+                        None if result is None else dict(result),
+                        error,
                     )
+                self._configure_completed_revision = target_revision
+                self._configure_running = False
+                self._configure_condition.notify_all()
+                return
+
+    def _apply_config(
+        self,
+        config: GaragePreviewConfig,
+        *,
+        request_revision: int,
+    ) -> dict[str, Any]:
+        with self._world_mode_lock:
+            with self._configure_condition:
+                if request_revision <= self._configure_completed_revision:
+                    raise RuntimeError("Garage configuration was cancelled")
+                if self._configure_shutdown:
+                    raise RuntimeError("Garage preview manager is shutting down")
+            drive_status = str(self._drive_state().get("status", "idle"))
+            if drive_status in _ACTIVE_DRIVE_STATES:
+                raise RuntimeError("end the active Drive before starting Garage preview")
+            with self._lock:
+                current = self._session
+            current_active = current is not None and current.snapshot().get("active") is True
+            if current_active:
+                if current.config == config:
+                    result = dict(current.snapshot())
+                    result["configure_action"] = "noop"
                     return result
-                except BaseException as error:
-                    with self._lock:
-                        self._last_error = f"{type(error).__name__}: {error}"
-                    raise
-        finally:
-            self._configure_lock.release()
+                weather_only = replace(
+                    config,
+                    weather_preset=current.config.weather_preset,
+                ) == current.config
+                if weather_only:
+                    result = dict(current.update_weather(config.weather_preset))
+                    result["configure_action"] = "weather"
+                    return result
+            self._stop_locked(reason="reconfigure")
+            session = self._session_factory(
+                config,
+                carla_host=self.carla_host,
+                carla_port=self.carla_port,
+                world_worker=self.world_worker,
+            )
+            with self._lock:
+                self._session = session
+                self._last_error = None
+            try:
+                result = dict(session.start())
+                result["configure_action"] = "restarted" if current_active else "started"
+                return result
+            except BaseException as error:
+                with self._lock:
+                    self._last_error = f"{type(error).__name__}: {error}"
+                raise
 
     def orbit(self, raw: Mapping[str, Any]) -> dict[str, Any]:
         request = GarageOrbitRequest.from_mapping(raw)
@@ -1041,16 +1132,37 @@ class GaragePreviewManager:
         body = {} if raw is None else raw
         _strict_keys(body, allowed=set(), required=set(), name="Garage preview stop request")
         with self._world_mode_lock:
+            self._cancel_configure_requests(reason="operator stop")
             self._stop_locked(reason="operator_stop")
             return self.state()
 
     def stop_for_drive(self) -> None:
         with self._world_mode_lock:
+            self._cancel_configure_requests(reason="Drive startup")
             self._stop_locked(reason="drive_start")
 
     def shutdown(self) -> None:
         with self._world_mode_lock:
+            self._cancel_configure_requests(
+                reason="Operator server shutdown",
+                permanent=True,
+            )
             self._stop_locked(reason="operator_server_shutdown")
+
+    def _cancel_configure_requests(self, *, reason: str, permanent: bool = False) -> None:
+        with self._configure_condition:
+            if permanent:
+                self._configure_shutdown = True
+            first_revision = self._configure_completed_revision + 1
+            final_revision = self._configure_requested_revision
+            for revision in range(first_revision, final_revision + 1):
+                self._configure_outcomes[revision] = (
+                    None,
+                    None,
+                    RuntimeError(f"Garage configuration cancelled by {reason}"),
+                )
+            self._configure_completed_revision = final_revision
+            self._configure_condition.notify_all()
 
     def _stop_locked(self, *, reason: str) -> None:
         with self._lock:
