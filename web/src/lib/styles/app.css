@@ -1600,10 +1600,17 @@ code {
 
   .garage-preview-actions {
     justify-content: stretch;
+    flex-wrap: wrap;
   }
 
   .garage-preview-actions .button {
     flex: 1;
+  }
+
+  .garage-preview-actions .preview-state {
+    flex: 0 0 100%;
+    justify-content: center;
+    order: 2;
   }
 
   .garage-stage-hud {
