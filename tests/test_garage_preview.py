@@ -165,6 +165,7 @@ class _FakePreviewSession:
         return {
             "status": "running" if self.active else "stopped",
             "active": self.active,
+            "applied_config": self.config.as_dict(),
             "frame_sequence": 1,
             "yaw": self.config.yaw,
             "pitch": self.config.pitch,
@@ -275,6 +276,224 @@ def test_preview_manager_weather_failure_preserves_existing_scene() -> None:
     assert current["active"] is True
     assert current["camera_id"] == first["camera_id"]
     assert current["weather_preset"] == "clear-day"
+
+
+def test_preview_manager_coalesces_overlapping_requests_to_latest_config() -> None:
+    sessions: list[_FakePreviewSession] = []
+    first_reconfigure_started = threading.Event()
+    release_first_reconfigure = threading.Event()
+
+    class BlockingSession(_FakePreviewSession):
+        def start(self) -> dict[str, Any]:
+            if self.config.traffic_count == 20:
+                first_reconfigure_started.set()
+                assert release_first_reconfigure.wait(2.0)
+            return super().start()
+
+    def factory(config: GaragePreviewConfig, **kwargs: Any) -> BlockingSession:
+        del kwargs
+        session = BlockingSession(config)
+        sessions.append(session)
+        return session
+
+    manager = GaragePreviewManager(
+        carla_host="127.0.0.1",
+        carla_port=2000,
+        world_worker=object(),  # type: ignore[arg-type]
+        drive_state=lambda: {"status": "idle"},
+        world_mode_lock=threading.RLock(),
+        session_factory=factory,  # type: ignore[arg-type]
+    )
+    manager.configure(preview_payload(traffic_count=10))
+    results: dict[str, dict[str, Any]] = {}
+    errors: list[BaseException] = []
+
+    def configure(name: str, traffic_count: int) -> None:
+        try:
+            results[name] = manager.configure(preview_payload(traffic_count=traffic_count))
+        except BaseException as error:
+            errors.append(error)
+
+    first = threading.Thread(target=configure, args=("first", 20))
+    middle = threading.Thread(target=configure, args=("middle", 30))
+    latest = threading.Thread(target=configure, args=("latest", 40))
+    first.start()
+    assert first_reconfigure_started.wait(1.0)
+    middle.start()
+    latest.start()
+    with manager._configure_condition:
+        assert manager._configure_condition.wait_for(
+            lambda: manager._configure_requested_revision == 4,
+            timeout=1.0,
+        )
+    release_first_reconfigure.set()
+    for thread in (first, middle, latest):
+        thread.join(timeout=3.0)
+        assert not thread.is_alive()
+
+    assert errors == []
+    assert [session.config.traffic_count for session in sessions] == [10, 20, 40]
+    assert manager.state()["applied_config"]["traffic_count"] == 40
+    assert results["first"]["requested_config_superseded"] is True
+    assert results["middle"]["requested_config_superseded"] is True
+    assert results["latest"]["configure_action"] == "restarted"
+    assert all(result["applied_config"]["traffic_count"] == 40 for result in results.values())
+
+
+def test_preview_manager_recovers_when_superseded_configuration_fails() -> None:
+    sessions: list[_FakePreviewSession] = []
+    failed_start_entered = threading.Event()
+    release_failed_start = threading.Event()
+
+    class FailingSession(_FakePreviewSession):
+        def start(self) -> dict[str, Any]:
+            if self.config.traffic_count == 20:
+                failed_start_entered.set()
+                assert release_failed_start.wait(2.0)
+                raise TimeoutError("superseded CARLA prepare stalled")
+            return super().start()
+
+    def factory(config: GaragePreviewConfig, **kwargs: Any) -> FailingSession:
+        del kwargs
+        session = FailingSession(config)
+        sessions.append(session)
+        return session
+
+    manager = GaragePreviewManager(
+        carla_host="127.0.0.1",
+        carla_port=2000,
+        world_worker=object(),  # type: ignore[arg-type]
+        drive_state=lambda: {"status": "idle"},
+        world_mode_lock=threading.RLock(),
+        session_factory=factory,  # type: ignore[arg-type]
+    )
+    results: list[dict[str, Any]] = []
+    errors: list[BaseException] = []
+
+    def configure(traffic_count: int) -> None:
+        try:
+            results.append(manager.configure(preview_payload(traffic_count=traffic_count)))
+        except BaseException as error:
+            errors.append(error)
+
+    failed = threading.Thread(target=configure, args=(20,))
+    latest = threading.Thread(target=configure, args=(40,))
+    failed.start()
+    assert failed_start_entered.wait(1.0)
+    latest.start()
+    with manager._configure_condition:
+        assert manager._configure_condition.wait_for(
+            lambda: manager._configure_requested_revision == 2,
+            timeout=1.0,
+        )
+    release_failed_start.set()
+    for thread in (failed, latest):
+        thread.join(timeout=3.0)
+        assert not thread.is_alive()
+
+    assert errors == []
+    assert [session.config.traffic_count for session in sessions] == [20, 40]
+    assert len(results) == 2
+    assert all(result["applied_config"]["traffic_count"] == 40 for result in results)
+    assert manager.state()["active"] is True
+
+
+def test_preview_manager_stop_cancels_config_waiting_for_world_lock() -> None:
+    sessions: list[_FakePreviewSession] = []
+    world_mode_lock = threading.RLock()
+
+    def factory(config: GaragePreviewConfig, **kwargs: Any) -> _FakePreviewSession:
+        del kwargs
+        session = _FakePreviewSession(config)
+        sessions.append(session)
+        return session
+
+    manager = GaragePreviewManager(
+        carla_host="127.0.0.1",
+        carla_port=2000,
+        world_worker=object(),  # type: ignore[arg-type]
+        drive_state=lambda: {"status": "idle"},
+        world_mode_lock=world_mode_lock,
+        session_factory=factory,  # type: ignore[arg-type]
+    )
+    manager.configure(preview_payload(traffic_count=10))
+    errors: list[BaseException] = []
+
+    def configure_waiting() -> None:
+        try:
+            manager.configure(preview_payload(traffic_count=20))
+        except BaseException as error:
+            errors.append(error)
+
+    waiting = threading.Thread(target=configure_waiting)
+    with world_mode_lock:
+        waiting.start()
+        with manager._configure_condition:
+            assert manager._configure_condition.wait_for(
+                lambda: manager._configure_requested_revision == 2,
+                timeout=1.0,
+            )
+        stopped = manager.stop()
+        assert stopped["active"] is False
+    waiting.join(timeout=3.0)
+
+    assert not waiting.is_alive()
+    assert len(errors) == 1
+    assert "cancelled by operator stop" in str(errors[0])
+    assert len(sessions) == 1
+    assert sessions[0].events == ["start", "close:operator_stop"]
+
+    restarted = manager.configure(preview_payload(traffic_count=30))
+    assert restarted["active"] is True
+    assert restarted["applied_config"]["traffic_count"] == 30
+
+
+def test_preview_manager_shutdown_cancels_waiting_config_and_stays_closed() -> None:
+    sessions: list[_FakePreviewSession] = []
+    world_mode_lock = threading.RLock()
+
+    def factory(config: GaragePreviewConfig, **kwargs: Any) -> _FakePreviewSession:
+        del kwargs
+        session = _FakePreviewSession(config)
+        sessions.append(session)
+        return session
+
+    manager = GaragePreviewManager(
+        carla_host="127.0.0.1",
+        carla_port=2000,
+        world_worker=object(),  # type: ignore[arg-type]
+        drive_state=lambda: {"status": "idle"},
+        world_mode_lock=world_mode_lock,
+        session_factory=factory,  # type: ignore[arg-type]
+    )
+    manager.configure(preview_payload(traffic_count=10))
+    errors: list[BaseException] = []
+
+    def configure_waiting() -> None:
+        try:
+            manager.configure(preview_payload(traffic_count=20))
+        except BaseException as error:
+            errors.append(error)
+
+    waiting = threading.Thread(target=configure_waiting)
+    with world_mode_lock:
+        waiting.start()
+        with manager._configure_condition:
+            assert manager._configure_condition.wait_for(
+                lambda: manager._configure_requested_revision == 2,
+                timeout=1.0,
+            )
+        manager.shutdown()
+    waiting.join(timeout=3.0)
+
+    assert not waiting.is_alive()
+    assert len(errors) == 1
+    assert "cancelled by Operator server shutdown" in str(errors[0])
+    assert len(sessions) == 1
+    assert sessions[0].events == ["start", "close:operator_server_shutdown"]
+    assert manager.state()["active"] is False
+    with pytest.raises(RuntimeError, match="shutting down"):
+        manager.configure(preview_payload(traffic_count=30))
 
 
 @pytest.mark.parametrize(
@@ -414,6 +633,120 @@ def test_canonical_preview_api_resolves_one_session_and_reports_applied_values(
     finally:
         server.shutdown()
         thread.join(timeout=3.0)
+        server.server_close()
+        server.application.jobs.shutdown()
+
+
+def test_preview_api_coalesces_concurrent_configure_requests_without_409(
+    tmp_path,
+) -> None:
+    first_start_entered = threading.Event()
+    release_first_start = threading.Event()
+
+    class BlockingSession(_FakePreviewSession):
+        def start(self) -> dict[str, Any]:
+            if self.config.traffic_count == 20:
+                first_start_entered.set()
+                assert release_first_start.wait(2.0)
+            return super().start()
+
+    def factory(config: GaragePreviewConfig, **kwargs: Any) -> BlockingSession:
+        del kwargs
+        return BlockingSession(config)
+
+    manager = GaragePreviewManager(
+        carla_host="127.0.0.1",
+        carla_port=2000,
+        world_worker=object(),  # type: ignore[arg-type]
+        drive_state=lambda: {"status": "idle"},
+        world_mode_lock=threading.RLock(),
+        session_factory=factory,  # type: ignore[arg-type]
+    )
+    server = create_server(
+        workspace=tmp_path,
+        bind="127.0.0.1",
+        port=0,
+        sessions_root=tmp_path / "sessions",
+        carla_host="127.0.0.1",
+        carla_port=65534,
+    )
+    server.application.preview = manager
+    server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+    server_thread.start()
+    responses: dict[str, tuple[int, dict[str, Any]]] = {}
+    errors: list[BaseException] = []
+
+    def post(name: str, traffic_count: int) -> None:
+        session = session_defaults(detector_enabled=False)
+        session["identity"]["runId"] = f"preview-{name}"
+        session["vehicle"]["blueprint"] = "vehicle.tesla.model3"
+        session["scene"].update(
+            {
+                "mapName": "Town10HD_Opt",
+                "weatherPreset": "clear-day",
+                "trafficCount": traffic_count,
+            }
+        )
+        host, port = server.server_address[:2]
+        request = urllib.request.Request(
+            f"http://{host}:{port}/api/garage/preview/configure",
+            data=json.dumps({"schema_version": "1.0", "session": session}).encode(
+                "utf-8"
+            ),
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "X-Operator-Token": server.application.token,
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=3.0) as response:
+                responses[name] = (
+                    response.status,
+                    json.loads(response.read().decode("utf-8")),
+                )
+        except BaseException as error:
+            errors.append(error)
+
+    first = threading.Thread(target=post, args=("first", 20))
+    latest = threading.Thread(target=post, args=("latest", 40))
+    try:
+        first.start()
+        assert first_start_entered.wait(1.0)
+        latest.start()
+        with manager._configure_condition:
+            assert manager._configure_condition.wait_for(
+                lambda: manager._configure_requested_revision == 2,
+                timeout=1.0,
+            )
+        release_first_start.set()
+        for request_thread in (first, latest):
+            request_thread.join(timeout=3.0)
+            assert not request_thread.is_alive()
+
+        assert errors == []
+        assert {name: status for name, (status, _) in responses.items()} == {
+            "first": 201,
+            "latest": 201,
+        }
+        assert responses["first"][1]["requested_config_superseded"] is True
+        assert all(
+            payload["applied_config"]["traffic_count"] == 40
+            for _, payload in responses.values()
+        )
+        assert responses["first"][1]["configuration"]["requested"]["scene"][
+            "trafficCount"
+        ] == 20
+        assert responses["latest"][1]["configuration"]["requested"]["scene"][
+            "trafficCount"
+        ] == 40
+        assert manager.state()["applied_config"]["traffic_count"] == 40
+    finally:
+        release_first_start.set()
+        first.join(timeout=3.0)
+        latest.join(timeout=3.0)
+        server.shutdown()
+        server_thread.join(timeout=3.0)
         server.server_close()
         server.application.jobs.shutdown()
 
