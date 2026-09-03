@@ -81,6 +81,57 @@ def test_async_facade_returns_before_slow_configure_finishes() -> None:
     assert manager.calls == [{"traffic_count": 25}]
 
 
+def test_async_facade_pushes_worker_population_progress() -> None:
+    class ProgressManager(_BlockingPreviewManager):
+        def __init__(self) -> None:
+            super().__init__()
+            self.progress: dict[str, Any] | None = None
+
+        def preparation_status(self) -> dict[str, Any] | None:
+            return None if self.progress is None else dict(self.progress)
+
+    manager = ProgressManager()
+    facade = GaragePreviewAsyncFacade(manager)
+    accepted = facade.start({"traffic_count": 64, "walker_count": 40})
+    assert manager.entered.wait(1.0)
+    manager.progress = {
+        "status": "preparing",
+        "stage": "traffic",
+        "requested": {
+            "traffic": 64,
+            "walkers": 40,
+            "pedestrian_crossing_factor": 0.45,
+        },
+        "actual": {
+            "traffic": 32,
+            "walkers": 0,
+            "pedestrian_crossing_factor": 0.45,
+        },
+        "history": [],
+        "elapsed_seconds": 1.2,
+        "error": None,
+    }
+
+    revision = accepted["revision"]
+    progress: dict[str, Any] | None = None
+    deadline = time.monotonic() + 2.0
+    while time.monotonic() < deadline:
+        update = facade.wait_for_update(accepted["operation_id"], revision, timeout=0.5)
+        if update is None:
+            continue
+        revision = int(update["revision"])
+        if update.get("preparation"):
+            progress = update
+            break
+    assert progress is not None
+    assert progress["stage"] == "traffic"
+    assert progress["preparation"]["actual"]["traffic"] == 32
+    assert progress["preparation"]["requested"]["walkers"] == 40
+    assert progress["preparation"]["actual"]["pedestrian_crossing_factor"] == 0.45
+
+    manager.release.set()
+
+
 def test_async_facade_rejects_second_active_start_without_queueing() -> None:
     manager = _BlockingPreviewManager()
     facade = GaragePreviewAsyncFacade(manager)

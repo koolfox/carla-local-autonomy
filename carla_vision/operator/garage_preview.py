@@ -1330,6 +1330,23 @@ class GaragePreviewManager:
         self._session: GaragePreviewSession | None = None
         self._last_error: str | None = None
 
+    def preparation_status(self) -> dict[str, Any] | None:
+        """Read Worker preparation progress without taking the Garage scene lock."""
+
+        worker = self.world_worker
+        if worker is None:
+            return None
+        try:
+            payload = worker.current_scene()
+        except Exception:
+            # Progress telemetry must never become a second failure path. The
+            # authoritative configure call will surface transport/CARLA errors.
+            return None
+        preparation = payload.get("preparation")
+        if not isinstance(preparation, Mapping):
+            return None
+        return dict(preparation)
+
     def state(self) -> dict[str, Any]:
         with self._lock:
             session = self._session

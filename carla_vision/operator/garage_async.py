@@ -32,6 +32,7 @@ class GaragePreviewOperation:
     completed_monotonic: float | None = None
     result: dict[str, Any] | None = None
     error: dict[str, str] | None = None
+    preparation: dict[str, Any] | None = None
 
     def snapshot(self, *, clock: Any = time.monotonic) -> dict[str, Any]:
         end = clock() if self.completed_monotonic is None else self.completed_monotonic
@@ -44,6 +45,8 @@ class GaragePreviewOperation:
             "elapsed_seconds": round(max(0.0, float(end) - self.started_monotonic), 3),
             "error": None if self.error is None else dict(self.error),
         }
+        if self.preparation is not None:
+            payload["preparation"] = copy.deepcopy(self.preparation)
         if self.result is not None:
             payload["result"] = copy.deepcopy(self.result)
         return payload
@@ -65,6 +68,10 @@ class GaragePreviewAsyncFacade:
         self._operations: dict[str, GaragePreviewOperation] = {}
         self._active_operation_id: str | None = None
         self._thread: threading.Thread | None = None
+        self._progress_thread: threading.Thread | None = None
+        provider = getattr(manager, "preparation_status", None)
+        self._progress_provider = provider if callable(provider) else None
+        self._progress_interval = 0.25
         self._closed = False
 
     def start(self, raw: Mapping[str, Any]) -> dict[str, Any]:
@@ -103,9 +110,17 @@ class GaragePreviewAsyncFacade:
                 name=f"garage-preview-configure-{operation.operation_id}",
                 daemon=True,
             )
+            monitor = threading.Thread(
+                target=self._monitor_progress,
+                args=(operation.operation_id,),
+                name=f"garage-preview-progress-{operation.operation_id}",
+                daemon=True,
+            )
             accepted = operation.snapshot(clock=self._clock)
             self._thread = thread
+            self._progress_thread = monitor
             thread.start()
+            monitor.start()
             return accepted
 
     def snapshot(self, operation_id: str) -> dict[str, Any]:
@@ -184,6 +199,43 @@ class GaragePreviewAsyncFacade:
                 operation.completed_monotonic = self._clock()
             operation.revision += 1
             self._condition.notify_all()
+
+    def _monitor_progress(self, operation_id: str) -> None:
+        provider = self._progress_provider
+        if provider is None:
+            return
+        last_semantic: dict[str, Any] | None = None
+        last_emit = 0.0
+        while True:
+            with self._condition:
+                operation = self._operation_locked(operation_id)
+                if operation.status in _TERMINAL_STATUSES or self._closed:
+                    return
+            try:
+                raw = provider()
+            except BaseException:
+                raw = None
+            if isinstance(raw, Mapping) and raw.get("status") == "preparing":
+                preparation = copy.deepcopy(dict(raw))
+                semantic = copy.deepcopy(preparation)
+                semantic.pop("elapsed_seconds", None)
+                now = self._clock()
+                if semantic != last_semantic or now - last_emit >= 1.0:
+                    with self._condition:
+                        operation = self._operation_locked(operation_id)
+                        if operation.status in _TERMINAL_STATUSES or self._closed:
+                            return
+                        operation.preparation = preparation
+                        operation.stage = str(preparation.get("stage") or "configuring")
+                        operation.revision += 1
+                        self._condition.notify_all()
+                    last_semantic = semantic
+                    last_emit = now
+            with self._condition:
+                operation = self._operation_locked(operation_id)
+                if operation.status in _TERMINAL_STATUSES or self._closed:
+                    return
+                self._condition.wait(self._progress_interval)
 
     def _run(self, operation_id: str, raw: Mapping[str, Any]) -> None:
         self._update(operation_id, stage="configuring")

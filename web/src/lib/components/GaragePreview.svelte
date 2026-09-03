@@ -6,8 +6,11 @@
   import VehiclePicker from '$lib/components/VehiclePicker.svelte';
   import {
     createGarageApplyQueue,
+    garagePreparationStageLabel,
+    garagePreparationSummary,
     garagePreviewInputError,
-    garagePreviewSignature
+    garagePreviewSignature,
+    type GaragePreparationProgress
   } from '$lib/domain/garagePreview';
   import type { GarageOrbitRequest } from '$lib/domain/runtime';
   import { isDriveActive } from '$lib/domain/runtime';
@@ -57,6 +60,7 @@
   let streamError = '';
   let configureRetrying = false;
   let lifecycleStage = '';
+  let preparation: GaragePreparationProgress | null = null;
   let previewEvidence: ConfigurationEvidence | null = null;
   let appliedSignature = '';
   let streamNonce = 0;
@@ -74,7 +78,9 @@
   let streamRetryTimer: ReturnType<typeof setTimeout> | null = null;
 
   function updateLifecycle(operation: GaragePreviewOperation): void {
-    if (!destroyed) lifecycleStage = operation.stage;
+    if (destroyed) return;
+    lifecycleStage = operation.preparation?.stage ?? operation.stage;
+    if (operation.preparation) preparation = operation.preparation;
   }
 
   const applyQueue = createGarageApplyQueue({
@@ -83,15 +89,20 @@
       && $garageRuntime.action !== 'start',
     busy: (value) => {
       busy = value;
-      if (!value) lifecycleStage = '';
+      if (!value) {
+        lifecycleStage = '';
+        preparation = null;
+      }
     },
     retrying: (value) => { configureRetrying = value; },
     failed: (caught) => {
       lifecycleStage = '';
+      preparation = null;
       configureError = caught instanceof Error ? caught.message : String(caught);
     },
     applied: (response, requestedSignature) => {
       lifecycleStage = '';
+      preparation = null;
       configureError = '';
       previewEvidence = response.configuration;
       active = true;
@@ -178,6 +189,7 @@
   $: evidenceTitle = previewEvidence
     ? `Requested: ${requestedResolution} at ${requestedFps} FPS, ${$sessionConfig.scene.trafficCount} cars, ${$sessionConfig.scene.walkerCount} walkers. Resolved: ${resolvedResolution} at ${resolvedFps} FPS. Applied: ${appliedResolution} at ${appliedFps} FPS, ${appliedTraffic} cars, ${appliedWalkers} walkers.`
     : '';
+  $: preparationText = preparation ? garagePreparationSummary(preparation) : '';
   $: streamSource = active && !driveActive
     ? `/api/garage/preview/stream.mjpg?t=${streamNonce}`
     : '';
@@ -220,6 +232,7 @@
     pointer = null;
     orbitPending = false;
     lifecycleStage = '';
+    preparation = null;
     configureError = '';
     streamError = '';
   }
@@ -353,7 +366,7 @@
       <div class="garage-preview-placeholder">
         {#if busy}
           <span class="loading-ring"></span>
-          <strong>{lifecycleLabel(lifecycleStage)}</strong>
+          <strong>{garagePreparationStageLabel(lifecycleStage)}</strong>
         {:else}
           <span class="garage-preview-mark">CV</span>
           <strong title="The live Garage opens automatically when the World Worker is ready.">{selectedVehicle?.label ?? 'Select a CARLA vehicle'}</strong>
@@ -362,7 +375,7 @@
     {:else if !streamReady}
       <div class="garage-preview-placeholder compact-placeholder">
         <span class="loading-ring"></span>
-        <strong>{busy ? lifecycleLabel(lifecycleStage) : 'Waiting for CARLA camera…'}</strong>
+        <strong>{busy ? garagePreparationStageLabel(lifecycleStage) : 'Waiting for CARLA camera…'}</strong>
       </div>
     {/if}
 
@@ -408,12 +421,15 @@
         aria-live="polite"
       >
         {#if busy}<span class="loading-ring" aria-hidden="true"></span>{/if}
-        {#if driveActive}Drive active{:else if busy}{lifecycleLabel(lifecycleStage)}{:else if configureRetrying || streamRetryTimer}Reconnecting…{:else if error}Needs attention{:else if dirty}Syncing settings…{:else if active}Live CARLA{:else}Waiting for bridge{/if}
+        {#if driveActive}Drive active{:else if busy}{garagePreparationStageLabel(lifecycleStage)}{:else if configureRetrying || streamRetryTimer}Reconnecting…{:else if error}Needs attention{:else if dirty}Syncing settings…{:else if active}Live CARLA{:else}Waiting for bridge{/if}
       </span>
       <SessionLaunchBar compact={true} configurationPending={dirty || busy} />
     </div>
   </div>
 
+  {#if busy && preparationText}
+    <p class="garage-preview-note" aria-live="polite">{preparationText}</p>
+  {/if}
   {#if !$systemSettings?.workerConnected && !active}
     <p
       class="garage-preview-note"

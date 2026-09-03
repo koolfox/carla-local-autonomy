@@ -107,6 +107,9 @@ class ObservableWorldWorker(WorldWorker):
             "walkers": int(config.walker_count),
             "prop_preset": config.prop_preset,
             "route_mode": config.route_mode,
+            "pedestrian_crossing_factor": float(config.pedestrian_crossing_factor),
+            "speed_difference_percent": float(config.speed_difference_percent),
+            "following_distance_metres": float(config.following_distance_metres),
         }
         with self._preparation_lock:
             self._preparation = {
@@ -117,6 +120,9 @@ class ObservableWorldWorker(WorldWorker):
                     "traffic": 0,
                     "walkers": 0,
                     "props": 0,
+                    "pedestrian_crossing_factor": None,
+                    "speed_difference_percent": None,
+                    "following_distance_metres": None,
                 },
                 "history": [{"stage": "map", "elapsed_seconds": 0.0}],
                 "error": None,
@@ -151,6 +157,12 @@ class ObservableWorldWorker(WorldWorker):
             for name, value in updates.items():
                 if name in {"traffic", "walkers", "props"}:
                     self._preparation.setdefault("actual", {})[name] = int(value)
+                elif name in {
+                    "pedestrian_crossing_factor",
+                    "speed_difference_percent",
+                    "following_distance_metres",
+                }:
+                    self._preparation.setdefault("actual", {})[name] = float(value)
                 else:
                     self._preparation[name] = value
             actual = dict(self._preparation.get("actual", {}))
@@ -201,6 +213,15 @@ class ObservableWorldWorker(WorldWorker):
                 "traffic": 0 if scene is None else len(scene.vehicle_actors),
                 "walkers": 0 if scene is None else len(scene.walker_actors),
                 "props": 0 if scene is None else len(scene.prop_actors),
+                "pedestrian_crossing_factor": (
+                    None if scene is None else float(scene.config.pedestrian_crossing_factor)
+                ),
+                "speed_difference_percent": (
+                    None if scene is None else float(scene.config.speed_difference_percent)
+                ),
+                "following_distance_metres": (
+                    None if scene is None else float(scene.config.following_distance_metres)
+                ),
             }
         with self._preparation_lock:
             started = self._preparation.get("started_monotonic")
@@ -356,8 +377,33 @@ class ObservableWorldWorker(WorldWorker):
         rng: Any,
         owned: list[Any],
     ) -> tuple[Any, int]:
-        self._set_preparation_stage("ego")
+        # Reaching ego spawn means the base Worker successfully applied
+        # TrafficManager/world dynamics immediately before this call.
+        self._set_preparation_stage(
+            "ego",
+            pedestrian_crossing_factor=config.pedestrian_crossing_factor,
+            speed_difference_percent=config.speed_difference_percent,
+            following_distance_metres=config.following_distance_metres,
+        )
         return super()._spawn_ego(world, config, scene_id, spawn_points, rng, owned)
+
+    def _spawn_owned_batch(
+        self,
+        world: Any,
+        requests: Sequence[Any],
+        owned: list[Any],
+    ) -> list[Any | None]:
+        actors = super()._spawn_owned_batch(world, requests, owned)
+        if self._is_preparing():
+            stage = str(self._preparation_snapshot().get("stage", ""))
+            if stage in {"traffic", "walkers", "props"}:
+                self._set_preparation_stage(
+                    stage,
+                    traffic=sum(item.kind == "traffic" for item in owned),
+                    walkers=sum(item.kind == "walker" for item in owned),
+                    props=sum(item.kind == "prop" for item in owned),
+                )
+        return actors
 
     def _spawn_props(
         self,

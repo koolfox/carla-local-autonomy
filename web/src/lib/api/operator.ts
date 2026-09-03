@@ -7,6 +7,7 @@ import type {
   SystemSettings,
   WorkspaceOptions
 } from '$lib/domain/config';
+import type { GaragePreparationProgress } from '$lib/domain/garagePreview';
 import type {
   DriveControlRequest,
   DriveState,
@@ -34,6 +35,7 @@ export interface GaragePreviewOperation extends Record<string, unknown> {
   revision: number;
   elapsed_seconds: number;
   error?: { type?: string; message?: string } | null;
+  preparation?: GaragePreparationProgress | null;
   result?: Record<string, unknown>;
   resolved_config?: Record<string, unknown>;
 }
