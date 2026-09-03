@@ -4,6 +4,8 @@
   import {
     isDriveActive,
     isDriveRunning,
+    navigationCommandLabel,
+    navigationIntentFromDrive,
     recordingActive,
     speedMetresPerSecond
   } from '$lib/domain/runtime';
@@ -28,6 +30,9 @@
   $: voxel = drive.voxel;
   $: voxelEnabled = Boolean(voxel?.enabled);
   $: voxelView = view === 'voxel' || view === 'voxel_overlay';
+  $: navigationIntent = navigationIntentFromDrive(drive);
+  $: navigationLabel = navigationIntent ? navigationCommandLabel(navigationIntent.command) : '';
+  $: navigationDistance = navigationIntent?.distance_to_maneuver_m;
   $: waypointLabel = voxel?.waypoint_status === 'available'
     ? 'CARLA route (teacher)'
     : voxel?.waypoint_status === 'pending'
@@ -168,6 +173,21 @@
         {/if}
       </div>
 
+      {#if navigationIntent}
+        <div
+          class="navigation-intent-badge"
+          title={`Exact CARLA frame ${navigationIntent.source_frame.id}. Privileged route intent from ${navigationIntent.source ?? 'CARLA navigation'}; not visual perception.`}
+        >
+          <span>Route</span>
+          <strong>{navigationLabel}</strong>
+          {#if navigationDistance != null && Number.isFinite(Number(navigationDistance))}
+            <small>{Number(navigationDistance).toFixed(1)} m</small>
+          {/if}
+          <small>frame {navigationIntent.source_frame.id}</small>
+          {#if navigationIntent.privileged}<small>CARLA privileged</small>{/if}
+        </div>
+      {/if}
+
       <div class="drive-hud" aria-label="driving HUD">
         <div><span>Speed</span><strong>{speedKmh.toFixed(1)}<small> km/h</small></strong></div>
         <div><span>Gear</span><strong>{gearLabel(drive.telemetry?.gear)}</strong></div>
@@ -189,6 +209,10 @@
         <aside class="telemetry-panel">
           <div class="telemetry-row"><span>Run</span><strong>{drive.run_id ?? '—'}</strong></div>
           <div class="telemetry-row"><span>Control</span><strong>{drive.control_source ?? '—'}</strong></div>
+          {#if navigationIntent}
+            <div class="telemetry-row"><span>Route command</span><strong>{navigationLabel}</strong></div>
+            <div class="telemetry-row"><span>Route frame</span><strong>{navigationIntent.source_frame.id}</strong></div>
+          {/if}
           <div class="telemetry-row"><span>Throttle</span><strong>{percent(drive.telemetry?.throttle)}</strong></div>
           <div class="telemetry-row"><span>Steer</span><strong>{percent(drive.telemetry?.steer)}</strong></div>
           <div class="telemetry-row"><span>Brake</span><strong>{percent(drive.telemetry?.brake)}</strong></div>
@@ -222,4 +246,36 @@
   .segmented-control { flex-wrap: wrap; justify-content: center; }
   .voxel-geometry-key { color: #64d9e6; }
   .voxel-route-key { color: #f092d7; }
+
+  .navigation-intent-badge {
+    position: absolute;
+    left: 18px;
+    top: 18px;
+    z-index: 4;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    max-width: calc(100% - 36px);
+    padding: 7px 10px;
+    border-radius: 10px;
+    background: rgba(10, 14, 18, 0.76);
+    backdrop-filter: blur(8px);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .navigation-intent-badge > span,
+  .navigation-intent-badge > small {
+    opacity: 0.78;
+  }
+
+  .navigation-intent-badge > strong {
+    white-space: nowrap;
+  }
+
+  @media (max-width: 720px) {
+    .navigation-intent-badge {
+      flex-wrap: wrap;
+      gap: 3px 7px;
+    }
+  }
 </style>
