@@ -13,6 +13,7 @@ concurrency:
 
 jobs:
   repair:
+    if: github.event.head_commit.message != 'Fix waypoint overlay integration and concurrency'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -31,7 +32,12 @@ jobs:
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
 
       - name: Apply reviewed repair
-        run: python .github/pr85_repair.py
+        run: |
+          python .github/pr85_repair.py
+          # The repair script proposes adding the new test to the lean CI list,
+          # but a GitHub Actions token cannot update workflow files. Keep CI itself
+          # unchanged here; the full suite and targeted run below execute the test.
+          git checkout -- .github/workflows/ci.yml
 
       - name: Validate and rebuild Svelte console
         working-directory: web
@@ -55,7 +61,7 @@ jobs:
 
       - name: Commit repaired PR branch
         run: |
-          rm -f .github/workflows/pr85-repair.yml .github/pr85_repair.py
+          rm -f .github/pr85_repair.py
           git add -A
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
