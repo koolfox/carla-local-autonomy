@@ -306,3 +306,49 @@ def test_client_validates_teacher_response_and_short_timeout(native: Any, change
         with pytest.raises(WorldWorkerError):
             client.waypoints(scene)
     assert request.call_args.kwargs["timeout"] == 1
+
+
+
+def test_slow_teacher_sampling_does_not_hold_world_worker_lock(native: Any) -> None:
+    native.scene.route_locations = []
+    native.scene.status = "running"
+    native.scene.control_mode = "autopilot"
+    entered = threading.Event()
+    release = threading.Event()
+    actions = [
+        ["Straight", FakeWaypoint(FakeLocation(x, 1, 0))]
+        for x in (2, 4, 6)
+    ]
+
+    def slow_actions(_ego: Any) -> list[Any]:
+        entered.set()
+        assert release.wait(2)
+        return actions
+
+    result: dict[str, Any] = {}
+    with mock.patch.object(
+        native.tm,
+        "get_all_actions",
+        create=True,
+        side_effect=slow_actions,
+    ):
+        thread = threading.Thread(
+            target=lambda: result.update(
+                read(
+                    native,
+                    camera_location={"x": 0, "y": 1, "z": 2},
+                    source_frame=44,
+                )
+            )
+        )
+        thread.start()
+        assert entered.wait(1)
+        try:
+            assert native.worker._lock.acquire(blocking=False)
+            native.worker._lock.release()
+        finally:
+            release.set()
+            thread.join(2)
+    assert not thread.is_alive()
+    assert result["source"] == "traffic_manager"
+    assert result["source_frame"] == 44

@@ -175,7 +175,7 @@ def render_voxel_overlay(source_bgr: np.ndarray, result: Any, *, frame: int, fov
             _clipped_line(geometry, uv[a], uv[b], _GEOMETRY)
     image = cv2.addWeighted(geometry, 0.52, image, 0.48, 0)
     route = _teacher_points(teacher, frame)
-    for a, b in zip(route[:-1], route[1:]):
+    for a, b in zip(route[:-1], route[1:], strict=False):
         segment = _camera_segment(a, b, intrinsics)
         if segment is not None:
             _clipped_line(image, *segment, (40, 22, 46), 6)
@@ -228,7 +228,7 @@ def render_voxel_view(source_bgr: np.ndarray, result: Any, *, frame: int,
                       tuple(map(int, base * 1.15)), 1, cv2.LINE_AA)
 
     route = _teacher_points(teacher, frame)
-    for a, b in zip(route[:-1], route[1:]):
+    for a, b in zip(route[:-1], route[1:], strict=False):
         # A 100 m planned route must not shrink the 35 m local geometry display.
         # Clip to the configured volume; don't project hidden beyond-volume points.
         segment = _volume_segment(a, b, spec)
