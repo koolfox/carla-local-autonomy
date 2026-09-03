@@ -119,7 +119,9 @@ def build_catalog(
     objects = _object_rows(root)
     roots = Counter(str(row["root_kind"]) for row in objects)
     statuses = Counter(str(row["status"]) for row in objects)
-    weights = _files(root, "*.pt")
+    # Keep legacy root checkpoints selectable, but researchers can now keep
+    # their trained detectors under models/<experiment>/ without cluttering root.
+    weights = sorted(set(_files(root, "*.pt") + _files(root, "models/**/*.pt")))
     model_packages = [row["path"] for row in objects if row["root_kind"] == "models"]
     datasets = [row["path"] for row in objects if row["root_kind"] == "datasets"]
     scenario_plans = [row["path"] for row in objects if _has_role(row, "scenario_plan_summary")]

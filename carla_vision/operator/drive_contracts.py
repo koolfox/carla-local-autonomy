@@ -128,6 +128,7 @@ class DriveStartConfig:
     following_distance_metres: float = 2.0
     experiment_preset: str = "free_drive"
     max_throttle: float = 0.55
+    voxel_enabled: bool = False
 
     @classmethod
     def from_mapping(
@@ -149,6 +150,7 @@ class DriveStartConfig:
             "weather_preset",
             "prop_preset",
             "detector_enabled",
+            "voxel_enabled",
             "detector",
             "weights",
             "device",
@@ -163,7 +165,7 @@ class DriveStartConfig:
             *_WORKER_FIELDS,
         }
         _strict_keys(raw, allowed, "drive start request")
-        required = allowed - {"color", "experiment_preset"} - _WORKER_FIELDS
+        required = allowed - {"color", "experiment_preset", "voxel_enabled"} - _WORKER_FIELDS
         missing = sorted(key for key in required if key not in raw)
         if missing:
             raise ValueError(f"drive start request is missing fields: {', '.join(missing)}")
@@ -286,6 +288,7 @@ class DriveStartConfig:
             weather_preset=weather,
             prop_preset=prop_preset,
             detector_enabled=detector_enabled,
+            voxel_enabled=_boolean(raw.get("voxel_enabled", False), "voxel_enabled"),
             detector=detector,
             weights=weights,
             device=str(raw["device"]).strip(),
@@ -329,6 +332,7 @@ class DriveStartConfig:
             "weather_preset": self.weather_preset,
             "prop_preset": self.prop_preset,
             "detector_enabled": self.detector_enabled,
+            "voxel_enabled": self.voxel_enabled,
             "detector": self.detector,
             "weights": str(self.weights) if self.weights is not None else None,
             "device": self.device,

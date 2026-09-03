@@ -73,7 +73,8 @@
     route: $sessionConfig.route,
     control: $sessionConfig.control,
     camera: $sessionConfig.camera,
-    perception: $sessionConfig.perception,
+    // Voxel is a Drive-only observer and does not change the parked scene.
+    perception: { ...$sessionConfig.perception, voxelEnabled: false },
     recording: $sessionConfig.recording,
     experiment: $sessionConfig.experiment,
     policy: $sessionConfig.policy

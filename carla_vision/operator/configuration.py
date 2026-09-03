@@ -106,7 +106,7 @@ _SECTION_KEYS = {
     "control": frozenset({"mode"}),
     "camera": frozenset({"resolution", "fps", "fov", "spectatorFollow"}),
     "perception": frozenset(
-        {"enabled", "detector", "weights", "device", "imageSize", "confidence"}
+        {"enabled", "voxelEnabled", "detector", "weights", "device", "imageSize", "confidence"}
     ),
     "recording": frozenset({"video"}),
     "experiment": frozenset({"preset"}),
@@ -149,6 +149,12 @@ def _validated_session(raw: Any) -> dict[str, Mapping[str, Any]]:
     result: dict[str, Mapping[str, Any]] = {}
     for section, keys in _SECTION_KEYS.items():
         value = _mapping(session[section], f"session.{section}")
+        if section == "perception":
+            # Persisted pre-voxel sessions remain valid without mutating the
+            # caller's configuration or enabling a model download implicitly.
+            value = {"voxelEnabled": False, **value}
+            if not isinstance(value["voxelEnabled"], bool):
+                raise TypeError("session.perception.voxelEnabled must be a boolean")
         _strict_keys(value, keys, f"session.{section}")
         result[section] = value
     return result
@@ -338,6 +344,7 @@ def session_defaults(
         },
         "perception": {
             "enabled": bool(detector_enabled),
+            "voxelEnabled": False,
             "detector": "rtdetr",
             "weights": "",
             "device": "cpu",
@@ -494,6 +501,7 @@ def build_legacy_drive_request(
         "weather_preset": str(scene["weatherPreset"]).strip(),
         "prop_preset": str(scene["propPreset"]).strip(),
         "detector_enabled": perception["enabled"],
+        "voxel_enabled": perception["voxelEnabled"],
         "detector": str(perception["detector"]).strip(),
         "weights": str(perception["weights"]).strip(),
         "device": str(perception["device"]).strip(),

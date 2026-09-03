@@ -38,6 +38,7 @@ from ..detectors.factory import create_detector
 from ..display import OverlayRenderer
 from ..perception import PerceptionWorker
 from ..recording import AsyncVideoRecorder
+from ..voxel.live_view import VoxelViewWorker
 from ..watchdog import SafeActuator
 from .drive_contracts import DriveInput, DriveStartConfig, weather_payload
 from .situations import PROP_PRESETS, WEATHER_PRESETS
@@ -432,15 +433,20 @@ class DriveSession:
         self._worker_heartbeat_error: BaseException | None = None
         self._raw_jpeg: bytes | None = None
         self._overlay_jpeg: bytes | None = None
+        self._voxel_jpeg: bytes | None = None
+        self._voxel_frame_sequence = -1
+        self._voxel: VoxelViewWorker | None = None
         self._raw_frame_sequence = -1
         self._overlay_frame_sequence = -1
         self._frame_received_monotonic: dict[str, float | None] = {
             "raw": None,
             "overlay": None,
+            "voxel": None,
         }
         self._frame_arrivals: dict[str, deque[float]] = {
             "raw": deque(maxlen=180),
             "overlay": deque(maxlen=180),
+            "voxel": deque(maxlen=180),
         }
         self._camera_transport = "pending"
         self._telemetry = {
@@ -526,6 +532,7 @@ class DriveSession:
                     "advisory_only": True,
                     "actuated": False,
                 },
+                "voxel": self._voxel_snapshot(),
                 "recording": self._recording,
                 "weather_preset": self._weather_preset,
                 "output_path": self._output_path,
@@ -533,6 +540,7 @@ class DriveSession:
                 "stop_reason": self._stop_reason,
                 "raw_frame_sequence": self._raw_frame_sequence,
                 "overlay_frame_sequence": self._overlay_frame_sequence,
+                "voxel_frame_sequence": self._voxel_frame_sequence,
                 "stream": stream,
                 "frames_seen": self._frames_seen,
                 "controls_written": self._controls_written,
@@ -704,8 +712,10 @@ class DriveSession:
                 sequence, payload = self._raw_frame_sequence, self._raw_jpeg
             elif view == "overlay":
                 sequence, payload = self._overlay_frame_sequence, self._overlay_jpeg
+            elif view == "voxel":
+                sequence, payload = self._voxel_frame_sequence, self._voxel_jpeg
             else:
-                raise ValueError("drive frame view must be raw or overlay")
+                raise ValueError("drive frame view must be raw, overlay or voxel")
             if payload is None:
                 raise FileNotFoundError(f"{view} drive frame is not ready")
             return sequence, payload
@@ -716,15 +726,17 @@ class DriveSession:
         after_sequence: int = -1,
         timeout: float = 5.0,
     ) -> tuple[int, bytes]:
-        if view not in {"raw", "overlay"}:
-            raise ValueError("drive frame view must be raw or overlay")
+        if view not in {"raw", "overlay", "voxel"}:
+            raise ValueError("drive frame view must be raw, overlay or voxel")
         deadline = time.monotonic() + float(timeout)
         with self._frame_condition:
             while True:
                 if view == "raw":
                     sequence, payload = self._raw_frame_sequence, self._raw_jpeg
-                else:
+                elif view == "overlay":
                     sequence, payload = self._overlay_frame_sequence, self._overlay_jpeg
+                else:
+                    sequence, payload = self._voxel_frame_sequence, self._voxel_jpeg
                 if payload is not None and sequence > after_sequence:
                     return sequence, payload
                 if self._status in _TERMINAL:
@@ -769,14 +781,25 @@ class DriveSession:
         with self._lock:
             self._status = status
 
+    def _voxel_snapshot(self) -> dict[str, Any]:
+        if self._voxel is not None:
+            return self._voxel.snapshot()
+        return {"enabled": self.config.voxel_enabled, "status": "pending"
+                if self.config.voxel_enabled else "disabled", "actuated": False, "error": None}
+
     def _cache_frame(self, view: str, sequence: int, payload: bytes) -> None:
         with self._frame_condition:
             if view == "raw":
                 self._raw_frame_sequence = sequence
                 self._raw_jpeg = payload
-            else:
+            elif view == "overlay":
                 self._overlay_frame_sequence = sequence
                 self._overlay_jpeg = payload
+            elif view == "voxel":
+                self._voxel_frame_sequence = sequence
+                self._voxel_jpeg = payload
+            else:
+                raise ValueError("drive frame view must be raw, overlay or voxel")
             received = time.monotonic()
             self._frame_received_monotonic[view] = received
             self._frame_arrivals[view].append(received)
@@ -1027,6 +1050,12 @@ class DriveSession:
         perception: PerceptionWorker | None = None
         raw_recorder: AsyncVideoRecorder | None = None
         overlay_recorder: AsyncVideoRecorder | None = None
+        voxel_recorder: AsyncVideoRecorder | None = None
+        voxel_log: TextIO | None = None
+        latest_voxel: Any = None
+        last_voxel_sequence = -1
+        voxel_video_slot = -1
+        voxel_video_start: float | None = None
         controls_stream: TextIO | None = None
         detections_stream: TextIO | None = None
         events_stream: TextIO | None = None
@@ -1054,6 +1083,8 @@ class DriveSession:
         events_path = tracker.artifact_path("events.jsonl")
         raw_video_path = tracker.artifact_path("raw-drive.mp4")
         overlay_video_path = tracker.artifact_path("model-overlay.mp4")
+        voxel_video_path = tracker.artifact_path("voxel-view.mp4")
+        voxel_log_path = tracker.artifact_path("voxel-view.jsonl")
 
         _write_json(config_path, self.config.manifest_config())
         tracker.register_artifact(config_path, role="interactive_drive_configuration")
@@ -1282,6 +1313,12 @@ class DriveSession:
             )
             self._set_status("running")
 
+            if self.config.voxel_enabled:
+                # Observe the existing RGB stream. Model load/inference happen on
+                # a separate latest-only thread, never in the actuation lane.
+                self._voxel = VoxelViewWorker(device=self.config.device)
+                voxel_log = voxel_log_path.open("w", encoding="utf-8", buffering=1)
+
             renderer = OverlayRenderer(stale_after_seconds=2.0)
             while not self._stop_event.is_set():
                 self._drain_pending_events(events_stream)
@@ -1322,6 +1359,8 @@ class DriveSession:
                         except Exception as error:
                             detector_failed = True
                             self._cleanup_errors.append(f"detector submit: {error}")
+                    if self._voxel is not None:
+                        self._voxel.submit(frame)
                     if spectator_id is not None and spectator_follow_active:
                         try:
                             rpc.set_actor_transform(
@@ -1359,6 +1398,28 @@ class DriveSession:
                         )
                         self._cache_frame("overlay", result.sequence, _jpeg(latest_overlay))
                         self._write_detections(detections_stream, result)
+
+                if self._voxel is not None:
+                    voxel_result = self._voxel.latest()
+                    if voxel_result is not None and voxel_result.sequence > last_voxel_sequence:
+                        latest_voxel = voxel_result
+                        last_voxel_sequence = voxel_result.sequence
+                        self._cache_frame("voxel", voxel_result.sequence, voxel_result.jpeg)
+                        _json_line(voxel_log, {"event": "prediction", **voxel_result.record()})
+                    if self.config.record_video and latest_voxel is not None:
+                        if voxel_video_start is None:
+                            voxel_video_start = now
+                            voxel_recorder = AsyncVideoRecorder(
+                                voxel_video_path, frame_size=(1280, 720), fps=2.0,
+                            )
+                        slot = int((now - voxel_video_start) * 2.0)
+                        if slot > voxel_video_slot:
+                            assert voxel_recorder is not None
+                            voxel_recorder.submit(slot, latest_voxel.image_bgr)
+                            _json_line(voxel_log, {"event": "video_frame", "video_slot": slot,
+                                                  "sequence": latest_voxel.sequence,
+                                                  "source_frame": latest_voxel.source_frame})
+                            voxel_video_slot = slot
 
                 if (
                     overlay_recorder is not None
@@ -1517,7 +1578,10 @@ class DriveSession:
                     perception.close()
                 except Exception as error:
                     self._cleanup_errors.append(f"detector close: {error}")
-            for name, recorder in (("raw", raw_recorder), ("overlay", overlay_recorder)):
+            if self._voxel is not None:
+                self._voxel.close()
+            for name, recorder in (("raw", raw_recorder), ("overlay", overlay_recorder),
+                                   ("voxel", voxel_recorder)):
                 if recorder is not None:
                     try:
                         recorder.close()
@@ -1525,7 +1589,7 @@ class DriveSession:
                         self._cleanup_errors.append(f"{name} recorder close: {error}")
             with self._lock:
                 self._recording = False
-            for stream_handle in (controls_stream, detections_stream, events_stream):
+            for stream_handle in (controls_stream, detections_stream, events_stream, voxel_log):
                 if stream_handle is not None:
                     try:
                         stream_handle.close()
@@ -1595,6 +1659,30 @@ class DriveSession:
                 latest_raw_jpeg=latest_raw_jpeg,
                 latest_overlay=latest_overlay,
             )
+            if self._voxel is not None:
+                try:
+                    metadata_path = tracker.artifact_path("voxel-view.json")
+                    _write_json(metadata_path, {**self._voxel_snapshot(),
+                                "last_prediction": None if latest_voxel is None
+                                else latest_voxel.record(), "video_fps": 2.0,
+                                "video_start_elapsed_seconds": None if voxel_video_start is None
+                                else voxel_video_start - self._started_monotonic})
+                    for path, role in ((metadata_path, "rgb_voxel_observer_metadata"),
+                                       (voxel_log_path, "rgb_voxel_exact_frame_records"),
+                                       (voxel_video_path, "rgb_voxel_review_video")):
+                        if path.is_file():
+                            tracker.register_artifact(path, role=role)
+                    if latest_voxel is not None:
+                        image_path = tracker.artifact_path("latest-voxel.jpg")
+                        image_path.write_bytes(latest_voxel.jpeg)
+                        tracker.register_artifact(image_path, role="rgb_voxel_last_view")
+                        grid_path = tracker.artifact_path("latest-voxel.npz")
+                        np.savez_compressed(grid_path, occupancy=latest_voxel.voxels.occupancy,
+                                            source_frame=latest_voxel.source_frame,
+                                            sequence=latest_voxel.sequence)
+                        tracker.register_artifact(grid_path, role="predicted_rgb_voxel_grid")
+                except Exception as error:
+                    self._cleanup_errors.append(f"voxel artifacts: {error}")
 
     def _register_outputs(
         self,
@@ -1798,6 +1886,7 @@ class DriveSession:
             "human_markers_written": sum(self._marker_counts.values()),
             "model_output_actuated": False,
             "recording_requested": self.config.record_video,
+            "voxel": self._voxel_snapshot(),
             "stop_reason": self._stop_reason,
             "failure": (
                 None
