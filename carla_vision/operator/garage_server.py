@@ -25,6 +25,7 @@ from .configuration import (
     build_garage_preview_request,
     build_legacy_drive_request,
 )
+from .garage_async import GaragePreviewAsyncFacade
 from .garage_drive import GarageDriveSessionManager, GarageDriveStartConfig
 from .garage_preview import GaragePreviewConfig, GaragePreviewManager
 from .garage_research import GarageResearchRequest, build_garage_research_plan
@@ -139,6 +140,23 @@ class GarageOperatorRequestHandler(base.OperatorRequestHandler):
             if path == "/api/garage/preview/state":
                 self._json(HTTPStatus.OK, self.server.application.preview.state())
                 return
+            operation_prefix = "/api/garage/preview/operations/"
+            if path.startswith(operation_prefix):
+                suffix = path.removeprefix(operation_prefix)
+                if suffix.endswith("/events"):
+                    operation_id = suffix.removesuffix("/events").strip("/")
+                    if not operation_id or "/" in operation_id:
+                        raise FileNotFoundError("Garage preview operation not found")
+                    self._preview_operation_events(operation_id)
+                    return
+                operation_id = suffix.strip("/")
+                if not operation_id or "/" in operation_id:
+                    raise FileNotFoundError("Garage preview operation not found")
+                self._json(
+                    HTTPStatus.OK,
+                    self.server.application.preview_async.snapshot(operation_id),
+                )
+                return
             if path == "/api/garage/preview/frame.jpg":
                 sequence, payload = self.server.application.preview.frame()
                 self._bytes(
@@ -193,10 +211,49 @@ class GarageOperatorRequestHandler(base.OperatorRequestHandler):
         except (BrokenPipeError, ConnectionResetError, EOFError, OSError):
             return
 
+    def _preview_operation_events(self, operation_id: str) -> None:
+        """Push Garage lifecycle revisions without polling the preview manager."""
+
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.close_connection = True
+        revision = -1
+        try:
+            while True:
+                update = self.server.application.preview_async.wait_for_update(
+                    operation_id,
+                    revision,
+                    timeout=15.0,
+                )
+                if update is None:
+                    self.wfile.write(b": keepalive\n\n")
+                    self.wfile.flush()
+                    continue
+                revision = int(update["revision"])
+                payload = json.dumps(update, ensure_ascii=False, separators=(",", ":"))
+                message = (
+                    f"id: {revision}\n"
+                    "event: garage.preview.lifecycle\n"
+                    f"data: {payload}\n\n"
+                ).encode("utf-8")
+                self.wfile.write(message)
+                self.wfile.flush()
+                if str(update.get("status")) in {"running", "failed"}:
+                    return
+        except (BrokenPipeError, ConnectionResetError, EOFError, OSError):
+            return
+
     def do_POST(self) -> None:
         path = urlparse(self.path).path
         preview_routes = {
             "/api/garage/preview/configure",
+            "/api/garage/preview/configure/start",
             "/api/garage/preview/orbit",
             "/api/garage/preview/stop",
         }
@@ -227,7 +284,14 @@ class GarageOperatorRequestHandler(base.OperatorRequestHandler):
             if path in preview_routes:
                 if not isinstance(body, Mapping):
                     raise TypeError("Garage preview request must be an object")
-                if path.endswith("/configure"):
+                if path.endswith("/configure/start"):
+                    _requested, preview_request = _canonical_preview_request(body)
+                    result = self.server.application.preview_async.start(preview_request)
+                    result["resolved_config"] = GaragePreviewConfig.from_mapping(
+                        preview_request
+                    ).as_dict()
+                    status = HTTPStatus.ACCEPTED
+                elif path.endswith("/configure"):
                     requested, preview_request = _canonical_preview_request(body)
                     result = self.server.application.preview.configure(preview_request)
                     if requested is not None:
@@ -332,9 +396,13 @@ class GarageOperatorApplication(base.OperatorApplication):
     """Base operator state plus the mutually-exclusive real Garage preview."""
 
     preview: GaragePreviewManager
+    preview_async: GaragePreviewAsyncFacade
     experimental_enabled: bool
 
     def close(self) -> None:
+        preview_async = getattr(self, "preview_async", None)
+        if preview_async is not None:
+            preview_async.close()
         preview = getattr(self, "preview", None)
         if preview is not None:
             preview.shutdown()
@@ -393,6 +461,7 @@ def create_server(
         drive_state=drive.state,
         world_mode_lock=world_mode_lock,
     )
+    application.preview_async = GaragePreviewAsyncFacade(application.preview)
     drive.attach_preview(application.preview, world_mode_lock)
     server = base.OperatorHTTPServer((str(bind), int(port)), application)
     server.RequestHandlerClass = GarageOperatorRequestHandler
