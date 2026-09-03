@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
 
-  import type { ConfigurationEvidence } from '$lib/api/operator';
+  import type { ConfigurationEvidence, GaragePreviewOperation } from '$lib/api/operator';
   import SessionLaunchBar from '$lib/components/SessionLaunchBar.svelte';
   import VehiclePicker from '$lib/components/VehiclePicker.svelte';
   import {
@@ -43,12 +43,20 @@
     return typeof value === 'string' && value ? value : fallback;
   }
 
+  function lifecycleLabel(stage: string): string {
+    if (stage === 'accepted') return 'Starting Garage…';
+    if (stage === 'configuring') return 'Preparing CARLA…';
+    if (stage === 'running') return 'Live CARLA';
+    return 'Applying…';
+  }
+
   let active = false;
   let busy = false;
   let destroyed = false;
   let configureError = '';
   let streamError = '';
   let configureRetrying = false;
+  let lifecycleStage = '';
   let previewEvidence: ConfigurationEvidence | null = null;
   let appliedSignature = '';
   let streamNonce = 0;
@@ -65,16 +73,25 @@
   let streamRetries = 0;
   let streamRetryTimer: ReturnType<typeof setTimeout> | null = null;
 
+  function updateLifecycle(operation: GaragePreviewOperation): void {
+    if (!destroyed) lifecycleStage = operation.stage;
+  }
+
   const applyQueue = createGarageApplyQueue({
-    apply: (session) => runtimeOperatorApi().configureGaragePreview(session),
+    apply: (session) => runtimeOperatorApi().configureGaragePreview(session, updateLifecycle),
     canApply: () => !destroyed && !isDriveActive($garageRuntime.drive)
       && $garageRuntime.action !== 'start',
-    busy: (value) => { busy = value; },
+    busy: (value) => {
+      busy = value;
+      if (!value) lifecycleStage = '';
+    },
     retrying: (value) => { configureRetrying = value; },
     failed: (caught) => {
+      lifecycleStage = '';
       configureError = caught instanceof Error ? caught.message : String(caught);
     },
     applied: (response, requestedSignature) => {
+      lifecycleStage = '';
       configureError = '';
       previewEvidence = response.configuration;
       active = true;
@@ -185,13 +202,13 @@
   }
 
   function scheduleStreamRetry(): void {
-    if (!active || !available || destroyed || streamRetryTimer || streamRetries >= 3) return;
+    if (busy || !active || !available || destroyed || streamRetryTimer || streamRetries >= 3) return;
     const delay = streamRetryDelay;
     streamRetryDelay *= 2;
     streamRetries += 1;
     streamRetryTimer = setTimeout(() => {
       streamRetryTimer = null;
-      if (active && available && !destroyed) streamNonce = Date.now();
+      if (active && available && !destroyed && !busy) streamNonce = Date.now();
     }, delay);
   }
 
@@ -202,6 +219,7 @@
     previewEvidence = null;
     pointer = null;
     orbitPending = false;
+    lifecycleStage = '';
     configureError = '';
     streamError = '';
   }
@@ -308,6 +326,10 @@
           streamError = '';
         }}
         onerror={() => {
+          if (busy) {
+            streamReady = false;
+            return;
+          }
           if (active && available && !destroyed) {
             streamError = 'The live Garage stream stopped.';
             scheduleStreamRetry();
@@ -329,13 +351,18 @@
 
     {#if !active}
       <div class="garage-preview-placeholder">
-        <span class="garage-preview-mark">CV</span>
-        <strong title="The live Garage opens automatically when the World Worker is ready.">{selectedVehicle?.label ?? 'Select a CARLA vehicle'}</strong>
+        {#if busy}
+          <span class="loading-ring"></span>
+          <strong>{lifecycleLabel(lifecycleStage)}</strong>
+        {:else}
+          <span class="garage-preview-mark">CV</span>
+          <strong title="The live Garage opens automatically when the World Worker is ready.">{selectedVehicle?.label ?? 'Select a CARLA vehicle'}</strong>
+        {/if}
       </div>
     {:else if !streamReady}
       <div class="garage-preview-placeholder compact-placeholder">
         <span class="loading-ring"></span>
-        <strong>Waiting for CARLA camera…</strong>
+        <strong>{busy ? lifecycleLabel(lifecycleStage) : 'Waiting for CARLA camera…'}</strong>
       </div>
     {/if}
 
@@ -381,7 +408,7 @@
         aria-live="polite"
       >
         {#if busy}<span class="loading-ring" aria-hidden="true"></span>{/if}
-        {#if driveActive}Drive active{:else if busy}Applying…{:else if configureRetrying || streamRetryTimer}Reconnecting…{:else if error}Needs attention{:else if dirty}Syncing settings…{:else if active}Live CARLA{:else}Waiting for bridge{/if}
+        {#if driveActive}Drive active{:else if busy}{lifecycleLabel(lifecycleStage)}{:else if configureRetrying || streamRetryTimer}Reconnecting…{:else if error}Needs attention{:else if dirty}Syncing settings…{:else if active}Live CARLA{:else}Waiting for bridge{/if}
       </span>
       <SessionLaunchBar compact={true} configurationPending={dirty || busy} />
     </div>
