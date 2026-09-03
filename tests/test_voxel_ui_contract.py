@@ -149,7 +149,7 @@ def test_svelte_voxel_view_is_opt_in_and_preserves_raw_default() -> None:
     assert "Voxel (RGB depth)" in vision
     assert "100 MB" in vision
     assert "does not infer lanes or steer" in vision
-    assert "perception: { ...$sessionConfig.perception, voxelEnabled: false }" in preview
+    assert "garagePreviewSignature($sessionConfig)" in preview
     assert "voxelEnabled: false" in config
     assert "voxel?: DriveVoxelState" in runtime
     assert "actuated: false" in runtime

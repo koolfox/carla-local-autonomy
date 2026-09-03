@@ -143,6 +143,31 @@ class GaragePreviewConfig:
     distance: float = 6.5
     route_mode: str = "free"
 
+    def scene_payload(self) -> dict[str, Any]:
+        values = {
+            name: getattr(self, name)
+            for name in (
+                "map_name",
+                "weather_preset",
+                "vehicle_blueprint",
+                "color",
+                "seed",
+                "traffic_count",
+                "walker_count",
+                "prop_preset",
+                "route_mode",
+            )
+        }
+        values["initial_control_mode"] = "manual"
+        for name, default in (
+            ("pedestrian_crossing_factor", 0.2),
+            ("speed_difference_percent", 12.0),
+            ("following_distance_metres", 2.0),
+        ):
+            if getattr(self, name) != default:
+                values[name] = getattr(self, name)
+        return values
+
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any]) -> "GaragePreviewConfig":
         required = {
@@ -348,6 +373,11 @@ class GaragePreviewSession:
         self._camera_preset = "orbit"
         self._last_orbit_sequence = -1
         self._frame_sequence = -1
+        self._source_frame_sequence = -1
+        self._frame_sequence_offset = 0
+        self._updating = False
+        self._configuration_confirmed = True
+        self._reader_needs_restart = False
         self._jpeg: bytes | None = None
         self._frame_received_monotonic: float | None = None
         self._frame_arrivals: deque[float] = deque(maxlen=300)
@@ -358,28 +388,8 @@ class GaragePreviewSession:
             if self._closed:
                 raise RuntimeError("Garage preview session is already closed")
             try:
-                scene_payload: dict[str, Any] = {
-                    "map_name": self.config.map_name,
-                    "weather_preset": self.config.weather_preset,
-                    "vehicle_blueprint": self.config.vehicle_blueprint,
-                    "color": self.config.color,
-                    "seed": self.config.seed,
-                    "traffic_count": self.config.traffic_count,
-                    "walker_count": self.config.walker_count,
-                    "prop_preset": self.config.prop_preset,
-                    "route_mode": self.config.route_mode,
-                    "initial_control_mode": "manual",
-                }
-                for field_name, default in (
-                    ("pedestrian_crossing_factor", 0.2),
-                    ("speed_difference_percent", 12.0),
-                    ("following_distance_metres", 2.0),
-                ):
-                    value = getattr(self.config, field_name)
-                    if value != default:
-                        scene_payload[field_name] = value
                 with self._worker_request_lock:
-                    scene = self.world_worker.prepare_scene(scene_payload)
+                    scene = self.world_worker.prepare_scene(self.config.scene_payload())
                 if scene.ego_actor_id is None or scene.episode_id is None:
                     raise RuntimeError(
                         "World Worker prepared Garage preview without an ego episode"
@@ -542,6 +552,8 @@ class GaragePreviewSession:
                 "applied_config": self.config.as_dict(),
                 "status": self._status,
                 "active": self._status in {"starting", "running"} and not self._closed,
+                "updating": self._updating,
+                "configuration_confirmed": self._configuration_confirmed,
                 "frame_sequence": self._frame_sequence,
                 "yaw": self._yaw,
                 "pitch": self._pitch,
@@ -713,6 +725,291 @@ class GaragePreviewSession:
                 self.config = replace(self.config, weather_preset=preset)
                 return self.snapshot()
 
+    def can_reconfigure(self, config: GaragePreviewConfig) -> bool:
+        """Only map/seed changes (or an older Worker) require a new scene."""
+        with self._lock:
+            scene = self._scene
+            if (
+                self._closed
+                or self._status != "running"
+                or scene is None
+                or scene.status != "prepared"
+                or not self._worker_camera
+            ):
+                return False
+            if config.map_name != self.config.map_name or config.seed != self.config.seed:
+                return False
+            if config.scene_payload() != self.config.scene_payload() and not scene.capabilities.get(
+                "prepared_scene_reconfigure"
+            ):
+                return False
+            camera_changed = any(
+                getattr(config, key) != getattr(self.config, key)
+                for key in ("width", "height", "fps", "fov")
+            )
+            return not camera_changed or bool(scene.capabilities.get("prepared_scene_handoff"))
+
+    def reconfigure(self, config: GaragePreviewConfig) -> dict[str, Any]:
+        """Mutate the prepared scene in place; keep its browser stream and lease."""
+        with self._lifecycle_lock:
+            if not self.can_reconfigure(config):
+                raise RuntimeError("Garage update requires a new prepared scene")
+            with self._lock:
+                self._updating = True
+                previous = self.config
+                scene = self._scene
+            assert scene is not None
+            try:
+                if config.scene_payload() != previous.scene_payload():
+                    with self._worker_request_lock:
+                        updated = self.world_worker.configure_scene(scene, config.scene_payload())
+                        if (
+                            updated.scene_id != scene.scene_id
+                            or updated.episode_id != scene.episode_id
+                            or updated.status != "prepared"
+                            or updated.ego_actor_id is None
+                        ):
+                            raise RuntimeError("Worker did not preserve the prepared Garage scene")
+                        with self._lock:
+                            self._scene = updated
+                            self._vehicle_id = updated.ego_actor_id
+                            # Native mutations are already committed. Preserve truthful
+                            # scene settings even if a following camera replacement fails.
+                            self.config = replace(
+                                config,
+                                **{
+                                    key: getattr(previous, key)
+                                    for key in (
+                                        "width",
+                                        "height",
+                                        "fps",
+                                        "fov",
+                                        "profile",
+                                        "spectator_mirror",
+                                        "yaw",
+                                        "pitch",
+                                        "distance",
+                                    )
+                                },
+                            )
+                    scene = updated
+                camera_changed = self._camera_id is None or any(
+                    getattr(config, key) != getattr(previous, key)
+                    for key in ("width", "height", "fps", "fov")
+                )
+                if camera_changed:
+                    self._replace_camera(config, scene)
+                if (
+                    camera_changed
+                    or config.vehicle_blueprint != previous.vehicle_blueprint
+                    or config.color != previous.color
+                    or self._error is not None
+                ):
+                    # Preserve the user's selected view; use the Worker's existing
+                    # vehicle-size-aware camera transform, not a second geometry model.
+                    with self._worker_request_lock:
+                        self.world_worker.orbit_camera(
+                            scene,
+                            yaw=self._yaw,
+                            pitch=self._pitch,
+                            distance=self._distance,
+                            preset=self._camera_preset,
+                        )
+                if config.spectator_mirror != previous.spectator_mirror:
+                    self._update_spectator(config.spectator_mirror)
+                elif self._spectator_mirror_active:
+                    self._update_spectator(True)
+                with self._lock:
+                    self.config = config
+                    self._error = None
+                    self._configuration_confirmed = True
+            except BaseException as error:
+                # Native operations commit individual successful deltas. A
+                # timeout is not proof that no actors/settings were changed.
+                self._configuration_confirmed = False
+                try:
+                    self.ensure_configuration_confirmed()
+                except Exception as readback_error:
+                    error.add_note(f"Worker configuration readback: {readback_error}")
+                with self._lock:
+                    self._error = f"Garage update failed: {type(error).__name__}: {error}"
+                raise
+            finally:
+                # Consume the pump failure and end the update atomically. The
+                # pump uses this same lock, so it cannot leave a restart flag
+                # stranded after the mutation owner has finished.
+                with self._lock:
+                    restart_reader = (
+                        self._reader_needs_restart
+                        and self._status == "running"
+                        and self._camera_id is not None
+                    )
+                    self._reader_needs_restart = False
+                    self._updating = False
+                if restart_reader:
+                    self._restart_camera_reader()
+            result = self.snapshot()
+            result["configure_action"] = "updated"
+            return result
+
+    def ensure_configuration_confirmed(self) -> None:
+        """Recover a partial/ambiguous apply before another update or Drive."""
+        if self._configuration_confirmed:
+            return
+        with self._worker_request_lock:
+            payload = self.world_worker.current_scene()
+            if payload.get("status") == "preparing":
+                raise RuntimeError("World Worker is still applying Garage settings")
+            updated = WorldWorkerScene.from_response(payload)
+            scene = self._scene
+            if (
+                scene is None
+                or updated.scene_id != scene.scene_id
+                or updated.lease_token != scene.lease_token
+                or updated.episode_id != scene.episode_id
+            ):
+                raise RuntimeError("Worker scene ownership changed during Garage update")
+            if updated.status != "prepared" or updated.ego_actor_id is None:
+                self._scene = updated
+                self._status = "failed"
+                raise RuntimeError("World Worker no longer has a prepared Garage scene")
+            raw = payload["scene"]
+            confirmed = raw.get("config")
+            if not isinstance(confirmed, Mapping):
+                raise RuntimeError("World Worker did not return confirmed Garage settings")
+            values = self.config.as_dict()
+            for key in ("width", "height", "fps", "yaw", "pitch", "distance"):
+                values.pop(key)
+            for key in self.config.scene_payload():
+                if key != "initial_control_mode":
+                    values[key] = confirmed[key]
+            # Include default-valued dynamics too: scene_payload omits those
+            # for compatibility with older prepare endpoints.
+            for key in (
+                "pedestrian_crossing_factor",
+                "speed_difference_percent",
+                "following_distance_metres",
+            ):
+                values[key] = confirmed[key]
+            camera = raw.get("camera_config")
+            if isinstance(camera, Mapping):
+                for profile, dimensions in _CAMERA_PROFILES.items():
+                    if dimensions == (camera.get("width"), camera.get("height"), camera.get("fps")):
+                        values["profile"] = profile
+                        break
+                else:
+                    raise RuntimeError("Worker camera profile changed outside Garage")
+                values["fov"] = camera["fov"]
+            config = GaragePreviewConfig.from_mapping(values)
+            with self._lock:
+                self._scene = updated
+                self._vehicle_id = updated.ego_actor_id
+                self.config = config
+                if isinstance(camera, Mapping):
+                    self._camera_width, self._camera_height = config.width, config.height
+                    self._camera_id = int(raw["camera"]["actor_id"])
+                elif "camera_config" in raw:
+                    # Native camera replacement can fail after old sensor
+                    # destruction. Retry must create a sensor even when the
+                    # operator selects the previous profile again.
+                    self._camera_id = None
+                    self._reader_needs_restart = False
+                    self._frame_stop.set()
+                self._configuration_confirmed = True
+
+    def _replace_camera(self, config: GaragePreviewConfig, scene: WorldWorkerScene) -> None:
+        self._stop_camera_reader()
+        self._reader_needs_restart = True
+        with self._worker_request_lock:
+            response = self.world_worker.start_camera(
+                scene,
+                mode="garage",
+                width=config.width,
+                height=config.height,
+                fps=config.fps,
+                fov=config.fov,
+                yaw=self._yaw,
+                pitch=self._pitch,
+                distance=self._distance,
+            )
+        camera = response.get("camera")
+        if not isinstance(camera, Mapping):
+            raise RuntimeError("World Worker camera response is malformed")
+        with self._lock:
+            self._camera_id = int(camera["actor_id"])
+            self._camera_width = config.width
+            self._camera_height = config.height
+            self.config = replace(
+                self.config,
+                **{
+                    key: getattr(config, key)
+                    for key in (
+                        "width",
+                        "height",
+                        "fps",
+                        "fov",
+                        "profile",
+                    )
+                },
+            )
+        self._restart_camera_reader()
+
+    def _stop_camera_reader(self) -> None:
+        self._frame_stop.set()
+        old_stream = self._stream
+        if old_stream is not None:
+            old_stream.close()
+        old_pump = self._frame_thread
+        if old_pump is not None:
+            old_pump.join(timeout=2.0)
+            if old_pump.is_alive():
+                raise TimeoutError("Garage frame reader did not stop for camera replacement")
+
+    def _restart_camera_reader(self) -> None:
+        self._stop_camera_reader()
+        scene = self._scene
+        if scene is None:
+            raise RuntimeError("Garage scene is unavailable for camera stream")
+        stream = WorldWorkerCameraStream(
+            self.world_worker, scene, timeout=max(8.0, 4.0 / self.config.fps)
+        )
+        with self._lock:
+            self._stream = stream
+            self._frame_sequence_offset = self._frame_sequence + 1
+            self._source_frame_sequence = -1
+            self._frame_received_monotonic = None
+            self._frame_arrivals.clear()
+            self._frame_stop = threading.Event()
+            self._reader_needs_restart = False
+        # The browser retains the last good JPEG until this exact replacement
+        # produces a frame. Do not block Apply on a second first-frame wait.
+        self._start_frame_pump()
+
+    def _update_spectator(self, enabled: bool) -> None:
+        rpc = self._rpc
+        if rpc is None or self._camera_id is None or rpc.episode_id() != self._episode_id:
+            raise RuntimeError("Garage spectator episode is no longer available")
+        if enabled:
+            spectator_id = int(rpc.spectator()[0])
+            if self._spectator_mirror_active and self._spectator_id != spectator_id:
+                raise RuntimeError("Garage spectator actor changed")
+            original = (
+                self._spectator_transform
+                if self._spectator_mirror_active
+                else rpc.actor_transform(spectator_id, "Camera")
+            )
+            transform = rpc.actor_transform(self._camera_id, "Camera")
+            rpc.set_actor_transform(spectator_id, transform)
+            self._spectator_id = spectator_id
+            self._spectator_transform = original
+        elif self._spectator_id is not None and self._spectator_transform is not None:
+            if int(rpc.spectator()[0]) != self._spectator_id:
+                raise RuntimeError("Garage spectator actor changed")
+            rpc.set_actor_transform(self._spectator_id, self._spectator_transform)
+            self._spectator_id = None
+            self._spectator_transform = None
+        self._spectator_mirror_active = enabled
+
     def _start_heartbeat(self) -> None:
         self._heartbeat_thread = threading.Thread(
             target=self._heartbeat_loop,
@@ -728,8 +1025,9 @@ class GaragePreviewSession:
         jpeg = getattr(frame, "jpeg", None)
         payload = bytes(jpeg) if isinstance(jpeg, bytes) else _jpeg(frame.bgr(), quality=94)
         with self._frame_condition:
-            if frame.sequence > self._frame_sequence:
-                self._frame_sequence = frame.sequence
+            if frame.sequence > self._source_frame_sequence:
+                self._source_frame_sequence = frame.sequence
+                self._frame_sequence = self._frame_sequence_offset + frame.sequence
                 self._jpeg = payload
                 received = time.monotonic()
                 self._frame_received_monotonic = received
@@ -750,7 +1048,7 @@ class GaragePreviewSession:
         while not self._frame_stop.is_set():
             with self._lock:
                 stream = self._stream
-                sequence = self._frame_sequence
+                sequence = self._source_frame_sequence
                 closed = self._closed
             if stream is None or closed:
                 return
@@ -762,11 +1060,19 @@ class GaragePreviewSession:
                 self._cache_frame(frame)
                 last_frame_at = time.monotonic()
             except TimeoutError:
+                if self._frame_stop.is_set():
+                    return
                 # The legacy raw-BGRA stream can pause for many seconds on a
                 # loaded remote CARLA host. Keep the last valid Garage frame
                 # visible and continue waiting; only the new worker-side JPEG
                 # transport has a bounded freshness contract.
-                if not self._worker_camera or time.monotonic() - last_frame_at < stale_after:
+                if (
+                    self._updating
+                    or not self._worker_camera
+                    or time.monotonic() - last_frame_at < stale_after
+                ):
+                    if self._updating:
+                        last_frame_at = time.monotonic()
                     continue
                 error = TimeoutError(
                     f"no Garage camera frame arrived for {stale_after:.1f} seconds"
@@ -780,6 +1086,12 @@ class GaragePreviewSession:
             except BaseException as error:
                 if self._frame_stop.is_set():
                     return
+                with self._lock:
+                    if self._updating:
+                        # A dense native delta can exhaust transport retries.
+                        # Restart only the reader, never queue scene cleanup.
+                        self._reader_needs_restart = True
+                        return
                 with self._frame_condition:
                     self._error = f"Garage preview camera failed: {type(error).__name__}: {error}"
                     self._status = "failed"
@@ -824,9 +1136,7 @@ class GaragePreviewSession:
                 self.close(reason="heartbeat_failed")
                 return
 
-    def close(
-        self, *, reason: str = "operator_stop", release_scene: bool = True
-    ) -> dict[str, Any]:
+    def close(self, *, reason: str = "operator_stop", release_scene: bool = True) -> dict[str, Any]:
         with self._lifecycle_lock:
             with self._lock:
                 if self._closed and (
@@ -933,6 +1243,8 @@ class GaragePreviewSession:
                     or scene is None
                     or scene.status != "prepared"
                     or self._cleanup_errors
+                    or not self._configuration_confirmed
+                    or self._camera_id is None
                     or scene.ego_actor_id is None
                     or scene.episode_id is None
                     or not self._worker_camera
@@ -1106,10 +1418,7 @@ class GaragePreviewManager:
                 if target_revision <= self._configure_completed_revision:
                     # Stop or shutdown cancelled this request while it waited
                     # for the CARLA world-mode lock.
-                    if (
-                        self._configure_completed_revision
-                        >= self._configure_requested_revision
-                    ):
+                    if self._configure_completed_revision >= self._configure_requested_revision:
                         self._configure_running = False
                         self._configure_condition.notify_all()
                         return
@@ -1150,15 +1459,24 @@ class GaragePreviewManager:
                 current = self._session
             current_active = current is not None and current.snapshot().get("active") is True
             if current_active:
-                if current.config == config:
+                confirm = getattr(current, "ensure_configuration_confirmed", None)
+                if callable(confirm):
+                    confirm()
+                if current.config == config and not current.snapshot().get("error"):
                     result = dict(current.snapshot())
                     result["configure_action"] = "noop"
                     return result
-                weather_only = replace(
-                    config,
-                    weather_preset=current.config.weather_preset,
-                ) == current.config
-                if weather_only:
+                can_update = getattr(current, "can_reconfigure", None)
+                if callable(can_update) and can_update(config):
+                    return dict(current.reconfigure(config))
+                weather_only = (
+                    replace(
+                        config,
+                        weather_preset=current.config.weather_preset,
+                    )
+                    == current.config
+                )
+                if weather_only and config.weather_preset != current.config.weather_preset:
                     result = dict(current.update_weather(config.weather_preset))
                     result["configure_action"] = "weather"
                     return result
@@ -1223,6 +1541,7 @@ class GaragePreviewManager:
                 session = self._session
             if session is None:
                 return None
+            session.ensure_configuration_confirmed()
             if (
                 session.world_worker is not self.world_worker
                 or session.carla_host != self.carla_host

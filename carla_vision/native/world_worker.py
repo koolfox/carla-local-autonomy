@@ -31,7 +31,7 @@ import sys
 import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -56,7 +56,7 @@ _VEHICLE_BLUEPRINT = re.compile(r"^vehicle\.[A-Za-z0-9_.-]{1,150}$")
 _COLOR = re.compile(r"^\d{1,3},\d{1,3},\d{1,3}$")
 _SCENE_PATH = re.compile(
     r"^/v1/scenes/(?P<scene_id>[A-Za-z0-9_-]{16,128})/"
-    r"(?P<action>start|heartbeat|control|mode|weather|camera|camera_orbit|stop)$"
+    r"(?P<action>start|heartbeat|control|mode|weather|configure|camera|camera_orbit|stop)$"
 )
 _CAMERA_FRAME_PATH = re.compile(
     r"^/v1/scenes/(?P<scene_id>[A-Za-z0-9_-]{16,128})/camera/frame\.jpg$"
@@ -1141,6 +1141,7 @@ class WorldWorker:
             "compressed_camera_relay": in_memory_encoder,
             "persistent_mjpeg_camera_relay": in_memory_encoder,
             "prepared_scene_handoff": in_memory_encoder,
+            "prepared_scene_reconfigure": True,
             "in_memory_jpeg_encoder_available": in_memory_encoder,
             "camera_60_fps": in_memory_encoder,
             "garage_camera_presets": True,
@@ -1529,9 +1530,7 @@ class WorldWorker:
     @staticmethod
     def _registered_actor_ids(world: Any, actors: Sequence[Any]) -> set[int]:
         live_candidates = {
-            int(actor.id)
-            for actor in actors
-            if bool(getattr(actor, "is_alive", True))
+            int(actor.id) for actor in actors if bool(getattr(actor, "is_alive", True))
         }
         if not live_candidates:
             return set()
@@ -1694,7 +1693,8 @@ class WorldWorker:
                         request.blueprint, request.transform, attach_to=request.parent
                     )
             except Exception:
-                actor = None
+                self._recover_uncertain_spawns(world, [request], owned)
+                raise
             if actor is not None:
                 self._record_actor(owned, actor, kind=request.kind, role_name=request.role_name)
             return [actor]
@@ -2012,7 +2012,11 @@ class WorldWorker:
                 item["transform"],
             )
             try:
-                actor = world.try_spawn_actor(blueprint, transform)
+                actor = self._spawn_owned_batch(
+                    world,
+                    [self._spawn_request(blueprint, transform, kind="prop", role_name=role_name)],
+                    owned,
+                )[0]
             except Exception as error:
                 raise WorkerError(
                     HTTPStatus.SERVICE_UNAVAILABLE,
@@ -2025,7 +2029,6 @@ class WorldWorker:
                     "prop_spawn_failed",
                     f"could not spawn prop {identifier!r}",
                 )
-            self._record_actor(owned, actor, kind="prop", role_name=role_name)
             actors.append(actor)
         return actors
 
@@ -2263,10 +2266,7 @@ class WorldWorker:
                 partial.walker_controllers = verified_controllers
                 actual_traffic = len(partial.vehicle_actors)
                 actual_walkers = len(partial.walker_actors)
-                if (
-                    actual_traffic != config.traffic_count
-                    or actual_walkers != config.walker_count
-                ):
+                if actual_traffic != config.traffic_count or actual_walkers != config.walker_count:
                     raise WorkerError(
                         HTTPStatus.UNPROCESSABLE_ENTITY,
                         "scene_population_shortfall",
@@ -2357,6 +2357,383 @@ class WorldWorker:
     def _refresh_lease(self, scene: SceneLease) -> None:
         scene.lease_deadline = self._clock() + self.lease_seconds
 
+    def _remove_scene_actor_subset(self, scene: SceneLease, owned: list[OwnedActor]) -> None:
+        """Use the normal verified batch cleanup, without touching other actors."""
+
+        if not owned:
+            return
+        world = scene.client.get_world()
+        if self._episode_marker(world) != scene.episode_marker:
+            raise WorkerError(HTTPStatus.CONFLICT, "episode_changed", "CARLA episode changed")
+        for item in owned:
+            if item.kind == "walker_controller" and item.actor is not None:
+                current = world.get_actor(item.actor_id)
+                if current is not None:
+                    self._validate_owned_actor_identity(current, item)
+                    current.stop()
+        subset = replace(scene, owned_actors=list(owned), cleanup_errors=[])
+        self._destroy_owned_actors(subset, world)
+        if subset.cleanup_errors:
+            raise WorkerError(
+                HTTPStatus.SERVICE_UNAVAILABLE,
+                "scene_reconfigure_cleanup_failed",
+                "Affected actor cleanup could not be confirmed: "
+                + "; ".join(subset.cleanup_errors),
+            )
+        removed = {item.actor_id for item in owned}
+        scene.owned_actors[:] = [
+            item for item in scene.owned_actors if item.actor_id not in removed
+        ]
+
+    def _replace_prepared_ego(self, scene: SceneLease, config: SceneConfig) -> None:
+        """Replace only the parked ego, restoring its old blueprint on failure."""
+
+        original = scene.config
+        origin = scene.ego.get_transform()
+        original_color = self._actor_attribute(scene.ego, "color") or original.color
+        old_owned = next(item for item in scene.owned_actors if item.kind == "ego")
+        try:
+            self._remove_scene_actor_subset(scene, [old_owned])
+        except Exception:
+            self._cleanup_resources(scene, reason="ego_reconfigure_failed")
+            raise
+        scene.ego = None
+
+        def spawn(selected: SceneConfig) -> Any:
+            blueprint = self._blueprint(
+                scene.world.get_blueprint_library(), selected.vehicle_blueprint
+            )
+            self._set_color(blueprint, selected.color)
+            role_name = self._set_role(blueprint, f"world_worker_{scene.scene_id}")
+            request = self._spawn_request(blueprint, origin, kind="ego", role_name=role_name)
+            actor = self._spawn_owned_batch(scene.world, [request], scene.owned_actors)[0]
+            if actor is None:
+                raise RuntimeError("CARLA rejected ego spawn at its existing location")
+            scene.ego = actor
+            self._apply_full_brake(actor)
+            return actor
+
+        try:
+            spawn(config)
+        except Exception as error:
+            try:
+                self._remove_scene_actor_subset(
+                    scene, [item for item in scene.owned_actors if item.kind == "ego"]
+                )
+                scene.ego = None
+                spawn(replace(original, color=original_color))
+            except Exception as rollback_error:
+                self._cleanup_resources(scene, reason="ego_reconfigure_failed")
+                raise WorkerError(
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    "ego_reconfigure_failed",
+                    f"Ego replacement and restoration failed; scene stopped: {rollback_error}",
+                ) from error
+            raise WorkerError(
+                HTTPStatus.UNPROCESSABLE_ENTITY,
+                "ego_reconfigure_failed",
+                f"Ego replacement failed; original vehicle restored: {error}",
+            ) from error
+        scene.config = replace(
+            scene.config, vehicle_blueprint=config.vehicle_blueprint, color=config.color
+        )
+
+    def configure(self, scene_id: str, raw: Mapping[str, Any]) -> dict[str, Any]:
+        """Apply prepared-scene deltas using the official CARLA population APIs.
+
+        Map/seed changes still need prepare. Existing actors, camera and lease
+        survive all other supported changes; an unconfirmed destructive failure
+        stops the scene instead of advertising a fictional applied configuration.
+        """
+
+        fields = set(SceneConfig().as_dict())
+        lease_token = self._lease_token(raw, allowed=fields | {"lease_token"})
+        config = SceneConfig.from_mapping(
+            {key: value for key, value in raw.items() if key != "lease_token"}
+        )
+        with self._lock:
+            scene = self._require_scene(scene_id, lease_token)
+            if scene.status != "prepared":
+                raise WorkerError(
+                    HTTPStatus.CONFLICT,
+                    "scene_not_prepared",
+                    "only a prepared scene can be reconfigured",
+                )
+            if self._clock() >= scene.lease_deadline:
+                raise WorkerError(HTTPStatus.CONFLICT, "lease_expired", "scene lease expired")
+            world = scene.client.get_world()
+            if (
+                self._episode_id(world) != scene.episode_id
+                or self._episode_marker(world) != scene.episode_marker
+            ):
+                raise WorkerError(
+                    HTTPStatus.CONFLICT,
+                    "episode_changed",
+                    "CARLA episode changed before scene reconfiguration",
+                )
+            original = scene.config
+            if config.map_name != original.map_name or config.seed != original.seed:
+                raise WorkerError(
+                    HTTPStatus.CONFLICT,
+                    "scene_reconfigure_unsupported",
+                    "map or seed changes require a new prepared scene",
+                )
+            try:
+                ego_owned = next(item for item in scene.owned_actors if item.kind == "ego")
+                current_ego = world.get_actor(ego_owned.actor_id)
+                if current_ego is None or not bool(getattr(current_ego, "is_alive", True)):
+                    raise RuntimeError("owned ego is no longer alive")
+                if scene.ego is None or int(scene.ego.id) != ego_owned.actor_id:
+                    raise RuntimeError("owned ego identity does not match the scene")
+                self._validate_owned_actor_identity(current_ego, ego_owned)
+                population_ids = [
+                    int(actor.id)
+                    for actor in [
+                        *scene.vehicle_actors,
+                        *scene.walker_actors,
+                        *scene.walker_controllers,
+                        *scene.prop_actors,
+                    ]
+                ]
+                population, errors = self._bulk_current_actors(world, population_ids)
+                if errors or set(population_ids) != set(population):
+                    raise RuntimeError("owned scene population is no longer fully registered")
+                for item in scene.owned_actors:
+                    if item.actor_id in population:
+                        self._validate_owned_actor_identity(population[item.actor_id], item)
+            except Exception as error:
+                raise WorkerError(
+                    HTTPStatus.CONFLICT,
+                    "scene_identity_changed",
+                    f"scene ego ownership check failed: {error}",
+                ) from error
+            change_ego = (config.vehicle_blueprint, config.color) != (
+                original.vehicle_blueprint,
+                original.color,
+            )
+            if change_ego:
+                if scene.camera_relay is not None and (
+                    scene.camera_config is None
+                    or scene.camera_config.mode != "garage"
+                    or getattr(scene.camera_relay.sensor, "parent", None) is not None
+                ):
+                    raise WorkerError(
+                        HTTPStatus.CONFLICT,
+                        "scene_reconfigure_unsupported",
+                        "ego replacement with an attached camera needs a new scene",
+                    )
+                blueprint = self._blueprint(world.get_blueprint_library(), config.vehicle_blueprint)
+                self._set_color(blueprint, config.color)
+            if config.prop_preset != original.prop_preset:
+                for item in PROP_PRESETS[config.prop_preset]:
+                    self._blueprint(world.get_blueprint_library(), str(item["blueprint_id"]))
+            tm = scene.traffic_manager
+            dynamics = (
+                ("speed_difference_percent", tm, "global_percentage_speed_difference"),
+                ("following_distance_metres", tm, "set_global_distance_to_leading_vehicle"),
+                ("pedestrian_crossing_factor", world, "set_pedestrians_cross_factor"),
+            )
+            for field_name, target, method in dynamics:
+                if getattr(config, field_name) != getattr(original, field_name):
+                    if not callable(getattr(target, method, None)):
+                        raise WorkerError(
+                            HTTPStatus.CONFLICT,
+                            "scene_reconfigure_unsupported",
+                            f"CARLA does not expose {method}",
+                        )
+            spawn_points = list(world.get_map().get_spawn_points())
+            if config.traffic_count > max(0, len(spawn_points) - 1):
+                raise WorkerError(
+                    HTTPStatus.UNPROCESSABLE_ENTITY,
+                    "scene_population_capacity",
+                    "requested traffic exceeds available map spawn points",
+                )
+            if config.route_mode == "random_destination" and (
+                self._planner_factory() is None or not hasattr(tm, "set_path")
+            ):
+                raise WorkerError(
+                    HTTPStatus.UNPROCESSABLE_ENTITY,
+                    "random_route_unavailable",
+                    "random_destination requires a route planner and set_path",
+                )
+
+            rng = random.Random(config.seed)
+            uncertain = False
+            try:
+                if change_ego:
+                    self._replace_prepared_ego(scene, config)
+                if config.weather_preset != scene.config.weather_preset:
+                    self._apply_weather(world, config.weather_preset)
+                    if config.weather_preset != "keep":
+                        scene.weather_preset = config.weather_preset
+                    scene.config = replace(scene.config, weather_preset=config.weather_preset)
+                # generate_traffic.py sets this before controller destinations.
+                # Existing walkers also need fresh go_to_location calls to use
+                # the new crossing factor in their next navigation route.
+                for field_name, target, method in dynamics:
+                    if getattr(config, field_name) == getattr(scene.config, field_name):
+                        continue
+                    previous_value = getattr(scene.config, field_name)
+                    try:
+                        getattr(target, method)(getattr(config, field_name))
+                        if field_name == "pedestrian_crossing_factor":
+                            for controller in scene.walker_controllers:
+                                destination = world.get_random_location_from_navigation()
+                                if destination is None:
+                                    raise RuntimeError(
+                                        "navigation mesh returned no walker destination"
+                                    )
+                                controller.go_to_location(destination)
+                    except Exception:
+                        # A failed destination refresh must be retried on the
+                        # next Apply. Restore the old factor before retaining
+                        # its confirmed config value.
+                        try:
+                            getattr(target, method)(previous_value)
+                        except Exception:
+                            uncertain = True
+                        raise
+                    scene.config = replace(
+                        scene.config, **{field_name: getattr(config, field_name)}
+                    )
+                for kind, requested, actors in (
+                    ("traffic", config.traffic_count, scene.vehicle_actors),
+                    ("walker", config.walker_count, scene.walker_actors),
+                ):
+                    if requested < len(actors):
+                        removed_ids = {int(actor.id) for actor in actors[requested:]}
+                        if kind == "walker":
+                            removed_ids.update(
+                                int(actor.id) for actor in scene.walker_controllers[requested:]
+                            )
+                        uncertain = True
+                        self._remove_scene_actor_subset(
+                            scene,
+                            [item for item in scene.owned_actors if item.actor_id in removed_ids],
+                        )
+                        del actors[requested:]
+                        if kind == "walker":
+                            del scene.walker_controllers[requested:]
+                        scene.config = replace(scene.config, **{f"{kind}_count": len(actors)})
+                        uncertain = False
+                    elif requested > len(actors):
+                        previous_ids = {item.actor_id for item in scene.owned_actors}
+                        try:
+                            count = requested - len(actors)
+                            if kind == "traffic":
+                                additions = self._spawn_traffic(
+                                    scene_id,
+                                    world,
+                                    tm,
+                                    spawn_points,
+                                    scene.spawn_index,
+                                    count,
+                                    rng,
+                                    scene.owned_actors,
+                                )
+                                controllers: list[Any] = []
+                            else:
+                                additions, controllers = self._spawn_walkers(
+                                    scene_id, world, count, rng, scene.owned_actors
+                                )
+                            registered = self._registered_actor_ids(
+                                world, [*additions, *controllers]
+                            )
+                            if len(additions) != count or any(
+                                int(actor.id) not in registered
+                                for actor in [*additions, *controllers]
+                            ):
+                                raise WorkerError(
+                                    HTTPStatus.UNPROCESSABLE_ENTITY,
+                                    "scene_population_shortfall",
+                                    f"CARLA created {len(additions)}/{count} additional {kind} actors; "
+                                    "new actors rolled back, existing population retained",
+                                )
+                        except Exception:
+                            uncertain = True
+                            self._remove_scene_actor_subset(
+                                scene,
+                                [
+                                    item
+                                    for item in scene.owned_actors
+                                    if item.actor_id not in previous_ids
+                                ],
+                            )
+                            uncertain = False
+                            raise
+                        actors.extend(additions)
+                        if kind == "walker":
+                            scene.walker_controllers.extend(controllers)
+                        scene.config = replace(scene.config, **{f"{kind}_count": len(actors)})
+                if config.prop_preset != scene.config.prop_preset:
+                    uncertain = True
+                    self._remove_scene_actor_subset(
+                        scene, [item for item in scene.owned_actors if item.kind == "prop"]
+                    )
+                    scene.prop_actors = []
+                    scene.config = replace(scene.config, prop_preset="none")
+                    try:
+                        scene.prop_actors = self._spawn_props(
+                            scene_id,
+                            world,
+                            config.prop_preset,
+                            scene.ego.get_transform(),
+                            scene.owned_actors,
+                        )
+                    except Exception:
+                        self._remove_scene_actor_subset(
+                            scene, [item for item in scene.owned_actors if item.kind == "prop"]
+                        )
+                        uncertain = False
+                        raise
+                    scene.config = replace(scene.config, prop_preset=config.prop_preset)
+                    uncertain = False
+                if config.route_mode != scene.config.route_mode:
+                    if config.route_mode == "random_destination":
+                        route, destination, locations = self._plan_random_route(
+                            world, scene.ego, spawn_points, scene.spawn_index, rng
+                        )
+                    else:
+                        route = {
+                            "mode": "free",
+                            "provider": None,
+                            "planned": False,
+                            "enforced": False,
+                            "waypoint_count": 0,
+                        }
+                        destination, locations = None, []
+                    scene.route, scene.destination, scene.route_locations = (
+                        route,
+                        destination,
+                        locations,
+                    )
+                    scene.config = replace(scene.config, route_mode=config.route_mode)
+                # PREPARED means parked; autopilot is enabled only by start().
+                scene.control_mode = config.initial_control_mode
+                scene.config = replace(
+                    scene.config, initial_control_mode=config.initial_control_mode
+                )
+                if scene.config.route_mode == "free":
+                    scene.route["provider"] = (
+                        "TrafficManager" if scene.control_mode == "autopilot" else None
+                    )
+                self._refresh_lease(scene)
+                return self._scene_response(scene, "prepared")
+            except Exception as error:
+                if uncertain:
+                    self._cleanup_resources(scene, reason="scene_reconfigure_failed")
+                if isinstance(error, WorkerError):
+                    raise
+                raise WorkerError(
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    "scene_reconfigure_failed",
+                    f"CARLA scene reconfiguration failed: {error}",
+                ) from error
+            finally:
+                # This mutation owns the normal lock, so heartbeats cannot run
+                # during a dense delta; its work must not expire its own lease.
+                self._refresh_lease(scene)
+
     def _apply_full_brake(self, ego: Any) -> None:
         assert self._carla is not None
         ego.apply_control(
@@ -2435,14 +2812,8 @@ class WorldWorker:
                 azimuth = math.radians(float(yaw))
                 pitch_radians = math.radians(float(pitch))
                 extent_x, extent_y, extent_z = extent
-                half_width = (
-                    abs(math.sin(azimuth)) * extent_x
-                    + abs(math.cos(azimuth)) * extent_y
-                )
-                half_depth = (
-                    abs(math.cos(azimuth)) * extent_x
-                    + abs(math.sin(azimuth)) * extent_y
-                )
+                half_width = abs(math.sin(azimuth)) * extent_x + abs(math.cos(azimuth)) * extent_y
+                half_depth = abs(math.cos(azimuth)) * extent_x + abs(math.sin(azimuth)) * extent_y
                 projected_height = (
                     abs(math.sin(pitch_radians)) * half_depth
                     + abs(math.cos(pitch_radians)) * extent_z
@@ -2486,11 +2857,14 @@ class WorldWorker:
         self,
         ego: Any,
         vehicle: Any,
-    ) -> tuple[
-        Any,
-        tuple[float, float, float],
-        tuple[float, float, float],
-    ] | None:
+    ) -> (
+        tuple[
+            Any,
+            tuple[float, float, float],
+            tuple[float, float, float],
+        ]
+        | None
+    ):
         """Return a validated world-space bounds centre and local half-extents."""
 
         try:
@@ -2908,6 +3282,7 @@ class WorldWorker:
             scene = self._require_scene(scene_id, lease_token)
             self._apply_weather(scene.world, preset)
             scene.weather_preset = preset
+            scene.config = replace(scene.config, weather_preset=preset)
             self._refresh_lease(scene)
             return self._scene_response(scene, scene.status)
 
@@ -2961,6 +3336,7 @@ class WorldWorker:
             "lease_token": scene.lease_token,
             "status": scene.status,
             "episode_id": scene.episode_id,
+            "config": scene.config.as_dict(),
             "ego_actor_id": None if scene.ego is None else int(scene.ego.id),
             "map_name": scene.map_name,
             "spawn_index": scene.spawn_index,
@@ -2985,6 +3361,12 @@ class WorldWorker:
             "cleanup_guard_passed": scene.cleanup_guard_passed,
             "cleanup_errors": list(scene.cleanup_errors),
             "camera": None if scene.camera_relay is None else scene.camera_relay.snapshot(),
+            "camera_config": None
+            if scene.camera_config is None
+            else {
+                name: getattr(scene.camera_config, name)
+                for name in ("mode", "width", "height", "fps", "fov", "yaw", "pitch", "distance")
+            },
             "capabilities": self._capabilities(scene.client),
         }
 
