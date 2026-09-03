@@ -58,7 +58,7 @@ test('dense preparation progress is factual and human-readable', () => {
     status: 'preparing',
     stage: 'walkers',
     requested: { traffic: 64, walkers: 40, pedestrian_crossing_factor: 0.45 },
-    actual: { traffic: 64, walkers: 24, pedestrian_crossing_factor: 0.45 },
+    actual: { traffic: 64, walkers: 24, pedestrian_crossing_factor: null },
     elapsed_seconds: 7.25
   };
   assert.equal(garagePreparationStageLabel('walkers'), 'Spawning walkers…');

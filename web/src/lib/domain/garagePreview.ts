@@ -11,7 +11,9 @@ export interface GaragePreparationProgress {
 }
 
 function progressNumber(record: Record<string, unknown>, key: string): number | null {
-  const value = Number(record[key]);
+  const raw = record[key];
+  if (raw === null || raw === undefined || raw === '') return null;
+  const value = Number(raw);
   return Number.isFinite(value) ? value : null;
 }
 
