@@ -17,7 +17,6 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-
 _TERMINAL_STATUSES = frozenset({"running", "failed"})
 
 
