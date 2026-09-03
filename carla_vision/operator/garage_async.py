@@ -103,9 +103,10 @@ class GaragePreviewAsyncFacade:
                 name=f"garage-preview-configure-{operation.operation_id}",
                 daemon=True,
             )
+            accepted = operation.snapshot(clock=self._clock)
             self._thread = thread
             thread.start()
-            return operation.snapshot(clock=self._clock)
+            return accepted
 
     def snapshot(self, operation_id: str) -> dict[str, Any]:
         with self._condition:
