@@ -29,6 +29,7 @@ from .drive_contracts import DriveStartConfig
 from .world_worker_client import (
     WorldWorkerCameraStream,
     WorldWorkerClient,
+    WorldWorkerError,
     WorldWorkerScene,
 )
 
@@ -1346,6 +1347,19 @@ class GaragePreviewManager:
         if not isinstance(preparation, Mapping):
             return None
         return dict(preparation)
+
+    def cancel_preparation(self) -> dict[str, Any] | None:
+        """Cancel an in-flight Worker prepare without waiting on the scene lock."""
+
+        worker = self.world_worker
+        if worker is None:
+            return None
+        try:
+            return worker.cancel_preparation()
+        except WorldWorkerError as error:
+            if error.code in {"scene_not_preparing", "prepare_cancel_unavailable"}:
+                return None
+            raise
 
     def state(self) -> dict[str, Any]:
         with self._lock:

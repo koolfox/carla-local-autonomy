@@ -307,6 +307,10 @@ class GarageOperatorRequestHandler(base.OperatorRequestHandler):
                     result = self.server.application.preview.orbit(body)
                     status = HTTPStatus.OK
                 else:
+                    # If configure currently owns the scene mutation lock, ask
+                    # the responsive Worker control plane to stop between CARLA
+                    # mutation batches before waiting for normal cleanup.
+                    self.server.application.preview.cancel_preparation()
                     result = self.server.application.preview.stop(body)
                     status = HTTPStatus.OK
                 self._json(status, result)

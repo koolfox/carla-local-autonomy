@@ -614,7 +614,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise ValueError(
                 f"environment variable {args.world_worker_token_env!r} must contain the Worker token"
             )
-        workspace = Path(args.workspace).expanduser().resolve(strict=True)
+        Path(args.workspace).expanduser().resolve(strict=True)
         worker = WorldWorkerClient(args.world_worker_url, token, timeout=5.0)
         manager = GaragePreviewManager(
             carla_host=args.carla_host,

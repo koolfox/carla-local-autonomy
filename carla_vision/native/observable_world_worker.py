@@ -58,6 +58,7 @@ class ObservableWorldWorker(WorldWorker):
         super().__init__(*args, **kwargs)
         self._prepare_gate = threading.Lock()
         self._preparation_lock = threading.RLock()
+        self._prepare_cancel = threading.Event()
         self._preparation: dict[str, Any] = {
             "status": "idle",
             "stage": "idle",
@@ -79,6 +80,7 @@ class ObservableWorldWorker(WorldWorker):
                 "observable_scene_preparation": True,
                 "responsive_prepare_health": True,
                 "prepare_progress_stages": True,
+                "prepare_cancellation": True,
             }
         )
         return capabilities
@@ -100,6 +102,7 @@ class ObservableWorldWorker(WorldWorker):
             return self._preparation.get("status") == "preparing"
 
     def _begin_preparation(self, config: Any) -> None:
+        self._prepare_cancel.clear()
         now = self._clock()
         requested = {
             "map": config.map_name,
@@ -126,6 +129,7 @@ class ObservableWorldWorker(WorldWorker):
                 },
                 "history": [{"stage": "map", "elapsed_seconds": 0.0}],
                 "error": None,
+                "cancel_requested": False,
                 "scene_id": None,
                 "started_monotonic": now,
                 "completed_monotonic": None,
@@ -138,6 +142,32 @@ class ObservableWorldWorker(WorldWorker):
             requested["prop_preset"],
             requested["route_mode"],
         )
+
+    def cancel_preparation(self, raw: Mapping[str, Any]) -> dict[str, Any]:
+        base._strict_keys(raw, allowed=set(), required=set(), name="prepare cancellation request")
+        with self._preparation_lock:
+            if self._preparation.get("status") != "preparing":
+                raise WorkerError(
+                    HTTPStatus.CONFLICT,
+                    "scene_not_preparing",
+                    "no scene preparation is currently active",
+                )
+            self._prepare_cancel.set()
+            self._preparation["cancel_requested"] = True
+        return {
+            "schema_version": base.SCHEMA_VERSION,
+            "worker_api_revision": base.WORKER_API_REVISION,
+            "status": "cancelling",
+            "preparation": self._preparation_snapshot(),
+        }
+
+    def _check_prepare_cancelled(self) -> None:
+        if self._prepare_cancel.is_set():
+            raise WorkerError(
+                HTTPStatus.CONFLICT,
+                "scene_prepare_cancelled",
+                "scene preparation was cancelled before the next CARLA mutation batch",
+            )
 
     def _set_preparation_stage(self, stage: str, **updates: Any) -> None:
         stage_changed = False
@@ -361,12 +391,18 @@ class ObservableWorldWorker(WorldWorker):
             self._prepare_gate.release()
 
     def _load_world_isolated(self, target: str) -> tuple[Any, Any]:
+        self._check_prepare_cancelled()
         self._set_preparation_stage("map")
-        return super()._load_world_isolated(target)
+        result = super()._load_world_isolated(target)
+        self._check_prepare_cancelled()
+        return result
 
     def _ensure_async_world(self, world: Any) -> None:
+        self._check_prepare_cancelled()
         self._set_preparation_stage("world_settings")
-        return super()._ensure_async_world(world)
+        result = super()._ensure_async_world(world)
+        self._check_prepare_cancelled()
+        return result
 
     def _spawn_ego(
         self,
@@ -377,6 +413,7 @@ class ObservableWorldWorker(WorldWorker):
         rng: Any,
         owned: list[Any],
     ) -> tuple[Any, int]:
+        self._check_prepare_cancelled()
         # Reaching ego spawn means the base Worker successfully applied
         # TrafficManager/world dynamics immediately before this call.
         self._set_preparation_stage(
@@ -385,7 +422,9 @@ class ObservableWorldWorker(WorldWorker):
             speed_difference_percent=config.speed_difference_percent,
             following_distance_metres=config.following_distance_metres,
         )
-        return super()._spawn_ego(world, config, scene_id, spawn_points, rng, owned)
+        result = super()._spawn_ego(world, config, scene_id, spawn_points, rng, owned)
+        self._check_prepare_cancelled()
+        return result
 
     def _spawn_owned_batch(
         self,
@@ -393,7 +432,9 @@ class ObservableWorldWorker(WorldWorker):
         requests: Sequence[Any],
         owned: list[Any],
     ) -> list[Any | None]:
+        self._check_prepare_cancelled()
         actors = super()._spawn_owned_batch(world, requests, owned)
+        self._check_prepare_cancelled()
         if self._is_preparing():
             stage = str(self._preparation_snapshot().get("stage", ""))
             if stage in {"traffic", "walkers", "props"}:
@@ -413,6 +454,7 @@ class ObservableWorldWorker(WorldWorker):
         ego_transform: Any,
         owned: list[Any],
     ) -> list[Any]:
+        self._check_prepare_cancelled()
         self._set_preparation_stage("props")
         actors = super()._spawn_props(scene_id, world, preset, ego_transform, owned)
         self._set_preparation_stage("props", props=len(actors))
@@ -429,6 +471,7 @@ class ObservableWorldWorker(WorldWorker):
         rng: Any,
         owned: list[Any],
     ) -> list[Any]:
+        self._check_prepare_cancelled()
         self._set_preparation_stage("traffic")
         actors = super()._spawn_traffic(
             scene_id,
@@ -454,6 +497,7 @@ class ObservableWorldWorker(WorldWorker):
         rng: Any,
         owned: list[Any],
     ) -> tuple[list[Any], list[Any]]:
+        self._check_prepare_cancelled()
         self._set_preparation_stage("walkers")
         walkers, controllers = super()._spawn_walkers(scene_id, world, count, rng, owned)
         existing = 0
@@ -470,6 +514,7 @@ class ObservableWorldWorker(WorldWorker):
         spawn_index: int,
         rng: Any,
     ) -> tuple[dict[str, Any], dict[str, Any], list[Any]]:
+        self._check_prepare_cancelled()
         self._set_preparation_stage("route")
         return super()._plan_random_route(world, ego, spawn_points, spawn_index, rng)
 
