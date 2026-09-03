@@ -1,0 +1,74 @@
+name: Dense progress patch
+
+on:
+  push:
+    branches: [issue/47-56-dense-progress]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v6
+        with:
+          ref: issue/47-56-dense-progress
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          enable-cache: true
+
+      - name: Apply source patch
+        run: python .github/dense_progress_apply.py
+
+      - name: Install Python dependencies
+        run: uv sync --group dev --frozen
+
+      - name: Validate Python patch
+        run: |
+          uv run ruff check carla_vision tests
+          uv run pytest -q tests/test_observable_world_worker.py tests/test_garage_async.py tests/test_garage_reconfigure.py tests/test_world_worker_reconfigure.py
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Install frontend dependencies
+        working-directory: web
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate frontend patch
+        working-directory: web
+        run: |
+          npm test
+          npm run check
+          npm run build
+
+      - name: Commit validated source and generated console
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add \
+            carla_vision/native/observable_world_worker.py \
+            carla_vision/operator/garage_async.py \
+            carla_vision/operator/garage_preview.py \
+            web/src/lib/api/operator.ts \
+            web/src/lib/domain/garagePreview.ts \
+            web/src/lib/components/GaragePreview.svelte \
+            web/tests/garage-preview.test.mjs \
+            tests/test_garage_async.py \
+            tests/test_observable_world_worker.py \
+            carla_vision/operator/console_static
+          git diff --cached --quiet && exit 0
+          git commit -m "Expose dense Garage preparation progress"
+          git push origin HEAD:issue/47-56-dense-progress
