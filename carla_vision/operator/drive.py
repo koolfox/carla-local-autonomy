@@ -434,7 +434,9 @@ class DriveSession:
         self._raw_jpeg: bytes | None = None
         self._overlay_jpeg: bytes | None = None
         self._voxel_jpeg: bytes | None = None
+        self._voxel_overlay_jpeg: bytes | None = None
         self._voxel_frame_sequence = -1
+        self._voxel_overlay_frame_sequence = -1
         self._voxel: VoxelViewWorker | None = None
         self._raw_frame_sequence = -1
         self._overlay_frame_sequence = -1
@@ -442,11 +444,13 @@ class DriveSession:
             "raw": None,
             "overlay": None,
             "voxel": None,
+            "voxel_overlay": None,
         }
         self._frame_arrivals: dict[str, deque[float]] = {
             "raw": deque(maxlen=180),
             "overlay": deque(maxlen=180),
             "voxel": deque(maxlen=180),
+            "voxel_overlay": deque(maxlen=180),
         }
         self._camera_transport = "pending"
         self._telemetry = {
@@ -541,6 +545,7 @@ class DriveSession:
                 "raw_frame_sequence": self._raw_frame_sequence,
                 "overlay_frame_sequence": self._overlay_frame_sequence,
                 "voxel_frame_sequence": self._voxel_frame_sequence,
+                "voxel_overlay_frame_sequence": self._voxel_overlay_frame_sequence,
                 "stream": stream,
                 "frames_seen": self._frames_seen,
                 "controls_written": self._controls_written,
@@ -714,8 +719,15 @@ class DriveSession:
                 sequence, payload = self._overlay_frame_sequence, self._overlay_jpeg
             elif view == "voxel":
                 sequence, payload = self._voxel_frame_sequence, self._voxel_jpeg
+            elif view == "voxel_overlay":
+                sequence, payload = (
+                    self._voxel_overlay_frame_sequence,
+                    self._voxel_overlay_jpeg,
+                )
             else:
-                raise ValueError("drive frame view must be raw, overlay or voxel")
+                raise ValueError(
+                    "drive frame view must be raw, overlay, voxel or voxel_overlay"
+                )
             if payload is None:
                 raise FileNotFoundError(f"{view} drive frame is not ready")
             return sequence, payload
@@ -726,8 +738,10 @@ class DriveSession:
         after_sequence: int = -1,
         timeout: float = 5.0,
     ) -> tuple[int, bytes]:
-        if view not in {"raw", "overlay", "voxel"}:
-            raise ValueError("drive frame view must be raw, overlay or voxel")
+        if view not in {"raw", "overlay", "voxel", "voxel_overlay"}:
+            raise ValueError(
+                "drive frame view must be raw, overlay, voxel or voxel_overlay"
+            )
         deadline = time.monotonic() + float(timeout)
         with self._frame_condition:
             while True:
@@ -735,8 +749,13 @@ class DriveSession:
                     sequence, payload = self._raw_frame_sequence, self._raw_jpeg
                 elif view == "overlay":
                     sequence, payload = self._overlay_frame_sequence, self._overlay_jpeg
-                else:
+                elif view == "voxel":
                     sequence, payload = self._voxel_frame_sequence, self._voxel_jpeg
+                else:
+                    sequence, payload = (
+                        self._voxel_overlay_frame_sequence,
+                        self._voxel_overlay_jpeg,
+                    )
                 if payload is not None and sequence > after_sequence:
                     return sequence, payload
                 if self._status in _TERMINAL:
@@ -798,12 +817,59 @@ class DriveSession:
             elif view == "voxel":
                 self._voxel_frame_sequence = sequence
                 self._voxel_jpeg = payload
+            elif view == "voxel_overlay":
+                self._voxel_overlay_frame_sequence = sequence
+                self._voxel_overlay_jpeg = payload
             else:
-                raise ValueError("drive frame view must be raw, overlay or voxel")
+                raise ValueError(
+                    "drive frame view must be raw, overlay, voxel or voxel_overlay"
+                )
             received = time.monotonic()
             self._frame_received_monotonic[view] = received
             self._frame_arrivals[view].append(received)
             self._frame_condition.notify_all()
+
+    def _voxel_waypoint_provider(self) -> Any | None:
+        """Return a read-only teacher callback outside the actuation request lane."""
+
+        worker = self._world_worker
+        if worker is None:
+            return None
+        with self._lock:
+            scene = self._worker_scene
+        if scene is None or not bool(scene.capabilities.get("waypoint_teacher")):
+            return None
+        scene_id = scene.scene_id
+
+        def provide(frame: Any) -> dict[str, Any]:
+            transform = getattr(frame, "transform", None)
+            if (
+                not isinstance(transform, (tuple, list))
+                or len(transform) != 6
+                or any(
+                    isinstance(value, bool)
+                    or not isinstance(value, (int, float))
+                    or not math.isfinite(float(value))
+                    for value in transform
+                )
+            ):
+                raise RuntimeError("camera frame has no valid CARLA transform")
+            with self._lock:
+                current = self._worker_scene
+                stopped = self._worker_scene_stopped
+            if current is None or stopped or current.scene_id != scene_id:
+                raise RuntimeError("World Worker scene changed before waypoint sampling")
+            return worker.waypoints(
+                current,
+                camera_location={
+                    "x": float(transform[0]),
+                    "y": float(transform[1]),
+                    "z": float(transform[2]),
+                },
+                source_frame=int(frame.frame),
+            )
+
+        return provide
 
     def _record_mode_change(self, previous: str, current: str, reason: str) -> None:
         if previous == current:
@@ -1316,7 +1382,10 @@ class DriveSession:
             if self.config.voxel_enabled:
                 # Observe the existing RGB stream. Model load/inference happen on
                 # a separate latest-only thread, never in the actuation lane.
-                self._voxel = VoxelViewWorker(device=self.config.device)
+                self._voxel = VoxelViewWorker(
+                    device=self.config.device,
+                    waypoint_provider=self._voxel_waypoint_provider(),
+                )
                 voxel_log = voxel_log_path.open("w", encoding="utf-8", buffering=1)
 
             renderer = OverlayRenderer(stale_after_seconds=2.0)
@@ -1405,6 +1474,11 @@ class DriveSession:
                         latest_voxel = voxel_result
                         last_voxel_sequence = voxel_result.sequence
                         self._cache_frame("voxel", voxel_result.sequence, voxel_result.jpeg)
+                        self._cache_frame(
+                            "voxel_overlay",
+                            voxel_result.sequence,
+                            voxel_result.overlay_jpeg,
+                        )
                         _json_line(voxel_log, {"event": "prediction", **voxel_result.record()})
                     if self.config.record_video and latest_voxel is not None:
                         if voxel_video_start is None:

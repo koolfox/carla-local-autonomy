@@ -20,7 +20,7 @@ from typing import Any, Mapping
 import numpy as np
 
 from .contracts import FREE, OCCUPIED, UNKNOWN, VoxelGridSpec
-from .geometry import backproject_depth
+from .geometry import backproject_depth, carla_rotation_matrix
 
 MODEL_ID = "depth-anything/Depth-Anything-V2-Metric-Outdoor-Small-hf"
 # Resolved from the public Hugging Face model API on 2026-09-03. Both processor
@@ -62,18 +62,8 @@ class CameraMount:
             object.__setattr__(self, name, values)
 
     def rotation_matrix(self) -> np.ndarray:
-        roll, pitch, yaw = (math.radians(value) for value in self.rotation_rpy_degrees)
-        cr, sr = math.cos(roll), math.sin(roll)
-        cp, sp = math.cos(pitch), math.sin(pitch)
-        cy, sy = math.cos(yaw), math.sin(yaw)
-        return np.asarray(
-            [
-                [cp * cy, cy * sp * sr - sy * cr, -cy * sp * cr - sy * sr],
-                [cp * sy, sy * sp * sr + cy * cr, -sy * sp * cr + cy * sr],
-                [sp, -cp * sr, cp * cr],
-            ],
-            dtype=np.float32,
-        )
+        roll, pitch, yaw = self.rotation_rpy_degrees
+        return carla_rotation_matrix(roll=roll, pitch=pitch, yaw=yaw).astype(np.float32)
 
 
 @dataclass(frozen=True, slots=True)

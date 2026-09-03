@@ -156,7 +156,7 @@ The canonical remote path uses two persistent MJPEG hops: the World Worker
 encodes CARLA BGRA frames to JPEG in memory on Windows, and the Operator relays
 newest frames continuously to the browser. Garage uses
 `/api/garage/preview/stream.mjpg`; Drive uses
-`/api/drive/stream.mjpg?view=raw|overlay|voxel`. The older `frame.jpg` routes accept
+`/api/drive/stream.mjpg?view=raw|overlay|voxel|voxel_overlay`. The older `frame.jpg` routes accept
 the same views and remain
 compatibility/diagnostic endpoints and are not the normal browser loop.
 

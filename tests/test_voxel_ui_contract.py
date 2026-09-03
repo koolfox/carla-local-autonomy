@@ -138,10 +138,23 @@ def test_svelte_voxel_view_is_opt_in_and_preserves_raw_default() -> None:
     config = (ROOT / "web/src/lib/domain/config.ts").read_text(encoding="utf-8")
     runtime = (ROOT / "web/src/lib/domain/runtime.ts").read_text(encoding="utf-8")
 
-    assert "let view: 'raw' | 'overlay' | 'voxel' = 'raw'" in cockpit
+    assert "let view: 'raw' | 'overlay' | 'voxel' | 'voxel_overlay' = 'raw'" in cockpit
     assert "view = 'voxel'" not in cockpit
     assert "disabled={!voxelEnabled}" in cockpit
     assert "chooseView('voxel')" in cockpit
+    assert "chooseView('voxel_overlay')" in cockpit
+    assert ">Voxel 3D</button>" in cockpit
+    assert ">Voxel overlay</button>" in cockpit
+    assert "voxelView = view === 'voxel' || view === 'voxel_overlay'" in cockpit
+    assert "(!voxelView || voxel?.status === 'running')" in cockpit
+    assert "voxelView ? voxel?.source_frame" in cockpit
+    assert "RGB geometry" in cockpit
+    assert "CARLA route (teacher)" in cockpit
+    assert "not LiDAR or semantic object labels" in cockpit
+    assert "not a model prediction" in cockpit
+    assert "Neither view controls the vehicle" in cockpit
+    assert "onpointerdown={armFromViewport}" in cockpit
+    assert "<ManualControlPad armRequest={manualArmRequest}" in cockpit
     assert "voxel?.status === 'failed'" in cockpit
     assert "voxel.error" in cockpit
     assert "voxel?.latency_ms" in cockpit
@@ -152,4 +165,17 @@ def test_svelte_voxel_view_is_opt_in_and_preserves_raw_default() -> None:
     assert "garagePreviewSignature($sessionConfig)" in preview
     assert "voxelEnabled: false" in config
     assert "voxel?: DriveVoxelState" in runtime
+    assert "waypoint_status?: 'pending' | 'available' | 'empty' | 'unavailable' | 'error'" in runtime
+    assert "waypoint_source?: string | null" in runtime
+    assert "waypoint_error?: string | null" in runtime
     assert "actuated: false" in runtime
+
+
+
+def test_voxel_overlay_is_wired_through_drive_and_http_stream() -> None:
+    drive = (ROOT / "carla_vision/operator/drive.py").read_text(encoding="utf-8")
+    server = (ROOT / "carla_vision/operator/server.py").read_text(encoding="utf-8")
+    assert '"voxel_overlay"' in drive
+    assert 'waypoint_provider=self._voxel_waypoint_provider()' in drive
+    assert '"voxel_overlay",' in drive
+    assert '{"raw", "overlay", "voxel", "voxel_overlay"}' in server

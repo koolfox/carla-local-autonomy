@@ -33,6 +33,9 @@ export interface DriveVoxelState {
   error?: string | null;
   latency_ms?: number | null;
   source_frame?: number | null;
+  waypoint_status?: 'pending' | 'available' | 'empty' | 'unavailable' | 'error';
+  waypoint_source?: string | null;
+  waypoint_error?: string | null;
   sequence?: number;
   actuated: false;
 }

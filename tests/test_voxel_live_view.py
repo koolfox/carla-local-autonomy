@@ -130,7 +130,107 @@ def test_drive_voxel_cache_does_not_replace_raw_or_overlay(tmp_path):
     session._cache_frame("raw", 80, b"raw")
     session._cache_frame("overlay", 70, b"overlay")
     session._cache_frame("voxel", 60, b"voxel")
+    session._cache_frame("voxel_overlay", 61, b"voxel-overlay")
     assert session.frame("raw") == (80, b"raw")
     assert session.frame("overlay") == (70, b"overlay")
     assert session.wait_for_frame("voxel", 59, timeout=0.1) == (60, b"voxel")
+    assert session.wait_for_frame("voxel_overlay", 60, timeout=0.1) == (
+        61,
+        b"voxel-overlay",
+    )
+    assert session.snapshot()["voxel_overlay_frame_sequence"] == 61
     assert session.snapshot()["voxel"]["actuated"] is False
+
+
+
+def test_waypoint_teacher_runs_after_rgb_inference_and_stays_separate():
+    events = []
+
+    class Predictor:
+        def load(self):
+            pass
+
+        def predict(self, *_args, **_kwargs):
+            events.append("predict")
+            return result()
+
+    def teacher(source):
+        assert events == ["predict"]
+        events.append("teacher")
+        return {
+            "source": "planned_route",
+            "coordinate_frame": "carla_world_metres",
+            "teacher_only": True,
+            "model_input": False,
+            "controls_vehicle": False,
+            "route_frame_matched": False,
+            "source_frame": source.frame,
+            "points": [
+                {"x": 2.0, "y": 0.0, "z": 1.7},
+                {"x": 8.0, "y": 0.0, "z": 1.7},
+            ],
+        }
+
+    worker = VoxelViewWorker(
+        device="cpu",
+        predictor_factory=Predictor,
+        max_fps=10,
+        waypoint_provider=teacher,
+    )
+    source = frame(5)
+    source.transform = (0.0, 0.0, 1.7, 0.0, 0.0, 0.0)
+    try:
+        worker.submit(source)
+        wait_until(lambda: worker.latest() is not None)
+        latest = worker.latest()
+        assert events == ["predict", "teacher"]
+        assert latest.waypoint_status == "available"
+        assert latest.waypoint_teacher["teacher_only"] is True
+        assert latest.waypoint_teacher["input_to_model"] is False
+        assert latest.record()["input"] == "rgb_only"
+        decoded = cv2.imdecode(np.frombuffer(latest.overlay_jpeg, np.uint8), 1)
+        assert decoded.shape == (120, 160, 3)
+    finally:
+        worker.close()
+
+
+def test_drive_waypoint_provider_uses_current_scene_without_control_request_lock(tmp_path):
+    calls = []
+
+    class Worker:
+        def waypoints(self, scene, **kwargs):
+            calls.append((scene, kwargs))
+            return {"points": []}
+
+    config = DriveStartConfig(
+        run_id="voxel-provider", host="127.0.0.1", port=2000,
+        vehicle_blueprint="vehicle.audi.tt", color=None, seed=7,
+        weather_preset="keep", prop_preset="none", detector_enabled=False,
+        detector="rtdetr", weights=None, device="cpu", image_size=640, confidence=0.2,
+        width=1280, height=720, camera_fps=30, camera_fov=90,
+        record_video=False, spectator_follow=False,
+    )
+    session = DriveSession(
+        replace(config, voxel_enabled=True, world_worker_enabled=True),
+        workspace=tmp_path,
+        world_worker=Worker(),
+    )
+    scene = SimpleNamespace(
+        scene_id="scene-123456789012",
+        capabilities={"waypoint_teacher": True},
+    )
+    session._worker_scene = scene
+    provider = session._voxel_waypoint_provider()
+    assert provider is not None
+    source = frame(9)
+    source.transform = (1.0, 2.0, 3.0, 4.0, 5.0, 6.0)
+    provider(source)
+    assert calls == [
+        (
+            scene,
+            {
+                "camera_location": {"x": 1.0, "y": 2.0, "z": 3.0},
+                "source_frame": 109,
+            },
+        )
+    ]

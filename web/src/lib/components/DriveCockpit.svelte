@@ -10,7 +10,7 @@
   import { garageRuntime } from '$lib/stores/runtime';
   import ManualControlPad from './ManualControlPad.svelte';
 
-  let view: 'raw' | 'overlay' | 'voxel' = 'raw';
+  let view: 'raw' | 'overlay' | 'voxel' | 'voxel_overlay' = 'raw';
   let streamReady = false;
   let streamNonce = Date.now();
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -27,9 +27,15 @@
   $: detectorEnabled = Boolean(drive.detector?.enabled);
   $: voxel = drive.voxel;
   $: voxelEnabled = Boolean(voxel?.enabled);
+  $: voxelView = view === 'voxel' || view === 'voxel_overlay';
+  $: waypointLabel = voxel?.waypoint_status === 'available'
+    ? 'CARLA route (teacher)'
+    : voxel?.waypoint_status === 'pending'
+      ? 'Route pending'
+      : voxel?.waypoint_status === 'empty' ? 'No route ahead' : 'Route unavailable';
   $: if (!detectorEnabled && view === 'overlay') view = 'raw';
-  $: if (!voxelEnabled && view === 'voxel') view = 'raw';
-  $: if (view === 'voxel' && voxel?.status !== 'running') streamReady = false;
+  $: if (!voxelEnabled && (view === 'voxel' || view === 'voxel_overlay')) view = 'raw';
+  $: if (voxelView && voxel?.status !== 'running') streamReady = false;
   $: if (
     running &&
     drive.session_id &&
@@ -40,7 +46,7 @@
     streamReady = false;
     streamNonce = Date.now();
   }
-  $: streamSource = running && drive.session_id && (view !== 'voxel' || voxel?.status === 'running')
+  $: streamSource = running && drive.session_id && (!voxelView || voxel?.status === 'running')
     ? `/api/drive/stream.mjpg?view=${view}&session=${encodeURIComponent(drive.session_id)}&t=${streamNonce}`
     : '';
   $: viewFps = Number((view === 'overlay' ? stream.overlay_fps : stream.source_fps) || 0);
@@ -48,15 +54,16 @@
   function retryStream(): void {
     streamReady = false;
     if (retryTimer) clearTimeout(retryTimer);
-    if (!running || (view === 'voxel' && voxel?.status !== 'running')) return;
+    if (!running || (voxelView && voxel?.status !== 'running')) return;
     retryTimer = setTimeout(() => {
       streamNonce = Date.now();
     }, 1200);
   }
 
-  function chooseView(next: 'raw' | 'overlay' | 'voxel'): void {
+  function chooseView(next: 'raw' | 'overlay' | 'voxel' | 'voxel_overlay'): void {
     if (next === 'overlay' && !detectorEnabled) return;
-    if (next === 'voxel' && !voxelEnabled) return;
+    if ((next === 'voxel' || next === 'voxel_overlay') && !voxelEnabled) return;
+    if (retryTimer) clearTimeout(retryTimer);
     view = next;
     streamReady = false;
     streamNonce = Date.now();
@@ -110,7 +117,7 @@
       {#if streamSource}
         <img
           src={streamSource}
-          alt={view === 'voxel' ? 'RGB-derived Voxel spatial estimates, advisory only' : 'Live CARLA drive camera'}
+          alt={voxelView ? 'RGB-derived Voxel geometry with CARLA teacher route reference, advisory only' : 'Live CARLA drive camera'}
           class:ready={streamReady}
           onload={() => (streamReady = true)}
           onerror={retryStream}
@@ -119,7 +126,7 @@
 
       {#if !streamReady}
         <div class="viewport-placeholder">
-          {#if view === 'voxel' && running}
+          {#if voxelView && running}
             {#if voxel?.status === 'failed'}
               <strong>Voxel unavailable</strong><p role="alert">{voxel.error ?? 'RGB depth inference failed.'}</p>
             {:else if voxel?.status === 'stopped'}
@@ -128,7 +135,7 @@
               <span class="loading-ring"></span><strong>{voxel?.status === 'loading' ? 'Loading RGB depth model…' : 'Waiting for Voxel frame…'}</strong>
               <p>First use may download approximately 100 MB.</p>
             {/if}
-            <small>Estimated distances · no lane inference or vehicle control</small>
+            <small>RGB estimates · CARLA route is a teacher reference, not model inference</small>
           {:else if drive.status === 'starting'}
             <span class="loading-ring"></span><strong>Starting camera…</strong>
           {:else if drive.status === 'stopping'}
@@ -147,10 +154,15 @@
         <div class="segmented-control" aria-label="camera view">
           <button type="button" class:active={view === 'raw'} onclick={() => chooseView('raw')}>Raw</button>
           <button type="button" class:active={view === 'overlay'} disabled={!detectorEnabled} onclick={() => chooseView('overlay')}>Detections</button>
-          <button type="button" class:active={view === 'voxel'} disabled={!voxelEnabled} onclick={() => chooseView('voxel')}>Voxel</button>
+          <button type="button" class:active={view === 'voxel'} disabled={!voxelEnabled} onclick={() => chooseView('voxel')}>Voxel 3D</button>
+          <button type="button" class:active={view === 'voxel_overlay'} disabled={!voxelEnabled} onclick={() => chooseView('voxel_overlay')}>Voxel overlay</button>
         </div>
-        {#if view === 'voxel'}
-          <span>{voxel?.status ?? 'stopped'} · {voxel?.latency_ms == null ? 'waiting' : `${Math.round(voxel.latency_ms)} ms processing`} · estimates only</span>
+        {#if voxelView}
+          <span title="RGB depth estimates, not LiDAR or semantic object labels. The CARLA route is privileged teacher data, not a model prediction. Neither view controls the vehicle.">
+            <span class="voxel-geometry-key">RGB geometry</span> ·
+            <span class="voxel-route-key" title={voxel?.waypoint_error ?? voxel?.waypoint_source ?? 'CARLA map waypoint reference'}>{waypointLabel}</span> ·
+            {voxel?.latency_ms == null ? voxel?.status ?? 'waiting' : `${Math.round(voxel.latency_ms)} ms processing`}
+          </span>
         {:else}
           <span>{stream.resolution ?? 'camera'} · {viewFps.toFixed(1)} FPS · {frameAge()}</span>
         {/if}
@@ -183,7 +195,7 @@
           <div class="telemetry-row"><span>Traffic</span><strong>{drive.traffic_count_actual ?? '—'}</strong></div>
           <div class="telemetry-row"><span>Walkers</span><strong>{drive.walker_count_actual ?? '—'}</strong></div>
           <div class="telemetry-row"><span>Deadman</span><strong class:warning-text={drive.deadman_active}>{drive.deadman_active ? 'Braking' : 'Clear'}</strong></div>
-          <div class="telemetry-row"><span>Frame</span><strong>{view === 'voxel' ? voxel?.source_frame ?? '—' : view === 'overlay' ? drive.overlay_frame_sequence ?? '—' : drive.raw_frame_sequence ?? '—'}</strong></div>
+          <div class="telemetry-row"><span>Frame</span><strong>{voxelView ? voxel?.source_frame ?? '—' : view === 'overlay' ? drive.overlay_frame_sequence ?? '—' : drive.raw_frame_sequence ?? '—'}</strong></div>
         </aside>
       {/if}
 
@@ -197,3 +209,17 @@
     </div>
   </div>
 </section>
+
+<style>
+  .viewport-toolbar {
+    width: max-content;
+    max-width: calc(100% - 28px);
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px 12px;
+  }
+
+  .segmented-control { flex-wrap: wrap; justify-content: center; }
+  .voxel-geometry-key { color: #64d9e6; }
+  .voxel-route-key { color: #f092d7; }
+</style>
