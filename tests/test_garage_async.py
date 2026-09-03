@@ -1,13 +1,31 @@
 from __future__ import annotations
 
+import json
 import threading
 import time
+import urllib.request
 from collections.abc import Mapping
 from typing import Any
 
 import pytest
 
 from carla_vision.operator.garage_async import GaragePreviewAsyncFacade
+from carla_vision.operator.garage_server import create_server
+
+
+def _preview_payload(**overrides: object) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "map_name": "Town10HD_Opt",
+        "weather_preset": "clear-day",
+        "vehicle_blueprint": "vehicle.tesla.model3",
+        "color": "255,0,0",
+        "seed": 42,
+        "traffic_count": 15,
+        "walker_count": 10,
+        "prop_preset": "construction",
+    }
+    payload.update(overrides)
+    return payload
 
 
 class _BlockingPreviewManager:
@@ -22,6 +40,9 @@ class _BlockingPreviewManager:
         if not self.release.wait(2.0):
             raise TimeoutError("test did not release configure")
         return {"status": "running", "active": True, "applied_config": dict(raw)}
+
+    def shutdown(self) -> None:
+        self.release.set()
 
 
 def test_async_facade_returns_before_slow_configure_finishes() -> None:
@@ -145,3 +166,67 @@ def test_async_facade_allows_new_start_after_terminal_operation() -> None:
     second = facade.start({"seed": 2})
     assert second["operation_id"] != first["operation_id"]
     assert manager.calls >= 1
+
+
+def test_async_garage_http_start_returns_202_and_sse_pushes_completion(tmp_path) -> None:
+    server = create_server(
+        workspace=tmp_path,
+        bind="127.0.0.1",
+        port=0,
+        sessions_root=tmp_path / "sessions",
+        carla_host="127.0.0.1",
+        carla_port=65534,
+    )
+    original_preview = server.application.preview
+    original_preview.shutdown()
+    preview = _BlockingPreviewManager()
+    server.application.preview = preview  # type: ignore[assignment]
+    server.application.preview_async = GaragePreviewAsyncFacade(preview)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        host, port = server.server_address[:2]
+        request = urllib.request.Request(
+            f"http://{host}:{port}/api/garage/preview/configure/start",
+            data=json.dumps(_preview_payload()).encode("utf-8"),
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "X-Operator-Token": server.application.token,
+            },
+        )
+        started = time.monotonic()
+        with urllib.request.urlopen(request, timeout=1.0) as response:
+            accepted = json.loads(response.read().decode("utf-8"))
+            assert response.status == 202
+        assert time.monotonic() - started < 0.5
+        assert accepted["status"] == "starting"
+        assert accepted["stage"] == "accepted"
+        assert accepted["resolved_config"]["traffic_count"] == 15
+        assert preview.entered.wait(1.0)
+
+        operation_id = accepted["operation_id"]
+        with urllib.request.urlopen(
+            f"http://{host}:{port}/api/garage/preview/operations/{operation_id}",
+            timeout=1.0,
+        ) as response:
+            current = json.loads(response.read().decode("utf-8"))
+        assert current["status"] == "starting"
+        assert current["stage"] == "configuring"
+
+        preview.release.set()
+        with urllib.request.urlopen(
+            f"http://{host}:{port}/api/garage/preview/operations/{operation_id}/events",
+            timeout=2.0,
+        ) as response:
+            events = response.read().decode("utf-8")
+            assert response.headers.get_content_type() == "text/event-stream"
+        assert "event: garage.preview.lifecycle" in events
+        assert '"status":"running"' in events
+        assert '"stage":"running"' in events
+    finally:
+        preview.release.set()
+        server.shutdown()
+        thread.join(timeout=3.0)
+        server.server_close()
+        server.application.jobs.shutdown()
