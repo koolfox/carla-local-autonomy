@@ -43,10 +43,12 @@ jobs:
         run: >-
           uv run pytest -q
           tests/test_bridge.py
+          tests/test_camera_pause_acceptance.py
           tests/test_camera_relay_teardown.py
           tests/test_discovery.py
           tests/test_drive_console.py
           tests/test_external_model_drive.py
+          tests/test_garage_acceptance.py
           tests/test_garage_async.py
           tests/test_garage_drive.py
           tests/test_garage_preview.py
@@ -80,6 +82,7 @@ jobs:
           uv run carla-world-worker --help
           uv run carla-operator-ui --help
           uv run carla-discover --help
+          uv run carla-garage-acceptance --help
           uv run carla-vision --help
 
       - name: Verify wheel contains the product console

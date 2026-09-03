@@ -677,6 +677,28 @@ class WorldWorkerClient:
             },
         )
 
+    def pause_camera(self, scene: WorldWorkerScene) -> WorldWorkerScene:
+        if not scene.capabilities.get("camera_pause_resume"):
+            raise WorldWorkerError(
+                "the Windows World Worker does not support diagnostic camera pause/resume; "
+                "pull main and restart the Worker",
+                code="camera_pause_resume_unavailable",
+            )
+        return self._scene_request(
+            scene, "camera_pause", {"lease_token": scene.lease_token}
+        )
+
+    def resume_camera(self, scene: WorldWorkerScene) -> WorldWorkerScene:
+        if not scene.capabilities.get("camera_pause_resume"):
+            raise WorldWorkerError(
+                "the Windows World Worker does not support diagnostic camera pause/resume; "
+                "pull main and restart the Worker",
+                code="camera_pause_resume_unavailable",
+            )
+        return self._scene_request(
+            scene, "camera_resume", {"lease_token": scene.lease_token}
+        )
+
     def waypoints(
         self,
         scene: WorldWorkerScene,
