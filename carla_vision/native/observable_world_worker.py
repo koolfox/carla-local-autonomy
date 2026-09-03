@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import logging
 import sys
 import threading
 from collections.abc import Mapping, Sequence
@@ -18,6 +19,9 @@ from http import HTTPStatus
 from pathlib import Path
 from types import ModuleType
 from typing import Any
+
+
+logger = logging.getLogger(__name__)
 
 
 def _load_base() -> ModuleType:
@@ -98,17 +102,18 @@ class ObservableWorldWorker(WorldWorker):
 
     def _begin_preparation(self, config: Any) -> None:
         now = self._clock()
+        requested = {
+            "map": config.map_name,
+            "traffic": int(config.traffic_count),
+            "walkers": int(config.walker_count),
+            "prop_preset": config.prop_preset,
+            "route_mode": config.route_mode,
+        }
         with self._preparation_lock:
             self._preparation = {
                 "status": "preparing",
                 "stage": "map",
-                "requested": {
-                    "map": config.map_name,
-                    "traffic": int(config.traffic_count),
-                    "walkers": int(config.walker_count),
-                    "prop_preset": config.prop_preset,
-                    "route_mode": config.route_mode,
-                },
+                "requested": requested,
                 "actual": {
                     "traffic": 0,
                     "walkers": 0,
@@ -120,8 +125,19 @@ class ObservableWorldWorker(WorldWorker):
                 "started_monotonic": now,
                 "completed_monotonic": None,
             }
+        logger.info(
+            "scene_prepare status=preparing stage=map map=%s traffic=%d walkers=%d props=%s route=%s",
+            requested["map"],
+            requested["traffic"],
+            requested["walkers"],
+            requested["prop_preset"],
+            requested["route_mode"],
+        )
 
     def _set_preparation_stage(self, stage: str, **updates: Any) -> None:
+        stage_changed = False
+        elapsed = 0.0
+        actual: dict[str, Any] = {}
         with self._preparation_lock:
             if self._preparation.get("status") != "preparing":
                 return
@@ -132,11 +148,22 @@ class ObservableWorldWorker(WorldWorker):
                 self._preparation.setdefault("history", []).append(
                     {"stage": stage, "elapsed_seconds": round(elapsed, 3)}
                 )
+                stage_changed = True
             for name, value in updates.items():
                 if name in {"traffic", "walkers", "props"}:
                     self._preparation.setdefault("actual", {})[name] = int(value)
                 else:
                     self._preparation[name] = value
+            actual = dict(self._preparation.get("actual", {}))
+        if stage_changed:
+            logger.info(
+                "scene_prepare status=preparing stage=%s elapsed_seconds=%.3f traffic=%d walkers=%d props=%d",
+                stage,
+                elapsed,
+                int(actual.get("traffic", 0)),
+                int(actual.get("walkers", 0)),
+                int(actual.get("props", 0)),
+            )
 
     def _fail_preparation(self, error: BaseException) -> None:
         now = self._clock()
@@ -156,6 +183,13 @@ class ObservableWorldWorker(WorldWorker):
             self._preparation.setdefault("history", []).append(
                 {"stage": "failed", "elapsed_seconds": round(elapsed, 3)}
             )
+        logger.error(
+            "scene_prepare status=failed stage=%s elapsed_seconds=%.3f code=%s message=%s",
+            failed_stage,
+            elapsed,
+            code,
+            message,
+        )
 
     def _complete_preparation(self) -> None:
         self._set_preparation_stage("route")
@@ -170,11 +204,21 @@ class ObservableWorldWorker(WorldWorker):
                 "props": 0 if scene is None else len(scene.prop_actors),
             }
         with self._preparation_lock:
+            started = self._preparation.get("started_monotonic")
+            elapsed = 0.0 if started is None else max(0.0, now - float(started))
             self._preparation["status"] = "ready"
             self._preparation["stage"] = "ready"
             self._preparation["scene_id"] = scene_id
             self._preparation["actual"] = actual
             self._preparation["completed_monotonic"] = now
+        logger.info(
+            "scene_prepare status=ready stage=ready scene_id=%s elapsed_seconds=%.3f traffic=%d walkers=%d props=%d",
+            scene_id,
+            elapsed,
+            actual["traffic"],
+            actual["walkers"],
+            actual["props"],
+        )
 
     def _prime_control_plane_cache(self) -> None:
         health = super().health()
