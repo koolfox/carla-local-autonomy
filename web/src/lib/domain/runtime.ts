@@ -40,6 +40,46 @@ export interface DriveVoxelState {
   actuated: false;
 }
 
+export interface DriveNavigationIntent {
+  schema_version?: string;
+  source_frame: {
+    kind?: string;
+    id: number;
+    exact: true;
+  };
+  command: string;
+  direction?: {
+    forward?: number;
+    right?: number;
+  };
+  target_point?: {
+    forward_m?: number;
+    right_m?: number;
+  };
+  distance_to_maneuver_m?: number;
+  route_id?: string;
+  source?: string;
+  confidence?: number;
+  privileged: boolean;
+}
+
+export interface DriveAutonomyState {
+  enabled?: boolean;
+  operator_acknowledged?: boolean;
+  model_output_actuated?: boolean;
+  policy_ready?: boolean;
+  commands?: number;
+  failsafes?: number;
+  detail?: {
+    navigation_intent?: unknown;
+    navigation_intent_error?: unknown;
+    [key: string]: unknown;
+  };
+  traffic_vehicle_count?: number;
+  walker_count?: number;
+  population_error?: string | null;
+}
+
 export interface DriveState {
   schema_version?: string;
   status: DriveStatus | string;
@@ -61,6 +101,7 @@ export interface DriveState {
   stream?: DriveStreamState;
   detector?: DriveDetectorState;
   voxel?: DriveVoxelState;
+  autonomy?: DriveAutonomyState;
   traffic_count_actual?: number;
   walker_count_actual?: number;
   raw_frame_sequence?: number;
@@ -116,4 +157,42 @@ export function speedMetresPerSecond(state: DriveState | null | undefined): numb
 export function recordingActive(state: DriveState | null | undefined): boolean {
   const value = state?.recording;
   return typeof value === 'object' && value !== null ? Boolean(value.active) : Boolean(value);
+}
+
+export function navigationIntentFromDrive(
+  state: DriveState | null | undefined
+): DriveNavigationIntent | null {
+  const value = state?.autonomy?.detail?.navigation_intent;
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  const frame = raw.source_frame;
+  if (typeof frame !== 'object' || frame === null || Array.isArray(frame)) return null;
+  const sourceFrame = frame as Record<string, unknown>;
+  const frameId = sourceFrame.id;
+  if (
+    typeof raw.command !== 'string' ||
+    raw.command.trim() === '' ||
+    typeof frameId !== 'number' ||
+    !Number.isInteger(frameId) ||
+    frameId < 0 ||
+    sourceFrame.exact !== true ||
+    typeof raw.privileged !== 'boolean'
+  ) {
+    return null;
+  }
+  return raw as unknown as DriveNavigationIntent;
+}
+
+export function navigationCommandLabel(command: string): string {
+  return (
+    {
+      follow_lane: 'Follow lane',
+      left: 'Left',
+      right: 'Right',
+      straight: 'Straight',
+      change_lane_left: 'Change lane left',
+      change_lane_right: 'Change lane right',
+      stop: 'Stop'
+    } as Record<string, string>
+  )[command] ?? command;
 }
