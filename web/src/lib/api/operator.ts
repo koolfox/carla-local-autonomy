@@ -26,6 +26,18 @@ export interface GaragePreviewResponse extends Record<string, unknown> {
   configure_action?: 'noop' | 'weather' | 'updated' | 'started' | 'restarted';
 }
 
+export interface GaragePreviewOperation extends Record<string, unknown> {
+  schema_version: string;
+  operation_id: string;
+  status: 'starting' | 'running' | 'failed';
+  stage: string;
+  revision: number;
+  elapsed_seconds: number;
+  error?: { type?: string; message?: string } | null;
+  result?: Record<string, unknown>;
+  resolved_config?: Record<string, unknown>;
+}
+
 export interface SituationSettings {
   situationId: string;
   egoSpawnIndex: number;
@@ -301,11 +313,81 @@ export class OperatorApi {
     return this.post<DriveState>('/api/drive/control', { ...control }, keepalive);
   }
 
-  configureGaragePreview(session: SessionConfig): Promise<GaragePreviewResponse> {
-    return this.post<GaragePreviewResponse>('/api/garage/preview/configure', {
+  async configureGaragePreview(
+    session: SessionConfig,
+    lifecycle?: (operation: GaragePreviewOperation) => void
+  ): Promise<GaragePreviewResponse> {
+    const startPath = '/api/garage/preview/configure/start';
+    const accepted = await this.post<GaragePreviewOperation>(startPath, {
       schema_version: '1.0',
       session
     });
+    lifecycle?.(accepted);
+
+    const terminal = await this.waitForGaragePreviewOperation(accepted.operation_id, lifecycle);
+    if (terminal.status !== 'running' || !terminal.result) {
+      const detail = terminal.error?.message || `Garage preview ended in ${terminal.status}`;
+      throw new Error(detail);
+    }
+
+    const applied = { ...terminal.result };
+    return {
+      ...applied,
+      configuration: {
+        schema_version: '1.0',
+        requested: structuredClone(session),
+        resolved: { ...(accepted.resolved_config ?? {}) },
+        applied: { ...applied }
+      }
+    } as GaragePreviewResponse;
+  }
+
+  private async waitForGaragePreviewOperation(
+    operationId: string,
+    lifecycle?: (operation: GaragePreviewOperation) => void
+  ): Promise<GaragePreviewOperation> {
+    const path = `/api/garage/preview/operations/${encodeURIComponent(operationId)}/events`;
+    const response = await fetch(path, {
+      headers: {
+        Accept: 'text/event-stream',
+        'X-Operator-Token': this.token
+      },
+      cache: 'no-store'
+    });
+    if (!response.ok) {
+      const payload: unknown = await response.json().catch(() => null);
+      throw apiError(path, response, payload);
+    }
+    if (!response.body) throw new Error('Garage preview lifecycle stream has no response body');
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true }).replaceAll('\r\n', '\n');
+        while (true) {
+          const boundary = buffer.indexOf('\n\n');
+          if (boundary < 0) break;
+          const block = buffer.slice(0, boundary);
+          buffer = buffer.slice(boundary + 2);
+          const data = block
+            .split('\n')
+            .filter((line) => line.startsWith('data:'))
+            .map((line) => line.slice(5).trimStart())
+            .join('\n');
+          if (!data) continue;
+          const operation = JSON.parse(data) as GaragePreviewOperation;
+          lifecycle?.(operation);
+          if (operation.status === 'running' || operation.status === 'failed') return operation;
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    throw new Error('Garage preview lifecycle stream ended before a terminal state');
   }
 
   getGaragePreviewState(): Promise<GaragePreviewResponse> {
