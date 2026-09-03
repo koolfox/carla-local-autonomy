@@ -19,11 +19,10 @@ from pathlib import Path
 from typing import Any
 
 from .garage_server import GarageOperatorDriveManager
-from .world_worker_client import WorldWorkerClient
+from .world_worker_client import WorldWorkerClient, WorldWorkerScene
 
 SCHEMA_VERSION = "1.0"
 EXPECTED_CARLA_VERSION = "0.9.16"
-_TERMINAL = frozenset({"success", "failed"})
 
 
 def _utc_now() -> str:
@@ -68,6 +67,13 @@ def _nested(mapping: Mapping[str, Any], *path: str) -> Any:
             return None
         value = value.get(key)
     return value
+
+
+def _catalog_identifier(item: Any) -> str:
+    if isinstance(item, Mapping):
+        value = item.get("id", item.get("name", ""))
+        return str(value)
+    return str(item)
 
 
 def _wait_for(
@@ -283,12 +289,35 @@ class GarageAcceptanceRunner:
             expected=self.expected_version,
             note="This is the official PythonAPI loaded by the Windows World Worker.",
         )
+        camera_fault_capability = _nested(health, "capabilities", "camera_pause_resume") is True
+        _check(
+            checks,
+            "camera_pause_resume_capability",
+            camera_fault_capability,
+            observed=_nested(health, "capabilities", "camera_pause_resume"),
+            expected=True,
+            note=(
+                "The gate pauses the existing CARLA sensor with Sensor.stop() and resumes it "
+                "with Sensor.listen(); no timestamp or fake-frame mutation is accepted."
+            ),
+        )
+        current = dict(self.worker.current_scene())
+        clean_start = current.get("status") == "idle" and current.get("scene") is None
+        report["preflight"]["worker_scene"] = {
+            "status": current.get("status"),
+            "scene_id": _nested(current, "scene", "scene_id"),
+        }
+        _check(
+            checks,
+            "worker_clean_start",
+            clean_start,
+            observed=report["preflight"]["worker_scene"],
+            expected={"status": "idle", "scene_id": None},
+            note="A previous run must not require manual actor cleanup.",
+        )
         maps = catalog.get("maps", [])
         map_available = self.map_name == "current" or any(
-            str(item.get("id", item)) == self.map_name
-            or str(item.get("name", "")) == self.map_name
-            for item in maps
-            if isinstance(item, (str, Mapping))
+            _catalog_identifier(item) == self.map_name for item in maps
         )
         _check(
             checks,
@@ -299,9 +328,7 @@ class GarageAcceptanceRunner:
         )
         vehicles = catalog.get("vehicles", [])
         vehicle_available = any(
-            str(item.get("id", item)) == self.vehicle
-            for item in vehicles
-            if isinstance(item, (str, Mapping))
+            _catalog_identifier(item) == self.vehicle for item in vehicles
         )
         _check(
             checks,
@@ -354,14 +381,14 @@ class GarageAcceptanceRunner:
             _check(
                 checks,
                 "ego_spawned",
-                isinstance(running.get("vehicle_id"), int),
+                isinstance(running.get("vehicle_id"), int) and int(running["vehicle_id"]) > 0,
                 observed=running.get("vehicle_id"),
                 expected="positive actor id",
             )
             _check(
                 checks,
                 "camera_spawned",
-                isinstance(running.get("camera_id"), int),
+                isinstance(running.get("camera_id"), int) and int(running["camera_id"]) > 0,
                 observed=running.get("camera_id"),
                 expected="positive sensor id",
             )
@@ -494,7 +521,60 @@ class GarageAcceptanceRunner:
             expected="browser_deadman applies service brake after input lease expires",
         )
 
-        emergency = dict(self.manager.emergency_stop({"session_id": session_id}))
+        before_pause_sequence, _ = self.manager.frame("raw")
+        active_scene = WorldWorkerScene.from_response(self.worker.current_scene())
+        self.worker.pause_camera(active_scene)
+        paused = True
+        try:
+            camera_deadman = _wait_for(
+                self.manager,
+                lambda state: state.get("control_source") == "camera_deadman"
+                and state.get("deadman_active") is True,
+                timeout=4.0,
+                clock=self.clock,
+                sleep=self.sleep,
+            )
+            _check(
+                checks,
+                "camera_stale_fail_safe",
+                _nested(camera_deadman, "stream", "stale") is True,
+                observed={
+                    "stream_stale": _nested(camera_deadman, "stream", "stale"),
+                    "control_source": camera_deadman.get("control_source"),
+                    "deadman_active": camera_deadman.get("deadman_active"),
+                },
+                expected="real sensor pause produces camera_deadman before the session fails",
+            )
+        finally:
+            if paused:
+                self.worker.resume_camera(active_scene)
+
+        recovered_sequence, recovered_jpeg = self.manager.wait_for_frame(
+            "raw", before_pause_sequence, timeout=10.0
+        )
+        recovered = _wait_for(
+            self.manager,
+            lambda state: _nested(state, "stream", "stale") is False,
+            timeout=3.0,
+            clock=self.clock,
+            sleep=self.sleep,
+        )
+        _check(
+            checks,
+            "camera_recovered",
+            recovered_sequence > before_pause_sequence
+            and len(recovered_jpeg) > 100
+            and _nested(recovered, "stream", "stale") is False,
+            observed={
+                "before_sequence": before_pause_sequence,
+                "after_sequence": recovered_sequence,
+                "jpeg_bytes": len(recovered_jpeg),
+                "stream_stale": _nested(recovered, "stream", "stale"),
+            },
+            expected="same CARLA sensor resumes and publishes a newer frame",
+        )
+
+        self.manager.emergency_stop({"session_id": session_id})
         emergency = _wait_for(
             self.manager,
             lambda state: state.get("control_source") == "emergency_stop",
@@ -513,21 +593,6 @@ class GarageAcceptanceRunner:
                 "control_source": emergency.get("control_source"),
             },
             expected="latched emergency_stop with service braking",
-        )
-        # Camera staleness requires an actual transport interruption.  The live
-        # gate records whether it happened naturally; it does not add a hidden
-        # production fault-injection API merely to make this check green.
-        stream_stale = _nested(emergency, "stream", "stale")
-        _check(
-            checks,
-            "camera_stale_fail_safe_observed",
-            stream_stale is True and emergency.get("control_source") == "camera_deadman",
-            observed={"stream_stale": stream_stale, "control_source": emergency.get("control_source")},
-            expected="a real camera transport interruption produces camera_deadman",
-            note=(
-                "This remains a required live fault gate. The runner intentionally does not mutate "
-                "private frame timestamps or add a test-only simulator endpoint."
-            ),
         )
 
     def _exercise_behavior(self, checks: list[dict[str, Any]]) -> None:

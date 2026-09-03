@@ -56,7 +56,7 @@ _VEHICLE_BLUEPRINT = re.compile(r"^vehicle\.[A-Za-z0-9_.-]{1,150}$")
 _COLOR = re.compile(r"^\d{1,3},\d{1,3},\d{1,3}$")
 _SCENE_PATH = re.compile(
     r"^/v1/scenes/(?P<scene_id>[A-Za-z0-9_-]{16,128})/"
-    r"(?P<action>start|heartbeat|control|mode|weather|configure|camera|camera_orbit|waypoints|stop)$"
+    r"(?P<action>start|heartbeat|control|mode|weather|configure|camera|camera_orbit|camera_pause|camera_resume|waypoints|stop)$"
 )
 _CAMERA_FRAME_PATH = re.compile(
     r"^/v1/scenes/(?P<scene_id>[A-Za-z0-9_-]{16,128})/camera/frame\.jpg$"
@@ -671,6 +671,7 @@ class CompressedCameraRelay:
         self._condition = threading.Condition()
         self._lifecycle_lock = threading.RLock()
         self._closed = False
+        self._paused = False
         self._close_complete = False
         self._stopped_at: float | None = None
         self._pending_image: Any | None = None
@@ -712,9 +713,47 @@ class CompressedCameraRelay:
                     error.add_note(f"camera relay cleanup failed: {cleanup_error}")
                 raise
 
+    def pause(self) -> None:
+        """Stop CARLA sensor delivery without destroying the camera actor."""
+
+        with self._lifecycle_lock:
+            with self._condition:
+                if self._closed:
+                    raise RuntimeError("cannot pause a closed camera relay")
+                if self._paused:
+                    return
+                self._paused = True
+                self._pending_image = None
+                self._condition.notify_all()
+            try:
+                self.sensor.stop()
+            except BaseException:
+                with self._condition:
+                    self._paused = False
+                    self._condition.notify_all()
+                raise
+
+    def resume(self) -> None:
+        """Resume the same CARLA sensor subscription after :meth:`pause`."""
+
+        with self._lifecycle_lock:
+            with self._condition:
+                if self._closed:
+                    raise RuntimeError("cannot resume a closed camera relay")
+                if not self._paused:
+                    return
+            try:
+                self.sensor.listen(self._on_image)
+            except BaseException:
+                # Keep the relay visibly paused when CARLA could not subscribe.
+                raise
+            with self._condition:
+                self._paused = False
+                self._condition.notify_all()
+
     def _on_image(self, image: Any) -> None:
         with self._condition:
-            if self._closed:
+            if self._closed or self._paused:
                 return
             self._frames_received += 1
             if self._pending_image is not None:
@@ -809,6 +848,7 @@ class CompressedCameraRelay:
                 average_encode_ms = self._encode_seconds_total * 1000.0 / self._frames_encoded
             return {
                 "actor_id": int(self.sensor.id),
+                "paused": self._paused,
                 "sequence": self._sequence,
                 "error": self._error,
                 "telemetry": {
@@ -847,7 +887,7 @@ class CompressedCameraRelay:
 
                 # A map change or external destroy can invalidate the sensor
                 # before cleanup. Unknown state is not proof of detachment.
-                if not confirmed_dead():
+                if not confirmed_dead() and not self._paused:
                     try:
                         self.sensor.stop()
                     except Exception:
@@ -1144,6 +1184,7 @@ class WorldWorker:
             "prepared_scene_handoff": in_memory_encoder,
             "prepared_scene_reconfigure": True,
             "waypoint_teacher": True,
+            "camera_pause_resume": True,
             "in_memory_jpeg_encoder_available": in_memory_encoder,
             "camera_60_fps": in_memory_encoder,
             "garage_camera_presets": True,
@@ -3135,6 +3176,61 @@ class WorldWorker:
                 "scene_id": scene.scene_id,
                 "camera": relay.snapshot(),
             }
+
+    def _set_camera_subscription(
+        self,
+        scene_id: str,
+        raw: Mapping[str, Any],
+        *,
+        listening: bool,
+    ) -> dict[str, Any]:
+        lease_token = self._lease_token(raw, allowed={"lease_token"})
+        with self._lock:
+            scene = self._require_scene(scene_id, lease_token)
+            if scene.status not in {"prepared", "running"}:
+                raise WorkerError(
+                    HTTPStatus.CONFLICT, "scene_inactive", "scene is stopping"
+                )
+            relay = scene.camera_relay
+            if relay is None:
+                raise WorkerError(
+                    HTTPStatus.NOT_FOUND, "camera_inactive", "compressed camera is not active"
+                )
+
+        # Sensor subscription calls can touch CARLA's streaming client. Keep
+        # them outside the scene mutation lock so heartbeat/control remain live.
+        try:
+            if listening:
+                relay.resume()
+            else:
+                relay.pause()
+        except Exception as error:
+            raise WorkerError(
+                HTTPStatus.SERVICE_UNAVAILABLE,
+                "camera_subscription_failed",
+                f"CARLA camera subscription change failed: {type(error).__name__}: {error}",
+            ) from error
+
+        with self._lock:
+            current = self._require_scene(scene_id, lease_token)
+            if current is not scene or current.camera_relay is not relay:
+                raise WorkerError(
+                    HTTPStatus.CONFLICT,
+                    "camera_changed",
+                    "camera changed while its subscription was updated",
+                )
+            self._refresh_lease(current)
+            return self._scene_response(current, current.status)
+
+    def camera_pause(self, scene_id: str, raw: Mapping[str, Any]) -> dict[str, Any]:
+        """Pause the live RGB subscription for acceptance/diagnostics."""
+
+        return self._set_camera_subscription(scene_id, raw, listening=False)
+
+    def camera_resume(self, scene_id: str, raw: Mapping[str, Any]) -> dict[str, Any]:
+        """Resume the same live RGB sensor after a diagnostic pause."""
+
+        return self._set_camera_subscription(scene_id, raw, listening=True)
 
     def camera_frame(
         self,
