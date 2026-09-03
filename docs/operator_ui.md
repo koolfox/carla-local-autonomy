@@ -156,13 +156,24 @@ The canonical remote path uses two persistent MJPEG hops: the World Worker
 encodes CARLA BGRA frames to JPEG in memory on Windows, and the Operator relays
 newest frames continuously to the browser. Garage uses
 `/api/garage/preview/stream.mjpg`; Drive uses
-`/api/drive/stream.mjpg?view=raw|overlay`. The older `frame.jpg` routes remain
+`/api/drive/stream.mjpg?view=raw|overlay|voxel`. The older `frame.jpg` routes accept
+the same views and remain
 compatibility/diagnostic endpoints and are not the normal browser loop.
 
 The UI production profile is 1280 x 720 at 30 FPS. A 60 FPS selection is
 available at 1280 x 720, but is not a verified performance claim until it passes
 the real Windows/LAN matrix. The source stream is independent of model cadence:
 RT-DETR may update the overlay more slowly without lowering the raw camera rate.
+
+Vision settings also offer optional **Voxel (RGB depth)** through
+`session.perception.voxelEnabled` (default `false`; legacy Drive requests use
+`voxel_enabled`). This advisory view uses the shared perception device and the
+Metric Outdoor Small RGB depth model; first use downloads approximately 100 MB.
+Distances are estimates, not ground truth, and the view does not infer lanes or
+steer. It runs independently of detection and Manual/Traffic Manager control.
+The cockpit always starts on Raw; select Voxel explicitly to see its loading,
+running, or error state and inference latency. Enabling Voxel does not change
+the Garage scene or require its population to be rebuilt.
 
 Operator Drive state reports the requested FPS, recent source/overlay FPS,
 frame age, stale state, transport, and resolution. Garage preview state reports

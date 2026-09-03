@@ -657,8 +657,8 @@ class OperatorRequestHandler(BaseHTTPRequestHandler):
     def _drive_stream(self, view: str) -> None:
         """Relay cached newest frames over one persistent browser response."""
 
-        if view not in {"raw", "overlay"}:
-            raise ValueError("drive frame view must be raw or overlay")
+        if view not in {"raw", "overlay", "voxel"}:
+            raise ValueError("drive frame view must be raw, overlay or voxel")
         sequence, payload = self.server.application.drive.wait_for_frame(
             view,
             -1,

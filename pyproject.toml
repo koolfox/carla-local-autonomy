@@ -24,6 +24,11 @@ research = [
 experimental = [
   "torch>=2.4",
 ]
+voxel = [
+  "torch>=2.4",
+  "transformers>=4.45,<6",
+  "safetensors>=0.4",
+]
 
 [project.scripts]
 carla-vision = "carla_vision.runtime:main"

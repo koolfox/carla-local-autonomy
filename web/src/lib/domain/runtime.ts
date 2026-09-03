@@ -27,6 +27,16 @@ export interface DriveDetectorState {
   actuated?: boolean;
 }
 
+export interface DriveVoxelState {
+  enabled: boolean;
+  status: 'loading' | 'running' | 'failed' | 'stopped';
+  error?: string | null;
+  latency_ms?: number | null;
+  source_frame?: number | null;
+  sequence?: number;
+  actuated: false;
+}
+
 export interface DriveState {
   schema_version?: string;
   status: DriveStatus | string;
@@ -47,6 +57,7 @@ export interface DriveState {
   telemetry?: DriveTelemetry;
   stream?: DriveStreamState;
   detector?: DriveDetectorState;
+  voxel?: DriveVoxelState;
   traffic_count_actual?: number;
   walker_count_actual?: number;
   raw_frame_sequence?: number;

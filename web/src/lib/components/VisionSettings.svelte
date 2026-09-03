@@ -37,6 +37,14 @@
     <label class="switch-field">
       <input
         type="checkbox"
+        checked={$sessionConfig.perception.voxelEnabled}
+        onchange={(event) => patchSessionSection('perception', { voxelEnabled: fieldChecked(event) })}
+      />
+      <span><strong>Voxel (RGB depth)</strong><small>Estimated spatial view · no vehicle control</small></span>
+    </label>
+    <label class="switch-field">
+      <input
+        type="checkbox"
         checked={$sessionConfig.recording.video}
         onchange={(event) => patchSessionSection('recording', { video: fieldChecked(event) })}
       />
@@ -51,6 +59,29 @@
       <span><strong>Spectator follow</strong><small>Mirror the ego from CARLA</small></span>
     </label>
   </div>
+
+  {#if $sessionConfig.perception.voxelEnabled}
+    <p class="section-note">
+      Metric Outdoor Small uses RGB only. First use downloads approximately 100 MB.
+      Distances are estimates; this view does not infer lanes or steer the vehicle.
+      Manual and Traffic Manager control remain unchanged.
+    </p>
+    {#if !$sessionConfig.perception.enabled}
+      <div class="field-grid three-columns">
+        <label class="field">
+          <span>Perception device</span>
+          <select
+            value={$sessionConfig.perception.device}
+            onchange={(event) => patchSessionSection('perception', { device: fieldValue(event) })}
+          >
+            <option value="cpu">CPU</option>
+            <option value="mps">MPS</option>
+            <option value="cuda">CUDA</option>
+          </select>
+        </label>
+      </div>
+    {/if}
+  {/if}
 
   <div class="subsection-heading">
     <span>Drive camera</span>

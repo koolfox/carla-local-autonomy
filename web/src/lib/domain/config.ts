@@ -89,6 +89,7 @@ export interface SessionConfig {
   };
   perception: {
     enabled: boolean;
+    voxelEnabled: boolean;
     detector: DetectorKind;
     weights: string;
     device: string;
@@ -188,6 +189,7 @@ export function defaultSessionConfig(): SessionConfig {
     },
     perception: {
       enabled: false,
+      voxelEnabled: false,
       detector: 'rtdetr',
       weights: '',
       device: 'cpu',
