@@ -11,6 +11,26 @@ from .contracts import FREE, OCCUPIED, SEMANTIC_UNKNOWN, UNKNOWN, VoxelGridSpec
 _DEPTH_DENOMINATOR = float(256**3 - 1)
 
 
+def carla_rotation_matrix(*, roll: float, pitch: float, yaw: float) -> np.ndarray:
+    """Pure CARLA Euler geometry: x forward, y right, z up; angles in degrees.
+
+    Positive pitch raises forward; positive roll turns right down. This helper
+    has no simulator access and grants no model access to pose information.
+    """
+    if not all(math.isfinite(value) for value in (roll, pitch, yaw)):
+        raise ValueError("camera rotation must contain finite angles")
+    roll, pitch, yaw = map(math.radians, (roll, pitch, yaw))
+    cr, sr = math.cos(roll), math.sin(roll)
+    cp, sp = math.cos(pitch), math.sin(pitch)
+    cy, sy = math.cos(yaw), math.sin(yaw)
+    return np.asarray(
+        [[cp * cy, cy * sp * sr - sy * cr, -cy * sp * cr - sy * sr],
+         [cp * sy, sy * sp * sr + cy * cr, -sy * sp * cr + cy * sr],
+         [sp, -cp * sr, cp * cr]],
+        dtype=np.float64,
+    )
+
+
 def camera_intrinsics(width: int, height: int, fov_deg: float) -> np.ndarray:
     if width <= 0 or height <= 0:
         raise ValueError("camera dimensions must be positive")

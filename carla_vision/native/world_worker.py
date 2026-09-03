@@ -56,7 +56,7 @@ _VEHICLE_BLUEPRINT = re.compile(r"^vehicle\.[A-Za-z0-9_.-]{1,150}$")
 _COLOR = re.compile(r"^\d{1,3},\d{1,3},\d{1,3}$")
 _SCENE_PATH = re.compile(
     r"^/v1/scenes/(?P<scene_id>[A-Za-z0-9_-]{16,128})/"
-    r"(?P<action>start|heartbeat|control|mode|weather|configure|camera|camera_orbit|stop)$"
+    r"(?P<action>start|heartbeat|control|mode|weather|configure|camera|camera_orbit|waypoints|stop)$"
 )
 _CAMERA_FRAME_PATH = re.compile(
     r"^/v1/scenes/(?P<scene_id>[A-Za-z0-9_-]{16,128})/camera/frame\.jpg$"
@@ -895,6 +895,7 @@ class SceneLease:
     route: dict[str, Any] = field(default_factory=dict)
     destination: dict[str, Any] | None = None
     route_locations: list[Any] = field(default_factory=list)
+    waypoint_map: Any | None = None
     lease_deadline: float = 0.0
     last_control_at: float | None = None
     last_control_sequence: int = -1
@@ -1142,6 +1143,7 @@ class WorldWorker:
             "persistent_mjpeg_camera_relay": in_memory_encoder,
             "prepared_scene_handoff": in_memory_encoder,
             "prepared_scene_reconfigure": True,
+            "waypoint_teacher": True,
             "in_memory_jpeg_encoder_available": in_memory_encoder,
             "camera_60_fps": in_memory_encoder,
             "garage_camera_presets": True,
@@ -3151,6 +3153,175 @@ class WorldWorker:
                 )
             self._refresh_lease(scene)
         return relay.wait(after_sequence, timeout)
+
+    def waypoints(self, scene_id: str, raw: Mapping[str, Any]) -> dict[str, Any]:
+        """Read bounded map geometry for a teacher overlay, never vehicle control.
+
+        The caller may seed the geometry with the exact RGB camera location.
+        Traffic Manager's upcoming actions are sampled asynchronously: their
+        intent is not claimed to be ground truth for that image's frame.
+        """
+
+        lease_token = self._lease_token(
+            raw, allowed={"lease_token", "camera_location", "source_frame"}
+        )
+        camera_location = raw.get("camera_location")
+        if camera_location is not None:
+            if not isinstance(camera_location, Mapping):
+                raise WorkerError(
+                    HTTPStatus.BAD_REQUEST, "invalid_field", "camera_location must be an object"
+                )
+            _strict_keys(
+                camera_location,
+                allowed={"x", "y", "z"},
+                required={"x", "y", "z"},
+                name="camera location",
+            )
+            camera_location = {
+                axis: _number(camera_location[axis], f"camera_location.{axis}", -1e7, 1e7)
+                for axis in ("x", "y", "z")
+            }
+        source_frame = raw.get("source_frame")
+        if source_frame is not None:
+            source_frame = _integer(source_frame, "source_frame", 0, 2**63 - 1)
+        # An optional overlay must not queue behind a map load or a settings
+        # change and then prevent control/heartbeat from getting through.
+        if not self._lock.acquire(blocking=False):
+            raise WorkerError(
+                HTTPStatus.CONFLICT, "worker_busy", "World Worker is updating the scene"
+            )
+        try:
+            scene = self._require_scene(scene_id, lease_token)
+            if scene.status not in {"prepared", "running"}:
+                raise WorkerError(HTTPStatus.CONFLICT, "scene_inactive", "scene is stopping")
+            if self._clock() >= scene.lease_deadline:
+                raise WorkerError(HTTPStatus.CONFLICT, "lease_expired", "scene lease expired")
+            world = scene.client.get_world()
+            if self._episode_id(world) != scene.episode_id:
+                raise WorkerError(HTTPStatus.CONFLICT, "episode_changed", "CARLA episode changed")
+            try:
+                owned = next(item for item in scene.owned_actors if item.kind == "ego")
+                ego = world.get_actor(owned.actor_id)
+                if (
+                    ego is None
+                    or not bool(getattr(ego, "is_alive", True))
+                    or scene.ego is None
+                    or int(scene.ego.id) != owned.actor_id
+                ):
+                    raise RuntimeError("owned ego is no longer available")
+                self._validate_owned_actor_identity(ego, owned)
+            except Exception as error:
+                raise WorkerError(
+                    HTTPStatus.CONFLICT, "scene_identity_changed", "scene ego identity changed"
+                ) from error
+
+            origin = (
+                ego.get_location()
+                if camera_location is None
+                else self._carla.Location(**camera_location)
+            )
+            sampled_frame: int | None = None
+            sampled_timestamp: float | None = None
+            try:
+                snapshot = world.get_snapshot()
+                sampled_frame = int(snapshot.frame)
+                sampled_timestamp = float(snapshot.timestamp.elapsed_seconds)
+            except (AttributeError, TypeError, ValueError):
+                pass
+            source = "planned_route"
+            locations = scene.route_locations
+            note = "Fixed map route; not a road prediction or collision-free path."
+            if len(locations) < 2:
+                locations = []
+                get_actions = getattr(scene.traffic_manager, "get_all_actions", None)
+                if (
+                    scene.status == "running"
+                    and scene.control_mode == "autopilot"
+                    and callable(get_actions)
+                ):
+                    try:
+                        actions = get_actions(ego)
+                        locations = [action[1].transform.location for action in actions[:512]]
+                    except Exception:
+                        # A missing TM sample must not fail the live RGB view.
+                        locations = []
+                if len(locations) >= 2:
+                    source = "traffic_manager"
+                    note = "Upcoming TM actions sampled now, not frame-matched route intent."
+                else:
+                    source = "lane_centerline"
+                    note = "Lane centerline only; stops at a branch and is not the TM route."
+                    try:
+                        if scene.waypoint_map is None:
+                            scene.waypoint_map = world.get_map()
+                        waypoint = scene.waypoint_map.get_waypoint(origin)
+                        locations = []
+                        for _ in range(64):
+                            if waypoint is None:
+                                break
+                            locations.append(waypoint.transform.location)
+                            candidates = waypoint.next(2.0)
+                            if len(candidates) != 1:
+                                break
+                            waypoint = candidates[0]
+                    except Exception as error:
+                        raise WorkerError(
+                            HTTPStatus.SERVICE_UNAVAILABLE,
+                            "waypoint_teacher_unavailable",
+                            "CARLA lane geometry is unavailable for the teacher overlay",
+                        ) from error
+
+            points = self._bounded_waypoint_locations(locations, origin)
+            return {
+                "schema_version": SCHEMA_VERSION,
+                "worker_api_revision": WORKER_API_REVISION,
+                "scene_id": scene.scene_id,
+                "episode_id": scene.episode_id,
+                "source": source,
+                "coordinate_frame": "carla_world_metres",
+                "teacher_only": True,
+                "model_input": False,
+                "controls_vehicle": False,
+                "route_frame_matched": False,
+                "source_frame": source_frame,
+                "sampled_frame": sampled_frame,
+                "sampled_timestamp": sampled_timestamp,
+                "points": points,
+                "note": note,
+            }
+        finally:
+            self._lock.release()
+
+    @classmethod
+    def _bounded_waypoint_locations(
+        cls, locations: list[Any], origin: Any
+    ) -> list[dict[str, float]]:
+        """Keep nearby forward map geometry, at most 64 points and 100 metres."""
+
+        if not locations:
+            return []
+        nearest = min(
+            range(len(locations)), key=lambda index: cls._distance(origin, locations[index])
+        )
+        points: list[dict[str, float]] = []
+        previous = None
+        distance = 0.0
+        for location in locations[max(0, nearest - 1) :]:
+            point = _json_location(location)
+            if not all(math.isfinite(value) and abs(value) <= 1e7 for value in point.values()):
+                break
+            if previous is not None:
+                step = cls._distance(previous, location)
+                if step < 0.05:
+                    continue
+                distance += step
+                if distance > 100.0:
+                    break
+            points.append(point)
+            previous = location
+            if len(points) == 64:
+                break
+        return points
 
     def start(self, scene_id: str, raw: Mapping[str, Any]) -> dict[str, Any]:
         lease_token = self._lease_token(raw, allowed={"lease_token"})

@@ -677,6 +677,89 @@ class WorldWorkerClient:
             },
         )
 
+    def waypoints(
+        self,
+        scene: WorldWorkerScene,
+        *,
+        camera_location: Mapping[str, float] | None = None,
+        source_frame: int | None = None,
+    ) -> dict[str, Any]:
+        """Read map/TM teacher geometry; never feed this response to a predictor."""
+
+        if not scene.capabilities.get("waypoint_teacher"):
+            raise WorldWorkerError(
+                "the Windows World Worker does not support waypoint teacher overlays; "
+                "pull main and restart the Worker",
+                code="waypoint_teacher_unavailable",
+            )
+        payload: dict[str, Any] = {"lease_token": scene.lease_token}
+        if camera_location is not None:
+            if (
+                not isinstance(camera_location, Mapping)
+                or set(camera_location) != {"x", "y", "z"}
+                or any(
+                    isinstance(value, bool)
+                    or not isinstance(value, (int, float))
+                    or not math.isfinite(float(value))
+                    or abs(float(value)) > 1e7
+                    for value in camera_location.values()
+                )
+            ):
+                raise ValueError("camera_location must contain finite x, y, z coordinates")
+            payload["camera_location"] = dict(camera_location)
+        if source_frame is not None:
+            if (
+                isinstance(source_frame, bool)
+                or not isinstance(source_frame, int)
+                or not 0 <= source_frame < 2**63
+            ):
+                raise ValueError("source_frame must be a non-negative integer")
+            payload["source_frame"] = source_frame
+        scene_id = quote(scene.scene_id, safe="")
+        response = self._request(
+            "POST", f"/v1/scenes/{scene_id}/waypoints", payload, timeout=min(self.timeout, 1.0)
+        )
+        if (
+            response.get("scene_id") != scene.scene_id
+            or response.get("episode_id") != scene.episode_id
+        ):
+            raise WorldWorkerError("World Worker waypoint response changed the scene identity")
+        if (
+            response.get("teacher_only") is not True
+            or response.get("model_input") is not False
+            or response.get("controls_vehicle") is not False
+            or response.get("route_frame_matched") is not False
+            or response.get("coordinate_frame") != "carla_world_metres"
+            or response.get("source") not in {"planned_route", "traffic_manager", "lane_centerline"}
+            or response.get("source_frame") != source_frame
+        ):
+            raise WorldWorkerError("World Worker waypoint response has an invalid teacher contract")
+        points = response.get("points")
+        if not isinstance(points, list) or len(points) > 64:
+            raise WorldWorkerError("World Worker waypoint response exceeds the point limit")
+        for point in points:
+            if (
+                not isinstance(point, dict)
+                or set(point) != {"x", "y", "z"}
+                or any(
+                    isinstance(value, bool)
+                    or not isinstance(value, (int, float))
+                    or not math.isfinite(float(value))
+                    or abs(float(value)) > 1e7
+                    for value in point.values()
+                )
+            ):
+                raise WorldWorkerError("World Worker waypoint response has invalid coordinates")
+        distance = sum(
+            math.sqrt(
+                sum((float(after[axis]) - float(before[axis])) ** 2 for axis in ("x", "y", "z"))
+            )
+            for before, after in zip(points, points[1:], strict=False)
+        )
+        if distance > 100.00001:
+            raise WorldWorkerError("World Worker waypoint response exceeds the distance limit")
+        return response
+
     def orbit_camera(
         self,
         scene: WorldWorkerScene,
