@@ -3,7 +3,8 @@ export function fieldValue(event: Event): string {
 }
 
 export function fieldNumber(event: Event): number {
-  return Number(fieldValue(event));
+  const value = fieldValue(event).trim();
+  return value === '' ? Number.NaN : Number(value);
 }
 
 export function fieldChecked(event: Event): boolean {

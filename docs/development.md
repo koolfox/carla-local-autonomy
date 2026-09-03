@@ -172,13 +172,50 @@ GaragePreview.svelte
   -> POST /api/garage/preview/configure with one SessionConfig
   -> operator/configuration.py canonical preview mapping
   -> GaragePreviewManager.configure
-  -> WorldWorkerClient.prepare_scene / preview camera
+  -> WorldWorkerClient.prepare_scene (first load) / configure_scene (deltas)
   -> World Worker actor ownership
   -> preview state + persistent MJPEG frame stream
 ```
 
-Editing a form must not mutate CARLA. Preview is an explicit application of the
-current session configuration.
+While Garage is visible, valid scene/camera edits apply automatically after
+300 ms without further edits. One browser request runs at a time; the latest
+pending selection replaces earlier selections. There is no ordinary Apply
+button. Retry appears only after a failure. The shared projection and queue
+live in `web/src/lib/domain/garagePreview.ts` and are tested with `npm test`.
+Starting Drive suspends this queue. Model, recording and other Drive-only
+fields never trigger a Garage rebuild.
+
+### What a Garage edit changes
+
+| Edit | Native work |
+| --- | --- |
+| Weather, speed difference, following distance | Direct CARLA/TM setters |
+| Pedestrian crossing factor | Set factor, then refresh existing walker destinations |
+| Traffic / walker count | Spawn/remove only the difference; preserve other owned actors |
+| Fixed-item preset | Replace only scene-owned props |
+| Vehicle / color | Replace only ego at the same transform; retain unparented camera and population |
+| Camera profile / FOV | Replace only RGB camera; keep the browser stream and last good frame |
+| Route mode | Update prepared route; no population rebuild |
+| Map / seed | New prepared scene; map loading occurs only when the map differs |
+
+These deltas require `prepared_scene_reconfigure` on the Worker. An older
+Worker safely falls back to scene preparation; pull and restart the Windows
+Worker as well as the Mac Operator to use the fast path. No ML dependencies
+were added to the Worker. The scene remains parked until Start.
+
+`POST /v1/scenes/{id}/configure` uses the existing SceneConfig plus lease token.
+The native response includes confirmed scene/camera configuration. After an
+ambiguous or partially failed update, the Operator reads it back before
+accepting another update or transferring a scene to Drive. Unknown state is
+an error, never proof that requested settings were applied. A dense update
+must not trigger camera-stale cleanup of its own scene.
+
+Camera transport close interrupts active HTTP reads rather than waiting for
+the normal frame timeout. The public frame sequence stays increasing when
+the replacement sensor starts again at zero. Apply acknowledges camera
+configuration without a second blocking first-frame wait; the image updates
+when the new sensor produces a frame. Camera restart/map loading and real
+population capacity still depend on CARLA, not the browser.
 
 #### Native population and camera lifecycle
 
@@ -208,7 +245,7 @@ Regression tests cover command counts, delayed snapshots, failed commands,
 ownership rollback, camera switching and standalone execution. These fakes do
 **not** establish Windows simulator latency. After pulling on Windows, restart
 the existing Worker command and compare the same map/seed/population on a real
-run. No new dependency, endpoint, UI or control mode is introduced.
+run. No new dependency or control mode is introduced.
 
 For **Free Drive**, Start transfers a matching ready Garage lease to the Drive
 session. It does not stop/prepare the population again. Preview transports and

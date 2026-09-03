@@ -23,7 +23,7 @@ export interface ConfigurationEvidence {
 export interface GaragePreviewResponse extends Record<string, unknown> {
   configuration: ConfigurationEvidence;
   applied_config?: Record<string, unknown> | null;
-  configure_action?: 'noop' | 'weather' | 'started' | 'restarted';
+  configure_action?: 'noop' | 'weather' | 'updated' | 'started' | 'restarted';
 }
 
 export interface SituationSettings {
@@ -137,10 +137,19 @@ interface ApiErrorPayload {
   };
 }
 
+class OperatorApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
 function apiError(path: string, response: Response, payload: unknown): Error {
   const typed = payload as ApiErrorPayload | null;
   const message = typed?.error?.message || `${response.status} ${response.statusText}`;
-  return new Error(`Operator API ${path} failed: ${message}`);
+  return new OperatorApiError(`Operator API ${path} failed: ${message}`, response.status);
 }
 
 function shortMapName(value: string): string {

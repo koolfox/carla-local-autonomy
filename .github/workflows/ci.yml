@@ -49,6 +49,7 @@ jobs:
           tests/test_external_model_drive.py
           tests/test_garage_drive.py
           tests/test_garage_preview.py
+          tests/test_garage_reconfigure.py
           tests/test_garage_research.py
           tests/test_garage_research_bridge.py
           tests/test_garage_scene_handoff.py
@@ -69,6 +70,8 @@ jobs:
           tests/test_world_worker_population.py
           tests/test_world_worker_spawn_failures.py
           tests/test_world_worker_client.py
+          tests/test_world_worker_reconfigure.py
+          tests/test_world_worker_stream_lifecycle.py
           tests/test_world_worker_ui.py
 
       - name: Check production entry points
@@ -103,6 +106,10 @@ jobs:
       - name: Type-check Svelte console
         working-directory: web
         run: npm run check
+
+      - name: Test Garage live settings queue
+        working-directory: web
+        run: npm test
 
       - name: Build static console
         working-directory: web

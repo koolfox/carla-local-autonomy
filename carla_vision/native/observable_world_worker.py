@@ -264,6 +264,38 @@ class ObservableWorldWorker(WorldWorker):
         finally:
             self._prepare_gate.release()
 
+    def configure(self, scene_id: str, raw: Mapping[str, Any]) -> dict[str, Any]:
+        config = SceneConfig.from_mapping(
+            {key: value for key, value in raw.items() if key != "lease_token"}
+        )
+        if not self._prepare_gate.acquire(blocking=False):
+            raise WorkerError(
+                HTTPStatus.CONFLICT,
+                "scene_preparing",
+                "another scene preparation or configuration is already in progress",
+            )
+        try:
+            self._prime_control_plane_cache()
+            self._begin_preparation(config)
+            scene = self._scene
+            self._set_preparation_stage(
+                "configure",
+                scene_id=scene_id,
+                operation="configure",
+                traffic=0 if scene is None else len(scene.vehicle_actors),
+                walkers=0 if scene is None else len(scene.walker_actors),
+                props=0 if scene is None else len(scene.prop_actors),
+            )
+            try:
+                result = super().configure(scene_id, raw)
+            except BaseException as error:
+                self._fail_preparation(error)
+                raise
+            self._complete_preparation()
+            return result
+        finally:
+            self._prepare_gate.release()
+
     def _load_world_isolated(self, target: str) -> tuple[Any, Any]:
         self._set_preparation_stage("map")
         return super()._load_world_isolated(target)
@@ -319,7 +351,10 @@ class ObservableWorldWorker(WorldWorker):
             rng,
             owned,
         )
-        self._set_preparation_stage("traffic", traffic=len(actors))
+        existing = 0
+        if self._preparation_snapshot().get("operation") == "configure" and self._scene is not None:
+            existing = len(self._scene.vehicle_actors)
+        self._set_preparation_stage("traffic", traffic=existing + len(actors))
         return actors
 
     def _spawn_walkers(
@@ -332,7 +367,10 @@ class ObservableWorldWorker(WorldWorker):
     ) -> tuple[list[Any], list[Any]]:
         self._set_preparation_stage("walkers")
         walkers, controllers = super()._spawn_walkers(scene_id, world, count, rng, owned)
-        self._set_preparation_stage("walkers", walkers=len(walkers))
+        existing = 0
+        if self._preparation_snapshot().get("operation") == "configure" and self._scene is not None:
+            existing = len(self._scene.walker_actors)
+        self._set_preparation_stage("walkers", walkers=existing + len(walkers))
         return walkers, controllers
 
     def _plan_random_route(

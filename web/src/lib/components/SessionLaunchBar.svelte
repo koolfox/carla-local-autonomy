@@ -27,7 +27,7 @@
   $: disabled = configurationPending || blockers.length > 0 || active || $garageRuntime.action !== null;
   $: hint = $garageRuntime.error
     ?? blockers[0]?.message
-    ?? (configurationPending ? 'Apply the pending Garage settings before starting.' : null)
+    ?? (configurationPending ? 'Waiting for the current Garage settings to finish syncing.' : null)
     ?? (running
       ? 'Emergency braking and Stop & Save remain available while driving.'
       : terminal && !freshRunId

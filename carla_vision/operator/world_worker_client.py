@@ -14,6 +14,7 @@ import socket
 import threading
 import time
 from collections.abc import Iterator, Mapping
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from http import HTTPStatus
 from typing import Any
@@ -116,6 +117,7 @@ class WorldWorkerCameraStream:
         self._latest: WorldWorkerCameraFrame | None = None
         self._error: BaseException | None = None
         self._closed = False
+        self._response: Any | None = None
         self.transport = (
             "worker_mjpeg"
             if bool(scene.capabilities.get("persistent_mjpeg_camera_relay"))
@@ -129,6 +131,38 @@ class WorldWorkerCameraStream:
         self._thread.start()
 
     def _run(self) -> None:
+        response_scope = getattr(self.client, "_camera_response_scope", None)
+        scope = nullcontext() if response_scope is None else response_scope(self._set_response)
+        with scope:
+            self._read_frames()
+
+    def _set_response(self, response: Any | None) -> None:
+        with self._condition:
+            self._response = response
+            closed = self._closed
+            self._condition.notify_all()
+        if closed and response is not None:
+            self._shutdown_response(response)
+            raise WorldWorkerError("compressed camera stream is closed")
+
+    @staticmethod
+    def _shutdown_response(response: Any) -> None:
+        # HTTPResponse.close() alone can wait on the BufferedReader lock held
+        # by a blocked read. Shutdown the underlying socket first, waking that
+        # reader immediately without waiting for the camera's network timeout.
+        raw = getattr(getattr(response, "fp", None), "raw", None)
+        connection = getattr(raw, "_sock", None)
+        if connection is not None:
+            try:
+                connection.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+        try:
+            response.close()
+        except OSError:
+            pass
+
+    def _read_frames(self) -> None:
         sequence = -1
         try:
             if self.transport == "worker_mjpeg":
@@ -150,6 +184,8 @@ class WorldWorkerCameraStream:
                             return
                         raise EOFError("persistent camera stream ended")
                     except WorldWorkerError as error:
+                        if self._closed:
+                            return
                         if error.status in {
                             HTTPStatus.NOT_FOUND,
                             HTTPStatus.METHOD_NOT_ALLOWED,
@@ -199,6 +235,8 @@ class WorldWorkerCameraStream:
 
     def _publish(self, frame: WorldWorkerCameraFrame) -> None:
         with self._condition:
+            if self._closed:
+                return
             self._latest = frame
             self._condition.notify_all()
 
@@ -216,6 +254,8 @@ class WorldWorkerCameraStream:
         deadline = time.monotonic() + timeout
         with self._condition:
             while True:
+                if self._closed:
+                    raise WorldWorkerError("compressed camera stream is closed")
                 if self._error is not None:
                     raise WorldWorkerError(f"compressed camera stream failed: {self._error}")
                 if self._latest is not None and self._latest.sequence > after_sequence:
@@ -226,10 +266,14 @@ class WorldWorkerCameraStream:
                 self._condition.wait(remaining)
 
     def close(self) -> None:
-        self._closed = True
         with self._condition:
+            self._closed = True
+            response = self._response
             self._condition.notify_all()
-        self._thread.join(timeout=self.timeout + 1.0)
+        if response is not None:
+            self._shutdown_response(response)
+        if self._thread is not threading.current_thread():
+            self._thread.join(timeout=1.0)
 
     def __enter__(self) -> "WorldWorkerCameraStream":
         return self
@@ -482,6 +526,7 @@ class WorldWorkerClient:
         self.timeout = float(timeout)
         self._catalog_lock = threading.Lock()
         self._cached_capabilities: dict[str, Any] | None = None
+        self._camera_requests = threading.local()
         # Connect directly to the explicitly configured LAN worker. Environment
         # proxy settings must never receive the bearer credential.
         self._opener = build_opener(ProxyHandler({}), _RejectRedirects())
@@ -514,9 +559,7 @@ class WorldWorkerClient:
         if keys & _SCENE_PREPARE_OPTIONAL_KEYS:
             with self._catalog_lock:
                 cached_capabilities = (
-                    None
-                    if self._cached_capabilities is None
-                    else dict(self._cached_capabilities)
+                    None if self._cached_capabilities is None else dict(self._cached_capabilities)
                 )
             capabilities = (
                 cached_capabilities
@@ -545,6 +588,26 @@ class WorldWorkerClient:
 
     def start_scene(self, scene: WorldWorkerScene) -> WorldWorkerScene:
         return self._scene_request(scene, "start", {"lease_token": scene.lease_token})
+
+    def configure_scene(
+        self, scene: WorldWorkerScene, payload: Mapping[str, Any]
+    ) -> WorldWorkerScene:
+        """Apply a bounded configuration to an existing parked scene lease."""
+
+        keys = frozenset(str(key) for key in payload)
+        if not _SCENE_PREPARE_REQUIRED_KEYS <= keys or not keys <= _SCENE_PREPARE_KEYS:
+            raise ValueError("World Worker scene configuration payload has invalid fields")
+        if not scene.capabilities.get("prepared_scene_reconfigure"):
+            raise WorldWorkerError(
+                "the Windows World Worker is outdated and cannot update a prepared scene; "
+                "pull main and restart the Worker"
+            )
+        return self._scene_request(
+            scene,
+            "configure",
+            {"lease_token": scene.lease_token, **dict(payload)},
+            timeout=max(self.timeout, 120.0),
+        )
 
     def heartbeat(self, scene: WorldWorkerScene) -> WorldWorkerScene:
         return self._scene_request(scene, "heartbeat", {"lease_token": scene.lease_token})
@@ -647,6 +710,27 @@ class WorldWorkerClient:
             payload,
         )
 
+    @contextmanager
+    def _camera_response_scope(self, callback: Any) -> Iterator[None]:
+        previous = getattr(self._camera_requests, "callback", None)
+        self._camera_requests.callback = callback
+        try:
+            yield
+        finally:
+            self._camera_requests.callback = previous
+
+    @contextmanager
+    def _camera_response(self, request: Request, *, timeout: float) -> Iterator[Any]:
+        callback = getattr(self._camera_requests, "callback", None)
+        with self._opener.open(request, timeout=timeout) as response:
+            try:
+                if callback is not None:
+                    callback(response)
+                yield response
+            finally:
+                if callback is not None:
+                    callback(None)
+
     def camera_frame(
         self,
         scene: WorldWorkerScene,
@@ -667,7 +751,7 @@ class WorldWorkerClient:
             method="GET",
         )
         try:
-            with self._opener.open(request, timeout=float(timeout) + 2.0) as response:
+            with self._camera_response(request, timeout=float(timeout) + 2.0) as response:
                 raw = response.read(_MAX_RESPONSE_BYTES + 1)
                 headers = response.headers
                 status = int(response.status)
@@ -707,7 +791,7 @@ class WorldWorkerClient:
             method="GET",
         )
         try:
-            with self._opener.open(request, timeout=float(timeout) + 2.0) as response:
+            with self._camera_response(request, timeout=float(timeout) + 2.0) as response:
                 status = int(response.status)
                 if status != HTTPStatus.OK:
                     raise WorldWorkerError(
