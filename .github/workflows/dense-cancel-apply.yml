@@ -22,7 +22,9 @@ jobs:
         with:
           enable-cache: true
       - name: Apply cancellation patch
-        run: python .github/dense_cancel_apply.py
+        run: |
+          python .github/dense_cancel_apply.py
+          python .github/dense_cancel_lint_fix.py
       - name: Install dependencies
         run: uv sync --group dev
       - name: Validate source and dense acceptance
@@ -47,6 +49,7 @@ jobs:
             carla_vision/operator/world_worker_client.py \
             carla_vision/operator/garage_preview.py \
             carla_vision/operator/garage_server.py \
+            carla_vision/operator/garage_density_acceptance.py \
             pyproject.toml \
             uv.lock
           git diff --cached --quiet && exit 0
