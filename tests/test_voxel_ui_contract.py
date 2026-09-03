@@ -7,6 +7,7 @@ import pytest
 from test_drive_console import CARLA_HOST, CARLA_PORT, valid_start
 from test_operator_configuration import _session
 
+from carla_vision.operator.catalog import build_catalog
 from carla_vision.operator.configuration import (
     build_garage_preview_request,
     build_legacy_drive_request,
@@ -15,6 +16,16 @@ from carla_vision.operator.configuration import (
 from carla_vision.operator.drive_contracts import DriveStartConfig
 
 ROOT = Path(__file__).parents[1]
+
+
+def test_researcher_checkpoint_is_selectable_without_moving_it_to_root(tmp_path, monkeypatch):
+    monkeypatch.setattr("carla_vision.operator.catalog.probe_endpoint", lambda *_args: False)
+    folder = tmp_path / "models" / "my-rtdetr"
+    folder.mkdir(parents=True)
+    (folder / "best.pt").write_bytes(b"catalog-only-do-not-load")
+    (tmp_path / "legacy.pt").write_bytes(b"catalog-only-do-not-load")
+    catalog = build_catalog(tmp_path, carla_host="127.0.0.1", carla_port=2000)
+    assert catalog["weights"] == ["legacy.pt", "models/my-rtdetr/best.pt"]
 
 
 def test_existing_session_without_voxel_field_defaults_off_without_mutation() -> None:
