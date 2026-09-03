@@ -1,16 +1,19 @@
-name: Garage console artifact
+name: Garage console sync
 
 on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  build-console:
+  sync-console:
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.head_ref }}
       - uses: actions/setup-node@v6
         with:
           node-version: "24"
@@ -18,9 +21,13 @@ jobs:
         run: npm ci --no-audit --no-fund
       - working-directory: web
         run: npm run build
-      - uses: actions/upload-artifact@v4
-        with:
-          name: rebuilt-garage-console
-          path: carla_vision/operator/console_static
-          if-no-files-found: error
-          retention-days: 1
+      - name: Commit rebuilt console when changed
+        run: |
+          git add -A carla_vision/operator/console_static
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Rebuild Garage console"
+          git push origin HEAD:${{ github.head_ref }}
