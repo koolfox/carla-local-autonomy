@@ -44,7 +44,6 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add \
-            .github/workflows/ci.yml \
             carla_vision/native/world_worker.py \
             carla_vision/native/observable_world_worker.py \
             carla_vision/operator/world_worker_client.py \
