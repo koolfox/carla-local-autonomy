@@ -4359,6 +4359,17 @@ class WorldWorkerRequestHandler(BaseHTTPRequestHandler):
                 result = self.server.worker.prepare(body)
                 self._send_json(HTTPStatus.CREATED, result)
                 return
+            if parsed.path == "/v1/scenes/preparation/cancel":
+                operation = getattr(self.server.worker, "cancel_preparation", None)
+                if not callable(operation):
+                    raise WorkerError(
+                        HTTPStatus.NOT_IMPLEMENTED,
+                        "prepare_cancel_unavailable",
+                        "this World Worker does not support scene preparation cancellation",
+                    )
+                result = operation(body)
+                self._send_json(HTTPStatus.ACCEPTED, result)
+                return
             match = _SCENE_PATH.fullmatch(parsed.path)
             if match is None:
                 raise WorkerError(HTTPStatus.NOT_FOUND, "route_not_found", "route not found")

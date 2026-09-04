@@ -89,6 +89,9 @@ def test_health_and_current_scene_do_not_wait_behind_dense_prepare(
     assert health["preparation"]["stage"] == "traffic"
     assert health["preparation"]["requested"]["traffic"] == 40
     assert health["preparation"]["requested"]["walkers"] == 30
+    assert health["preparation"]["requested"]["pedestrian_crossing_factor"] == 0.2
+    assert health["preparation"]["requested"]["speed_difference_percent"] == 12.0
+    assert health["preparation"]["requested"]["following_distance_metres"] == 2.0
     assert scene["status"] == "preparing"
     assert scene["preparation"]["stage"] == "traffic"
 
@@ -173,6 +176,46 @@ def test_population_hooks_report_actual_counts(monkeypatch: pytest.MonkeyPatch) 
     snapshot = worker._preparation_snapshot()
     assert snapshot["stage"] == "walkers"
     assert snapshot["actual"]["walkers"] == 1
+
+
+def test_spawn_batch_hook_reports_incremental_population() -> None:
+    worker = observable.ObservableWorldWorker(start_monitor=False)
+    worker._begin_preparation(observable.SceneConfig(traffic_count=64, walker_count=40))
+    worker._set_preparation_stage("traffic")
+
+    class Item:
+        def __init__(self, kind: str) -> None:
+            self.kind = kind
+
+    owned = [Item("traffic") for _ in range(32)]
+    original = observable.base.WorldWorker._spawn_owned_batch
+    try:
+        observable.base.WorldWorker._spawn_owned_batch = lambda self, world, requests, owned: []
+        worker._spawn_owned_batch(None, [], owned)
+    finally:
+        observable.base.WorldWorker._spawn_owned_batch = original
+
+    assert worker._preparation_snapshot()["actual"]["traffic"] == 32
+
+
+def test_ego_stage_confirms_applied_traffic_dynamics(monkeypatch: pytest.MonkeyPatch) -> None:
+    worker = observable.ObservableWorldWorker(start_monitor=False)
+    config = observable.SceneConfig(
+        pedestrian_crossing_factor=0.65,
+        speed_difference_percent=-15.0,
+        following_distance_metres=3.5,
+    )
+    worker._begin_preparation(config)
+    monkeypatch.setattr(
+        observable.base.WorldWorker,
+        "_spawn_ego",
+        lambda self, *args, **kwargs: (object(), 4),
+    )
+    worker._spawn_ego(None, config, "scene", [], None, [])
+    actual = worker._preparation_snapshot()["actual"]
+    assert actual["pedestrian_crossing_factor"] == 0.65
+    assert actual["speed_difference_percent"] == -15.0
+    assert actual["following_distance_metres"] == 3.5
 
 
 def test_direct_file_entrypoint_keeps_single_host_script_workflow() -> None:

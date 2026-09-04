@@ -1,5 +1,60 @@
 import type { SessionConfig } from './config';
 
+export interface GaragePreparationProgress {
+  status: string;
+  stage: string;
+  requested: Record<string, unknown>;
+  actual: Record<string, unknown>;
+  history?: Array<Record<string, unknown>>;
+  elapsed_seconds: number;
+  error?: Record<string, unknown> | null;
+}
+
+function progressNumber(record: Record<string, unknown>, key: string): number | null {
+  const raw = record[key];
+  if (raw === null || raw === undefined || raw === '') return null;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : null;
+}
+
+export function garagePreparationStageLabel(stage: string): string {
+  const labels: Record<string, string> = {
+    accepted: 'Starting Garage…',
+    configuring: 'Preparing CARLA…',
+    map: 'Loading CARLA map…',
+    world_settings: 'Applying world settings…',
+    ego: 'Spawning ego vehicle…',
+    props: 'Spawning scene props…',
+    traffic: 'Spawning traffic…',
+    walkers: 'Spawning walkers…',
+    route: 'Planning route…',
+    ready: 'Scene ready',
+    running: 'Live CARLA',
+    failed: 'Preparation failed'
+  };
+  return labels[stage] ?? 'Applying Garage settings…';
+}
+
+export function garagePreparationSummary(progress: GaragePreparationProgress): string {
+  const requestedTraffic = progressNumber(progress.requested, 'traffic');
+  const requestedWalkers = progressNumber(progress.requested, 'walkers');
+  const actualTraffic = progressNumber(progress.actual, 'traffic');
+  const actualWalkers = progressNumber(progress.actual, 'walkers');
+  const crossing = progressNumber(progress.actual, 'pedestrian_crossing_factor')
+    ?? progressNumber(progress.requested, 'pedestrian_crossing_factor');
+  const pieces = [garagePreparationStageLabel(progress.stage)];
+  if (requestedTraffic !== null && actualTraffic !== null) {
+    pieces.push(`${actualTraffic}/${requestedTraffic} cars`);
+  }
+  if (requestedWalkers !== null && actualWalkers !== null) {
+    pieces.push(`${actualWalkers}/${requestedWalkers} walkers`);
+  }
+  if (crossing !== null) pieces.push(`crossing ${crossing.toFixed(2)}`);
+  const elapsed = Number(progress.elapsed_seconds);
+  if (Number.isFinite(elapsed)) pieces.push(`${elapsed.toFixed(1)} s`);
+  return pieces.join(' · ');
+}
+
 /** Keep this projection aligned with build_garage_preview_request on the Operator. */
 export function garagePreviewSignature(session: SessionConfig): string {
   const { scene, camera, vehicle } = session;

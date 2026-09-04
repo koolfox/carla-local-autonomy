@@ -29,6 +29,7 @@ from .drive_contracts import DriveStartConfig
 from .world_worker_client import (
     WorldWorkerCameraStream,
     WorldWorkerClient,
+    WorldWorkerError,
     WorldWorkerScene,
 )
 
@@ -1329,6 +1330,36 @@ class GaragePreviewManager:
         ] = {}
         self._session: GaragePreviewSession | None = None
         self._last_error: str | None = None
+
+    def preparation_status(self) -> dict[str, Any] | None:
+        """Read Worker preparation progress without taking the Garage scene lock."""
+
+        worker = self.world_worker
+        if worker is None:
+            return None
+        try:
+            payload = worker.current_scene()
+        except Exception:
+            # Progress telemetry must never become a second failure path. The
+            # authoritative configure call will surface transport/CARLA errors.
+            return None
+        preparation = payload.get("preparation")
+        if not isinstance(preparation, Mapping):
+            return None
+        return dict(preparation)
+
+    def cancel_preparation(self) -> dict[str, Any] | None:
+        """Cancel an in-flight Worker prepare without waiting on the scene lock."""
+
+        worker = self.world_worker
+        if worker is None:
+            return None
+        try:
+            return worker.cancel_preparation()
+        except WorldWorkerError as error:
+            if error.code in {"scene_not_preparing", "prepare_cancel_unavailable"}:
+                return None
+            raise
 
     def state(self) -> dict[str, Any]:
         with self._lock:

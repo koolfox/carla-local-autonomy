@@ -545,6 +545,11 @@ class WorldWorkerClient:
     def current_scene(self) -> dict[str, Any]:
         return self._request("GET", "/v1/scenes/current")
 
+    def cancel_preparation(self) -> dict[str, Any]:
+        """Request cooperative cancellation between bounded CARLA mutation batches."""
+
+        return self._request("POST", "/v1/scenes/preparation/cancel", {})
+
     def prepare_scene(self, payload: Mapping[str, Any]) -> WorldWorkerScene:
         keys = frozenset(str(key) for key in payload)
         if not _SCENE_PREPARE_REQUIRED_KEYS <= keys or not keys <= _SCENE_PREPARE_KEYS:

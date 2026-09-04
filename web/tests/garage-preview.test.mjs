@@ -5,6 +5,8 @@ import { defaultSessionConfig } from '../src/lib/domain/config.ts';
 import { fieldNumber } from '../src/lib/ui/events.ts';
 import {
   createGarageApplyQueue,
+  garagePreparationStageLabel,
+  garagePreparationSummary,
   garagePreviewInputError,
   garagePreviewSignature,
   isTransientGarageError
@@ -50,6 +52,22 @@ function harness(t, overrides = {}) {
   t.after(() => queue.dispose());
   return { queue, requests, applied, errors, busy, retrying };
 }
+
+test('dense preparation progress is factual and human-readable', () => {
+  const progress = {
+    status: 'preparing',
+    stage: 'walkers',
+    requested: { traffic: 64, walkers: 40, pedestrian_crossing_factor: 0.45 },
+    actual: { traffic: 64, walkers: 24, pedestrian_crossing_factor: null },
+    elapsed_seconds: 7.25
+  };
+  assert.equal(garagePreparationStageLabel('walkers'), 'Spawning walkers…');
+  assert.equal(
+    garagePreparationSummary(progress),
+    'Spawning walkers… · 64/64 cars · 24/40 walkers · crossing 0.45 · 7.3 s'
+  );
+});
+
 
 test('signature includes only the effective parked preview contract', () => {
   const baseline = session();
