@@ -1,0 +1,54 @@
+name: Issue 28 implementation
+
+on:
+  push:
+    branches: [issue/28-world-route-truth]
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: issue/28-world-route-truth
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Apply issue 28 patch
+        run: python tools/issue28_apply.py
+      - name: Install Python dependencies
+        run: uv sync --group dev --frozen
+      - name: Validate Python changes
+        run: |
+          uv run ruff check carla_vision tests
+          uv run pytest -q \
+            tests/test_world_worker.py \
+            tests/test_world_worker_client.py \
+            tests/test_drive_console.py \
+            tests/test_operator_configuration.py \
+            tests/test_garage_preview.py \
+            tests/test_garage_drive.py \
+            tests/test_garage_world_route_ui.py
+      - name: Validate and build Svelte console
+        working-directory: web
+        run: |
+          npm ci --no-audit --no-fund
+          npm run check
+          npm test
+          npm run build
+      - name: Commit validated implementation
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add carla_vision tests web
+          git diff --cached --quiet && exit 0
+          git commit -m "Implement exact Garage start and route selection"
+          git push origin HEAD:issue/28-world-route-truth
