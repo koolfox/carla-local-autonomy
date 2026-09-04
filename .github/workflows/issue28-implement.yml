@@ -22,7 +22,7 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: "24"
-      - name: Relax patch diagnostics and align current catalog shape
+      - name: Align patch driver with current source shapes
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -32,18 +32,114 @@ jobs:
               '    if text.count(old) != 1:\n        raise RuntimeError(f"{path}: expected exactly one match, found {text.count(old)} for {old[:80]!r}")\n    target.write_text(text.replace(old, new, 1), encoding="utf-8")',
               '    count = text.count(old)\n    if count == 0:\n        print(f"SKIP {path}: {old[:80]!r}")\n        return\n    if count != 1:\n        raise RuntimeError(f"{path}: expected exactly one match, found {count} for {old[:80]!r}")\n    target.write_text(text.replace(old, new, 1), encoding="utf-8")'
           )
-          s = s.replace(
-              "'            vehicles = []\\n            for blueprint in self._safe_vehicle_blueprints(world.get_blueprint_library()):'",
-              "'            spawn_points = list(world.get_map().get_spawn_points())\\n            vehicles: list[dict[str, Any]] = []\\n            for blueprint in sorted(definitions, key=lambda value: str(value.id)):'"
-          )
-          s = s.replace(
-              "'            spawn_points = list(world.get_map().get_spawn_points())\\n            vehicles = []\\n            for blueprint in self._safe_vehicle_blueprints(world.get_blueprint_library()):'",
-              "'            spawn_points = list(world.get_map().get_spawn_points())\\n            spawn_points = list(world.get_map().get_spawn_points())\\n            vehicles: list[dict[str, Any]] = []\\n            for blueprint in sorted(definitions, key=lambda value: str(value.id)):'"
-          )
           p.write_text(s)
           PY
       - name: Apply issue 28 patch
         run: python tools/issue28_apply.py
+      - name: Complete current-shape catalog and Svelte patches
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def one(path, old, new):
+              p = Path(path)
+              s = p.read_text()
+              n = s.count(old)
+              if n != 1:
+                  raise SystemExit(f'{path}: expected 1 match, found {n}: {old[:100]!r}')
+              p.write_text(s.replace(old, new, 1))
+
+          one(
+              'carla_vision/native/world_worker.py',
+              '            vehicles: list[dict[str, Any]] = []\n            for blueprint in sorted(definitions, key=lambda value: str(value.id)):',
+              '            spawn_points = list(world.get_map().get_spawn_points())\n            vehicles: list[dict[str, Any]] = []\n            for blueprint in sorted(definitions, key=lambda value: str(value.id)):'
+          )
+
+          one(
+              'web/src/lib/components/SceneWorldFields.svelte',
+              "  import { fieldNumber, fieldValue } from '$lib/ui/events';\n\n  export let includeRoute = false;",
+              "  import type { RouteMode } from '$lib/domain/config';\n  import { fieldNumber, fieldValue } from '$lib/ui/events';\n\n  export let includeRoute = false;\n\n  $: selectedMap = $sessionConfig.scene.mapName === 'current'\n    ? $systemSettings?.currentMap ?? ''\n    : $sessionConfig.scene.mapName;\n  $: spawnCatalogReady = Boolean(\n    $systemSettings?.workerConfigured\n      && $systemSettings?.capabilities.spawn_point_selection\n      && $workspaceOptions.spawnPointMap\n      && selectedMap === $workspaceOptions.spawnPointMap\n  );\n  $: selectedRouteAvailable = Boolean($systemSettings?.capabilities.selected_route);\n\n  function spawnValue(value: string): number | null {\n    return value === '' ? null : Number(value);\n  }"
+          )
+
+          old = '''  {#if includeRoute}
+    <label class="field">
+      <span>Route</span>
+      <select
+        value={$sessionConfig.route.mode}
+        onchange={(event) =>
+          patchSessionSection('route', {
+            mode: fieldValue(event) as 'free' | 'random_destination'
+          })}
+      >
+        <option value="free">Free drive</option>
+        <option value="random_destination">Random destination</option>
+      </select>
+      {#if !$systemSettings?.workerConfigured}<small>Saved locally; route generation needs the World Worker.</small>{/if}
+    </label>
+  {/if}'''
+          new = '''  {#if includeRoute}
+    <label class="field">
+      <span>Start point</span>
+      <select
+        value={$sessionConfig.route.startSpawnIndex ?? ''}
+        disabled={!spawnCatalogReady}
+        onchange={(event) => patchSessionSection('route', {
+          startSpawnIndex: spawnValue(event.currentTarget.value)
+        })}
+      >
+        <option value="">Automatic from seed</option>
+        {#each $workspaceOptions.spawnPoints as point}
+          <option value={point.index}>#{point.index} · {point.label}</option>
+        {/each}
+      </select>
+      <small>{spawnCatalogReady ? 'Exact CARLA map spawn point; no fallback if occupied.' : 'Load the selected map in Garage to enumerate its CARLA spawn points.'}</small>
+    </label>
+
+    <label class="field">
+      <span>Route</span>
+      <select
+        value={$sessionConfig.route.mode}
+        disabled={!$systemSettings?.workerConfigured}
+        onchange={(event) => {
+          const mode = fieldValue(event) as RouteMode;
+          patchSessionSection('route', {
+            mode,
+            destinationSpawnIndex: mode === 'selected_destination'
+              ? $sessionConfig.route.destinationSpawnIndex
+              : null
+          });
+        }}
+      >
+        <option value="free">Free drive</option>
+        <option value="random_destination" disabled={!$systemSettings?.capabilities.random_route}>Random destination</option>
+        <option value="selected_destination" disabled={!selectedRouteAvailable || !spawnCatalogReady}>Selected destination</option>
+      </select>
+      <small>Planned routes use CARLA GlobalRoutePlanner; the active control owner consumes the selected route.</small>
+    </label>
+
+    {#if $sessionConfig.route.mode === 'selected_destination'}
+      <label class="field">
+        <span>Destination</span>
+        <select
+          value={$sessionConfig.route.destinationSpawnIndex ?? ''}
+          disabled={!spawnCatalogReady}
+          onchange={(event) => patchSessionSection('route', {
+            destinationSpawnIndex: spawnValue(event.currentTarget.value)
+          })}
+        >
+          <option value="">Choose destination…</option>
+          {#each $workspaceOptions.spawnPoints as point}
+            <option value={point.index} disabled={point.index === $sessionConfig.route.startSpawnIndex}>
+              #{point.index} · {point.label}
+            </option>
+          {/each}
+        </select>
+        <small>The exact CARLA spawn-point destination is retained in session evidence.</small>
+      </label>
+    {/if}
+  {/if}'''
+          one('web/src/lib/components/SceneWorldFields.svelte', old, new)
+          PY
       - name: Install Python dependencies
         run: uv sync --group dev --frozen
       - name: Validate Python changes
