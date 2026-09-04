@@ -8,13 +8,17 @@ contract.
 
 from __future__ import annotations
 
-import math
 from typing import Any
 
 import cv2
 import numpy as np
 
-from .model_driver import ModelControl, ModelDriverConfig, ModelObservation
+from .model_driver import (
+    ModelControl,
+    ModelDriverConfig,
+    ModelObservation,
+    control_from_value,
+)
 
 
 class TorchEagerControlDriver:
@@ -54,35 +58,16 @@ class TorchEagerControlDriver:
         array = np.ascontiguousarray(image.transpose(2, 0, 1), dtype=np.float32) / 255.0
         return self._torch.from_numpy(array).unsqueeze(0).to(self.device)
 
-    @staticmethod
-    def _control_values(values: list[float]) -> tuple[float, float, float]:
-        if len(values) != 3:
-            raise ValueError("eager PyTorch policy output must contain exactly 3 values")
-        if not all(math.isfinite(value) for value in values):
-            raise ValueError("eager PyTorch policy output contains non-finite values")
-        throttle, steer, brake = values
-        if not 0.0 <= throttle <= 1.0:
-            raise ValueError("eager PyTorch throttle must be between 0 and 1")
-        if not -1.0 <= steer <= 1.0:
-            raise ValueError("eager PyTorch steer must be between -1 and 1")
-        if not 0.0 <= brake <= 1.0:
-            raise ValueError("eager PyTorch brake must be between 0 and 1")
-        return throttle, steer, brake
-
     def predict(self, observation: ModelObservation) -> ModelControl:
         image = self._image_tensor(observation)
         with self._torch.inference_mode():
-            output = self.model(image, self._torch.tensor([[observation.speed_mps]], device=self.device))
-        if isinstance(output, dict):
-            values = [
-                float(output["throttle"]),
-                float(output["steer"]),
-                float(output["brake"]),
-            ]
-        else:
-            values = output.detach().reshape(-1).cpu().tolist()
-        throttle, steer, brake = self._control_values(values)
-        return ModelControl(throttle=throttle, steer=steer, brake=brake)
+            output = self.model(
+                image,
+                self._torch.tensor([[observation.speed_mps]], device=self.device),
+            )
+        if hasattr(output, "detach"):
+            output = output.detach().reshape(-1).cpu().tolist()
+        return control_from_value(output)
 
     def close(self) -> None:
         self.model = None
