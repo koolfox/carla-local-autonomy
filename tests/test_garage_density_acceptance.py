@@ -24,6 +24,7 @@ class FakeWorker:
         self.traffic = 0
         self.walkers = 0
         self.crossing = 0.0
+        self.prepare_cancellation = True
 
     def health(self) -> dict[str, Any]:
         self.probes += 1
@@ -39,7 +40,7 @@ class FakeWorker:
             "capabilities": {
                 "observable_scene_preparation": True,
                 "responsive_prepare_health": True,
-                "prepare_cancellation": True,
+                "prepare_cancellation": self.prepare_cancellation,
             },
         }
 
@@ -193,6 +194,17 @@ def make_runner(
     )
 
 
+def test_preflight_requires_prepare_cancellation_capability() -> None:
+    worker = FakeWorker()
+    worker.prepare_cancellation = False
+    manager = FakeManager(worker)
+    report = make_runner(manager, worker, tiers=(DensityTier(25, 20),)).run()
+
+    assert report["status"] == "fail"
+    assert report["preflight"]["checks"]["prepare_cancellation"] is False
+    assert report["tiers"] == []
+
+
 def test_density_matrix_records_progress_dynamics_camera_cleanup_and_capacity() -> None:
     worker = FakeWorker()
     manager = FakeManager(worker, maximum_traffic=80)
@@ -268,7 +280,7 @@ def test_parse_tiers_covers_independent_vehicle_and_walker_maxima() -> None:
         DensityTier(250, 0),
         DensityTier(0, 250),
     )
-    with pytest.raises(ValueError, match="\[0, 250\]"):
+    with pytest.raises(ValueError, match=r"\[0, 250\]"):
         parse_tiers("251:0")
     with pytest.raises(ValueError, match="TRAFFIC:WALKERS"):
         parse_tiers("25")

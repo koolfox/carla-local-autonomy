@@ -225,6 +225,7 @@ class GarageDensityAcceptanceRunner:
             "server_version": carla.get("server_version") == self.expected_version,
             "observable_scene_preparation": capabilities.get("observable_scene_preparation") is True,
             "responsive_prepare_health": capabilities.get("responsive_prepare_health") is True,
+            "prepare_cancellation": capabilities.get("prepare_cancellation") is True,
             "clean_worker_scene": clean,
             "health_latency_bounded": health_latency <= self.max_control_plane_latency,
             "scene_latency_bounded": scene_latency <= self.max_control_plane_latency,
