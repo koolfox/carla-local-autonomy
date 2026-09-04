@@ -34,7 +34,7 @@ replace_once(
 )
 replace_once(
     "tests/test_garage_density_acceptance.py",
-    '    with pytest.raises(ValueError, match="\\\\[0, 250\\\\]"):\n',
+    '    with pytest.raises(ValueError, match="\\[0, 250\\]"):\n',
     '    with pytest.raises(ValueError, match=r"\\[0, 250\\]"):\n',
 )
 replace_once(
