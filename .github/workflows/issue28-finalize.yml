@@ -59,7 +59,7 @@ jobs:
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add carla_vision tests .github/workflows/ci.yml
+          git add carla_vision tests
           git diff --cached --quiet && exit 0
           git commit -m "Add live Garage route-selection acceptance evidence"
           git push origin HEAD:issue/28-world-route-truth
