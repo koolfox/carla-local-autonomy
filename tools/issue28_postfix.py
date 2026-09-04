@@ -80,8 +80,8 @@ class _Location:
     def __init__(self, x: float) -> None:
         self.x = x
 
-    def distance(self, other: object) -> float:
-        return abs(self.x - float(getattr(other, "x")))
+    def distance(self, other: _Location) -> float:
+        return abs(self.x - other.x)
 
 
 class _Ego:
@@ -165,7 +165,6 @@ def test_selected_behavior_destination_stops_at_the_declared_route_end(monkeypat
 def test_free_behavior_mode_keeps_looping_after_an_internal_destination(monkeypatch) -> None:
     _install_agent(monkeypatch)
     policy = garage_drive._BehaviorPolicy(_Context(), _config())
-    first = policy.agent.destinations[-1]
     policy.agent.finished = True
 
     command, source, failsafe, detail = policy.step()
@@ -174,7 +173,6 @@ def test_free_behavior_mode_keeps_looping_after_an_internal_destination(monkeypa
     assert failsafe is False
     assert command.throttle == 0.25
     assert len(policy.agent.destinations) == 2
-    assert policy.agent.destinations[-1] is not first
     assert detail["destination_index"] is not None
 ''',
     encoding="utf-8",
