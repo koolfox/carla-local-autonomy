@@ -12,6 +12,12 @@
     garagePreviewSignature,
     type GaragePreparationProgress
   } from '$lib/domain/garagePreview';
+  import {
+    confirmGarageStream,
+    createGarageStreamBuffer,
+    failGarageStream,
+    stageGarageStream
+  } from '$lib/domain/garagePreviewStream';
   import type { GarageOrbitRequest } from '$lib/domain/runtime';
   import { isDriveActive } from '$lib/domain/runtime';
   import { sessionConfig, systemSettings, workspaceOptions } from '$lib/stores/configuration';
@@ -64,7 +70,8 @@
   let previewEvidence: ConfigurationEvidence | null = null;
   let appliedSignature = '';
   let streamNonce = 0;
-  let streamReady = false;
+  let streamBuffer = createGarageStreamBuffer();
+  let streamRetryDeferred = false;
   let sequence = 0;
   let preset: CameraPreset = 'orbit';
   let yaw = presets.orbit.yaw;
@@ -92,6 +99,10 @@
       if (!value) {
         lifecycleStage = '';
         preparation = null;
+        if (streamRetryDeferred) {
+          streamRetryDeferred = false;
+          scheduleStreamRetry();
+        }
       }
     },
     retrying: (value) => { configureRetrying = value; },
@@ -110,10 +121,11 @@
       systemSettings.update((current) =>
         current ? { ...current, workerConnected: true } : current
       );
-      // Keep the current image mounted until the replacement scene is confirmed.
+      // Stage a replacement stream in the hidden slot. The last decoded frame
+      // stays visible until the new CARLA camera has produced its first frame.
       if (response.configure_action === 'started' || response.configure_action === 'restarted') {
         cancelStreamRetry();
-        streamNonce = Date.now();
+        refreshStream();
         applyPreset('orbit', false);
       }
     }
@@ -190,9 +202,6 @@
     ? `Requested: ${requestedResolution} at ${requestedFps} FPS, ${$sessionConfig.scene.trafficCount} cars, ${$sessionConfig.scene.walkerCount} walkers. Resolved: ${resolvedResolution} at ${resolvedFps} FPS. Applied: ${appliedResolution} at ${appliedFps} FPS, ${appliedTraffic} cars, ${appliedWalkers} walkers.`
     : '';
   $: preparationText = preparation ? garagePreparationSummary(preparation) : '';
-  $: streamSource = active && !driveActive
-    ? `/api/garage/preview/stream.mjpg?t=${streamNonce}`
-    : '';
   $: if (!available) {
     cancelStreamRetry();
     if (active) detachPreview();
@@ -210,7 +219,36 @@
     if (resetDelay) {
       streamRetryDelay = 1000;
       streamRetries = 0;
+      streamRetryDeferred = false;
     }
+  }
+
+  function refreshStream(): void {
+    if (!active || driveActive || destroyed) return;
+    streamNonce += 1;
+    streamBuffer = stageGarageStream(
+      streamBuffer,
+      `/api/garage/preview/stream.mjpg?t=${Date.now()}-${streamNonce}`
+    );
+  }
+
+  function streamLoaded(slot: number): void {
+    if (destroyed || !available) return;
+    streamBuffer = confirmGarageStream(streamBuffer, slot);
+    cancelStreamRetry();
+    streamError = '';
+  }
+
+  function streamFailed(slot: number): void {
+    const failed = failGarageStream(streamBuffer, slot, busy);
+    streamBuffer = failed.buffer;
+    if (!active || !available || destroyed) return;
+    if (busy) {
+      streamRetryDeferred = true;
+      return;
+    }
+    streamError = 'The live Garage stream stopped.';
+    if (failed.shouldRetry) scheduleStreamRetry();
   }
 
   function scheduleStreamRetry(): void {
@@ -220,13 +258,15 @@
     streamRetries += 1;
     streamRetryTimer = setTimeout(() => {
       streamRetryTimer = null;
-      if (active && available && !destroyed && !busy) streamNonce = Date.now();
+      if (active && available && !destroyed && !busy) refreshStream();
     }, delay);
   }
 
   function detachPreview(): void {
     active = false;
-    streamReady = false;
+    streamBuffer = createGarageStreamBuffer();
+    streamNonce = 0;
+    streamRetryDeferred = false;
     appliedSignature = '';
     previewEvidence = null;
     pointer = null;
@@ -243,7 +283,7 @@
       applyQueue.retry();
     } else if (streamError) {
       cancelStreamRetry();
-      streamNonce = Date.now();
+      refreshStream();
     }
   }
 
@@ -326,30 +366,21 @@
 </script>
 
 <section id="garage" class="garage-preview-card scroll-section">
-  <div class="garage-preview-stage" class:live={active && streamReady}>
-    {#if streamSource}
-      <img
-        src={streamSource}
-        alt="Live CARLA Garage preview"
-        draggable="false"
-        onload={() => {
-          if (destroyed || !available) return;
-          streamReady = true;
-          cancelStreamRetry();
-          streamError = '';
-        }}
-        onerror={() => {
-          if (busy) {
-            streamReady = false;
-            return;
-          }
-          if (active && available && !destroyed) {
-            streamError = 'The live Garage stream stopped.';
-            scheduleStreamRetry();
-          }
-        }}
-      />
-    {/if}
+  <div class="garage-preview-stage" class:live={active && streamBuffer.ready}>
+    {#each streamBuffer.sources as source, slot}
+      {#if source}
+        <img
+          src={source}
+          alt={slot === streamBuffer.visible ? 'Live CARLA Garage preview' : ''}
+          aria-hidden={slot !== streamBuffer.visible}
+          draggable="false"
+          style:opacity={slot === streamBuffer.visible ? '1' : '0'}
+          style:z-index={slot === streamBuffer.visible ? '1' : '0'}
+          onload={() => streamLoaded(slot)}
+          onerror={() => streamFailed(slot)}
+        />
+      {/if}
+    {/each}
 
     <button
       type="button"
@@ -372,7 +403,7 @@
           <strong title="The live Garage opens automatically when the World Worker is ready.">{selectedVehicle?.label ?? 'Select a CARLA vehicle'}</strong>
         {/if}
       </div>
-    {:else if !streamReady}
+    {:else if !streamBuffer.ready}
       <div class="garage-preview-placeholder compact-placeholder">
         <span class="loading-ring"></span>
         <strong>{busy ? garagePreparationStageLabel(lifecycleStage) : 'Waiting for CARLA camera…'}</strong>
