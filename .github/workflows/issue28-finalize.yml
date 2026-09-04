@@ -1,0 +1,43 @@
+name: Issue 28 finalize
+
+on:
+  push:
+    branches: [issue/28-world-route-truth]
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: issue/28-world-route-truth
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+      - name: Apply reviewed fixups
+        run: python tools/issue28_postfix.py
+      - name: Install Python dependencies
+        run: uv sync --group dev --frozen
+      - name: Validate route and worker regressions
+        run: |
+          uv run ruff check carla_vision tests
+          uv run pytest -q \
+            tests/test_garage_route_policy.py \
+            tests/test_world_worker.py \
+            tests/test_world_worker_client.py \
+            tests/test_garage_drive.py \
+            tests/test_operator_configuration.py \
+            tests/test_garage_world_route_ui.py
+      - name: Commit reviewed fixups
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add carla_vision tests
+          git diff --cached --quiet && exit 0
+          git commit -m "Preserve free BehaviorAgent routing semantics"
+          git push origin HEAD:issue/28-world-route-truth
