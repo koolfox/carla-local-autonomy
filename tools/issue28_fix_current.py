@@ -123,4 +123,16 @@ new_route = '''  {#if includeRoute}
   {/if}'''
 
 replace_once("web/src/lib/components/SceneWorldFields.svelte", old_route, new_route)
+
+replace_once(
+    "tests/test_operator_configuration.py",
+    '    assert defaults["route"] == {"mode": "free"}',
+    '    assert defaults["route"] == {\n        "mode": "free",\n        "startSpawnIndex": None,\n        "destinationSpawnIndex": None,\n    }',
+)
+replace_once(
+    "tests/test_operator_configuration.py",
+    '        "route_mode": "random_destination",\n        "pedestrian_crossing_factor": 0.85,',
+    '        "route_mode": "random_destination",\n        "start_spawn_index": None,\n        "destination_spawn_index": None,\n        "pedestrian_crossing_factor": 0.85,',
+)
+
 print("current-shape fixups applied")
