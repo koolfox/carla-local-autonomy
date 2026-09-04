@@ -108,6 +108,8 @@ def _drive_payload(
     walker_count: int,
     mode: str,
     camera_fps: float,
+    start_spawn_index: int | None,
+    destination_spawn_index: int | None,
 ) -> dict[str, Any]:
     return {
         "run_id": run_id,
@@ -134,7 +136,15 @@ def _drive_payload(
         "map_name": map_name,
         "traffic_count": traffic_count,
         "walker_count": walker_count,
-        "route_mode": "free",
+        "route_mode": (
+            "selected_destination"
+            if mode == "behavior" and destination_spawn_index is not None
+            else "free"
+        ),
+        "start_spawn_index": start_spawn_index,
+        "destination_spawn_index": (
+            destination_spawn_index if mode == "behavior" else None
+        ),
         "initial_control_mode": "manual",
         "pedestrian_crossing_factor": 0.2,
         "speed_difference_percent": 12.0,
@@ -171,6 +181,8 @@ class GarageAcceptanceRunner:
         walker_count: int,
         camera_fps: float,
         repeat: int,
+        start_spawn_index: int | None = None,
+        destination_spawn_index: int | None = None,
         expected_version: str = EXPECTED_CARLA_VERSION,
         state_timeout: float = 45.0,
         clock: Callable[[], float] = time.monotonic,
@@ -187,6 +199,8 @@ class GarageAcceptanceRunner:
         self.walker_count = walker_count
         self.camera_fps = camera_fps
         self.repeat = repeat
+        self.start_spawn_index = start_spawn_index
+        self.destination_spawn_index = destination_spawn_index
         self.expected_version = expected_version
         self.state_timeout = state_timeout
         self.clock = clock
@@ -209,6 +223,15 @@ class GarageAcceptanceRunner:
                 "traffic_count": self.traffic_count,
                 "walker_count": self.walker_count,
                 "camera": {"resolution": [1280, 720], "fps": self.camera_fps},
+                "route_selection": {
+                    "start_spawn_index": self.start_spawn_index,
+                    "destination_spawn_index": self.destination_spawn_index,
+                    "behavior_route_mode": (
+                        "selected_destination"
+                        if self.destination_spawn_index is not None
+                        else "free"
+                    ),
+                },
                 "repeat": self.repeat,
             },
             "checks": [],
@@ -252,7 +275,12 @@ class GarageAcceptanceRunner:
     def _preflight(self, report: dict[str, Any], checks: list[dict[str, Any]]) -> None:
         catalog = dict(self.manager.catalog())
         health = dict(self.worker.health())
-        report["preflight"] = {"operator_catalog": catalog, "worker_health": health}
+        worker_catalog = dict(self.worker.catalog())
+        report["preflight"] = {
+            "operator_catalog": catalog,
+            "worker_health": health,
+            "worker_catalog": worker_catalog,
+        }
 
         _check(
             checks,
@@ -337,6 +365,65 @@ class GarageAcceptanceRunner:
             observed=self.vehicle,
             expected="vehicle advertised by the live catalog",
         )
+        selected_map = (
+            _nested(health, "carla", "current_map")
+            if self.map_name == "current"
+            else self.map_name
+        )
+        spawn_map = worker_catalog.get("spawn_point_map")
+        spawn_points = worker_catalog.get("spawn_points", [])
+        spawn_indices = {
+            item.get("index")
+            for item in spawn_points
+            if isinstance(item, Mapping)
+            and isinstance(item.get("index"), int)
+            and not isinstance(item.get("index"), bool)
+        }
+        selection_requested = (
+            self.start_spawn_index is not None or self.destination_spawn_index is not None
+        )
+        if selection_requested:
+            _check(
+                checks,
+                "spawn_point_selection_capability",
+                _nested(worker_catalog, "capabilities", "spawn_point_selection") is True,
+                observed=_nested(worker_catalog, "capabilities", "spawn_point_selection"),
+                expected=True,
+            )
+            _check(
+                checks,
+                "spawn_catalog_matches_target_map",
+                spawn_map == selected_map,
+                observed={"spawn_point_map": spawn_map, "target_map": selected_map},
+                expected="spawn-point catalog for the selected map",
+                note=(
+                    "Load the target map in Garage before choosing exact spawn indices; "
+                    "the smoke gate refuses stale indices from another map."
+                ),
+            )
+        if self.start_spawn_index is not None:
+            _check(
+                checks,
+                "start_spawn_index_available",
+                self.start_spawn_index in spawn_indices,
+                observed=self.start_spawn_index,
+                expected="index advertised by the selected map's live CARLA spawn catalog",
+            )
+        if self.destination_spawn_index is not None:
+            _check(
+                checks,
+                "selected_route_capability",
+                _nested(worker_catalog, "capabilities", "selected_route") is True,
+                observed=_nested(worker_catalog, "capabilities", "selected_route"),
+                expected=True,
+            )
+            _check(
+                checks,
+                "destination_spawn_index_available",
+                self.destination_spawn_index in spawn_indices,
+                observed=self.destination_spawn_index,
+                expected="index advertised by the selected map's live CARLA spawn catalog",
+            )
 
     def _run_session(self, mode: str, repetition: int) -> dict[str, Any]:
         started = self.clock()
@@ -363,6 +450,8 @@ class GarageAcceptanceRunner:
                 walker_count=self.walker_count,
                 mode=mode,
                 camera_fps=self.camera_fps,
+                start_spawn_index=self.start_spawn_index,
+                destination_spawn_index=self.destination_spawn_index,
             )
             session["requested"] = payload
             initial = dict(self.manager.start(payload))
@@ -414,6 +503,64 @@ class GarageAcceptanceRunner:
                 observed=running.get("walker_count_actual"),
                 expected=self.walker_count,
             )
+            worker_running = dict(self.worker.current_scene())
+            scene_payload = worker_running.get("scene")
+            if not isinstance(scene_payload, Mapping):
+                raise RuntimeError("World Worker did not expose the running scene evidence")
+            session["worker_running"] = worker_running
+            expected_map = (
+                _nested(self.worker.health(), "carla", "current_map")
+                if self.map_name == "current"
+                else self.map_name
+            )
+            _check(
+                checks,
+                "selected_map_applied",
+                scene_payload.get("map_name") == expected_map,
+                observed=scene_payload.get("map_name"),
+                expected=expected_map,
+            )
+            if self.start_spawn_index is not None:
+                _check(
+                    checks,
+                    "selected_start_spawn_applied",
+                    scene_payload.get("spawn_index") == self.start_spawn_index,
+                    observed=scene_payload.get("spawn_index"),
+                    expected=self.start_spawn_index,
+                    note="The authoritative World Worker scene must retain the exact UI-selected start.",
+                )
+            if mode == "behavior" and self.destination_spawn_index is not None:
+                route = scene_payload.get("route")
+                destination = scene_payload.get("destination")
+                route_ok = (
+                    scene_payload.get("route_mode") == "selected_destination"
+                    and isinstance(route, Mapping)
+                    and route.get("planned") is True
+                    and isinstance(route.get("waypoint_count"), int)
+                    and int(route["waypoint_count"]) > 1
+                    and isinstance(destination, Mapping)
+                    and destination.get("spawn_index") == self.destination_spawn_index
+                )
+                _check(
+                    checks,
+                    "selected_destination_planned",
+                    route_ok,
+                    observed={
+                        "route_mode": scene_payload.get("route_mode"),
+                        "route": route,
+                        "destination": destination,
+                    },
+                    expected={
+                        "route_mode": "selected_destination",
+                        "destination_spawn_index": self.destination_spawn_index,
+                        "planned": True,
+                        "waypoint_count": ">1",
+                    },
+                    note=(
+                        "Planning evidence comes from GlobalRoutePlanner on the World Worker; "
+                        "Garage BehaviorAgent remains the control owner."
+                    ),
+                )
 
             if mode == "manual":
                 self._exercise_manual(session_id, running, checks)
@@ -614,6 +761,16 @@ class GarageAcceptanceRunner:
             },
             expected="official BehaviorAgent produces applied commands",
         )
+        if self.destination_spawn_index is not None:
+            actual_destination = _nested(state, "autonomy", "detail", "destination_index")
+            _check(
+                checks,
+                "behavior_destination_matches_selected",
+                actual_destination == self.destination_spawn_index,
+                observed=actual_destination,
+                expected=self.destination_spawn_index,
+                note="BehaviorAgent must consume the same destination retained by the Worker scene.",
+            )
         intent = _nested(state, "autonomy", "detail", "navigation_intent")
         valid_intent = (
             isinstance(intent, Mapping)
@@ -647,6 +804,8 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="environment variable containing the Worker bearer token; the token is never a CLI value",
     )
     parser.add_argument("--map", dest="map_name", default="Town10HD_Opt")
+    parser.add_argument("--start-spawn-index", type=int, default=None)
+    parser.add_argument("--destination-spawn-index", type=int, default=None)
     parser.add_argument("--vehicle", default="vehicle.tesla.model3")
     parser.add_argument("--seed", type=int, default=20260809)
     parser.add_argument("--traffic", type=int, default=5)
@@ -668,6 +827,16 @@ def _validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--traffic and --walkers must be in [0, 250]")
     if not 1.0 <= args.camera_fps <= 60.0 or not math.isfinite(args.camera_fps):
         raise ValueError("--camera-fps must be finite and in [1, 60]")
+    if args.start_spawn_index is not None and args.start_spawn_index < 0:
+        raise ValueError("--start-spawn-index must be >= 0")
+    if args.destination_spawn_index is not None and args.destination_spawn_index < 0:
+        raise ValueError("--destination-spawn-index must be >= 0")
+    if (
+        args.start_spawn_index is not None
+        and args.destination_spawn_index is not None
+        and args.start_spawn_index == args.destination_spawn_index
+    ):
+        raise ValueError("start and destination spawn indices must differ")
     if not 1 <= args.repeat <= 10:
         raise ValueError("--repeat must be in [1, 10]")
     if not 5.0 <= args.state_timeout <= 300.0 or not math.isfinite(args.state_timeout):
@@ -704,6 +873,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             walker_count=args.walkers,
             camera_fps=args.camera_fps,
             repeat=args.repeat,
+            start_spawn_index=args.start_spawn_index,
+            destination_spawn_index=args.destination_spawn_index,
             expected_version=args.expected_version,
             state_timeout=args.state_timeout,
         )
