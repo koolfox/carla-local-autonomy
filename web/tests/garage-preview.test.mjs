@@ -96,7 +96,7 @@ test('signature includes only the effective parked preview contract', () => {
       speedDifferencePercent: 20, followingDistanceMetres: 4
     },
     vehicle: { blueprint: 'vehicle.audi.a2', color: '255,0,0' },
-    route: { mode: 'random_destination' },
+    route: { mode: 'selected_destination', startSpawnIndex: 2, destinationSpawnIndex: 7 },
     camera: { resolution: '1920x1080', fps: 60, fov: 100, spectatorFollow: false }
   };
   for (const [section, values] of Object.entries(fields)) {

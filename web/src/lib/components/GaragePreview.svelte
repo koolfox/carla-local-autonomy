@@ -20,7 +20,12 @@
   } from '$lib/domain/garagePreviewStream';
   import type { GarageOrbitRequest } from '$lib/domain/runtime';
   import { isDriveActive } from '$lib/domain/runtime';
-  import { sessionConfig, systemSettings, workspaceOptions } from '$lib/stores/configuration';
+  import {
+    refreshWorldCatalog,
+    sessionConfig,
+    systemSettings,
+    workspaceOptions
+  } from '$lib/stores/configuration';
   import { garageRuntime, runtimeOperatorApi } from '$lib/stores/runtime';
 
   type CameraPreset = GarageOrbitRequest['preset'];
@@ -121,6 +126,9 @@
       systemSettings.update((current) =>
         current ? { ...current, workerConnected: true } : current
       );
+      void runtimeOperatorApi().getDriveCatalog().then(refreshWorldCatalog).catch(() => {
+        // Preview evidence remains authoritative; catalog refresh is convenience-only.
+      });
       // Stage a replacement stream in the hidden slot. The last decoded frame
       // stays visible until the new CARLA camera has produced its first frame.
       if (response.configure_action === 'started' || response.configure_action === 'restarted') {

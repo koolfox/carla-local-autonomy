@@ -39,7 +39,7 @@ from typing import Any, Self
 from urllib.parse import urlparse
 
 SCHEMA_VERSION = "1.0"
-WORKER_API_REVISION = 5
+WORKER_API_REVISION = 6
 EXPECTED_CARLA_VERSION = "0.9.16"
 DEFAULT_BIND = "127.0.0.1"
 DEFAULT_PORT = 8766
@@ -67,7 +67,7 @@ _CAMERA_STREAM_PATH = re.compile(
 _MJPEG_BOUNDARY = "carla-frame"
 _JPEG_QUALITY = 90
 _ACTIVE_SCENE_STATES = frozenset({"prepared", "running", "stopping"})
-_ROUTE_MODES = frozenset({"free", "random_destination"})
+_ROUTE_MODES = frozenset({"free", "random_destination", "selected_destination"})
 _CONTROL_MODES = frozenset({"manual", "autopilot"})
 _GARAGE_CAMERA_PRESETS = frozenset({"orbit", "front", "rear", "top", "cockpit"})
 _GARAGE_EXTERIOR_PRESETS: dict[str, tuple[float, float, float]] = {
@@ -388,6 +388,8 @@ class SceneConfig:
     walker_count: int = 0
     prop_preset: str = "none"
     route_mode: str = "free"
+    start_spawn_index: int | None = None
+    destination_spawn_index: int | None = None
     initial_control_mode: str = "manual"
     pedestrian_crossing_factor: float = 0.2
     speed_difference_percent: float = 12.0
@@ -405,6 +407,8 @@ class SceneConfig:
             "walker_count",
             "prop_preset",
             "route_mode",
+            "start_spawn_index",
+            "destination_spawn_index",
             "initial_control_mode",
             "pedestrian_crossing_factor",
             "speed_difference_percent",
@@ -458,7 +462,41 @@ class SceneConfig:
             raise WorkerError(
                 HTTPStatus.BAD_REQUEST,
                 "invalid_field",
-                "route_mode must be free or random_destination",
+                "route_mode must be free, random_destination, or selected_destination",
+            )
+        start_raw = raw.get("start_spawn_index")
+        destination_raw = raw.get("destination_spawn_index")
+        start_spawn_index = (
+            None
+            if start_raw is None
+            else _integer(start_raw, "start_spawn_index", 0, 1_000_000)
+        )
+        destination_spawn_index = (
+            None
+            if destination_raw is None
+            else _integer(destination_raw, "destination_spawn_index", 0, 1_000_000)
+        )
+        if route_mode == "selected_destination" and destination_spawn_index is None:
+            raise WorkerError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_field",
+                "selected_destination requires destination_spawn_index",
+            )
+        if route_mode != "selected_destination" and destination_spawn_index is not None:
+            raise WorkerError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_field",
+                "destination_spawn_index requires route_mode=selected_destination",
+            )
+        if (
+            start_spawn_index is not None
+            and destination_spawn_index is not None
+            and start_spawn_index == destination_spawn_index
+        ):
+            raise WorkerError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_field",
+                "start_spawn_index and destination_spawn_index must differ",
             )
         control_mode = str(raw.get("initial_control_mode", "manual")).strip()
         if control_mode not in _CONTROL_MODES:
@@ -478,6 +516,8 @@ class SceneConfig:
             walker_count=_integer(raw.get("walker_count", 0), "walker_count", 0, 250),
             prop_preset=prop_preset,
             route_mode=route_mode,
+            start_spawn_index=start_spawn_index,
+            destination_spawn_index=destination_spawn_index,
             initial_control_mode=control_mode,
             pedestrian_crossing_factor=_number(
                 raw.get("pedestrian_crossing_factor", 0.2),
@@ -510,6 +550,8 @@ class SceneConfig:
             "walker_count": self.walker_count,
             "prop_preset": self.prop_preset,
             "route_mode": self.route_mode,
+            "start_spawn_index": self.start_spawn_index,
+            "destination_spawn_index": self.destination_spawn_index,
             "initial_control_mode": self.initial_control_mode,
             "pedestrian_crossing_factor": self.pedestrian_crossing_factor,
             "speed_difference_percent": self.speed_difference_percent,
@@ -1173,6 +1215,8 @@ class WorldWorker:
             "manual_control": True,
             "autopilot": True,
             "random_route": random_route,
+            "spawn_point_selection": True,
+            "selected_route": random_route,
             "lease": True,
             "manual_deadman": True,
             "asynchronous_world": True,
@@ -1289,6 +1333,7 @@ class WorldWorker:
 
             map_ids = {_map_short_name(str(value)) for value in available_maps}
             map_ids.add(_map_short_name(str(world.get_map().name)))
+            spawn_points = list(world.get_map().get_spawn_points())
             vehicles: list[dict[str, Any]] = []
             for blueprint in sorted(definitions, key=lambda value: str(value.id)):
                 identifier = str(blueprint.id)
@@ -1323,6 +1368,16 @@ class WorldWorker:
                     for identifier in sorted(map_ids)
                 ],
                 "vehicles": vehicles,
+                "spawn_point_map": _map_short_name(str(world.get_map().name)),
+                "spawn_count": len(spawn_points),
+                "spawn_points": [
+                    {
+                        "index": index,
+                        "label": f"Spawn {index}",
+                        "transform": _json_transform(transform),
+                    }
+                    for index, transform in enumerate(spawn_points)
+                ],
                 "weather_presets": [
                     {"id": "keep", "label": "Keep Current Weather"},
                     *[
@@ -1336,6 +1391,7 @@ class WorldWorker:
                 "route_modes": [
                     {"id": "free", "label": "Free Drive"},
                     {"id": "random_destination", "label": "Random Destination"},
+                    {"id": "selected_destination", "label": "Selected Destination"},
                 ],
                 "control_modes": [
                     {"id": "manual", "label": "Manual"},
@@ -1617,6 +1673,32 @@ class WorldWorker:
         blueprint = self._blueprint(library, config.vehicle_blueprint)
         role_name = self._set_role(blueprint, f"world_worker_{scene_id}")
         self._set_color(blueprint, config.color)
+        if config.start_spawn_index is not None:
+            index = config.start_spawn_index
+            if index >= len(spawn_points):
+                raise WorkerError(
+                    HTTPStatus.UNPROCESSABLE_ENTITY,
+                    "spawn_index_out_of_range",
+                    f"start_spawn_index {index} is outside this map's {len(spawn_points)} spawn points",
+                )
+            try:
+                actor = world.try_spawn_actor(blueprint, spawn_points[index])
+            except Exception as error:
+                raise WorkerError(
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    "ego_spawn_failed",
+                    f"CARLA failed while spawning the ego at selected spawn {index}: {error}",
+                ) from error
+            if actor is None:
+                raise WorkerError(
+                    HTTPStatus.UNPROCESSABLE_ENTITY,
+                    "ego_spawn_unavailable",
+                    f"selected start spawn {index} is occupied or unavailable; no fallback was used",
+                )
+            self._record_actor(owned, actor, kind="ego", role_name=role_name)
+            self._apply_full_brake(actor)
+            return actor, index
+
         indices = list(range(len(spawn_points)))
         rng.shuffle(indices)
         for index in indices[: min(80, len(indices))]:
@@ -2140,6 +2222,66 @@ class WorldWorker:
             f"could not trace a non-trivial route to a random destination: {detail}",
         )
 
+    def _plan_selected_route(
+        self,
+        world: Any,
+        ego: Any,
+        spawn_points: list[Any],
+        spawn_index: int,
+        destination_index: int,
+    ) -> tuple[dict[str, Any], dict[str, Any], list[Any]]:
+        if destination_index >= len(spawn_points):
+            raise WorkerError(
+                HTTPStatus.UNPROCESSABLE_ENTITY,
+                "spawn_index_out_of_range",
+                f"destination_spawn_index {destination_index} is outside this map's "
+                f"{len(spawn_points)} spawn points",
+            )
+        if destination_index == spawn_index:
+            raise WorkerError(
+                HTTPStatus.UNPROCESSABLE_ENTITY,
+                "route_destination_matches_start",
+                "selected destination must differ from the actual ego start",
+            )
+        factory = self._planner_factory()
+        if factory is None:
+            raise WorkerError(
+                HTTPStatus.UNPROCESSABLE_ENTITY,
+                "selected_route_unavailable",
+                "GlobalRoutePlanner is unavailable on the World Worker host",
+            )
+        destination_transform = spawn_points[destination_index]
+        try:
+            planner = factory(world.get_map())
+            traced = list(planner.trace_route(ego.get_location(), destination_transform.location))
+            locations = [item[0].transform.location for item in traced]
+        except Exception as error:
+            raise WorkerError(
+                HTTPStatus.UNPROCESSABLE_ENTITY,
+                "selected_route_failed",
+                f"could not trace route to selected destination {destination_index}: {error}",
+            ) from error
+        if len(locations) < 2:
+            raise WorkerError(
+                HTTPStatus.UNPROCESSABLE_ENTITY,
+                "selected_route_failed",
+                f"route to selected destination {destination_index} is trivial",
+            )
+        return (
+            {
+                "mode": "selected_destination",
+                "provider": "GlobalRoutePlanner.trace_route+TrafficManager.set_path",
+                "planned": True,
+                "enforced": False,
+                "waypoint_count": len(locations),
+            },
+            {
+                "spawn_index": destination_index,
+                "transform": _json_transform(destination_transform),
+            },
+            locations,
+        )
+
     def prepare(self, raw: Mapping[str, Any]) -> dict[str, Any]:
         config = SceneConfig.from_mapping(raw)
         with self._lock:
@@ -2163,14 +2305,13 @@ class WorldWorker:
             traffic_manager: Any | None = None
             try:
                 traffic_manager = client.get_trafficmanager(self.traffic_manager_port)
-                if config.route_mode == "random_destination" and (
+                if config.route_mode in {"random_destination", "selected_destination"} and (
                     self._planner_factory() is None or not hasattr(traffic_manager, "set_path")
                 ):
                     raise WorkerError(
                         HTTPStatus.UNPROCESSABLE_ENTITY,
                         "random_route_unavailable",
-                        "random_destination requires GlobalRoutePlanner and "
-                        "TrafficManager.set_path",
+                        "planned routes require GlobalRoutePlanner and TrafficManager.set_path",
                     )
                 traffic_manager.set_synchronous_mode(False)
                 simulator_seed = config.seed % _SIMULATOR_SEED_MODULUS
@@ -2326,6 +2467,17 @@ class WorldWorker:
                             spawn_points,
                             spawn_index,
                             role_rng,
+                        )
+                    )
+                elif config.route_mode == "selected_destination":
+                    assert config.destination_spawn_index is not None
+                    partial.route, partial.destination, partial.route_locations = (
+                        self._plan_selected_route(
+                            world,
+                            ego,
+                            spawn_points,
+                            spawn_index,
+                            config.destination_spawn_index,
                         )
                     )
                 else:
@@ -2515,11 +2667,15 @@ class WorldWorker:
                     "CARLA episode changed before scene reconfiguration",
                 )
             original = scene.config
-            if config.map_name != original.map_name or config.seed != original.seed:
+            if (
+                config.map_name != original.map_name
+                or config.seed != original.seed
+                or config.start_spawn_index != original.start_spawn_index
+            ):
                 raise WorkerError(
                     HTTPStatus.CONFLICT,
                     "scene_reconfigure_unsupported",
-                    "map or seed changes require a new prepared scene",
+                    "map, seed, or start spawn changes require a new prepared scene",
                 )
             try:
                 ego_owned = next(item for item in scene.owned_actors if item.kind == "ego")
@@ -2591,13 +2747,13 @@ class WorldWorker:
                     "scene_population_capacity",
                     "requested traffic exceeds available map spawn points",
                 )
-            if config.route_mode == "random_destination" and (
+            if config.route_mode in {"random_destination", "selected_destination"} and (
                 self._planner_factory() is None or not hasattr(tm, "set_path")
             ):
                 raise WorkerError(
                     HTTPStatus.UNPROCESSABLE_ENTITY,
                     "random_route_unavailable",
-                    "random_destination requires a route planner and set_path",
+                    "planned routes require a route planner and set_path",
                 )
 
             rng = random.Random(config.seed)
@@ -2731,10 +2887,22 @@ class WorldWorker:
                         raise
                     scene.config = replace(scene.config, prop_preset=config.prop_preset)
                     uncertain = False
-                if config.route_mode != scene.config.route_mode:
+                if (
+                    config.route_mode != scene.config.route_mode
+                    or config.destination_spawn_index != scene.config.destination_spawn_index
+                ):
                     if config.route_mode == "random_destination":
                         route, destination, locations = self._plan_random_route(
                             world, scene.ego, spawn_points, scene.spawn_index, rng
+                        )
+                    elif config.route_mode == "selected_destination":
+                        assert config.destination_spawn_index is not None
+                        route, destination, locations = self._plan_selected_route(
+                            world,
+                            scene.ego,
+                            spawn_points,
+                            scene.spawn_index,
+                            config.destination_spawn_index,
                         )
                     else:
                         route = {
@@ -2750,7 +2918,11 @@ class WorldWorker:
                         destination,
                         locations,
                     )
-                    scene.config = replace(scene.config, route_mode=config.route_mode)
+                    scene.config = replace(
+                        scene.config,
+                        route_mode=config.route_mode,
+                        destination_spawn_index=config.destination_spawn_index,
+                    )
                 # PREPARED means parked; autopilot is enabled only by start().
                 scene.control_mode = config.initial_control_mode
                 scene.config = replace(
@@ -2794,9 +2966,9 @@ class WorldWorker:
             scene.ego.set_autopilot(True, int(scene.traffic_manager.get_port()))
             if hasattr(scene.traffic_manager, "update_vehicle_lights"):
                 scene.traffic_manager.update_vehicle_lights(scene.ego, True)
-            if scene.config.route_mode == "random_destination":
+            if scene.config.route_mode in {"random_destination", "selected_destination"}:
                 if not scene.route_locations or not hasattr(scene.traffic_manager, "set_path"):
-                    raise RuntimeError("prepared random route cannot be enforced")
+                    raise RuntimeError("prepared planned route cannot be enforced")
                 scene.traffic_manager.set_path(scene.ego, list(scene.route_locations))
                 scene.route["enforced"] = True
         except Exception as error:

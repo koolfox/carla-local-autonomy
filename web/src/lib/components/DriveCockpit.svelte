@@ -23,7 +23,19 @@
   $: drive = $garageRuntime.drive;
   $: running = isDriveRunning(drive);
   $: active = isDriveActive(drive);
-  $: modelOwnsControl = String(drive.garage_mode ?? '').toLowerCase() === 'model';
+  $: garageMode = String(drive.garage_mode ?? '').toLowerCase();
+  $: policyOwnsControl = ['behavior', 'imitation', 'voxel', 'model'].includes(garageMode);
+  $: controlOwner = drive.control_mode === 'autopilot'
+    ? 'CARLA Traffic Manager'
+    : garageMode === 'behavior'
+      ? 'CARLA BehaviorAgent'
+      : garageMode === 'imitation'
+        ? 'Imitation policy'
+        : garageMode === 'voxel'
+          ? 'Voxel supervisor'
+          : garageMode === 'model'
+            ? 'Registered model'
+            : 'Browser manual';
   $: speedKmh = speedMetresPerSecond(drive) * 3.6;
   $: stream = drive.stream ?? {};
   $: detectorEnabled = Boolean(drive.detector?.enabled);
@@ -195,7 +207,7 @@
       </div>
 
       <div class="cockpit-badges">
-        <span class:ok={running} class="status-pill"><i></i>{drive.control_mode ?? drive.garage_mode ?? 'manual'}</span>
+        <span class:ok={running} class="status-pill"><i></i>{controlOwner}</span>
         {#if recordingActive(drive)}<span class="status-pill recording"><i></i>REC</span>{/if}
         <button
           type="button"
@@ -208,7 +220,8 @@
       {#if telemetryOpen}
         <aside class="telemetry-panel">
           <div class="telemetry-row"><span>Run</span><strong>{drive.run_id ?? '—'}</strong></div>
-          <div class="telemetry-row"><span>Control</span><strong>{drive.control_source ?? '—'}</strong></div>
+          <div class="telemetry-row"><span>Control owner</span><strong>{controlOwner}</strong></div>
+          <div class="telemetry-row"><span>Control source</span><strong>{drive.control_source ?? '—'}</strong></div>
           {#if navigationIntent}
             <div class="telemetry-row"><span>Route command</span><strong>{navigationLabel}</strong></div>
             <div class="telemetry-row"><span>Route frame</span><strong>{navigationIntent.source_frame.id}</strong></div>
@@ -223,10 +236,10 @@
         </aside>
       {/if}
 
-      {#if running && !modelOwnsControl}
+      {#if running && !policyOwnsControl}
         <ManualControlPad armRequest={manualArmRequest} />
-      {:else if running && modelOwnsControl}
-        <p class="model-control-note">Model control active · Emergency Brake remains available</p>
+      {:else if running && policyOwnsControl}
+        <p class="model-control-note">{controlOwner} owns actuation · Emergency Brake remains available</p>
       {/if}
 
       {#if drive.error}<p class="cockpit-error" role="alert">{drive.error}</p>{/if}

@@ -34,6 +34,9 @@ class FakeWorker:
         self.mode = "manual"
         self.traffic = 0
         self.walkers = 0
+        self.start_spawn_index: int | None = None
+        self.destination_spawn_index: int | None = None
+        self.route_mode = "free"
 
     def health(self) -> dict[str, Any]:
         return {
@@ -45,7 +48,25 @@ class FakeWorker:
                 "server_version": self.version,
                 "current_map": "Town10HD_Opt",
             },
-            "capabilities": {"camera_pause_resume": True},
+            "capabilities": {
+                "camera_pause_resume": True,
+                "spawn_point_selection": True,
+                "selected_route": True,
+            },
+        }
+
+    def catalog(self) -> dict[str, Any]:
+        return {
+            "spawn_point_map": "Town10HD_Opt",
+            "spawn_count": 4,
+            "spawn_points": [
+                {"index": index, "label": f"Spawn {index}", "transform": {}}
+                for index in range(4)
+            ],
+            "capabilities": {
+                "spawn_point_selection": True,
+                "selected_route": True,
+            },
         }
 
     def current_scene(self) -> dict[str, Any]:
@@ -61,10 +82,20 @@ class FakeWorker:
                 "episode_id": 10,
                 "ego_actor_id": 101,
                 "map_name": "Town10HD_Opt",
-                "spawn_index": 1,
-                "route_mode": "free",
-                "route": {},
-                "destination": None,
+                "spawn_index": (
+                    self.start_spawn_index if self.start_spawn_index is not None else 1
+                ),
+                "route_mode": self.route_mode,
+                "route": (
+                    {"planned": True, "waypoint_count": 12, "enforced": False}
+                    if self.route_mode == "selected_destination"
+                    else {"planned": False, "waypoint_count": 0, "enforced": False}
+                ),
+                "destination": (
+                    {"spawn_index": self.destination_spawn_index, "transform": {}}
+                    if self.destination_spawn_index is not None
+                    else None
+                ),
                 "control_mode": "manual",
                 "traffic_count": self.traffic,
                 "walker_count": self.walkers,
@@ -136,6 +167,9 @@ class FakeManager:
         self.worker.mode = self.mode
         self.worker.traffic = int(payload["traffic_count"])
         self.worker.walkers = int(payload["walker_count"])
+        self.worker.start_spawn_index = payload.get("start_spawn_index")
+        self.worker.destination_spawn_index = payload.get("destination_spawn_index")
+        self.worker.route_mode = str(payload.get("route_mode", "free"))
         self.worker.paused = False
         self.worker.pause_at = None
         self.session_id = f"session-{self.start_count + 1}"
@@ -186,6 +220,7 @@ class FakeManager:
                 "policy_ready": True,
                 "commands": 3,
                 "detail": {
+                    "destination_index": self.worker.destination_spawn_index,
                     "navigation_intent": {
                         "schema_version": "1.0",
                         "source_frame": {"kind": "carla_world_frame", "id": 77, "exact": True},
@@ -248,6 +283,8 @@ def runner(
     repeat: int = 2,
     version: str = "0.9.16",
     behavior_fails: bool = False,
+    start_spawn_index: int | None = None,
+    destination_spawn_index: int | None = None,
 ) -> tuple[GarageAcceptanceRunner, FakeManager, FakeWorker]:
     clock = FakeClock()
     worker = FakeWorker(clock, version=version)
@@ -265,6 +302,8 @@ def runner(
             walker_count=4,
             camera_fps=30.0,
             repeat=repeat,
+            start_spawn_index=start_spawn_index,
+            destination_spawn_index=destination_spawn_index,
             state_timeout=10.0,
             clock=clock,
             sleep=clock.sleep,
@@ -308,6 +347,42 @@ def test_repeatable_gate_runs_manual_and_behavior_twice_with_real_fault_order() 
         assert passed["worker_scene_released"]
 
 
+
+def test_selected_map_start_and_destination_are_machine_readable_live_evidence() -> None:
+    acceptance, _, _ = runner(
+        repeat=1,
+        start_spawn_index=1,
+        destination_spawn_index=2,
+    )
+    report = acceptance.run()
+
+    assert report["status"] == "pass"
+    assert report["target"]["route_selection"] == {
+        "start_spawn_index": 1,
+        "destination_spawn_index": 2,
+        "behavior_route_mode": "selected_destination",
+    }
+    preflight = {check["check_id"]: check for check in report["checks"]}
+    assert preflight["spawn_point_selection_capability"]["passed"]
+    assert preflight["spawn_catalog_matches_target_map"]["passed"]
+    assert preflight["start_spawn_index_available"]["passed"]
+    assert preflight["selected_route_capability"]["passed"]
+    assert preflight["destination_spawn_index_available"]["passed"]
+
+    manual, behavior = report["sessions"]
+    assert manual["requested"]["route_mode"] == "free"
+    assert manual["requested"]["start_spawn_index"] == 1
+    assert manual["requested"]["destination_spawn_index"] is None
+    assert behavior["requested"]["route_mode"] == "selected_destination"
+    assert behavior["requested"]["start_spawn_index"] == 1
+    assert behavior["requested"]["destination_spawn_index"] == 2
+    behavior_checks = {check["check_id"]: check for check in behavior["checks"]}
+    assert behavior_checks["selected_map_applied"]["passed"]
+    assert behavior_checks["selected_start_spawn_applied"]["passed"]
+    assert behavior_checks["selected_destination_planned"]["passed"]
+    assert behavior_checks["behavior_destination_matches_selected"]["passed"]
+
+
 def test_wrong_carla_version_fails_preflight_without_spawning() -> None:
     acceptance, manager, _ = runner(version="0.9.15", repeat=1)
     report = acceptance.run()
@@ -344,6 +419,35 @@ def test_cli_uses_worker_token_environment_name_not_plaintext_secret() -> None:
     assert args.world_worker_token_env == "MY_WORKER_TOKEN"
     assert not hasattr(args, "world_worker_token")
     _validate_args(args)
+
+
+def test_cli_accepts_exact_spawn_selection_and_rejects_same_endpoint() -> None:
+    args = _parse_args(
+        [
+            "--world-worker-url",
+            "http://127.0.0.1:8766",
+            "--start-spawn-index",
+            "1",
+            "--destination-spawn-index",
+            "2",
+        ]
+    )
+    assert args.start_spawn_index == 1
+    assert args.destination_spawn_index == 2
+    _validate_args(args)
+
+    same = _parse_args(
+        [
+            "--world-worker-url",
+            "http://127.0.0.1:8766",
+            "--start-spawn-index",
+            "2",
+            "--destination-spawn-index",
+            "2",
+        ]
+    )
+    with pytest.raises(ValueError, match="must differ"):
+        _validate_args(same)
 
 
 @pytest.mark.parametrize(

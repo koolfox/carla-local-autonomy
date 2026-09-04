@@ -1,5 +1,5 @@
 export type ControlMode = 'manual' | 'autopilot' | 'behavior' | 'imitation' | 'voxel' | 'model';
-export type RouteMode = 'free' | 'random_destination';
+export type RouteMode = 'free' | 'random_destination' | 'selected_destination';
 export type DetectorKind = 'rtdetr' | 'yolo';
 export type BehaviorStyle = 'cautious' | 'normal' | 'aggressive';
 export type ExperimentPreset =
@@ -77,6 +77,8 @@ export interface SessionConfig {
   };
   route: {
     mode: RouteMode;
+    startSpawnIndex: number | null;
+    destinationSpawnIndex: number | null;
   };
   control: {
     mode: ControlMode;
@@ -138,8 +140,16 @@ export interface ExperimentPresetDefinition {
   patch: ExperimentPresetPatch;
 }
 
+export interface SpawnPointOption {
+  index: number;
+  label: string;
+  transform?: Record<string, unknown>;
+}
+
 export interface WorkspaceOptions {
   maps: CatalogOption[];
+  spawnPointMap: string | null;
+  spawnPoints: SpawnPointOption[];
   vehicles: Array<{ id: string; label?: string; colors?: string[] }>;
   weatherPresets: Array<{ id: string; label: string }>;
   propPresets: Array<{ id: string; label: string }>;
@@ -176,7 +186,9 @@ export function defaultSessionConfig(): SessionConfig {
       color: ''
     },
     route: {
-      mode: 'free'
+      mode: 'free',
+      startSpawnIndex: null,
+      destinationSpawnIndex: null
     },
     control: {
       mode: 'autopilot'

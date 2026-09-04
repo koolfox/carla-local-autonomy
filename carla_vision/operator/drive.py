@@ -2010,6 +2010,8 @@ class DriveSessionManager:
             "maps": [],
             "vehicles": [],
             "spawn_count": 0,
+            "spawn_point_map": None,
+            "spawn_points": [],
             "weather_presets": [
                 {"id": "keep", "label": "Keep current weather"},
                 *[
@@ -2102,6 +2104,12 @@ class DriveSessionManager:
                 worker_server_version = carla_facts.get("server_version")
                 if isinstance(worker_server_version, str) and worker_server_version.strip():
                     base["server_version"] = worker_server_version.strip()
+                spawn_point_map = worker_catalog.get("spawn_point_map")
+                if isinstance(spawn_point_map, str) and spawn_point_map.strip():
+                    base["spawn_point_map"] = _map_short_name(spawn_point_map.strip())
+                spawn_points = worker_catalog.get("spawn_points")
+                if isinstance(spawn_points, list):
+                    base["spawn_points"] = spawn_points
                 spawn_count = worker_catalog.get("spawn_count")
                 if (
                     isinstance(spawn_count, int)

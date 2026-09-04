@@ -42,6 +42,8 @@ _SCENE_PREPARE_OPTIONAL_KEYS = frozenset(
         "pedestrian_crossing_factor",
         "speed_difference_percent",
         "following_distance_metres",
+        "start_spawn_index",
+        "destination_spawn_index",
     }
 )
 _SCENE_PREPARE_KEYS = _SCENE_PREPARE_REQUIRED_KEYS | _SCENE_PREPARE_OPTIONAL_KEYS

@@ -110,6 +110,8 @@ class ObservableWorldWorker(WorldWorker):
             "walkers": int(config.walker_count),
             "prop_preset": config.prop_preset,
             "route_mode": config.route_mode,
+            "start_spawn_index": config.start_spawn_index,
+            "destination_spawn_index": config.destination_spawn_index,
             "pedestrian_crossing_factor": float(config.pedestrian_crossing_factor),
             "speed_difference_percent": float(config.speed_difference_percent),
             "following_distance_metres": float(config.following_distance_metres),
@@ -517,6 +519,20 @@ class ObservableWorldWorker(WorldWorker):
         self._check_prepare_cancelled()
         self._set_preparation_stage("route")
         return super()._plan_random_route(world, ego, spawn_points, spawn_index, rng)
+
+    def _plan_selected_route(
+        self,
+        world: Any,
+        ego: Any,
+        spawn_points: list[Any],
+        spawn_index: int,
+        destination_index: int,
+    ) -> tuple[dict[str, Any], dict[str, Any], list[Any]]:
+        self._check_prepare_cancelled()
+        self._set_preparation_stage("route")
+        return super()._plan_selected_route(
+            world, ego, spawn_points, spawn_index, destination_index
+        )
 
 
 def main(argv: Sequence[str] | None = None) -> int:

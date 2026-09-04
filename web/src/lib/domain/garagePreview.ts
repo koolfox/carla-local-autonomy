@@ -74,6 +74,8 @@ export function garagePreviewSignature(session: SessionConfig): string {
     walker_count: scene.walkerCount,
     prop_preset: scene.propPreset.trim(),
     route_mode: session.route.mode,
+    start_spawn_index: session.route.startSpawnIndex,
+    destination_spawn_index: session.route.destinationSpawnIndex,
     pedestrian_crossing_factor: scene.pedestrianCrossingFactor,
     speed_difference_percent: scene.speedDifferencePercent,
     following_distance_metres: scene.followingDistanceMetres,
@@ -90,6 +92,22 @@ export function garagePreviewInputError(session: SessionConfig): string {
     Number.isFinite(value) && value >= minimum && value <= maximum;
   if (!integer(session.identity.seed, 0, Number.MAX_SAFE_INTEGER)) {
     return 'Seed must be a non-negative whole number.';
+  }
+  for (const [label, value] of [
+    ['Start spawn', session.route.startSpawnIndex],
+    ['Destination spawn', session.route.destinationSpawnIndex]
+  ] as const) {
+    if (value !== null && !integer(value, 0, 1_000_000)) return `${label} must be a valid spawn index.`;
+  }
+  if (session.route.mode === 'selected_destination' && session.route.destinationSpawnIndex === null) {
+    return 'Choose a destination spawn point for the selected route.';
+  }
+  if (session.route.mode !== 'selected_destination' && session.route.destinationSpawnIndex !== null) {
+    return 'Destination spawn point requires Selected destination route mode.';
+  }
+  if (session.route.startSpawnIndex !== null
+    && session.route.startSpawnIndex === session.route.destinationSpawnIndex) {
+    return 'Start and destination spawn points must differ.';
   }
   if (!integer(session.scene.trafficCount, 0, 250) || !integer(session.scene.walkerCount, 0, 250)) {
     return 'Traffic and walker counts must be whole numbers from 0 to 250.';

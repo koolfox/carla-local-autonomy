@@ -11,7 +11,7 @@ import {
   type SystemSettings,
   type WorkspaceOptions
 } from '$lib/domain/config';
-import type { WorkspaceSnapshot } from '$lib/api/operator';
+import type { DriveCatalogPayload, WorkspaceSnapshot } from '$lib/api/operator';
 
 const STORAGE_KEY = 'carla-vision-console.session-config.v2';
 const LEGACY_STORAGE_KEY = 'carla-vision-console.session-config.v1';
@@ -21,6 +21,8 @@ let configurationHydrated = false;
 export const systemSettings = writable<SystemSettings | null>(null);
 export const workspaceOptions = writable<WorkspaceOptions>({
   maps: [],
+  spawnPointMap: null,
+  spawnPoints: [],
   vehicles: [],
   weatherPresets: [],
   propPresets: [],
@@ -139,11 +141,16 @@ function reconcileCapabilities(config: SessionConfig, snapshot: WorkspaceSnapsho
     next.policy.acknowledgeAutonomy = false;
   }
 
-  if (
-    next.route.mode === 'random_destination' &&
-    !snapshot.system.capabilities.random_route
-  ) {
+  if (next.route.mode === 'random_destination' && !snapshot.system.capabilities.random_route) {
     next.route.mode = 'free';
+  }
+  if (next.route.mode === 'selected_destination' && !snapshot.system.capabilities.selected_route) {
+    next.route.mode = 'free';
+    next.route.destinationSpawnIndex = null;
+  }
+  if (!snapshot.system.capabilities.spawn_point_selection) {
+    next.route.startSpawnIndex = null;
+    next.route.destinationSpawnIndex = null;
   }
 
   const drivingModels = snapshot.options.models.filter((model) => model.role === 'driving_policy');
@@ -185,6 +192,38 @@ export function hydrateWorkspace(snapshot: WorkspaceSnapshot): void {
   sessionConfig.set(hydrated);
   configurationHydrated = true;
   persist(hydrated);
+}
+
+export function refreshWorldCatalog(catalog: DriveCatalogPayload): void {
+  systemSettings.update((current) => current ? {
+    ...current,
+    connected: Boolean(catalog.connected),
+    serverVersion: catalog.server_version ?? current.serverVersion,
+    currentMap: catalog.map ?? current.currentMap,
+    workerConnected: Boolean(catalog.world_worker?.connected),
+    capabilities: { ...current.capabilities, ...catalog.capabilities }
+  } : current);
+  workspaceOptions.update((current) => ({
+    ...current,
+    maps: Array.isArray(catalog.maps) ? catalog.maps.map((value) => {
+      const raw = typeof value === 'string' ? value : value.id;
+      const id = String(raw).replace(/\/+$/, '').split('/').at(-1) ?? String(raw);
+      const label = typeof value === 'string' ? id : String(value.label ?? id);
+      return { id, label };
+    }) : current.maps,
+    spawnPointMap: catalog.spawn_point_map
+      ? String(catalog.spawn_point_map).replace(/\/+$/, '').split('/').at(-1) ?? null
+      : null,
+    spawnPoints: Array.isArray(catalog.spawn_points)
+      ? catalog.spawn_points
+          .filter((point) => Number.isInteger(point.index) && point.index >= 0)
+          .map((point) => ({
+            index: point.index,
+            label: String(point.label ?? `Spawn ${point.index}`),
+            transform: point.transform
+          }))
+      : []
+  }));
 }
 
 export function patchSessionSection<K extends keyof SessionConfig>(

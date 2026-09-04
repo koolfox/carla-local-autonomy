@@ -116,6 +116,8 @@ export interface DriveCatalogPayload {
   server_version: string | null;
   map: string | null;
   maps: Array<string | { id: string; label?: string }>;
+  spawn_point_map?: string | null;
+  spawn_points?: Array<{ index: number; label?: string; transform?: Record<string, unknown> }>;
   vehicles: Array<{ id: string; label?: string; colors?: string[] }>;
   weather_presets: Array<{ id: string; label: string }>;
   prop_presets: Array<{ id: string; label: string }>;
@@ -239,6 +241,16 @@ export async function loadWorkspaceSnapshot(): Promise<WorkspaceSnapshot> {
 
   const options: WorkspaceOptions = {
     maps: normalizeMapOptions(driveCatalog.maps),
+    spawnPointMap: driveCatalog.spawn_point_map ? shortMapName(driveCatalog.spawn_point_map) : null,
+    spawnPoints: Array.isArray(driveCatalog.spawn_points)
+      ? driveCatalog.spawn_points
+          .filter((point) => Number.isInteger(point.index) && point.index >= 0)
+          .map((point) => ({
+            index: point.index,
+            label: String(point.label ?? `Spawn ${point.index}`),
+            transform: point.transform
+          }))
+      : [],
     vehicles: Array.isArray(driveCatalog.vehicles) ? driveCatalog.vehicles : [],
     weatherPresets: Array.isArray(driveCatalog.weather_presets)
       ? driveCatalog.weather_presets
@@ -274,6 +286,10 @@ export class OperatorApi {
 
   getDriveState(): Promise<DriveState> {
     return readJson<DriveState>('/api/drive/state');
+  }
+
+  getDriveCatalog(): Promise<DriveCatalogPayload> {
+    return readJson<DriveCatalogPayload>('/api/drive/catalog');
   }
 
   async post<T>(path: string, body: Record<string, unknown>, keepalive = false): Promise<T> {
