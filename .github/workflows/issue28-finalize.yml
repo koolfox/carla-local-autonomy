@@ -19,6 +19,26 @@ jobs:
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+      - name: Narrow fake-worker capability patch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('tools/issue28_acceptance_patch.py')
+          text = path.read_text(encoding='utf-8')
+          old = '''replace_once(
+              test_path,
+              '            "capabilities": {"camera_pause_resume": True},',
+              '            "capabilities": {\\n                "camera_pause_resume": True,\\n                "spawn_point_selection": True,\\n                "selected_route": True,\\n            },',
+          )'''
+          new = '''replace_once(
+              test_path,
+              '            "capabilities": {"camera_pause_resume": True},\\n        }\\n\\n    def current_scene(self) -> dict[str, Any]:',
+              '            "capabilities": {\\n                "camera_pause_resume": True,\\n                "spawn_point_selection": True,\\n                "selected_route": True,\\n            },\\n        }\\n\\n    def current_scene(self) -> dict[str, Any]:',
+          )'''
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one capability patch block, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
       - name: Apply live acceptance wiring
         run: python tools/issue28_acceptance_patch.py
       - name: Install Python dependencies
