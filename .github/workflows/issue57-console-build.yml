@@ -1,0 +1,37 @@
+name: Issue 57 console build
+
+on:
+  push:
+    branches: [issue/57-garage-preview-quality]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: issue/57-garage-preview-quality
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Install frontend dependencies
+        working-directory: web
+        run: npm ci --no-audit --no-fund
+      - name: Validate and build Svelte console
+        working-directory: web
+        run: |
+          npm run check
+          npm test
+          npm run build
+      - name: Commit deployable console
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add carla_vision/operator/console_static
+          git diff --cached --quiet && exit 0
+          git commit -m "Rebuild Garage preview console"
+          git push origin HEAD:issue/57-garage-preview-quality
