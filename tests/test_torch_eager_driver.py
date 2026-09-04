@@ -74,3 +74,8 @@ def test_eager_driver_rejects_invalid_control_output(tmp_path) -> None:
             driver.predict(_observation())
     finally:
         driver.close()
+
+
+def test_eager_driver_requires_checkpoint() -> None:
+    with pytest.raises(ValueError, match="checkpoint"):
+        create_driver(ModelDriverConfig(checkpoint=None))
