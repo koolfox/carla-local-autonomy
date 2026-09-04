@@ -143,6 +143,8 @@ class GaragePreviewConfig:
     pitch: float = -10.0
     distance: float = 6.5
     route_mode: str = "free"
+    start_spawn_index: int | None = None
+    destination_spawn_index: int | None = None
 
     def scene_payload(self) -> dict[str, Any]:
         values = {
@@ -157,6 +159,8 @@ class GaragePreviewConfig:
                 "walker_count",
                 "prop_preset",
                 "route_mode",
+                "start_spawn_index",
+                "destination_spawn_index",
             )
         }
         values["initial_control_mode"] = "manual"
@@ -189,6 +193,8 @@ class GaragePreviewConfig:
             "profile",
             "fov",
             "route_mode",
+            "start_spawn_index",
+            "destination_spawn_index",
         }
         _strict_keys(raw, allowed=allowed, required=required, name="Garage preview request")
 
@@ -216,8 +222,33 @@ class GaragePreviewConfig:
 
         profile = str(raw.get("profile", "balanced")).strip().lower()
         route_mode = str(raw.get("route_mode", "free")).strip()
-        if route_mode not in {"free", "random_destination"}:
-            raise ValueError("route_mode must be free or random_destination")
+        if route_mode not in {"free", "random_destination", "selected_destination"}:
+            raise ValueError(
+                "route_mode must be free, random_destination, or selected_destination"
+            )
+        start_raw = raw.get("start_spawn_index")
+        destination_raw = raw.get("destination_spawn_index")
+        start_spawn_index = (
+            None
+            if start_raw is None
+            else _integer(start_raw, name="start_spawn_index", minimum=0, maximum=1_000_000)
+        )
+        destination_spawn_index = (
+            None
+            if destination_raw is None
+            else _integer(
+                destination_raw,
+                name="destination_spawn_index",
+                minimum=0,
+                maximum=1_000_000,
+            )
+        )
+        if route_mode == "selected_destination" and destination_spawn_index is None:
+            raise ValueError("selected_destination requires destination_spawn_index")
+        if route_mode != "selected_destination" and destination_spawn_index is not None:
+            raise ValueError("destination_spawn_index requires selected_destination")
+        if start_spawn_index is not None and start_spawn_index == destination_spawn_index:
+            raise ValueError("start and destination spawn points must differ")
         try:
             width, height, fps = _CAMERA_PROFILES[profile]
         except KeyError as error:
@@ -259,6 +290,8 @@ class GaragePreviewConfig:
             fps=fps,
             profile=profile,
             route_mode=route_mode,
+            start_spawn_index=start_spawn_index,
+            destination_spawn_index=destination_spawn_index,
             fov=_number(
                 raw.get("fov", 65.0),
                 name="fov",
@@ -280,6 +313,8 @@ class GaragePreviewConfig:
             "walker_count": self.walker_count,
             "prop_preset": self.prop_preset,
             "route_mode": self.route_mode,
+            "start_spawn_index": self.start_spawn_index,
+            "destination_spawn_index": self.destination_spawn_index,
             "pedestrian_crossing_factor": self.pedestrian_crossing_factor,
             "speed_difference_percent": self.speed_difference_percent,
             "following_distance_metres": self.following_distance_metres,
@@ -605,6 +640,10 @@ class GaragePreviewSession:
                     else scene.following_distance_metres
                 ),
                 "prop_preset": self.config.prop_preset,
+                "spawn_index": None if scene is None else scene.spawn_index,
+                "route_mode": None if scene is None else scene.route_mode,
+                "route": {} if scene is None else dict(scene.route),
+                "destination": None if scene is None else scene.destination,
                 "spectator_mirror": self._spectator_mirror_active,
             }
 
@@ -738,7 +777,11 @@ class GaragePreviewSession:
                 or not self._worker_camera
             ):
                 return False
-            if config.map_name != self.config.map_name or config.seed != self.config.seed:
+            if (
+                config.map_name != self.config.map_name
+                or config.seed != self.config.seed
+                or config.start_spawn_index != self.config.start_spawn_index
+            ):
                 return False
             if config.scene_payload() != self.config.scene_payload() and not scene.capabilities.get(
                 "prepared_scene_reconfigure"

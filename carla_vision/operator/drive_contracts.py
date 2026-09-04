@@ -16,7 +16,7 @@ _RUN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _RESOLUTION = re.compile(r"^(\d{3,4})x(\d{3,4})$")
 _MAP_NAME = re.compile(r"^[A-Za-z0-9_./-]{1,160}$")
 _CONTROL_MODES = frozenset({"manual", "autopilot"})
-_ROUTE_MODES = frozenset({"free", "random_destination"})
+_ROUTE_MODES = frozenset({"free", "random_destination", "selected_destination"})
 EXPERIMENT_PRESETS = frozenset(
     {
         "free_drive",
@@ -33,6 +33,8 @@ _WORKER_FIELDS = frozenset(
         "traffic_count",
         "walker_count",
         "route_mode",
+        "start_spawn_index",
+        "destination_spawn_index",
         "initial_control_mode",
         "pedestrian_crossing_factor",
         "speed_difference_percent",
@@ -122,6 +124,8 @@ class DriveStartConfig:
     traffic_count: int = 0
     walker_count: int = 0
     route_mode: str = "free"
+    start_spawn_index: int | None = None
+    destination_spawn_index: int | None = None
     initial_control_mode: str = "manual"
     pedestrian_crossing_factor: float = 0.2
     speed_difference_percent: float = 12.0
@@ -228,7 +232,25 @@ class DriveStartConfig:
         walker_count = _integer(raw.get("walker_count", 0), "walker_count", 0, 250)
         route_mode = str(raw.get("route_mode", "free")).strip()
         if route_mode not in _ROUTE_MODES:
-            raise ValueError("route_mode must be free or random_destination")
+            raise ValueError("route_mode must be free, random_destination, or selected_destination")
+        start_raw = raw.get("start_spawn_index")
+        destination_raw = raw.get("destination_spawn_index")
+        start_spawn_index = (
+            None
+            if start_raw is None
+            else _integer(start_raw, "start_spawn_index", 0, 1_000_000)
+        )
+        destination_spawn_index = (
+            None
+            if destination_raw is None
+            else _integer(destination_raw, "destination_spawn_index", 0, 1_000_000)
+        )
+        if route_mode == "selected_destination" and destination_spawn_index is None:
+            raise ValueError("selected_destination requires destination_spawn_index")
+        if route_mode != "selected_destination" and destination_spawn_index is not None:
+            raise ValueError("destination_spawn_index requires route_mode=selected_destination")
+        if start_spawn_index is not None and start_spawn_index == destination_spawn_index:
+            raise ValueError("start_spawn_index and destination_spawn_index must differ")
         initial_control_mode = str(raw.get("initial_control_mode", "manual")).strip()
         if initial_control_mode not in _CONTROL_MODES:
             raise ValueError("initial_control_mode must be manual or autopilot")
@@ -265,6 +287,10 @@ class DriveStartConfig:
                 unsupported.append("walker_count")
             if route_mode != "free":
                 unsupported.append("route_mode")
+            if start_spawn_index is not None:
+                unsupported.append("start_spawn_index")
+            if destination_spawn_index is not None:
+                unsupported.append("destination_spawn_index")
             if initial_control_mode != "manual":
                 unsupported.append("initial_control_mode")
             if pedestrian_crossing_factor != 0.2:
@@ -305,6 +331,8 @@ class DriveStartConfig:
             traffic_count=traffic_count,
             walker_count=walker_count,
             route_mode=route_mode,
+            start_spawn_index=start_spawn_index,
+            destination_spawn_index=destination_spawn_index,
             initial_control_mode=initial_control_mode,
             pedestrian_crossing_factor=pedestrian_crossing_factor,
             speed_difference_percent=speed_difference_percent,
@@ -348,6 +376,8 @@ class DriveStartConfig:
             "traffic_count": self.traffic_count,
             "walker_count": self.walker_count,
             "route_mode": self.route_mode,
+            "start_spawn_index": self.start_spawn_index,
+            "destination_spawn_index": self.destination_spawn_index,
             "initial_control_mode": self.initial_control_mode,
             "pedestrian_crossing_factor": self.pedestrian_crossing_factor,
             "speed_difference_percent": self.speed_difference_percent,

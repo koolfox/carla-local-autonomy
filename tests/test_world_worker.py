@@ -607,9 +607,63 @@ class WorldWorkerTest(unittest.TestCase):
         self.assertTrue(catalog["capabilities"]["asynchronous_world"])
         self.assertTrue(catalog["capabilities"]["world_dynamics_controls"])
         self.assertTrue(catalog["capabilities"]["garage_camera_presets"])
-        self.assertEqual(catalog["worker_api_revision"], 5)
+        self.assertEqual(catalog["worker_api_revision"], 6)
+        self.assertTrue(catalog["capabilities"]["spawn_point_selection"])
+        self.assertTrue(catalog["capabilities"]["selected_route"])
+        self.assertEqual(catalog["spawn_point_map"], "Town10HD_Opt")
+        self.assertEqual(catalog["spawn_count"], len(self.world.map.spawn_points))
+        self.assertEqual(catalog["spawn_points"][0]["index"], 0)
         self.assertTrue(catalog["capabilities"]["batch_scene_cleanup"])
         self.assertEqual(catalog["carla"]["current_map"], "Town10HD_Opt")
+
+    def test_selected_start_and_destination_use_exact_official_spawn_points(self) -> None:
+        prepared = self.worker.prepare(
+            {
+                "start_spawn_index": 2,
+                "route_mode": "selected_destination",
+                "destination_spawn_index": 6,
+                "initial_control_mode": "autopilot",
+            }
+        )
+        scene = prepared["scene"]
+        self.assertEqual(scene["spawn_index"], 2)
+        self.assertEqual(scene["destination"]["spawn_index"], 6)
+        self.assertEqual(scene["route"]["mode"], "selected_destination")
+        self.assertTrue(scene["route"]["planned"])
+        scene_id, lease_token = self.lease(prepared)
+        started = self.worker.start(scene_id, {"lease_token": lease_token})
+        self.assertTrue(started["scene"]["route"]["enforced"])
+        self.assertEqual(self.traffic_manager.paths[-1][0], scene["ego_actor_id"])
+        self.assertEqual(
+            self.traffic_manager.paths[-1][1][-1],
+            self.world.map.spawn_points[6].location,
+        )
+
+    def test_selected_start_never_silently_falls_back_when_occupied(self) -> None:
+        original_try_spawn = self.world.try_spawn_actor
+
+        def occupied(blueprint: Any, transform: Any, *args: Any, **kwargs: Any) -> Any:
+            if transform is self.world.map.spawn_points[3] and str(blueprint.id).startswith("vehicle."):
+                return None
+            return original_try_spawn(blueprint, transform, *args, **kwargs)
+
+        self.world.try_spawn_actor = occupied  # type: ignore[method-assign]
+        with self.assertRaisesRegex(WorkerError, "no fallback was used") as raised:
+            self.worker.prepare({"start_spawn_index": 3})
+        self.assertEqual(raised.exception.code, "ego_spawn_unavailable")
+        self.assertEqual(self.world.actors, {})
+
+    def test_selected_route_contract_rejects_missing_or_same_destination(self) -> None:
+        with self.assertRaisesRegex(WorkerError, "requires destination_spawn_index"):
+            SceneConfig.from_mapping({"route_mode": "selected_destination"})
+        with self.assertRaisesRegex(WorkerError, "must differ"):
+            SceneConfig.from_mapping(
+                {
+                    "route_mode": "selected_destination",
+                    "start_spawn_index": 4,
+                    "destination_spawn_index": 4,
+                }
+            )
 
     def test_health_reports_busy_without_waiting_for_world_lock(self) -> None:
         acquired = threading.Event()

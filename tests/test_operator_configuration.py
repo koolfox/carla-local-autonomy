@@ -79,7 +79,11 @@ def test_session_defaults_have_one_scene_drive_perception_recording_shape() -> N
         "followingDistanceMetres": 2.0,
     }
     assert defaults["control"] == {"mode": "manual"}
-    assert defaults["route"] == {"mode": "free"}
+    assert defaults["route"] == {
+        "mode": "free",
+        "startSpawnIndex": None,
+        "destinationSpawnIndex": None,
+    }
     assert defaults["camera"]["resolution"] == "1280x720"
     assert defaults["camera"]["fps"] == 30.0
     assert defaults["perception"]["detector"] == "rtdetr"
@@ -260,6 +264,8 @@ def test_garage_preview_maps_every_shared_scene_and_camera_value() -> None:
         "walker_count": 55,
         "prop_preset": "accident",
         "route_mode": "random_destination",
+        "start_spawn_index": None,
+        "destination_spawn_index": None,
         "pedestrian_crossing_factor": 0.85,
         "speed_difference_percent": -20.0,
         "following_distance_metres": 7.5,

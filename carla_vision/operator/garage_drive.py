@@ -496,7 +496,13 @@ def _command_from_carla(control: Any) -> ControlCommand:
 
 
 class _BehaviorPolicy:
-    def __init__(self, context: _CarlaContext, config: GarageDriveStartConfig) -> None:
+    def __init__(
+        self,
+        context: _CarlaContext,
+        config: GarageDriveStartConfig,
+        *,
+        destination_index: int | None = None,
+    ) -> None:
         module = importlib.import_module("agents.navigation.behavior_agent")
         self.context = context
         self.config = config
@@ -505,24 +511,38 @@ class _BehaviorPolicy:
             behavior=config.behavior,
             opt_dict={"target_speed": float(config.target_speed_kmh)},
         )
-        self.destination_index: int | None = None
+        self.destination_index: int | None = destination_index
         self.route_generation = 0
+        self.route_complete = False
         self._set_destination()
 
     def _set_destination(self) -> None:
         current = self.context.ego.get_location()
-        candidates = [
-            (index, transform)
-            for index, transform in enumerate(self.context.spawn_points)
-            if current.distance(transform.location) >= 80.0
-        ] or list(enumerate(self.context.spawn_points))
-        self.destination_index, destination = self.context.rng.choice(candidates)
+        if self.destination_index is None:
+            candidates = [
+                (index, transform)
+                for index, transform in enumerate(self.context.spawn_points)
+                if current.distance(transform.location) >= 80.0
+            ] or list(enumerate(self.context.spawn_points))
+            self.destination_index, destination = self.context.rng.choice(candidates)
+        else:
+            if self.destination_index >= len(self.context.spawn_points):
+                raise RuntimeError(
+                    f"route destination {self.destination_index} is outside the active map"
+                )
+            destination = self.context.spawn_points[self.destination_index]
         self.agent.set_destination(destination.location)
         self.route_generation += 1
 
     def step(self, *_: Any, **__: Any) -> tuple[ControlCommand, str, bool, dict[str, Any]]:
         if self.agent.done():
-            self._set_destination()
+            self.route_complete = True
+            return (
+                ControlCommand.service_brake(),
+                "behavior_route_complete",
+                False,
+                {"destination_index": self.destination_index, "route_complete": True},
+            )
         command = _command_from_carla(self.agent.run_step(debug=False))
         detail: dict[str, Any] = {"destination_index": self.destination_index}
         try:
@@ -647,7 +667,13 @@ class _ImitationPolicy:
 
 
 class _VoxelPolicy:
-    def __init__(self, context: _CarlaContext, config: GarageDriveStartConfig) -> None:
+    def __init__(
+        self,
+        context: _CarlaContext,
+        config: GarageDriveStartConfig,
+        *,
+        destination_index: int | None = None,
+    ) -> None:
         from ..voxel.actuation_runtime import VoxelActuationRuntime
         from ..voxel.actuation_supervisor import VoxelActuationSupervisorPolicy
         from ..voxel.contracts import VoxelGridSpec
@@ -655,7 +681,9 @@ class _VoxelPolicy:
         from ..voxel.shadow import ShadowPlannerConfig
 
         self.config = config
-        self.behavior = _BehaviorPolicy(context, config)
+        self.behavior = _BehaviorPolicy(
+            context, config, destination_index=destination_index
+        )
         self.camera = _PolicyCamera(context.carla, context.world, context.ego, config)
         predictor = create_camera_voxel_predictor(
             _VOXEL_FACTORY,
@@ -840,6 +868,14 @@ class GarageDriveSession(DriveSession):
                 self._garage_context = _CarlaContext(self.config, self._vehicle_id)
             return self._garage_context
 
+    def _route_destination_index(self) -> int | None:
+        scene = self._worker_scene
+        if scene is not None and isinstance(scene.destination, Mapping):
+            raw = scene.destination.get("spawn_index")
+            if isinstance(raw, int) and not isinstance(raw, bool) and raw >= 0:
+                return raw
+        return self.config.destination_spawn_index
+
     def _ensure_extensions(self) -> None:
         if self._garage_closed:
             raise RuntimeError("Garage extensions are closing")
@@ -853,12 +889,17 @@ class GarageDriveSession(DriveSession):
         self._population.start(context, self.config)
         if self.config.control_mode == "manual" or self._policy is not None:
             return
+        destination_index = self._route_destination_index()
         if self.config.control_mode == "behavior":
-            self._policy = _BehaviorPolicy(context, self.config)
+            self._policy = _BehaviorPolicy(
+                context, self.config, destination_index=destination_index
+            )
         elif self.config.control_mode == "imitation":
             self._policy = _ImitationPolicy(context, self.config)
         elif self.config.control_mode == "voxel":
-            self._policy = _VoxelPolicy(context, self.config)
+            self._policy = _VoxelPolicy(
+                context, self.config, destination_index=destination_index
+            )
         else:  # pragma: no cover - validated by the config contract
             raise RuntimeError(f"unsupported Garage control mode {self.config.control_mode!r}")
 
