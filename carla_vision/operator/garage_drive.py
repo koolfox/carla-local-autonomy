@@ -512,6 +512,7 @@ class _BehaviorPolicy:
             opt_dict={"target_speed": float(config.target_speed_kmh)},
         )
         self.destination_index: int | None = destination_index
+        self.fixed_destination = destination_index is not None
         self.route_generation = 0
         self.route_complete = False
         self._set_destination()
@@ -536,13 +537,16 @@ class _BehaviorPolicy:
 
     def step(self, *_: Any, **__: Any) -> tuple[ControlCommand, str, bool, dict[str, Any]]:
         if self.agent.done():
-            self.route_complete = True
-            return (
-                ControlCommand.service_brake(),
-                "behavior_route_complete",
-                False,
-                {"destination_index": self.destination_index, "route_complete": True},
-            )
+            if self.fixed_destination:
+                self.route_complete = True
+                return (
+                    ControlCommand.service_brake(),
+                    "behavior_route_complete",
+                    False,
+                    {"destination_index": self.destination_index, "route_complete": True},
+                )
+            self.destination_index = None
+            self._set_destination()
         command = _command_from_carla(self.agent.run_step(debug=False))
         detail: dict[str, Any] = {"destination_index": self.destination_index}
         try:

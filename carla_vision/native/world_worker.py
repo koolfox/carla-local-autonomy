@@ -1391,6 +1391,7 @@ class WorldWorker:
                 "route_modes": [
                     {"id": "free", "label": "Free Drive"},
                     {"id": "random_destination", "label": "Random Destination"},
+                    {"id": "selected_destination", "label": "Selected Destination"},
                 ],
                 "control_modes": [
                     {"id": "manual", "label": "Manual"},
@@ -2967,7 +2968,7 @@ class WorldWorker:
                 scene.traffic_manager.update_vehicle_lights(scene.ego, True)
             if scene.config.route_mode in {"random_destination", "selected_destination"}:
                 if not scene.route_locations or not hasattr(scene.traffic_manager, "set_path"):
-                    raise RuntimeError("prepared random route cannot be enforced")
+                    raise RuntimeError("prepared planned route cannot be enforced")
                 scene.traffic_manager.set_path(scene.ego, list(scene.route_locations))
                 scene.route["enforced"] = True
         except Exception as error:
