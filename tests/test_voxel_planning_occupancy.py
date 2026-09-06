@@ -37,17 +37,15 @@ def test_build_planning_evidence_marks_only_ambiguous_cells_unknown() -> None:
     assert evidence.unknown_fraction == pytest.approx(1.0 / 3.0)
 
 
-def test_build_planning_evidence_owns_read_only_arrays() -> None:
+def test_build_planning_evidence_owns_read_only_planning_arrays() -> None:
     spec = _spec()
     probability = np.asarray([[[[0.25, 0.50, 0.75]]]], dtype=np.float32)
-    semantics = np.zeros((1, 2, *spec.shape), dtype=np.float32)
     metadata = {"model": "fixture"}
 
     evidence = build_planning_occupancy_evidence(
         CameraVoxelPrediction(
             probability,
             horizons_s=(0.0,),
-            semantic_logits=semantics,
             metadata=metadata,
         ),
         spec,
@@ -55,18 +53,16 @@ def test_build_planning_evidence_owns_read_only_arrays() -> None:
     )
 
     probability[...] = 1.0
-    semantics[...] = 7.0
     metadata["model"] = "mutated"
 
     assert evidence.prediction.occupancy_probability[0, 0, 0, 0] == pytest.approx(0.25)
-    assert evidence.prediction.semantic_logits is not None
-    assert evidence.prediction.semantic_logits[0, 0, 0, 0, 0] == pytest.approx(0.0)
     assert evidence.prediction.metadata == {"model": "fixture"}
     assert not evidence.prediction.occupancy_probability.flags.writeable
-    assert not evidence.prediction.semantic_logits.flags.writeable
     assert not evidence.planning_grid.flags.writeable
     assert not evidence.unknown_mask.flags.writeable
 
+    with pytest.raises(ValueError):
+        evidence.prediction.occupancy_probability[0, 0, 0, 0] = 0.0
     with pytest.raises(ValueError):
         evidence.planning_grid[0, 0, 0, 0] = 0.0
     with pytest.raises(ValueError):
