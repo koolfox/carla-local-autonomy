@@ -16,9 +16,10 @@ from typing import Any
 
 import numpy as np
 
-from .contracts import VoxelGridSpec, validate_camera_voxel_prediction
+from .contracts import VoxelGridSpec
 from .models import CameraVoxelModelConfig, create_camera_voxel_predictor
 from .planner import generate_constant_curvature_trajectories, select_best_trajectory
+from .planning_occupancy import build_planning_occupancy_evidence
 
 SHADOW_SCHEMA_VERSION = "1.0"
 
@@ -104,13 +105,11 @@ class VoxelPlannerShadow:
         if len(self.history) < self.config.history_frames:
             return None
         started = time.perf_counter()
-        prediction = validate_camera_voxel_prediction(
+        evidence = build_planning_occupancy_evidence(
             self.predictor.predict(tuple(self.history), self.spec),
             self.spec,
+            uncertainty_band=self.config.uncertainty_band,
         )
-        planning_grid = prediction.occupancy_probability.copy()
-        uncertain = np.abs(planning_grid - 0.5) <= self.config.uncertainty_band
-        planning_grid[uncertain] = -1.0
         candidates = generate_constant_curvature_trajectories(
             self.config.steering_values,
             speed_mps=speed_mps,
@@ -120,7 +119,7 @@ class VoxelPlannerShadow:
         )
         best, scores = select_best_trajectory(
             candidates,
-            planning_grid,
+            evidence.planning_grid,
             spec=self.spec,
             ego_radius_m=self.config.ego_radius_m,
             collision_weight=self.config.collision_weight,
@@ -138,7 +137,7 @@ class VoxelPlannerShadow:
             "timestamp": float(timestamp),
             "speed_mps": float(speed_mps),
             "prediction_latency_ms": latency_ms,
-            "horizons_s": list(prediction.horizons_s),
+            "horizons_s": list(evidence.horizons_s),
             "selected_steering": float(best.steering),
             "selected_score": float(scores[best_index].total),
             "candidates": [
@@ -148,7 +147,7 @@ class VoxelPlannerShadow:
                 }
                 for candidate, score in zip(candidates, scores, strict=True)
             ],
-            "uncertain_voxel_fraction": float(np.mean(uncertain)),
+            "uncertain_voxel_fraction": evidence.unknown_fraction,
             "actuation_applied": False,
         }
 
