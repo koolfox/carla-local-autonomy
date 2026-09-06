@@ -12,8 +12,8 @@ from carla_vision.model_registry import discover_model_packages
 from carla_vision.scene_perception import (
     CAPABILITY_DRIVABLE_AREA,
     CAPABILITY_OBJECTS,
-    CAPABILITY_TRAFFIC_LIGHTS,
     CAPABILITY_TRAFFIC_LIGHT_STATE,
+    CAPABILITY_TRAFFIC_LIGHTS,
     DrivableAreaObservation,
     LaneMarkingObservation,
     RoadUserObservation,
