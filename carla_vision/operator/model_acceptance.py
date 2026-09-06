@@ -676,7 +676,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         token = os.environ.get(args.world_worker_token_env, "")
         if not token:
             raise ValueError(
-                f"environment variable {args.world_worker_token_env!r} must contain the Worker token"
+                "environment variable "
+                f"{args.world_worker_token_env!r} must contain the Worker token"
             )
         worker = WorldWorkerClient(args.world_worker_url, token, timeout=5.0)
         manager = GarageOperatorDriveManager(
