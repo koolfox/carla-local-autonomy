@@ -82,9 +82,47 @@ must return the common `ModelControl` shape.
 }
 ```
 
+For state-dict checkpoints, construct the architecture in the trusted factory
+and use the shared conservative loader. The loader does not guess model
+architecture, checkpoint keys, preprocessing, or output semantics:
+
+```python
+from carla_vision.model_driver import ModelDriverConfig
+from carla_vision.pytorch_loading import load_state_dict_for_inference
+
+from .architecture import MyPolicy
+
+
+class Driver:
+    def __init__(self, config: ModelDriverConfig) -> None:
+        if config.checkpoint is None:
+            raise ValueError("policy requires a checkpoint")
+
+        self.model = MyPolicy(...)
+        self.device = load_state_dict_for_inference(
+            self.model,
+            config.checkpoint,
+            device=config.device,
+            # Omit this argument when the checkpoint itself is the state dict.
+            state_dict_key="model_state_dict",
+        )
+```
+
+The shared loader deserializes on CPU with `weights_only=True`, requires an
+exact state-dict key match for the model the factory constructed, moves the
+module only after state validation, and switches it to evaluation mode. It
+never retries with `weights_only=False`. A checkpoint that stores a whole
+pickled module or requires custom pickle globals therefore needs a deliberate,
+model-specific trusted adapter instead of an implicit generic fallback.
+
+The factory still owns observation preprocessing, temporal state, the forward
+signature, and conversion of model output to `ModelControl`. This is
+intentional: arbitrary PyTorch models do not share one image size, color
+transform, auxiliary-input signature, or control head.
+
 The module containing the factory must be importable in the Operator Python
-environment and backed by a regular fingerprintable Python source file. The adapter source,
-manifest, and artifact are all recorded in the run lineage.
+environment and backed by a regular fingerprintable Python source file. The
+adapter source, manifest, and artifact are all recorded in the run lineage.
 
 ## Register and verify
 

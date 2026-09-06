@@ -10,6 +10,7 @@ import numpy as np
 import torch
 
 from ..model_driver import ModelControl, ModelDriverConfig, ModelObservation
+from ..pytorch_loading import load_weights_only_checkpoint, prepare_module_for_inference
 from .model import ImitationControlNet, ImitationModelConfig
 
 
@@ -18,16 +19,18 @@ class ImitationDrivingPredictor:
         if config.checkpoint is None:
             raise ValueError("imitation-driving predictor requires a checkpoint")
         self.checkpoint = Path(config.checkpoint).expanduser().resolve(strict=True)
-        self.device = torch.device(config.device)
-        payload = torch.load(self.checkpoint, map_location=self.device, weights_only=True)
+        payload = load_weights_only_checkpoint(self.checkpoint)
         if not isinstance(payload, dict):
             raise ValueError("imitation checkpoint must contain a mapping")
         if payload.get("task") != "behavior_agent_control_imitation":
             raise ValueError("checkpoint task is not behavior_agent_control_imitation")
         self.model_config = ImitationModelConfig.from_dict(dict(payload["model_config"]))
-        self.model = ImitationControlNet(self.model_config).to(self.device)
-        self.model.load_state_dict(payload["state_dict"], strict=True)
-        self.model.eval()
+        self.model = ImitationControlNet(self.model_config)
+        self.device = prepare_module_for_inference(
+            self.model,
+            payload["state_dict"],
+            device=config.device,
+        )
         options = dict(config.options)
         self.steer_gain = float(options.get("steer_gain", 1.0))
         self.throttle_gain = float(options.get("throttle_gain", 1.0))
