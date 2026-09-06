@@ -21,8 +21,9 @@ from .actuation_supervisor import (
     VoxelSupervisorDecision,
     evaluate_voxel_planner_proposal,
 )
-from .contracts import VoxelGridSpec, validate_camera_voxel_prediction
+from .contracts import VoxelGridSpec
 from .planner import generate_constant_curvature_trajectories, select_best_trajectory
+from .planning_occupancy import build_planning_occupancy_evidence
 from .shadow import ShadowPlannerConfig
 
 VOXEL_ACTUATION_RUNTIME_SCHEMA_VERSION = "1.0"
@@ -136,13 +137,11 @@ class VoxelActuationRuntime:
             return self._warmup_result(frame, timestamp)
 
         started = time.perf_counter()
-        prediction = validate_camera_voxel_prediction(
+        evidence = build_planning_occupancy_evidence(
             self.predictor.predict(tuple(self.history), self.spec),
             self.spec,
+            uncertainty_band=self.planner_config.uncertainty_band,
         )
-        planning_grid = prediction.occupancy_probability.copy()
-        uncertain = np.abs(planning_grid - 0.5) <= self.planner_config.uncertainty_band
-        planning_grid[uncertain] = -1.0
 
         candidates = generate_constant_curvature_trajectories(
             self.planner_config.steering_values,
@@ -153,7 +152,7 @@ class VoxelActuationRuntime:
         )
         best, scores = select_best_trajectory(
             candidates,
-            planning_grid,
+            evidence.planning_grid,
             spec=self.spec,
             ego_radius_m=self.planner_config.ego_radius_m,
             collision_weight=self.planner_config.collision_weight,
@@ -165,7 +164,7 @@ class VoxelActuationRuntime:
         best_index = next(index for index, candidate in enumerate(candidates) if candidate is best)
         best_score = scores[best_index]
         collision_risk = float(np.clip(best_score.collision, 0.0, 1.0))
-        uncertain_fraction = float(np.mean(uncertain))
+        uncertain_fraction = evidence.unknown_fraction
         generated_at_s = time.monotonic()
         proposal = VoxelPlannerProposal(
             frame=int(frame),
@@ -174,7 +173,7 @@ class VoxelActuationRuntime:
             selected_steering=float(best.steering),
             collision_risk=collision_risk,
             uncertain_voxel_fraction=uncertain_fraction,
-            prediction=prediction,
+            prediction=evidence.prediction,
         )
         decision = evaluate_voxel_planner_proposal(
             proposal,
