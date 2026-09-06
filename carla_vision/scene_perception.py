@@ -1,8 +1,8 @@
 """Canonical, framework-neutral scene perception contracts.
 
-The runtime model package owns model-specific preprocessing and inference.  This
+The runtime model package owns model-specific preprocessing and inference. This
 module defines the narrow boundary consumed by downstream planning, recording,
-and visualization code.  It intentionally contains no CARLA or model-framework
+and visualization code. It intentionally contains no CARLA or model-framework
 objects.
 """
 
@@ -15,26 +15,18 @@ from typing import Any, Mapping, Protocol, runtime_checkable
 import numpy as np
 
 from .contracts import Detection
-
-SCENE_PERCEPTION_INPUT_KIND = "scene_perception_observation_v1"
-SCENE_PERCEPTION_OUTPUT_KIND = "scene_perception_v1"
-
-CAPABILITY_OBJECTS = "objects"
-CAPABILITY_TRAFFIC_LIGHTS = "traffic_lights"
-CAPABILITY_TRAFFIC_LIGHT_STATE = "traffic_light_state"
-CAPABILITY_TRAFFIC_SIGNS = "traffic_signs"
-CAPABILITY_LANE_MARKINGS = "lane_markings"
-CAPABILITY_DRIVABLE_AREA = "drivable_area"
-SCENE_PERCEPTION_CAPABILITIES = frozenset(
-    {
-        CAPABILITY_OBJECTS,
-        CAPABILITY_TRAFFIC_LIGHTS,
-        CAPABILITY_TRAFFIC_LIGHT_STATE,
-        CAPABILITY_TRAFFIC_SIGNS,
-        CAPABILITY_LANE_MARKINGS,
-        CAPABILITY_DRIVABLE_AREA,
-    }
+from .model_package_contracts import (
+    CAPABILITY_DRIVABLE_AREA,
+    CAPABILITY_LANE_MARKINGS,
+    CAPABILITY_OBJECTS,
+    CAPABILITY_TRAFFIC_LIGHTS,
+    CAPABILITY_TRAFFIC_LIGHT_STATE,
+    CAPABILITY_TRAFFIC_SIGNS,
+    SCENE_PERCEPTION_CAPABILITIES,
+    SCENE_PERCEPTION_INPUT_KIND,
+    SCENE_PERCEPTION_OUTPUT_KIND,
 )
+
 ROAD_USER_CATEGORIES = frozenset({"vehicle", "pedestrian", "cyclist", "other_road_user"})
 TRAFFIC_LIGHT_STATES = frozenset({"red", "yellow", "green", "off"})
 
@@ -82,7 +74,7 @@ class RoadUserObservation:
 class TrafficLightObservation:
     """Traffic-light detection with optional model-predicted state.
 
-    ``state=None`` means the model did not provide a state.  Callers must not
+    ``state=None`` means the model did not provide a state. Callers must not
     infer a state from the detection label when the package does not declare the
     ``traffic_light_state`` capability.
     """
@@ -163,7 +155,7 @@ class ScenePerception:
 
     Capability declarations are part of the value so downstream consumers can
     distinguish "no objects detected" from "this model does not provide object
-    detections".  Populated semantics that were not declared are rejected.
+    detections". Populated semantics that were not declared are rejected.
     """
 
     capabilities: tuple[str, ...]
@@ -185,7 +177,10 @@ class ScenePerception:
         if not normalized:
             raise ValueError("scene perception must declare at least one capability")
         capabilities = frozenset(normalized)
-        if CAPABILITY_TRAFFIC_LIGHT_STATE in capabilities and CAPABILITY_TRAFFIC_LIGHTS not in capabilities:
+        if (
+            CAPABILITY_TRAFFIC_LIGHT_STATE in capabilities
+            and CAPABILITY_TRAFFIC_LIGHTS not in capabilities
+        ):
             raise ValueError("traffic_light_state capability requires traffic_lights")
         if self.road_users and CAPABILITY_OBJECTS not in capabilities:
             raise ValueError("road_users require the objects capability")
