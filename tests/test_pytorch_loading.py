@@ -4,8 +4,6 @@ from pathlib import Path
 
 import pytest
 
-torch = pytest.importorskip("torch")
-
 from carla_vision.pytorch_loading import (
     PyTorchCheckpointError,
     PyTorchStateDictError,
@@ -15,6 +13,8 @@ from carla_vision.pytorch_loading import (
     prepare_module_for_inference,
     resolve_torch_device,
 )
+
+torch = pytest.importorskip("torch")
 
 
 def _linear(*, out_features: int = 2) -> torch.nn.Module:
