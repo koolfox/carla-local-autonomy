@@ -123,6 +123,13 @@ def test_prepare_module_rejects_non_module() -> None:
         prepare_module_for_inference(object(), {}, device="cpu")
 
 
+def test_prepare_module_rejects_malformed_state_dict() -> None:
+    with pytest.raises(PyTorchStateDictError, match="must contain a state-dict mapping"):
+        prepare_module_for_inference(_linear(), [], device="cpu")
+    with pytest.raises(PyTorchStateDictError, match="keys must be non-empty strings"):
+        prepare_module_for_inference(_linear(), {1: torch.ones(1)}, device="cpu")
+
+
 def test_unavailable_cuda_fails_before_checkpoint_deserialization(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
