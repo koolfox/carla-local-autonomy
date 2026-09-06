@@ -119,6 +119,19 @@ def load_weights_only_checkpoint(path: str | Path) -> Any:
         ) from error
 
 
+def _validate_state_dict_mapping(
+    state_dict: Any,
+    *,
+    context: str,
+) -> Mapping[str, Any]:
+    if not isinstance(state_dict, Mapping):
+        raise PyTorchStateDictError(f"{context} must contain a state-dict mapping")
+    invalid_keys = [key for key in state_dict if not isinstance(key, str) or not key]
+    if invalid_keys:
+        raise PyTorchStateDictError("state-dict keys must be non-empty strings")
+    return state_dict
+
+
 def extract_state_dict(
     payload: Any,
     *,
@@ -150,14 +163,8 @@ def extract_state_dict(
             )
         selected = payload[key]
 
-    if not isinstance(selected, Mapping):
-        location = "checkpoint" if state_dict_key is None else f"checkpoint[{state_dict_key!r}]"
-        raise PyTorchStateDictError(f"{location} must contain a state-dict mapping")
-
-    invalid_keys = [key for key in selected if not isinstance(key, str) or not key]
-    if invalid_keys:
-        raise PyTorchStateDictError("state-dict keys must be non-empty strings")
-    return selected
+    location = "checkpoint" if state_dict_key is None else f"checkpoint[{state_dict_key!r}]"
+    return _validate_state_dict_mapping(selected, context=location)
 
 
 def _describe_key_mismatch(
@@ -195,17 +202,18 @@ def prepare_module_for_inference(
     torch = _import_torch()
     if not isinstance(module, torch.nn.Module):
         raise TypeError("state-dict target must be a torch.nn.Module")
+    validated_state = _validate_state_dict_mapping(state_dict, context="state_dict")
 
     target_device = resolve_torch_device(device)
     expected_keys = set(module.state_dict().keys())
-    actual_keys = set(state_dict.keys())
+    actual_keys = set(validated_state.keys())
     if expected_keys != actual_keys:
         raise PyTorchStateDictError(
             _describe_key_mismatch(expected=expected_keys, actual=actual_keys)
         )
 
     try:
-        module.load_state_dict(state_dict, strict=True)
+        module.load_state_dict(validated_state, strict=True)
     except (RuntimeError, TypeError, ValueError) as error:
         raise PyTorchStateDictError(
             f"state dict is incompatible with {type(module).__qualname__}: {error}"
