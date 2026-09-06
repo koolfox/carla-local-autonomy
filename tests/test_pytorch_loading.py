@@ -6,7 +6,6 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-import carla_vision.pytorch_loading as pytorch_loading
 from carla_vision.pytorch_loading import (
     PyTorchCheckpointError,
     PyTorchStateDictError,
