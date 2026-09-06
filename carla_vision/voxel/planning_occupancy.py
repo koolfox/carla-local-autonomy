@@ -34,7 +34,10 @@ class PlanningOccupancyEvidence:
     the configured ambiguity band are encoded as ``UNKNOWN`` (``-1``), matching
     the existing planner contract.
 
-    Arrays owned by this value are independent copies and read-only.
+    The occupancy, planning-grid, and unknown-mask arrays owned here are
+    independent copies and read-only. Optional semantic logits remain validated
+    model output; this planning boundary does not copy them because it does not
+    consume them.
     """
 
     prediction: CameraVoxelPrediction
@@ -81,15 +84,10 @@ def build_planning_occupancy_evidence(
         validated.occupancy_probability,
         dtype=np.float32,
     )
-    semantics = (
-        None
-        if validated.semantic_logits is None
-        else _read_only_copy(validated.semantic_logits, dtype=np.float32)
-    )
     stable_prediction = CameraVoxelPrediction(
         occupancy_probability=occupancy,
         horizons_s=validated.horizons_s,
-        semantic_logits=semantics,
+        semantic_logits=validated.semantic_logits,
         metadata=dict(validated.metadata or {}),
     )
 
