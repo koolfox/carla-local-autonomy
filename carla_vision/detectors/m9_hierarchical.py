@@ -104,7 +104,7 @@ def _load_certified_checkpoint(path: Path) -> tuple[dict[str, Any], str]:
     previous = sentinel
     if main_module is not None:
         previous = getattr(main_module, "QueryFiLMAdapter", sentinel)
-        setattr(main_module, "QueryFiLMAdapter", QueryFiLMAdapter)
+        main_module.QueryFiLMAdapter = QueryFiLMAdapter
 
     try:
         payload = torch.load(resolved, map_location="cpu", weights_only=False)
@@ -113,7 +113,7 @@ def _load_certified_checkpoint(path: Path) -> tuple[dict[str, Any], str]:
             if previous is sentinel:
                 delattr(main_module, "QueryFiLMAdapter")
             else:
-                setattr(main_module, "QueryFiLMAdapter", previous)
+                main_module.QueryFiLMAdapter = previous
 
     if not isinstance(payload, dict):
         raise RuntimeError("certified M9 checkpoint payload must be a dictionary")
