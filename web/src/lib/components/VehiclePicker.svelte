@@ -1,6 +1,7 @@
 <script lang="ts">
   import { patchSessionSection, sessionConfig, workspaceOptions } from '$lib/stores/configuration';
   import { fieldValue } from '$lib/ui/events';
+  import { paintLabel } from '$lib/ui/paint';
 
   export let compact = false;
 
@@ -47,7 +48,7 @@
         onchange={(event) => patchSessionSection('vehicle', { color: fieldValue(event) })}
       >
         <option value="">Default paint</option>
-        {#each selectedVehicle?.colors ?? [] as color}<option value={color}>{color}</option>{/each}
+        {#each selectedVehicle?.colors ?? [] as color}<option value={color}>{paintLabel(color)}</option>{/each}
       </select>
     </label>
   </div>
@@ -74,7 +75,7 @@
         onchange={(event) => patchSessionSection('vehicle', { color: fieldValue(event) })}
       >
         <option value="">Blueprint default</option>
-        {#each selectedVehicle?.colors ?? [] as color}<option value={color}>{color}</option>{/each}
+        {#each selectedVehicle?.colors ?? [] as color}<option value={color}>{paintLabel(color)}</option>{/each}
       </select>
     </label>
   </div>
