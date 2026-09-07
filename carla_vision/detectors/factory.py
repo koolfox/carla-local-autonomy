@@ -38,6 +38,10 @@ def create_detector(config: DetectorConfig) -> Detector:
         return UltralyticsDetector(config, architecture="yolo")
     if backend in {"rtdetr", "rt-detr", "ultralytics-rtdetr"}:
         return UltralyticsDetector(config, architecture="rtdetr")
+    if backend in {"m9-hierarchical", "m9-hierarchical-rtdetr"}:
+        from .m9_hierarchical import M9HierarchicalDetector
+
+        return M9HierarchicalDetector(config)
     if backend == "custom":
         if config.factory is None:
             raise ValueError("custom detector requires factory")

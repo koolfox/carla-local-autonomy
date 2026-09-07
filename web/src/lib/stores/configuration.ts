@@ -164,12 +164,6 @@ function reconcileCapabilities(config: SessionConfig, snapshot: WorkspaceSnapsho
     if (!active?.requiresTrustedCode) next.policy.acknowledgeTrustedCode = false;
   }
 
-  if (!snapshot.system.visionRuntimeAvailable) {
-    next.perception.enabled = false;
-  } else if (next.perception.enabled && !next.perception.weights) {
-    next.perception.weights = snapshot.options.detectorWeights[0] ?? '';
-  }
-
   if (!next.vehicle.blueprint) {
     next.vehicle = {
       ...next.vehicle,
@@ -246,13 +240,8 @@ export function applyExperimentPreset(preset: ExperimentPreset): void {
 }
 
 export function resetSession(): void {
-  const currentSystem = get(systemSettings);
   const options = get(workspaceOptions);
   const next = mergeSessionDefaults(defaultSessionConfig(), resolvedDefaults);
   next.vehicle.blueprint = options.vehicles[0]?.id ?? '';
-  if (currentSystem && !currentSystem.visionRuntimeAvailable) next.perception.enabled = false;
-  if (next.perception.enabled && !next.perception.weights) {
-    next.perception.weights = options.detectorWeights[0] ?? '';
-  }
   sessionConfig.set(next);
 }

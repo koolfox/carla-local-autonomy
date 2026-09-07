@@ -1,6 +1,6 @@
 export type ControlMode = 'manual' | 'autopilot' | 'behavior' | 'imitation' | 'voxel' | 'model';
 export type RouteMode = 'free' | 'random_destination' | 'selected_destination';
-export type DetectorKind = 'rtdetr' | 'yolo';
+export type DetectorKind = 'rtdetr' | 'yolo' | 'm9-hierarchical';
 export type BehaviorStyle = 'cautious' | 'normal' | 'aggressive';
 export type ExperimentPreset =
   | 'free_drive'
@@ -92,6 +92,10 @@ export interface SessionConfig {
   perception: {
     enabled: boolean;
     voxelEnabled: boolean;
+    roadEnabled: boolean;
+    roadBackend: string;
+    roadCheckpoint: string;
+    roadDevice: string;
     detector: DetectorKind;
     weights: string;
     device: string;
@@ -202,6 +206,10 @@ export function defaultSessionConfig(): SessionConfig {
     perception: {
       enabled: false,
       voxelEnabled: false,
+      roadEnabled: false,
+      roadBackend: 'segformer',
+      roadCheckpoint: '',
+      roadDevice: 'cpu',
       detector: 'rtdetr',
       weights: '',
       device: 'cpu',

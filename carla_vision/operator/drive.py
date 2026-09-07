@@ -38,6 +38,10 @@ from ..detectors.factory import create_detector
 from ..display import OverlayRenderer
 from ..perception import PerceptionWorker
 from ..recording import AsyncVideoRecorder
+from ..segmentation.contracts import DEFAULT_SEGFORMER_B0_CHECKPOINT, SegmentationConfig
+from ..segmentation.factory import create_segmenter
+from ..segmentation.overlay import render_segmentation_overlay
+from ..segmentation.worker import AsyncSegmentationRuntime, SegmentationFrameInput
 from ..voxel.live_view import VoxelViewWorker
 from ..watchdog import SafeActuator
 from .drive_contracts import DriveInput, DriveStartConfig, weather_payload
@@ -537,6 +541,10 @@ class DriveSession:
                     "actuated": False,
                 },
                 "voxel": self._voxel_snapshot(),
+                "road_segmentation": {
+                    "enabled": self.config.road_enabled,
+                    **(self._road.snapshot() if getattr(self, "_road", None) else {}),
+                },
                 "recording": self._recording,
                 "weather_preset": self._weather_preset,
                 "output_path": self._output_path,
@@ -1114,6 +1122,10 @@ class DriveSession:
         stream: CarlaCameraStream | WorldWorkerCameraStream | None = None
         actuator: SafeActuator | None = None
         perception: PerceptionWorker | None = None
+        self._road = None
+        road_failed = False
+        last_road_sequence = -1
+        road_identity_saved = False
         raw_recorder: AsyncVideoRecorder | None = None
         overlay_recorder: AsyncVideoRecorder | None = None
         voxel_recorder: AsyncVideoRecorder | None = None
@@ -1322,7 +1334,21 @@ class DriveSession:
                     )
                 )
                 self._detector_name = detector.name
+                detector_metadata_path = tracker.artifact_path("detector-metadata.json")
+                _write_json(detector_metadata_path, detector.metadata.as_dict())
+                tracker.register_artifact(detector_metadata_path, role="detector_runtime_identity")
                 perception = PerceptionWorker(detector)
+
+            if self.config.road_enabled:
+                self._road = AsyncSegmentationRuntime(lambda: create_segmenter(
+                    SegmentationConfig(
+                        backend=self.config.road_backend,
+                        checkpoint=self.config.road_checkpoint or (
+                            None if self.config.road_backend == "yolop" else DEFAULT_SEGFORMER_B0_CHECKPOINT
+                        ),
+                        device=self.config.road_device,
+                    )
+                ))
 
             if self.config.record_video:
                 raw_recorder = AsyncVideoRecorder(
@@ -1330,7 +1356,7 @@ class DriveSession:
                     frame_size=(self.config.width, self.config.height),
                     fps=self.config.camera_fps,
                 )
-                if self.config.detector_enabled:
+                if self.config.detector_enabled or self.config.road_enabled:
                     overlay_recorder = AsyncVideoRecorder(
                         overlay_video_path,
                         frame_size=(self.config.width, self.config.height),
@@ -1428,6 +1454,12 @@ class DriveSession:
                         except Exception as error:
                             detector_failed = True
                             self._cleanup_errors.append(f"detector submit: {error}")
+                    if self._road is not None and perception is None and not road_failed:
+                        try:
+                            self._road.submit(frame)
+                        except Exception as error:
+                            road_failed = True
+                            self._cleanup_errors.append(f"road submit: {error}")
                     if self._voxel is not None:
                         self._voxel.submit(frame)
                     if spectator_id is not None and spectator_follow_active:
@@ -1462,11 +1494,52 @@ class DriveSession:
                                     if control_mode == "autopilot"
                                     else "HUMAN / BROWSER"
                                 ),
-                                "MODEL": "ADVISORY ONLY",
+                                "NAME": "Marjan Shahchera-University of Kashan",
+                                "MODEL": self.config.weights.name if self.config.weights else result.detector_name,
                             },
                         )
-                        self._cache_frame("overlay", result.sequence, _jpeg(latest_overlay))
+                        if self._road is not None and not road_failed:
+                            try:
+                                self._road.submit(SegmentationFrameInput.from_perception(result))
+                            except Exception as error:
+                                road_failed = True
+                                self._cleanup_errors.append(f"road submit: {error}")
+                        if self._road is None or road_failed or not self._road.ready():
+                            self._cache_frame("overlay", result.sequence, _jpeg(latest_overlay))
                         self._write_detections(detections_stream, result)
+
+                if self._road is not None and not road_failed:
+                    try:
+                        road_result = self._road.latest()
+                        if road_result is not None and road_result.sequence > last_road_sequence:
+                            if not road_identity_saved:
+                                road_metadata_path = tracker.artifact_path("road-model-metadata.json")
+                                _write_json(road_metadata_path, self._road.snapshot())
+                                tracker.register_artifact(road_metadata_path, role="road_model_identity")
+                                road_identity_saved = True
+                            last_road_sequence = road_result.sequence
+                            road_image = render_segmentation_overlay(
+                                road_result.source_bgr, road_result.segmentation,
+                            )
+                            combined = road_result.perception or PerceptionResult(
+                                sequence=road_result.sequence,
+                                carla_frame=road_result.carla_frame,
+                                source_timestamp=road_result.source_timestamp,
+                                source_received_monotonic=road_result.source_received_monotonic,
+                                completed_monotonic=road_result.completed_monotonic,
+                                detections=(), source_bgr=road_result.source_bgr,
+                                detector_name=road_result.segmenter_name,
+                            )
+                            latest_overlay = renderer.render(
+                                replace(combined, source_bgr=road_image),
+                                hud={"NAME": "Hesam Shani", "MODEL": (
+                                    f"{self.config.weights.name} + " if self.config.detector_enabled and self.config.weights else ""
+                                ) + road_result.segmenter_name},
+                            )
+                            self._cache_frame("overlay", road_result.sequence, _jpeg(latest_overlay))
+                    except Exception as error:
+                        road_failed = True
+                        self._cleanup_errors.append(f"road runtime: {error}")
 
                 if self._voxel is not None:
                     voxel_result = self._voxel.latest()
@@ -1652,6 +1725,11 @@ class DriveSession:
                     perception.close()
                 except Exception as error:
                     self._cleanup_errors.append(f"detector close: {error}")
+            if self._road is not None:
+                try:
+                    self._road.close()
+                except Exception as error:
+                    self._cleanup_errors.append(f"road close: {error}")
             if self._voxel is not None:
                 self._voxel.close()
             for name, recorder in (("raw", raw_recorder), ("overlay", overlay_recorder),

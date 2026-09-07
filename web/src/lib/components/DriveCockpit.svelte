@@ -38,7 +38,7 @@
             : 'Browser manual';
   $: speedKmh = speedMetresPerSecond(drive) * 3.6;
   $: stream = drive.stream ?? {};
-  $: detectorEnabled = Boolean(drive.detector?.enabled);
+  $: detectorEnabled = Boolean(drive.detector?.enabled || drive.road_segmentation?.enabled);
   $: voxel = drive.voxel;
   $: voxelEnabled = Boolean(voxel?.enabled);
   $: voxelView = view === 'voxel' || view === 'voxel_overlay';
@@ -168,6 +168,11 @@
       {/if}
 
       <div class="viewport-toolbar">
+        {#if view === 'overlay' && drive.road_segmentation?.enabled && drive.road_segmentation.state !== 'ready'}
+          <small role="status">{drive.road_segmentation.state === 'failed'
+            ? `Road model: ${drive.road_segmentation.error}`
+            : 'Loading road model… first use downloads weights'}</small>
+        {/if}
         <div class="segmented-control" aria-label="camera view">
           <button type="button" class:active={view === 'raw'} onclick={() => chooseView('raw')}>Raw</button>
           <button type="button" class:active={view === 'overlay'} disabled={!detectorEnabled} onclick={() => chooseView('overlay')}>Detections</button>

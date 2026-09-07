@@ -128,13 +128,18 @@ export function validateSession(
         severity: 'error',
         message: 'Detection is enabled but the vision runtime is unavailable.'
       });
-    } else if (!session.perception.weights) {
+    }
+    if (!session.perception.weights.trim()) {
       issues.push({
         id: 'detector-weights',
         severity: 'error',
         message: 'Select detector weights or turn the detection overlay off.'
       });
     }
+  }
+
+  if (session.perception.enabled && session.perception.detector === 'm9-hierarchical' && session.perception.imageSize !== 800) {
+    issues.push({ id: 'm9-image-size', severity: 'error', message: 'M9 requires image size 800. Select M9 again in Vision to restore its settings.' });
   }
 
   if (!system.workerConfigured) {

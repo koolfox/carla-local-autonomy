@@ -9,7 +9,16 @@
   import { fieldChecked, fieldNumber, fieldValue } from '$lib/ui/events';
 
   function setDetector(event: Event): void {
-    patchSessionSection('perception', { detector: fieldValue(event) as DetectorKind });
+    const detector = fieldValue(event) as DetectorKind;
+    if (detector === 'm9-hierarchical') {
+      patchSessionSection('perception', {
+        detector,
+        imageSize: 800,
+        confidence: 0
+      });
+      return;
+    }
+    patchSessionSection('perception', { detector });
   }
 </script>
 
@@ -32,7 +41,7 @@
         disabled={!$systemSettings?.visionRuntimeAvailable}
         onchange={(event) => patchSessionSection('perception', { enabled: fieldChecked(event) })}
       />
-      <span><strong>Detection overlay</strong><small>Advisory RT-DETR / YOLO output</small></span>
+      <span><strong>Detection overlay</strong><small>Advisory detector output · no vehicle control</small></span>
     </label>
     <label class="switch-field">
       <input
@@ -59,6 +68,37 @@
       <span><strong>Spectator follow</strong><small>Mirror the ego from CARLA</small></span>
     </label>
   </div>
+
+  <label class="switch-field">
+    <input type="checkbox" checked={$sessionConfig.perception.roadEnabled}
+      onchange={(event) => patchSessionSection('perception', { roadEnabled: fieldChecked(event) })} />
+    <span><strong>Road & lane overlay</strong><small>RGB model estimates · first use downloads weights</small></span>
+  </label>
+  {#if $sessionConfig.perception.roadEnabled}
+    <label class="field">
+      <span>Road model</span>
+      <select value={$sessionConfig.perception.roadBackend}
+        onchange={(event) => patchSessionSection('perception', { roadBackend: fieldValue(event), roadCheckpoint: '', roadDevice: 'cpu' })}>
+        <option value="segformer">SegFormer · road & sidewalk</option>
+        <option value="yolop">YOLOP · road & lane markings</option>
+      </select>
+    </label>
+    <label class="field">
+      <span>Checkpoint (optional)</span>
+      <input value={$sessionConfig.perception.roadCheckpoint} placeholder="Blank uses the official model"
+        onchange={(event) => patchSessionSection('perception', { roadCheckpoint: fieldValue(event) })} />
+      <small>{$sessionConfig.perception.roadBackend === 'yolop' ? 'Workspace .onnx file, or blank for official YOLOP 640.' : 'Workspace SegFormer directory, or blank for Cityscapes (no lane markings).'}</small>
+    </label>
+    <label class="field">
+      <span>Road model device</span>
+      <select value={$sessionConfig.perception.roadDevice}
+        onchange={(event) => patchSessionSection('perception', { roadDevice: fieldValue(event) })}>
+        <option value="cpu">CPU</option>
+        {#if $sessionConfig.perception.roadBackend !== 'yolop'}<option value="mps">MPS</option>{/if}
+        <option value="cuda">CUDA</option>
+      </select>
+    </label>
+  {/if}
 
   {#if $sessionConfig.perception.voxelEnabled}
     <p class="section-note">
@@ -129,12 +169,20 @@
         <span>Detector</span>
         <small>Overlay remains advisory in manual and Traffic Manager sessions.</small>
       </div>
+      {#if $sessionConfig.perception.detector === 'm9-hierarchical'}
+        <p class="section-note">
+          M9 uses the certified notebook checkpoint only, direct 800 × 800 RGB resize, and
+          reports four coarse classes. Confidence here is a post-fusion display filter;
+          0 keeps the notebook candidate set while the model's internal fine gate remains 0.10.
+        </p>
+      {/if}
       <div class="field-grid three-columns">
         <label class="field">
           <span>Backend</span>
           <select value={$sessionConfig.perception.detector} onchange={setDetector}>
             <option value="rtdetr">RT-DETR</option>
             <option value="yolo">YOLO</option>
+            <option value="m9-hierarchical">M9 Hierarchical RT-DETR</option>
           </select>
         </label>
         <label class="field">
@@ -167,21 +215,47 @@
             max="4096"
             step="32"
             value={$sessionConfig.perception.imageSize}
+            disabled={$sessionConfig.perception.detector === 'm9-hierarchical'}
             oninput={(event) => patchSessionSection('perception', { imageSize: fieldNumber(event) })}
           />
         </label>
-        <label class="field">
-          <span>Confidence</span>
+        <label class="field confidence-field">
+          <span class="confidence-label">
+            Minimum confidence
+            <output>{Math.round($sessionConfig.perception.confidence * 100)}%</output>
+          </span>
           <input
-            type="number"
+            type="range"
             min="0"
             max="1"
-            step="0.05"
+            step="0.01"
+            aria-label="Minimum detection confidence"
+            aria-valuetext={`${Math.round($sessionConfig.perception.confidence * 100)} percent`}
             value={$sessionConfig.perception.confidence}
             oninput={(event) => patchSessionSection('perception', { confidence: fieldNumber(event) })}
           />
+          <small>Hide detections below this score. Applies when the session starts.</small>
         </label>
       </div>
     </div>
   {/if}
 </section>
+
+<style>
+  .confidence-label {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .confidence-label output {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .confidence-field input[type='range'] {
+    width: 100%;
+    min-height: 24px;
+    padding: 0;
+    cursor: pointer;
+  }
+</style>
