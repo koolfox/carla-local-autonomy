@@ -61,7 +61,7 @@ class SegmentationConfig:
                 raise ValueError("custom segmenter factory must use module:callable syntax")
         elif self.factory is not None:
             raise ValueError("factory is allowed only for the custom segmentation backend")
-        if backend != "custom" and (
+        if backend not in {"custom", "yolop"} and (
             self.checkpoint is None or not str(self.checkpoint).strip()
         ):
             raise ValueError("built-in segmenter requires a checkpoint")

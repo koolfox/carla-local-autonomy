@@ -71,15 +71,31 @@
 
   <label class="switch-field">
     <input type="checkbox" checked={$sessionConfig.perception.roadEnabled}
-      onchange={(event) => patchSessionSection('perception', { roadEnabled: fieldChecked(event), roadBackend: 'segformer' })} />
-    <span><strong>Road surface overlay</strong><small>SegFormer · road and sidewalk, not lane markings · first use downloads weights</small></span>
+      onchange={(event) => patchSessionSection('perception', { roadEnabled: fieldChecked(event) })} />
+    <span><strong>Road & lane overlay</strong><small>RGB model estimates · first use downloads weights</small></span>
   </label>
   {#if $sessionConfig.perception.roadEnabled}
+    <label class="field">
+      <span>Road model</span>
+      <select value={$sessionConfig.perception.roadBackend}
+        onchange={(event) => patchSessionSection('perception', { roadBackend: fieldValue(event), roadCheckpoint: '', roadDevice: 'cpu' })}>
+        <option value="segformer">SegFormer · road & sidewalk</option>
+        <option value="yolop">YOLOP · road & lane markings</option>
+      </select>
+    </label>
+    <label class="field">
+      <span>Checkpoint (optional)</span>
+      <input value={$sessionConfig.perception.roadCheckpoint} placeholder="Blank uses the official model"
+        onchange={(event) => patchSessionSection('perception', { roadCheckpoint: fieldValue(event) })} />
+      <small>{$sessionConfig.perception.roadBackend === 'yolop' ? 'Workspace .onnx file, or blank for official YOLOP 640.' : 'Workspace SegFormer directory, or blank for Cityscapes (no lane markings).'}</small>
+    </label>
     <label class="field">
       <span>Road model device</span>
       <select value={$sessionConfig.perception.roadDevice}
         onchange={(event) => patchSessionSection('perception', { roadDevice: fieldValue(event) })}>
-        <option value="cpu">CPU</option><option value="mps">MPS</option><option value="cuda">CUDA</option>
+        <option value="cpu">CPU</option>
+        {#if $sessionConfig.perception.roadBackend !== 'yolop'}<option value="mps">MPS</option>{/if}
+        <option value="cuda">CUDA</option>
       </select>
     </label>
   {/if}

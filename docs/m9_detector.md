@@ -43,7 +43,22 @@ Other checkpoints need an explicitly supported architecture and inference recipe
 Lane markings and road-surface segmentation are separate from this detector.
 # Road surface and overlay labels
 
-Enable **Vision → Road surface overlay**, then choose **Detections** during Drive.
+Enable **Vision → Road & lane overlay**, choose the road model, then choose **Detections** during Drive.
+YOLOP ONNX provides road and lane markings; SegFormer provides road and sidewalk.
+Leave Checkpoint blank for the pinned official weights, or select a workspace
+ONNX file for YOLOP / model directory for SegFormer. YOLOP uses CPU by default;
+CUDA requires an ONNX Runtime build with CUDAExecutionProvider. MPS is SegFormer-only.
+The official YOLOP download is approximately 36 MB, cached and SHA-256 verified.
+Preprocessing/output names follow [upstream test_onnx.py](https://github.com/hustvl/YOLOP/blob/8d8f68df318c71f01d6f813c024df646c7d1978f/test_onnx.py).
+The upstream weights are downloaded on demand, not redistributed in this repository.
+
+M9 labels now show both independent head predictions, e.g. `vehicles -> car`.
+Canonical coarse class IDs and fused confidence remain unchanged; `fine_label`
+and `coarse_label` are also saved in detection attributes. Head disagreements
+are not silently relabeled. The certified notebook/checkpoint has nine fine
+classes: car, bus, truck, person, rider, bike, motor, traffic_lights, traffic_signs.
+It has no TrafficBoard class.
+
 This uses pinned SegFormer B0 Cityscapes safetensors weights to identify road,
 sidewalk and terrain from RGB. It does not detect lane markings or control steering.
 It works with object detection enabled or by itself. Combined masks and boxes use

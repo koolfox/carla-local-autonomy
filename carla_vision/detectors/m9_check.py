@@ -40,7 +40,8 @@ def main() -> int:
         for detection in detections:
             x1, y1, x2, y2 = (round(value) for value in detection.xyxy)
             cv2.rectangle(overlay, (x1, y1), (x2, y2), (50, 210, 240), 2)
-            cv2.putText(overlay, f"{detection.label} {detection.confidence:.3f}",
+            label = f"{detection.label} -> {detection.attributes.get('fine_label', '')}"
+            cv2.putText(overlay, f"{label} {detection.confidence:.3f}",
                         (x1, max(16, y1 - 5)), cv2.FONT_HERSHEY_SIMPLEX,
                         0.45, (50, 210, 240), 1, cv2.LINE_AA)
         args.output.mkdir(parents=True, exist_ok=False)

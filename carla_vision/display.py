@@ -113,7 +113,9 @@ class OverlayRenderer:
                 cv2.LINE_AA,
             )
             confidence = min(1.0, max(0.0, float(detection.confidence)))
-            label = f"{detection.label} {confidence:.0%}"
+            fine_label = detection.attributes.get("fine_label")
+            hierarchy = f"{detection.label} -> {fine_label}" if fine_label else detection.label
+            label = f"{hierarchy} {confidence:.0%}"
             self._draw_detection_label(image, label, x1=x1, y1=y1, color=color)
 
         if risk is not None:

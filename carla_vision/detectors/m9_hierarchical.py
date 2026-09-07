@@ -30,6 +30,8 @@ M9_COARSE_NAMES = (
     "two_wheelers",
     "traffic_controls",
 )
+M9_FINE_NAMES = ("car", "bus", "truck", "person", "rider", "bike", "motor",
+                 "traffic_lights", "traffic_signs")
 
 
 class QueryFiLMAdapter(nn.Module):
@@ -245,6 +247,8 @@ class M9HierarchicalDetector:
             )
 
         head = model.model[-1]
+        if model.names != dict(enumerate(M9_FINE_NAMES)):
+            raise RuntimeError("M9 fine-class names do not match the certified notebook")
         required = (
             "dec_score_head",
             "coarse_dec_score_head",
@@ -284,6 +288,7 @@ class M9HierarchicalDetector:
                     "gamma": M9_GAMMA,
                 },
                 "classes": list(M9_COARSE_NAMES),
+                "fine_classes": list(M9_FINE_NAMES),
                 "legacy_pickle": True,
                 "preprocessing": "PIL_RGB_bicubic_800x800_float32_div255",
             },
@@ -374,6 +379,8 @@ class M9HierarchicalDetector:
                         xyxy=xyxy,
                         attributes={
                             "fine_class_id": fine_id,
+                            "fine_label": M9_FINE_NAMES[fine_id],
+                            "coarse_label": M9_COARSE_NAMES[coarse_id],
                             "fine_confidence": float(fine_conf[0, index].item()),
                             "coarse_confidence": float(coarse_conf[0, index].item()),
                             "quality": float(quality[0, index].item()),

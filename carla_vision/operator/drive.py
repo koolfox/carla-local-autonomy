@@ -1342,8 +1342,10 @@ class DriveSession:
             if self.config.road_enabled:
                 self._road = AsyncSegmentationRuntime(lambda: create_segmenter(
                     SegmentationConfig(
-                        backend="segformer-b0",
-                        checkpoint=self.config.road_checkpoint or DEFAULT_SEGFORMER_B0_CHECKPOINT,
+                        backend=self.config.road_backend,
+                        checkpoint=self.config.road_checkpoint or (
+                            None if self.config.road_backend == "yolop" else DEFAULT_SEGFORMER_B0_CHECKPOINT
+                        ),
                         device=self.config.road_device,
                     )
                 ))
@@ -1492,7 +1494,7 @@ class DriveSession:
                                     if control_mode == "autopilot"
                                     else "HUMAN / BROWSER"
                                 ),
-                                "NAME": "Hesam Shani",
+                                "NAME": "Marjan Shahchera-University of Kashan",
                                 "MODEL": self.config.weights.name if self.config.weights else result.detector_name,
                             },
                         )

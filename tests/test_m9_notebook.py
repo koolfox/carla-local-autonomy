@@ -10,6 +10,7 @@ from PIL import Image  # noqa: E402
 from carla_vision.detectors.m9_hierarchical import (  # noqa: E402
     M9_ALPHA,
     M9_BETA,
+    M9_FINE_NAMES,
     M9_GAMMA,
     _boxes_to_original_xyxy,
     _fused_score,
@@ -26,6 +27,11 @@ def test_preprocessing_matches_notebook_pil_rgb_resize():
     actual = _image_tensor(image, device=torch.device("cpu"))
     assert torch.equal(actual, expected)
     assert np.array_equal(image, before)
+
+
+def test_fine_names_follow_checkpoint_order():
+    assert M9_FINE_NAMES == ("car", "bus", "truck", "person", "rider", "bike", "motor",
+                             "traffic_lights", "traffic_signs")
 
 
 def test_locked_formula_and_rectangular_frame_coordinates():
