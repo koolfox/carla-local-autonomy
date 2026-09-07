@@ -92,6 +92,10 @@ export interface SessionConfig {
   perception: {
     enabled: boolean;
     voxelEnabled: boolean;
+    roadEnabled: boolean;
+    roadBackend: string;
+    roadCheckpoint: string;
+    roadDevice: string;
     detector: DetectorKind;
     weights: string;
     device: string;
@@ -202,6 +206,10 @@ export function defaultSessionConfig(): SessionConfig {
     perception: {
       enabled: false,
       voxelEnabled: false,
+      roadEnabled: false,
+      roadBackend: 'segformer',
+      roadCheckpoint: '',
+      roadDevice: 'cpu',
       detector: 'rtdetr',
       weights: '',
       device: 'cpu',

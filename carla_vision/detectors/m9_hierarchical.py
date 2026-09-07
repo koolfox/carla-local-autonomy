@@ -6,11 +6,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import cv2
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from PIL import Image
 
 from ..contracts import Detection, DetectorConfig, DetectorMetadata
 from ..pytorch_loading import resolve_torch_device
@@ -70,7 +70,7 @@ def _require_supported_ultralytics() -> str:
         raise RuntimeError(
             "M9 is a legacy full-object checkpoint and requires the exact Ultralytics "
             f"version used by the notebook ({M9_TRAINING_ULTRALYTICS}); installed version "
-            f"is {version!r}"
+            f"is {version!r}. Install the matching runtime with: uv sync --extra vision --extra m9"
         )
     return version
 
@@ -191,9 +191,10 @@ def _image_tensor(image_bgr: np.ndarray, *, device: torch.device) -> torch.Tenso
     ):
         raise ValueError("image_bgr must be a uint8 HxWx3 array")
 
-    rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
-    resized = cv2.resize(rgb, (M9_IMAGE_SIZE, M9_IMAGE_SIZE), interpolation=cv2.INTER_LINEAR)
-    contiguous = np.ascontiguousarray(resized)
+    # Notebook cells 37/93: PIL RGB resize defaults to bicubic, no letterbox.
+    rgb = Image.fromarray(np.ascontiguousarray(image_bgr[:, :, ::-1]))
+    resized = rgb.resize((M9_IMAGE_SIZE, M9_IMAGE_SIZE), Image.Resampling.BICUBIC)
+    contiguous = np.array(resized, dtype=np.uint8, copy=True)
     return (
         torch.from_numpy(contiguous)
         .to(dtype=torch.float32)
@@ -284,6 +285,7 @@ class M9HierarchicalDetector:
                 },
                 "classes": list(M9_COARSE_NAMES),
                 "legacy_pickle": True,
+                "preprocessing": "PIL_RGB_bicubic_800x800_float32_div255",
             },
         )
 
@@ -312,11 +314,10 @@ class M9HierarchicalDetector:
             if dec_features is None:
                 raise RuntimeError("M9 decoder feature hook did not run")
 
-            query_count = min(
-                raw_boxes.shape[1],
-                raw_fine_logits.shape[1],
-                dec_features.shape[1],
-            )
+            counts = (raw_boxes.shape[1], raw_fine_logits.shape[1], dec_features.shape[1])
+            if len(set(counts)) != 1:
+                raise RuntimeError(f"M9 decoder queries are misaligned: {counts}")
+            query_count = counts[0]
             raw_boxes = raw_boxes[:, :query_count]
             raw_fine_logits = raw_fine_logits[:, :query_count]
             dec_features = dec_features[:, :query_count]

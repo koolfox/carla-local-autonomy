@@ -40,6 +40,16 @@ export interface DriveVoxelState {
   actuated: false;
 }
 
+export interface DriveRoadState {
+  enabled: boolean;
+  state?: 'initializing' | 'ready' | 'failed' | 'closed';
+  error?: string | null;
+  name?: string | null;
+  source_frame?: number | null;
+  latency_ms?: number | null;
+  supports_road_line?: boolean;
+}
+
 export interface DriveNavigationIntent {
   schema_version?: string;
   source_frame: {
@@ -101,6 +111,7 @@ export interface DriveState {
   stream?: DriveStreamState;
   detector?: DriveDetectorState;
   voxel?: DriveVoxelState;
+  road_segmentation?: DriveRoadState;
   autonomy?: DriveAutonomyState;
   traffic_count_actual?: number;
   walker_count_actual?: number;

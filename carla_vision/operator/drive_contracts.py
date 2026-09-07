@@ -133,6 +133,10 @@ class DriveStartConfig:
     experiment_preset: str = "free_drive"
     max_throttle: float = 0.55
     voxel_enabled: bool = False
+    road_enabled: bool = False
+    road_backend: str = "segformer"
+    road_checkpoint: Path | None = None
+    road_device: str = "cpu"
 
     @classmethod
     def from_mapping(
@@ -155,6 +159,7 @@ class DriveStartConfig:
             "prop_preset",
             "detector_enabled",
             "voxel_enabled",
+            "road_enabled", "road_backend", "road_checkpoint", "road_device",
             "detector",
             "weights",
             "device",
@@ -169,7 +174,8 @@ class DriveStartConfig:
             *_WORKER_FIELDS,
         }
         _strict_keys(raw, allowed, "drive start request")
-        required = allowed - {"color", "experiment_preset", "voxel_enabled"} - _WORKER_FIELDS
+        required = allowed - {"color", "experiment_preset", "voxel_enabled", "road_enabled",
+                              "road_backend", "road_checkpoint", "road_device"} - _WORKER_FIELDS
         missing = sorted(key for key in required if key not in raw)
         if missing:
             raise ValueError(f"drive start request is missing fields: {', '.join(missing)}")
@@ -203,19 +209,54 @@ class DriveStartConfig:
             raise ValueError(f"unknown prop preset {prop_preset!r}")
         detector_enabled = _boolean(raw["detector_enabled"], "detector_enabled")
         detector = str(raw["detector"]).strip().lower()
-        if detector not in {"rtdetr", "yolo"}:
-            raise ValueError("detector must be rtdetr or yolo")
+        supported_detectors = {
+            "rtdetr",
+            "yolo",
+            "m9-hierarchical",
+            "m9-hierarchical-rtdetr",
+        }
+        if detector not in supported_detectors:
+            raise ValueError(
+                "detector must be one of: "
+                + ", ".join(sorted(supported_detectors))
+            )
 
         weights: Path | None = None
         weights_value = str(raw["weights"]).strip()
-        if detector_enabled:
+        if detector_enabled and (weights_value or detector != "ssdlite"):
             if not weights_value:
                 raise ValueError("weights are required when detector_enabled is true")
             candidate = (workspace / weights_value).resolve(strict=True)
             candidate.relative_to(workspace)
-            if not candidate.is_file() or candidate.suffix.lower() != ".pt":
-                raise ValueError("weights must be a workspace-contained .pt file")
+            suffixes = {".pt", ".pth"} if detector == "ssdlite" else {".pt", ".onnx"}
+            if not candidate.is_file() or candidate.suffix.lower() not in suffixes:
+                raise ValueError(f"weights must be a workspace-contained {'/'.join(sorted(suffixes))} file")
             weights = candidate
+
+        if detector_enabled and detector.startswith("m9-hierarchical"):
+            if weights is None or weights.suffix.lower() != ".pt":
+                raise ValueError("M9 requires its certified .pt checkpoint")
+            if raw["image_size"] != 800:
+                raise ValueError("M9 requires image_size=800; select M9 Hierarchical RT-DETR in Vision")
+        elif detector_enabled and weights is not None and weights.name == (
+            "hierarchical_rtdetr_m9_precal_m6_query_film_img800.pt"
+        ):
+            raise ValueError("Select M9 Hierarchical RT-DETR in Vision for this checkpoint")
+
+        road_enabled = _boolean(raw.get("road_enabled", False), "road_enabled")
+        road_backend = str(raw.get("road_backend", "segformer")).strip().lower()
+        if road_backend != "segformer":
+            raise ValueError("road_backend must be segformer")
+        road_device = str(raw.get("road_device", "cpu")).strip().lower()
+        allowed_devices = {"cpu", "cuda", "mps"}
+        if road_device not in allowed_devices:
+            raise ValueError(f"{road_backend} road_device must be {'/'.join(sorted(allowed_devices))}")
+        road_checkpoint = None
+        if road_enabled and str(raw.get("road_checkpoint", "")).strip():
+            road_checkpoint = (workspace / str(raw["road_checkpoint"]).strip()).resolve(strict=True)
+            road_checkpoint.relative_to(workspace)
+            if road_backend == "segformer" and not road_checkpoint.is_dir():
+                raise ValueError("SegFormer road_checkpoint must be a workspace-contained model directory")
 
         resolution = str(raw["resolution"]).strip().lower()
         match = _RESOLUTION.fullmatch(resolution)
@@ -315,6 +356,10 @@ class DriveStartConfig:
             prop_preset=prop_preset,
             detector_enabled=detector_enabled,
             voxel_enabled=_boolean(raw.get("voxel_enabled", False), "voxel_enabled"),
+            road_enabled=road_enabled,
+            road_backend=road_backend,
+            road_checkpoint=road_checkpoint,
+            road_device=road_device,
             detector=detector,
             weights=weights,
             device=str(raw["device"]).strip(),
@@ -361,6 +406,10 @@ class DriveStartConfig:
             "prop_preset": self.prop_preset,
             "detector_enabled": self.detector_enabled,
             "voxel_enabled": self.voxel_enabled,
+            "road_enabled": self.road_enabled,
+            "road_backend": self.road_backend,
+            "road_checkpoint": str(self.road_checkpoint) if self.road_checkpoint else None,
+            "road_device": self.road_device,
             "detector": self.detector,
             "weights": str(self.weights) if self.weights is not None else None,
             "device": self.device,

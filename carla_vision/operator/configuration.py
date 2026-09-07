@@ -106,7 +106,8 @@ _SECTION_KEYS = {
     "control": frozenset({"mode"}),
     "camera": frozenset({"resolution", "fps", "fov", "spectatorFollow"}),
     "perception": frozenset(
-        {"enabled", "voxelEnabled", "detector", "weights", "device", "imageSize", "confidence"}
+        {"enabled", "voxelEnabled", "detector", "weights", "device", "imageSize", "confidence",
+         "roadEnabled", "roadBackend", "roadCheckpoint", "roadDevice"}
     ),
     "recording": frozenset({"video"}),
     "experiment": frozenset({"preset"}),
@@ -152,9 +153,12 @@ def _validated_session(raw: Any) -> dict[str, Mapping[str, Any]]:
         if section == "perception":
             # Persisted pre-voxel sessions remain valid without mutating the
             # caller's configuration or enabling a model download implicitly.
-            value = {"voxelEnabled": False, **value}
+            value = {"voxelEnabled": False, "roadEnabled": False, "roadBackend": "segformer",
+                     "roadCheckpoint": "", "roadDevice": "cpu", **value}
             if not isinstance(value["voxelEnabled"], bool):
                 raise TypeError("session.perception.voxelEnabled must be a boolean")
+            if not isinstance(value["roadEnabled"], bool):
+                raise TypeError("session.perception.roadEnabled must be a boolean")
         _strict_keys(value, keys, f"session.{section}")
         result[section] = value
     return result
@@ -351,6 +355,10 @@ def session_defaults(
         "perception": {
             "enabled": bool(detector_enabled),
             "voxelEnabled": False,
+            "roadEnabled": False,
+            "roadBackend": "segformer",
+            "roadCheckpoint": "",
+            "roadDevice": "cpu",
             "detector": "rtdetr",
             "weights": "",
             "device": "cpu",
@@ -508,6 +516,10 @@ def build_legacy_drive_request(
         "prop_preset": str(scene["propPreset"]).strip(),
         "detector_enabled": perception["enabled"],
         "voxel_enabled": perception["voxelEnabled"],
+        "road_enabled": perception["roadEnabled"],
+        "road_backend": str(perception["roadBackend"]).strip(),
+        "road_checkpoint": str(perception["roadCheckpoint"]).strip(),
+        "road_device": str(perception["roadDevice"]).strip(),
         "detector": str(perception["detector"]).strip(),
         "weights": str(perception["weights"]).strip(),
         "device": str(perception["device"]).strip(),

@@ -11,9 +11,21 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+m9 = [
+  "torch>=2.6",
+  "ultralytics==8.4.137",
+  "pillow>=10",
+]
 vision = [
   "torch>=2.4",
+  "torchvision>=0.19",
   "ultralytics>=8.4",
+]
+segmentation = [
+  "onnxruntime>=1.20,<2",
+  "torch>=2.4",
+  "transformers>=4.45,<6",
+  "safetensors>=0.4",
 ]
 research = [
   "matplotlib>=3.9",

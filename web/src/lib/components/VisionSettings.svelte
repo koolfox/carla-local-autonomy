@@ -69,6 +69,21 @@
     </label>
   </div>
 
+  <label class="switch-field">
+    <input type="checkbox" checked={$sessionConfig.perception.roadEnabled}
+      onchange={(event) => patchSessionSection('perception', { roadEnabled: fieldChecked(event), roadBackend: 'segformer' })} />
+    <span><strong>Road surface overlay</strong><small>SegFormer · road and sidewalk, not lane markings · first use downloads weights</small></span>
+  </label>
+  {#if $sessionConfig.perception.roadEnabled}
+    <label class="field">
+      <span>Road model device</span>
+      <select value={$sessionConfig.perception.roadDevice}
+        onchange={(event) => patchSessionSection('perception', { roadDevice: fieldValue(event) })}>
+        <option value="cpu">CPU</option><option value="mps">MPS</option><option value="cuda">CUDA</option>
+      </select>
+    </label>
+  {/if}
+
   {#if $sessionConfig.perception.voxelEnabled}
     <p class="section-note">
       Metric Outdoor Small uses RGB only. First use downloads approximately 100 MB.
@@ -188,18 +203,43 @@
             oninput={(event) => patchSessionSection('perception', { imageSize: fieldNumber(event) })}
           />
         </label>
-        <label class="field">
-          <span>{$sessionConfig.perception.detector === 'm9-hierarchical' ? 'Fused score filter' : 'Confidence'}</span>
+        <label class="field confidence-field">
+          <span class="confidence-label">
+            Minimum confidence
+            <output>{Math.round($sessionConfig.perception.confidence * 100)}%</output>
+          </span>
           <input
-            type="number"
+            type="range"
             min="0"
             max="1"
-            step="0.05"
+            step="0.01"
+            aria-label="Minimum detection confidence"
+            aria-valuetext={`${Math.round($sessionConfig.perception.confidence * 100)} percent`}
             value={$sessionConfig.perception.confidence}
             oninput={(event) => patchSessionSection('perception', { confidence: fieldNumber(event) })}
           />
+          <small>Hide detections below this score. Applies when the session starts.</small>
         </label>
       </div>
     </div>
   {/if}
 </section>
+
+<style>
+  .confidence-label {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .confidence-label output {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .confidence-field input[type='range'] {
+    width: 100%;
+    min-height: 24px;
+    padding: 0;
+    cursor: pointer;
+  }
+</style>
