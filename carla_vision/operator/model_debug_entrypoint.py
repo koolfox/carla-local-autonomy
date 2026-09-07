@@ -22,6 +22,21 @@ from .model_start_diagnostics import (
 )
 
 
+def _display_message(error: ModelInitializationError) -> str:
+    """Keep the Garage-visible error useful without dumping a traceback into UI text."""
+
+    message = str(error)
+    chain = error.diagnostic.exception_chain
+    if len(chain) < 2:
+        return message
+    cause = chain[1]
+    cause_type = str(cause.get("type", "Exception"))
+    cause_message = str(cause.get("message", "")).strip()
+    if not cause_message or cause_message in message:
+        return message
+    return f"{message} | caused by {cause_type}: {cause_message}"
+
+
 class ModelDiagnosticRequestHandler(local_entrypoint.LocalConfigGarageRequestHandler):
     """Expose structured custom-model initialization failures to the local UI."""
 
@@ -32,7 +47,7 @@ class ModelDiagnosticRequestHandler(local_entrypoint.LocalConfigGarageRequestHan
                 {
                     "error": {
                         "type": type(error).__qualname__,
-                        "message": str(error),
+                        "message": _display_message(error),
                         "details": error.as_dict(),
                     }
                 },
