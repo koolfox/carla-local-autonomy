@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import importlib.metadata
 import sys
-from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -67,10 +66,11 @@ def _sha256_file(path: Path) -> str:
 
 def _require_supported_ultralytics() -> str:
     version = importlib.metadata.version("ultralytics")
-    if tuple(version.split(".")[:2]) != ("8", "4"):
+    if version != M9_TRAINING_ULTRALYTICS:
         raise RuntimeError(
-            "M9 hierarchical detector was trained with Ultralytics 8.4.137 and requires "
-            f"an 8.4.x runtime; installed version is {version!r}"
+            "M9 is a legacy full-object checkpoint and requires the exact Ultralytics "
+            f"version used by the notebook ({M9_TRAINING_ULTRALYTICS}); installed version "
+            f"is {version!r}"
         )
     return version
 
@@ -161,10 +161,9 @@ def _boxes_to_original_xyxy(
     source_width: int,
     source_height: int,
 ) -> torch.Tensor:
-    boxes = raw_boxes.clone()
-    if boxes.numel() and float(boxes.detach().max().item()) <= 2.0:
-        boxes = boxes * float(M9_IMAGE_SIZE)
+    """Map notebook-normalized ``cx,cy,w,h`` boxes back to the source image."""
 
+    boxes = raw_boxes * float(M9_IMAGE_SIZE)
     cx, cy, width, height = boxes.unbind(-1)
     boxes = torch.stack(
         (
@@ -184,7 +183,12 @@ def _boxes_to_original_xyxy(
 
 
 def _image_tensor(image_bgr: np.ndarray, *, device: torch.device) -> torch.Tensor:
-    if image_bgr.dtype != np.uint8 or image_bgr.ndim != 3 or image_bgr.shape[2] != 3:
+    if (
+        not isinstance(image_bgr, np.ndarray)
+        or image_bgr.dtype != np.uint8
+        or image_bgr.ndim != 3
+        or image_bgr.shape[2] != 3
+    ):
         raise ValueError("image_bgr must be a uint8 HxWx3 array")
 
     rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
@@ -197,6 +201,24 @@ def _image_tensor(image_bgr: np.ndarray, *, device: torch.device) -> torch.Tenso
         .div_(255.0)
         .unsqueeze(0)
         .to(device)
+    )
+
+
+def _fused_score(
+    fine_confidence: torch.Tensor,
+    coarse_confidence: torch.Tensor,
+    quality: torch.Tensor,
+) -> torch.Tensor:
+    """Apply the notebook-locked M9 post-calibration scoring formula."""
+
+    if not (
+        fine_confidence.shape == coarse_confidence.shape == quality.shape
+    ):
+        raise ValueError("M9 score components must have identical shapes")
+    return (
+        fine_confidence.clamp_min(1e-8).pow(M9_ALPHA)
+        * coarse_confidence.clamp_min(1e-8).pow(M9_BETA)
+        * quality.clamp_min(1e-8).pow(M9_GAMMA)
     )
 
 
@@ -253,6 +275,7 @@ class M9HierarchicalDetector:
                 "training_ultralytics": M9_TRAINING_ULTRALYTICS,
                 "runtime_ultralytics": importlib.metadata.version("ultralytics"),
                 "fine_candidate_threshold": M9_FINE_THRESHOLD,
+                "fused_score_threshold": config.confidence,
                 "max_predictions": M9_MAX_PREDICTIONS,
                 "score_formula": {
                     "alpha": M9_ALPHA,
@@ -278,8 +301,8 @@ class M9HierarchicalDetector:
         self._capture["dec_features"] = inputs[0]
 
     def infer(self, image_bgr: np.ndarray) -> tuple[Detection, ...]:
-        source_height, source_width = image_bgr.shape[:2]
         image = _image_tensor(image_bgr, device=self._device)
+        source_height, source_width = image_bgr.shape[:2]
         self._capture.clear()
 
         with torch.inference_mode():
@@ -317,10 +340,10 @@ class M9HierarchicalDetector:
             if candidate_indices.numel() == 0:
                 return ()
 
-            fused = (
-                fine_conf[0, candidate_indices].clamp_min(1e-8).pow(M9_ALPHA)
-                * coarse_conf[0, candidate_indices].clamp_min(1e-8).pow(M9_BETA)
-                * quality[0, candidate_indices].clamp_min(1e-8).pow(M9_GAMMA)
+            fused = _fused_score(
+                fine_conf[0, candidate_indices],
+                coarse_conf[0, candidate_indices],
+                quality[0, candidate_indices],
             )
             keep = fused >= float(self._config.confidence)
             candidate_indices = candidate_indices[keep]
