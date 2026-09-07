@@ -147,7 +147,8 @@ def test_successful_model_initialization_is_reused_by_started_session(
     initialization = snapshot["autonomy"]["detail"]["model_initialization"]
     assert initialization["status"] == "ready"
     assert initialization["package_id"] == "road-policy"
-    assert initialization["exception"] if "exception" in initialization else None is None
+    assert "exception" not in initialization
+    assert "traceback" not in initialization
 
 
 def test_existing_active_session_blocks_model_initialization(
