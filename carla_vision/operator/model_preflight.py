@@ -1,14 +1,14 @@
 """Fail-fast diagnostics for registered driving-model packages.
 
 The live Garage keeps a second, fail-closed model initialization path inside the
-Drive session.  This module runs the same verified adapter bytes and model-driver
+Drive session. This module runs the same verified adapter bytes and model-driver
 contract before a session is accepted so checkpoint/factory failures are visible
 as structured diagnostics instead of surfacing only after the control loop has
 started.
 
-Preflight intentionally does not invent a synthetic model observation.  Custom
+Preflight intentionally does not invent a synthetic model observation. Custom
 models own preprocessing and may require temporal/runtime state that is only
-valid once real frames arrive.  The boundary therefore proves package
+valid once real frames arrive. The boundary therefore proves package
 resolution, adapter execution, model construction, reset, integrity re-check,
 and cleanup; inference remains guarded by the normal runtime deadman/latch.
 """
@@ -186,7 +186,7 @@ def preflight_registered_model_request(
 ) -> dict[str, Any]:
     """Load/reset/close a registered model before accepting a Drive session.
 
-    The returned mapping is safe to expose to the local browser.  Full Python
+    The returned mapping is safe to expose to the local browser. Full Python
     tracebacks are emitted through :mod:`logging` and deliberately omitted from
     the response payload.
     """
@@ -241,7 +241,7 @@ def preflight_registered_model_request(
         model.close()
         model = None
     except Exception as error:
-        if model is not None:
+        if model is not None and phase != "model_cleanup":
             try:
                 model.close()
             except Exception:
