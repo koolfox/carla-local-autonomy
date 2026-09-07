@@ -53,6 +53,7 @@ def test_handler_returns_structured_model_initialization_diagnostic() -> None:
     error = payload["error"]
     assert error["type"] == "ModelInitializationError"
     assert "road-policy" in error["message"]
+    assert "caused by ValueError: size mismatch" in error["message"]
     assert error["details"]["phase"] == "model_initialization"
     assert error["details"]["status"] == "failed"
     assert error["details"]["exception"]["message"] == "broken checkpoint"
