@@ -10,8 +10,10 @@ from typing import Any
 
 import pytest
 
+import carla_vision.operator.local_entrypoint as local_entrypoint
 import carla_vision.operator.model_preflight as model_preflight
 from carla_vision.operator.model_preflight import (
+    ModelPreflightDiagnostic,
     ModelPreflightError,
     preflight_registered_model_request,
 )
@@ -95,7 +97,12 @@ def _manager(root: Path) -> Any:
 
 
 class _FakeModel:
-    def __init__(self, *, reset_error: Exception | None = None, close_error: Exception | None = None):
+    def __init__(
+        self,
+        *,
+        reset_error: Exception | None = None,
+        close_error: Exception | None = None,
+    ) -> None:
         self.reset_error = reset_error
         self.close_error = close_error
         self.reset_calls = 0
@@ -131,6 +138,22 @@ def _install_loader(
         model_preflight,
         "create_driving_model_from_factory",
         lambda factory, config: factory(config),
+    )
+
+
+def _preflight_error() -> ModelPreflightError:
+    return ModelPreflightError(
+        ModelPreflightDiagnostic(
+            phase="model_initialization",
+            package_id="road-policy",
+            runtime="python_factory",
+            factory="road_policy:create_driver",
+            device="cpu",
+            artifact_path="models/road-policy/policy.pth",
+            artifact_sha256="a" * 64,
+            exception_type="RuntimeError",
+            message="state_dict shape mismatch",
+        )
     )
 
 
@@ -174,7 +197,11 @@ def test_model_initialization_failure_has_phase_and_full_traceback_only_in_log(
     def fail_initialization(*_args: object, **_kwargs: object) -> object:
         raise RuntimeError("state_dict shape mismatch")
 
-    monkeypatch.setattr(model_preflight, "create_driving_model_from_factory", fail_initialization)
+    monkeypatch.setattr(
+        model_preflight,
+        "create_driving_model_from_factory",
+        fail_initialization,
+    )
 
     with caplog.at_level(logging.ERROR), pytest.raises(ModelPreflightError) as caught:
         preflight_registered_model_request(_manager(tmp_path), _request())
@@ -255,3 +282,89 @@ def test_package_resolution_failure_is_structured_before_adapter_execution(
     assert diagnostic.device == "cuda"
     assert "does not advertise device" in diagnostic.message
     assert called is False
+
+
+def test_start_canonical_session_does_not_start_drive_when_preflight_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started = False
+    application = SimpleNamespace(drive=object())
+
+    def fail_preflight(*_args: object, **_kwargs: object) -> dict[str, Any]:
+        raise _preflight_error()
+
+    def should_not_start(*_args: object, **_kwargs: object) -> dict[str, Any]:
+        nonlocal started
+        started = True
+        return {"status": "starting"}
+
+    monkeypatch.setattr(
+        local_entrypoint,
+        "preflight_registered_model_request",
+        fail_preflight,
+    )
+    monkeypatch.setattr(
+        local_entrypoint,
+        "start_registered_model_session",
+        should_not_start,
+    )
+
+    with pytest.raises(ModelPreflightError):
+        local_entrypoint._start_canonical_session(application, {"control_mode": "model"})
+
+    assert started is False
+
+
+def test_start_canonical_session_attaches_preflight_evidence_after_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    application = SimpleNamespace(drive=object())
+    evidence = {
+        "status": "ready",
+        "phase": "complete",
+        "package_id": "road-policy",
+    }
+    monkeypatch.setattr(
+        local_entrypoint,
+        "preflight_registered_model_request",
+        lambda *_args, **_kwargs: evidence,
+    )
+    monkeypatch.setattr(
+        local_entrypoint,
+        "start_registered_model_session",
+        lambda *_args, **_kwargs: {"status": "starting"},
+    )
+
+    result = local_entrypoint._start_canonical_session(
+        application,
+        {"control_mode": "model"},
+    )
+
+    assert result == {
+        "status": "starting",
+        "model_preflight": evidence,
+    }
+
+
+def test_start_canonical_session_leaves_non_model_modes_unchanged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict[str, Any]] = []
+
+    class Drive:
+        def start(self, request: dict[str, Any]) -> dict[str, Any]:
+            calls.append(request)
+            return {"status": "starting", "garage_mode": "manual"}
+
+    application = SimpleNamespace(drive=Drive())
+    monkeypatch.setattr(
+        local_entrypoint,
+        "preflight_registered_model_request",
+        lambda *_args, **_kwargs: pytest.fail("manual mode must not run model preflight"),
+    )
+
+    request = {"control_mode": "manual"}
+    result = local_entrypoint._start_canonical_session(application, request)
+
+    assert result["garage_mode"] == "manual"
+    assert calls == [request]
