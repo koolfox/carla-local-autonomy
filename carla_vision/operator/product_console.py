@@ -97,6 +97,18 @@ class ProductConsoleRequestHandler(LocalConfigGarageRequestHandler):
 
     console_root = CONSOLE_ROOT
 
+    def _authorized(self) -> bool:
+        """Close stale-token connections before an unread POST body can be reparsed."""
+
+        authorized = super()._authorized()
+        if not authorized:
+            # POST handlers authenticate before consuming the request body. On
+            # HTTP/1.1, reusing that socket would make the unread JSON become
+            # the prefix of the next request line (for example ``{...}GET``).
+            # Fail closed instead of draining attacker-controlled bytes.
+            self.close_connection = True
+        return authorized
+
     def _legacy_index(self) -> None:
         html = (base.STATIC_ROOT / "index.html").read_text(encoding="utf-8")
         html = render_operator_index(
