@@ -1,6 +1,6 @@
 export type ControlMode = 'manual' | 'autopilot' | 'behavior' | 'imitation' | 'voxel' | 'model';
 export type RouteMode = 'free' | 'random_destination' | 'selected_destination';
-export type DetectorKind = 'rtdetr' | 'yolo';
+export type DetectorKind = 'rtdetr' | 'yolo' | 'm9-hierarchical';
 export type BehaviorStyle = 'cautious' | 'normal' | 'aggressive';
 export type ExperimentPreset =
   | 'free_drive'
