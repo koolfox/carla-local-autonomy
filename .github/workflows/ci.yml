@@ -6,7 +6,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -132,35 +132,12 @@ jobs:
           test ! -s console-status.txt
 
       - name: Upload deployable Garage console
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: garage-console-static
           path: carla_vision/operator/console_static
           if-no-files-found: error
           retention-days: 7
-
-      - name: Refresh deployable Garage console on PR head
-        if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        env:
-          HEAD_BRANCH: ${{ github.head_ref }}
-        run: |
-          set -euo pipefail
-          tmpdir="$(mktemp -d)"
-          cp -a carla_vision/operator/console_static "$tmpdir/console_static"
-          git fetch origin "$HEAD_BRANCH"
-          git checkout -B "$HEAD_BRANCH" "origin/$HEAD_BRANCH"
-          rm -rf carla_vision/operator/console_static
-          mkdir -p carla_vision/operator
-          cp -a "$tmpdir/console_static" carla_vision/operator/console_static
-          if test -z "$(git status --porcelain --untracked-files=all -- carla_vision/operator/console_static)"; then
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A -- carla_vision/operator/console_static
-          git commit -m "Refresh deployable Garage console"
-          git push origin "HEAD:$HEAD_BRANCH"
 
   full-suite:
     name: Research and experimental suite
