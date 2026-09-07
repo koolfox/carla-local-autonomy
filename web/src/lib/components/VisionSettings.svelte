@@ -9,7 +9,16 @@
   import { fieldChecked, fieldNumber, fieldValue } from '$lib/ui/events';
 
   function setDetector(event: Event): void {
-    patchSessionSection('perception', { detector: fieldValue(event) as DetectorKind });
+    const detector = fieldValue(event) as DetectorKind;
+    if (detector === 'm9-hierarchical') {
+      patchSessionSection('perception', {
+        detector,
+        imageSize: 800,
+        confidence: 0
+      });
+      return;
+    }
+    patchSessionSection('perception', { detector });
   }
 </script>
 
@@ -32,7 +41,7 @@
         disabled={!$systemSettings?.visionRuntimeAvailable}
         onchange={(event) => patchSessionSection('perception', { enabled: fieldChecked(event) })}
       />
-      <span><strong>Detection overlay</strong><small>Advisory RT-DETR / YOLO output</small></span>
+      <span><strong>Detection overlay</strong><small>Advisory detector output · no vehicle control</small></span>
     </label>
     <label class="switch-field">
       <input
@@ -129,12 +138,20 @@
         <span>Detector</span>
         <small>Overlay remains advisory in manual and Traffic Manager sessions.</small>
       </div>
+      {#if $sessionConfig.perception.detector === 'm9-hierarchical'}
+        <p class="section-note">
+          M9 uses the certified notebook checkpoint only, direct 800 × 800 RGB resize, and
+          reports four coarse classes. Confidence here is a post-fusion display filter;
+          0 keeps the notebook candidate set while the model's internal fine gate remains 0.10.
+        </p>
+      {/if}
       <div class="field-grid three-columns">
         <label class="field">
           <span>Backend</span>
           <select value={$sessionConfig.perception.detector} onchange={setDetector}>
             <option value="rtdetr">RT-DETR</option>
             <option value="yolo">YOLO</option>
+            <option value="m9-hierarchical">M9 Hierarchical RT-DETR</option>
           </select>
         </label>
         <label class="field">
@@ -167,11 +184,12 @@
             max="4096"
             step="32"
             value={$sessionConfig.perception.imageSize}
+            disabled={$sessionConfig.perception.detector === 'm9-hierarchical'}
             oninput={(event) => patchSessionSection('perception', { imageSize: fieldNumber(event) })}
           />
         </label>
         <label class="field">
-          <span>Confidence</span>
+          <span>{$sessionConfig.perception.detector === 'm9-hierarchical' ? 'Fused score filter' : 'Confidence'}</span>
           <input
             type="number"
             min="0"
