@@ -15,7 +15,7 @@ import sys
 from dataclasses import dataclass
 from http import HTTPStatus
 from pathlib import Path
-from typing import Mapping, Sequence
+from typing import Any, Mapping, Sequence
 from urllib.parse import urlparse
 
 from ..model_registry import discover_model_packages
@@ -23,6 +23,7 @@ from . import garage_server
 from . import server as base
 from .configuration import build_configuration_contract
 from .external_model_drive import start_registered_model_session
+from .model_preflight import ModelPreflightError, preflight_registered_model_request
 
 _ENV_FILE = ".env.local"
 _SUPPORTED_KEYS = frozenset(
@@ -266,6 +267,18 @@ def render_operator_index(html: str, *, detector_enabled: bool) -> str:
     return html[: match.start()] + replacement + html[match.end() :]
 
 
+def _start_canonical_session(application: Any, request: Mapping[str, Any]) -> dict[str, Any]:
+    """Start one canonical session, failing before Drive creation on model-load errors."""
+
+    if str(request.get("control_mode", "manual")) != "model":
+        return application.drive.start(request)
+
+    preflight = preflight_registered_model_request(application.drive, request)
+    result = start_registered_model_session(application.drive, request)
+    result["model_preflight"] = preflight
+    return result
+
+
 class LocalConfigGarageRequestHandler(garage_server.GarageOperatorRequestHandler):
     """Serve the Garage shell and canonical local configuration contract."""
 
@@ -332,10 +345,7 @@ class LocalConfigGarageRequestHandler(garage_server.GarageOperatorRequestHandler
                 return
             body = self._body()
             request = garage_server._canonical_session_request(body, self.server.application)
-            if str(request.get("control_mode", "manual")) == "model":
-                result = start_registered_model_session(self.server.application.drive, request)
-            else:
-                result = self.server.application.drive.start(request)
+            result = _start_canonical_session(self.server.application, request)
             self._json(
                 HTTPStatus.ACCEPTED,
                 garage_server._with_configuration_evidence(
@@ -344,6 +354,8 @@ class LocalConfigGarageRequestHandler(garage_server.GarageOperatorRequestHandler
                     resolved=request,
                 ),
             )
+        except ModelPreflightError as error:
+            self._json(HTTPStatus.UNPROCESSABLE_ENTITY, error.response_payload())
         except BaseException as error:
             self._error(error)
 
