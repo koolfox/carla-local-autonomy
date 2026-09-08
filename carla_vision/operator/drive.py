@@ -52,6 +52,13 @@ from .world_worker_client import (
     WorldWorkerScene,
 )
 
+
+def overlay_identity(detector_name: str | None, road_name: str | None = None) -> dict[str, str]:
+    """Single identity source for detector-only and combined live/recorded overlays."""
+    return {"Author": "Marjan Shahchera at University of Kashan",
+            "MODEL": " + ".join(name for name in (detector_name, road_name) if name)}
+
+
 _ACTIVE = frozenset({"starting", "running", "stopping"})
 _TERMINAL = frozenset({"success", "failed"})
 _BROWSER_LEASE_SECONDS = 0.40
@@ -1483,20 +1490,10 @@ class DriveSession:
                         result = None
                     if result is not None and result.sequence > last_result_sequence:
                         last_result_sequence = result.sequence
-                        with self._lock:
-                            control_mode = self._control_mode
-                        latest_overlay = renderer.render(
+                        detector_overlay = renderer.render(
                             result,
                             now_monotonic=result.completed_monotonic,
-                            hud={
-                                "CONTROL": (
-                                    "CARLA / AUTOPILOT"
-                                    if control_mode == "autopilot"
-                                    else "HUMAN / BROWSER"
-                                ),
-                                "NAME": "Marjan Shahchera-University of Kashan",
-                                "MODEL": self.config.weights.name if self.config.weights else result.detector_name,
-                            },
+                            hud=overlay_identity(self.config.weights.name if self.config.weights else result.detector_name),
                         )
                         if self._road is not None and not road_failed:
                             try:
@@ -1505,6 +1502,7 @@ class DriveSession:
                                 road_failed = True
                                 self._cleanup_errors.append(f"road submit: {error}")
                         if self._road is None or road_failed or not self._road.ready():
+                            latest_overlay = detector_overlay
                             self._cache_frame("overlay", result.sequence, _jpeg(latest_overlay))
                         self._write_detections(detections_stream, result)
 
@@ -1532,9 +1530,10 @@ class DriveSession:
                             )
                             latest_overlay = renderer.render(
                                 replace(combined, source_bgr=road_image),
-                                hud={"Author": "Marjan Shahchera at University of Kashan", "MODEL": (
-                                    f"{self.config.weights.name} + " if self.config.detector_enabled and self.config.weights else ""
-                                ) + road_result.segmenter_name},
+                                hud=overlay_identity(
+                                    self.config.weights.name if self.config.detector_enabled and self.config.weights else None,
+                                    road_result.segmenter_name,
+                                ),
                             )
                             self._cache_frame("overlay", road_result.sequence, _jpeg(latest_overlay))
                     except Exception as error:
