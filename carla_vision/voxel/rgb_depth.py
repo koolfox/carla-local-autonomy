@@ -275,6 +275,7 @@ class RgbDepthVoxelPredictor:
         spec: VoxelGridSpec | None = None,
         device: str = "cpu",
         checkpoint: str | Path | None = None,
+        workspace: str | Path | None = None,
         pixel_stride: int = 8,
         max_rays: int = 4096,
         max_surface_points: int = 6000,
@@ -289,6 +290,7 @@ class RgbDepthVoxelPredictor:
             raise TypeError("camera_mount must be an explicit static CameraMount")
         self.device = device
         self.checkpoint = None if checkpoint is None else Path(checkpoint).expanduser()
+        self.workspace = workspace
         self.pixel_stride = pixel_stride
         self.max_rays = max_rays
         self.max_surface_points = max_surface_points
@@ -319,9 +321,11 @@ class RgbDepthVoxelPredictor:
             if self.device == "mps" and not torch.backends.mps.is_available():
                 raise RuntimeError("MPS is not available for RGB voxel depth")
             options: dict[str, Any] = {"trust_remote_code": False}
+            from ..model_storage import model_directory
+            cache_dir = str(model_directory(self.workspace) / "huggingface")
             if self.checkpoint is None:
                 source = MODEL_ID
-                options.update(revision=MODEL_REVISION, local_files_only=False)
+                options.update(revision=MODEL_REVISION, local_files_only=False, cache_dir=cache_dir)
             else:
                 path = self.checkpoint.resolve(strict=True)
                 if not path.is_dir():
@@ -342,7 +346,7 @@ class RgbDepthVoxelPredictor:
             if self.checkpoint is None:
                 hub = importlib.import_module("huggingface_hub")
                 weights = hub.try_to_load_from_cache(
-                    MODEL_ID, "model.safetensors", revision=MODEL_REVISION,
+                    MODEL_ID, "model.safetensors", revision=MODEL_REVISION, cache_dir=cache_dir,
                 )
             else:
                 weights = str(path / "model.safetensors")

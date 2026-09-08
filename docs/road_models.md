@@ -7,7 +7,7 @@ is needed for these Operator-side adapters.
 
 YOLOPv2 uses the official CAIC-AD V0.0.1 TorchScript release. Leave the
 checkpoint blank to download approximately 150 MiB once into the local model
-cache, or select a workspace copy of that exact release. SHA-256 is verified
+workspace `models/yolopv2/` folder, or select a workspace copy of that exact release. SHA-256 is verified
 before loading; arbitrary TorchScript files are not accepted by this adapter.
 Install the segmentation extra (`uv sync --extra segmentation`). CPU and CUDA
 are supported; MPS is not advertised for this adapter. First download/loading
@@ -29,3 +29,17 @@ lane markings.
 Upstream: https://github.com/CAIC-AD/YOLOPv2 (MIT). We use its released model
 and documented inference convention without importing upstream Python code.
 BDD100K performance is not a guarantee of CARLA accuracy or runtime speed.
+
+## Model storage
+
+Operator downloads belong to its configured workspace, not the home cache:
+
+- `models/yolop/yolop-640-640.onnx`
+- `models/yolopv2/yolopv2.pt`
+- `models/huggingface/` for SegFormer and RGB voxel depth (preserves HF snapshots/blobs)
+- `models/*.pt` for detector checkpoints, including custom M9
+
+Standalone adapters use the current working directory as workspace unless one
+is supplied. Explicit checkpoint paths still take precedence. Existing bare
+detector filenames saved by the UI resolve under `models/` when absent from the
+workspace root. Model binaries remain ignored by Git and are not pushed.

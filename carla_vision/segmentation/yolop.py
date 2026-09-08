@@ -13,6 +13,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from ..model_storage import model_directory
 from .contracts import SegmentationConfig, SegmentationMetadata, SegmentationResult
 
 YOLOP_REVISION = "8d8f68df318c71f01d6f813c024df646c7d1978f"
@@ -25,8 +26,8 @@ def _digest(path: Path) -> str:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-def default_checkpoint() -> Path:
-    directory = Path.home() / ".cache" / "carla-vision" / "yolop"
+def default_checkpoint(workspace=None) -> Path:
+    directory = model_directory(workspace) / "yolop"
     directory.mkdir(parents=True, exist_ok=True)
     target = directory / "yolop-640-640.onnx"
     if target.is_file() and _digest(target) == YOLOP_SHA256:
@@ -73,7 +74,7 @@ class YoloPSegmenter:
         provider = "CUDAExecutionProvider" if config.device == "cuda" else "CPUExecutionProvider"
         if provider not in ort.get_available_providers():
             raise RuntimeError(f"YOLOP requires {provider}; install the matching ONNX Runtime")
-        path = Path(config.checkpoint) if config.checkpoint else default_checkpoint()
+        path = Path(config.checkpoint) if config.checkpoint else default_checkpoint(config.options.get("workspace"))
         if not path.is_file() or path.suffix != ".onnx":
             raise ValueError("YOLOP requires an ONNX checkpoint")
         options = ort.SessionOptions()

@@ -226,7 +226,11 @@ class DriveStartConfig:
         if detector_enabled and (weights_value or detector != "ssdlite"):
             if not weights_value:
                 raise ValueError("weights are required when detector_enabled is true")
-            candidate = (workspace / weights_value).resolve(strict=True)
+            candidate = workspace / weights_value
+            # Preserve saved selections from before checkpoints moved into models/.
+            if not candidate.exists() and Path(weights_value).name == weights_value:
+                candidate = workspace / "models" / weights_value
+            candidate = candidate.resolve(strict=True)
             candidate.relative_to(workspace)
             suffixes = {".pt", ".pth"} if detector == "ssdlite" else {".pt", ".onnx"}
             if not candidate.is_file() or candidate.suffix.lower() not in suffixes:

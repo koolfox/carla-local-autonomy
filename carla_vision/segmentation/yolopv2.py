@@ -13,6 +13,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from ..model_storage import model_directory
 from .contracts import SegmentationConfig, SegmentationMetadata, SegmentationResult
 from .yolop import _digest
 
@@ -20,8 +21,8 @@ URL = "https://github.com/CAIC-AD/YOLOPv2/releases/download/V0.0.1/yolopv2.pt"
 SHA256 = "f2a8c8374203ae3e67ff9c184e931f763957de92a993b23269e4e721627f1f8c"
 
 
-def default_checkpoint() -> Path:
-    directory = Path.home() / ".cache" / "carla-vision" / "yolopv2"
+def default_checkpoint(workspace=None) -> Path:
+    directory = model_directory(workspace) / "yolopv2"
     directory.mkdir(parents=True, exist_ok=True)
     target = directory / "yolopv2.pt"
     if target.is_file() and _digest(target) == SHA256:
@@ -64,7 +65,7 @@ class YoloPv2Segmenter:
 
         if config.device not in {"cpu", "cuda"}:
             raise ValueError("YOLOPv2 supports cpu or cuda")
-        path = Path(config.checkpoint) if config.checkpoint else default_checkpoint()
+        path = Path(config.checkpoint) if config.checkpoint else default_checkpoint(config.options.get("workspace"))
         if not path.is_file() or _digest(path) != SHA256:
             raise ValueError("YOLOPv2 requires the checksum-verified official V0.0.1 checkpoint")
         self._device = config.device
