@@ -81,20 +81,21 @@
         onchange={(event) => patchSessionSection('perception', { roadBackend: fieldValue(event), roadCheckpoint: '', roadDevice: 'cpu' })}>
         <option value="segformer">SegFormer · road & sidewalk</option>
         <option value="yolop">YOLOP · road & lane markings</option>
+        <option value="yolopv2">YOLOPv2 · road & lane markings</option>
       </select>
     </label>
     <label class="field">
       <span>Checkpoint (optional)</span>
       <input value={$sessionConfig.perception.roadCheckpoint} placeholder="Blank uses the official model"
         onchange={(event) => patchSessionSection('perception', { roadCheckpoint: fieldValue(event) })} />
-      <small>{$sessionConfig.perception.roadBackend === 'yolop' ? 'Workspace .onnx file, or blank for official YOLOP 640.' : 'Workspace SegFormer directory, or blank for Cityscapes (no lane markings).'}</small>
+      <small>{$sessionConfig.perception.roadBackend === 'yolopv2' ? 'Official YOLOPv2 .pt only; blank downloads and verifies it on first use. CPU or CUDA.' : $sessionConfig.perception.roadBackend === 'yolop' ? 'Workspace .onnx file, or blank for official YOLOP 640.' : 'Workspace SegFormer directory, or blank for Cityscapes (no lane markings).'}</small>
     </label>
     <label class="field">
       <span>Road model device</span>
       <select value={$sessionConfig.perception.roadDevice}
         onchange={(event) => patchSessionSection('perception', { roadDevice: fieldValue(event) })}>
         <option value="cpu">CPU</option>
-        {#if $sessionConfig.perception.roadBackend !== 'yolop'}<option value="mps">MPS</option>{/if}
+        {#if $sessionConfig.perception.roadBackend === 'segformer'}<option value="mps">MPS</option>{/if}
         <option value="cuda">CUDA</option>
       </select>
     </label>

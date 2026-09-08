@@ -109,8 +109,9 @@ class YoloPSegmenter:
             if output.min() < 0 or output.max() > 1:
                 raise ValueError("YOLOP expects sigmoid probabilities from the official export")
             cropped = output[0, :, top:top+h, left:left+w]
-            masks.append(cv2.resize(cropped.argmax(0).astype(np.uint8), size, interpolation=cv2.INTER_NEAREST))
-            scores.append(cv2.resize(cropped.max(0), size, interpolation=cv2.INTER_LINEAR))
+            restored = np.stack([cv2.resize(channel, size, interpolation=cv2.INTER_LINEAR) for channel in cropped])
+            masks.append(restored.argmax(0).astype(np.uint8))
+            scores.append(restored.max(0))
         classes = masks[0].copy()
         classes[masks[1] == 1] = 2  # Lane marking takes priority over road.
         confidence = np.where(masks[1] == 1, scores[1], scores[0]).astype(np.float32)

@@ -1351,7 +1351,7 @@ class DriveSession:
                     SegmentationConfig(
                         backend=self.config.road_backend,
                         checkpoint=self.config.road_checkpoint or (
-                            None if self.config.road_backend == "yolop" else DEFAULT_SEGFORMER_B0_CHECKPOINT
+                            None if self.config.road_backend in {"yolop", "yolopv2"} else DEFAULT_SEGFORMER_B0_CHECKPOINT
                         ),
                         device=self.config.road_device,
                     )
