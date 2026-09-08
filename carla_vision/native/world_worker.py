@@ -2767,9 +2767,8 @@ class WorldWorker:
                     if config.weather_preset != "keep":
                         scene.weather_preset = config.weather_preset
                     scene.config = replace(scene.config, weather_preset=config.weather_preset)
-                # generate_traffic.py sets this before controller destinations.
-                # Existing walkers also need fresh go_to_location calls to use
-                # the new crossing factor in their next navigation route.
+                # Crossing eligibility is assigned when walkers are created.
+                # Re-routing existing controllers does not reassign it.
                 for field_name, target, method in dynamics:
                     if getattr(config, field_name) == getattr(scene.config, field_name):
                         continue
@@ -2777,13 +2776,18 @@ class WorldWorker:
                     try:
                         getattr(target, method)(getattr(config, field_name))
                         if field_name == "pedestrian_crossing_factor":
-                            for controller in scene.walker_controllers:
-                                destination = world.get_random_location_from_navigation()
-                                if destination is None:
-                                    raise RuntimeError(
-                                        "navigation mesh returned no walker destination"
-                                    )
-                                controller.go_to_location(destination)
+                            uncertain = True
+                            self._remove_scene_actor_subset(
+                                scene,
+                                [item for item in scene.owned_actors
+                                 if item.kind in {"walker", "walker_controller"}],
+                            )
+                            scene.walker_actors.clear()
+                            scene.walker_controllers.clear()
+                            scene.config = replace(scene.config, walker_count=0)
+                            uncertain = False
+                            # The population delta below recreates only walkers,
+                            # after the new crossing factor has been installed.
                     except Exception:
                         # A failed destination refresh must be retried on the
                         # next Apply. Restore the old factor before retaining

@@ -925,7 +925,7 @@ class _ExecuteRpc:
         return type(
             "Telemetry",
             (),
-            {"speed": 0.0, "gear": 0, "throttle": 0.0, "steer": 0.0, "brake": 1.0},
+            {"speed": 0.0, "gear": 0, "rpm": 0.0, "throttle": 0.0, "steer": 0.0, "brake": 1.0},
         )()
 
     def assert_ego(self, actor_id: int) -> None:

@@ -4,6 +4,7 @@ export interface DriveTelemetry {
   speed?: number;
   speed_mps?: number;
   gear?: number;
+  rpm?: number;
   throttle?: number;
   steer?: number;
   brake?: number;

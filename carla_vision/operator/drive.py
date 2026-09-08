@@ -1687,6 +1687,7 @@ class DriveSession:
                         self._telemetry = {
                             "speed": telemetry.speed,
                             "gear": telemetry.gear,
+                            "rpm": telemetry.rpm,
                             "throttle": telemetry.throttle,
                             "steer": telemetry.steer,
                             "brake": telemetry.brake,

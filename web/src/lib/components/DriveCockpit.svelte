@@ -207,7 +207,8 @@
 
       <div class="drive-hud" aria-label="driving HUD">
         <div><span>Speed</span><strong>{speedKmh.toFixed(1)}<small> km/h</small></strong></div>
-        <div><span>Gear</span><strong>{gearLabel(drive.telemetry?.gear)}</strong></div>
+        <div title="Manual driving uses automatic transmission; CARLA reports the actual gear."><span>Gear · auto</span><strong>{gearLabel(drive.telemetry?.gear)}</strong></div>
+        <div><span>RPM</span><strong>{drive.telemetry?.rpm == null ? '—' : Math.round(drive.telemetry.rpm)}</strong></div>
         <div><span>Elapsed</span><strong>{elapsed(drive.elapsed_seconds)}</strong></div>
       </div>
 

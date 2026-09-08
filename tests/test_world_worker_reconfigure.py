@@ -78,13 +78,14 @@ def ids(actors: list[Any]) -> list[int]:
     return [int(actor.id) for actor in actors]
 
 
-def test_dynamics_keep_ego_camera_population_route_and_refresh_walker_routes(native: Any) -> None:
+def test_dynamics_keep_ego_camera_route_and_replace_walkers(native: Any) -> None:
     worker = native.worker
     before = worker.prepare(
         {"traffic_count": 2, "walker_count": 2, "route_mode": "random_destination"}
     )["scene"]
     scene = worker._scene
     existing = set(native.world.actors)
+    walker_ids = {actor.id for actor in [*scene.walker_actors, *scene.walker_controllers]}
     route = scene.route
     destinations = [controller.destination for controller in scene.walker_controllers]
     result = apply(
@@ -98,7 +99,9 @@ def test_dynamics_keep_ego_camera_population_route_and_refresh_walker_routes(nat
     assert result["lease_token"] == before["lease_token"]
     assert result["scene_id"] == before["scene_id"]
     assert result["episode_id"] == before["episode_id"]
-    assert set(native.world.actors) == existing
+    assert existing - walker_ids <= set(native.world.actors)
+    assert not walker_ids & set(native.world.actors)
+    assert len(scene.walker_actors) == 2
     assert scene.route is route
     assert native.tm.speed_difference == -20
     assert native.tm.distance == 5
@@ -415,12 +418,30 @@ def test_configure_accepts_prepare_defaults_and_rejects_unknown_fields(native: A
         )
 
 
+def test_cross_factor_is_set_before_replacement_spawn_and_noop_keeps_walkers(native: Any) -> None:
+    native.worker.prepare({"walker_count": 2})
+    scene = native.worker._scene
+    original_spawn = native.worker._spawn_walkers
+
+    def spawn(*args, **kwargs):
+        assert native.world.cross_factor == 1.0
+        return original_spawn(*args, **kwargs)
+
+    with mock.patch.object(native.worker, "_spawn_walkers", side_effect=spawn) as replacement:
+        apply(native.worker, pedestrian_crossing_factor=1.0)
+        replacement.assert_called_once()
+        ids = [actor.id for actor in scene.walker_actors]
+        apply(native.worker, pedestrian_crossing_factor=1.0)
+        replacement.assert_called_once()
+        assert [actor.id for actor in scene.walker_actors] == ids
+
+
 def test_cross_factor_failure_rolls_back_confirmed_factor_and_retry_refreshes(native: Any) -> None:
     native.worker.prepare({"walker_count": 1})
     scene = native.worker._scene
     controller = scene.walker_controllers[0]
-    with mock.patch.object(controller, "go_to_location", side_effect=RuntimeError("route failed")):
-        with pytest.raises(WorkerError, match="route failed"):
+    with mock.patch.object(native.world, "set_pedestrians_cross_factor", side_effect=[RuntimeError("factor failed"), None]):
+        with pytest.raises(WorkerError, match="factor failed"):
             apply(native.worker, pedestrian_crossing_factor=0.9)
     assert scene.config.pedestrian_crossing_factor == 0.2
     assert native.world.cross_factor == 0.2
@@ -428,7 +449,8 @@ def test_cross_factor_failure_rolls_back_confirmed_factor_and_retry_refreshes(na
         controller, "go_to_location", wraps=controller.go_to_location
     ) as reroute:
         apply(native.worker, pedestrian_crossing_factor=0.9)
-        reroute.assert_called_once()
+        reroute.assert_not_called()
+    assert scene.walker_controllers[0] is not controller
     assert scene.config.pedestrian_crossing_factor == 0.9
 
 
