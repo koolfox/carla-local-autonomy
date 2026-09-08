@@ -1532,7 +1532,7 @@ class DriveSession:
                             )
                             latest_overlay = renderer.render(
                                 replace(combined, source_bgr=road_image),
-                                hud={"NAME": "Hesam Shani", "MODEL": (
+                                hud={"Author": "Marjan Shahchera at University of Kashan", "MODEL": (
                                     f"{self.config.weights.name} + " if self.config.detector_enabled and self.config.weights else ""
                                 ) + road_result.segmenter_name},
                             )
