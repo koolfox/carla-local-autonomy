@@ -17,8 +17,18 @@ from typing import Any, Self
 import cv2
 import numpy as np
 
-from .contracts import PerceptionResult
+from .contracts import Detection, PerceptionResult
 from .risk import RiskAssessment
+
+
+def detection_display_label(detection: Detection) -> str:
+    """Show independent head scores, not a parent-child relation or fused score."""
+    fine_label = detection.attributes.get("fine_label")
+    if fine_label and {"coarse_confidence", "fine_confidence"} <= detection.attributes.keys():
+        coarse = float(detection.attributes["coarse_confidence"])
+        fine = float(detection.attributes["fine_confidence"])
+        return f"Coarse: {detection.label} {coarse:.0%} | Fine: {fine_label} {fine:.0%}"
+    return f"{detection.label} {detection.confidence:.0%}"
 
 
 class DisplayMode(str, Enum):
@@ -112,10 +122,7 @@ class OverlayRenderer:
                 self.box_thickness,
                 cv2.LINE_AA,
             )
-            confidence = min(1.0, max(0.0, float(detection.confidence)))
-            fine_label = detection.attributes.get("fine_label")
-            hierarchy = f"{detection.label} -> {fine_label}" if fine_label else detection.label
-            label = f"{hierarchy} {confidence:.0%}"
+            label = detection_display_label(detection)
             self._draw_detection_label(image, label, x1=x1, y1=y1, color=color)
 
         if risk is not None:
