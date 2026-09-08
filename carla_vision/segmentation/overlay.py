@@ -67,9 +67,12 @@ def _draw_legend(image: np.ndarray, classes: list[RoadClass]) -> None:
     line_height = 20
     panel_width = min(width, 220)
     panel_height = min(height, 10 + line_height * len(classes))
-    top = max(0, height - panel_height)
+    # Reserve the bottom-left for speed/gear and the top-left for model identity.
+    # Center on the image edge so the legend also clears the mobile driving HUD.
+    top = max(0, (height - panel_height) // 2)
+    bottom = top + panel_height - 1
     panel = image.copy()
-    cv2.rectangle(panel, (0, top), (max(0, panel_width - 1), height - 1), (18, 18, 18), -1)
+    cv2.rectangle(panel, (0, top), (max(0, panel_width - 1), bottom), (18, 18, 18), -1)
     cv2.addWeighted(panel, 0.68, image, 0.32, 0.0, image)
     for index, road_class in enumerate(classes):
         y = top + 7 + line_height * index

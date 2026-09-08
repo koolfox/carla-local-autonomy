@@ -12,6 +12,16 @@ from carla_vision.segmentation.overlay import render_segmentation_overlay
 from carla_vision.segmentation.worker import SegmentationFrameInput
 
 
+def test_legend_leaves_bottom_left_clear_for_driving_hud():
+    image = np.zeros((720, 1280, 3), dtype=np.uint8)
+    mask = SegmentationResult(np.ones((720, 1280), dtype=np.uint8),
+                              np.ones((720, 1280), dtype=np.float32), "road")
+    plain = render_segmentation_overlay(image, mask, draw_legend=False)
+    legend = render_segmentation_overlay(image, mask)
+    assert np.array_equal(plain[-120:, :300], legend[-120:, :300])
+    assert not np.array_equal(plain[340:380, :220], legend[340:380, :220])
+
+
 def test_road_and_detection_render_preserves_exact_source():
     image = np.zeros((120, 320, 3), dtype=np.uint8)
     detection = PerceptionResult(7, 42, 1.0, 2.0, 2.1, (), image, "custom-model")
