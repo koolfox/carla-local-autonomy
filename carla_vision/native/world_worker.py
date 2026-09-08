@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import hmac
 import importlib
+import importlib.util
 import ipaddress
 import json
 import math
