@@ -40,6 +40,10 @@ def create_segmenter(config: SegmentationConfig) -> RoadSegmenter:
     """Create a segmenter without exposing its framework-specific API."""
 
     backend = config.backend.strip().lower().replace("_", "-")
+    if backend == "yolopv2":
+        from .yolopv2 import YoloPv2Segmenter
+
+        return YoloPv2Segmenter(config)
     if backend == "yolop":
         from .yolop import YoloPSegmenter
 

@@ -226,7 +226,11 @@ class DriveStartConfig:
         if detector_enabled and (weights_value or detector != "ssdlite"):
             if not weights_value:
                 raise ValueError("weights are required when detector_enabled is true")
-            candidate = (workspace / weights_value).resolve(strict=True)
+            candidate = workspace / weights_value
+            # Preserve saved selections from before checkpoints moved into models/.
+            if not candidate.exists() and Path(weights_value).name == weights_value:
+                candidate = workspace / "models" / weights_value
+            candidate = candidate.resolve(strict=True)
             candidate.relative_to(workspace)
             suffixes = {".pt", ".pth"} if detector == "ssdlite" else {".pt", ".onnx"}
             if not candidate.is_file() or candidate.suffix.lower() not in suffixes:
@@ -245,16 +249,18 @@ class DriveStartConfig:
 
         road_enabled = _boolean(raw.get("road_enabled", False), "road_enabled")
         road_backend = str(raw.get("road_backend", "segformer")).strip().lower()
-        if road_backend not in {"segformer", "yolop"}:
-            raise ValueError("road_backend must be segformer or yolop")
+        if road_backend not in {"segformer", "yolop", "yolopv2"}:
+            raise ValueError("road_backend must be segformer, yolop or yolopv2")
         road_device = str(raw.get("road_device", "cpu")).strip().lower()
-        allowed_devices = {"cpu", "cuda"} if road_backend == "yolop" else {"cpu", "cuda", "mps"}
+        allowed_devices = {"cpu", "cuda"} if road_backend in {"yolop", "yolopv2"} else {"cpu", "cuda", "mps"}
         if road_device not in allowed_devices:
             raise ValueError(f"{road_backend} road_device must be {'/'.join(sorted(allowed_devices))}")
         road_checkpoint = None
         if road_enabled and str(raw.get("road_checkpoint", "")).strip():
             road_checkpoint = (workspace / str(raw["road_checkpoint"]).strip()).resolve(strict=True)
             road_checkpoint.relative_to(workspace)
+            if road_backend == "yolopv2" and (not road_checkpoint.is_file() or road_checkpoint.suffix != ".pt"):
+                raise ValueError("YOLOPv2 requires the official checksum-verified TorchScript .pt file")
             if road_backend == "yolop" and (not road_checkpoint.is_file() or road_checkpoint.suffix != ".onnx"):
                 raise ValueError("YOLOP road_checkpoint must be a workspace-contained ONNX file")
             if road_backend == "segformer" and not road_checkpoint.is_dir():

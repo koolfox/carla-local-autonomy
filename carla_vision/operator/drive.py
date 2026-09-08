@@ -1351,9 +1351,10 @@ class DriveSession:
                     SegmentationConfig(
                         backend=self.config.road_backend,
                         checkpoint=self.config.road_checkpoint or (
-                            None if self.config.road_backend == "yolop" else DEFAULT_SEGFORMER_B0_CHECKPOINT
+                            None if self.config.road_backend in {"yolop", "yolopv2"} else DEFAULT_SEGFORMER_B0_CHECKPOINT
                         ),
                         device=self.config.road_device,
+                        options={"workspace": str(self.workspace)},
                     )
                 ))
 
@@ -1416,6 +1417,7 @@ class DriveSession:
                 # Observe the existing RGB stream. Model load/inference happen on
                 # a separate latest-only thread, never in the actuation lane.
                 self._voxel = VoxelViewWorker(
+                    workspace=str(self.workspace),
                     device=self.config.device,
                     waypoint_provider=self._voxel_waypoint_provider(),
                 )

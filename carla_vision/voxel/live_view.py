@@ -49,6 +49,7 @@ class VoxelViewWorker:
 
     def __init__(self, *, device: str, predictor_factory: Callable[[], Any] | None = None,
                  max_fps: float = 2.0,
+                 workspace: str | None = None,
                  waypoint_provider: Callable[[Any], dict[str, Any]] | None = None) -> None:
         if not np.isfinite(max_fps) or not 0 < max_fps <= 10:
             raise ValueError("voxel observer max_fps must be in (0, 10]")
@@ -62,6 +63,7 @@ class VoxelViewWorker:
         self._processed = 0
         self._period = 1.0 / max_fps
         self._device = device
+        self._workspace = workspace
         self._factory = predictor_factory
         self._waypoint_provider = waypoint_provider
         self._thread = threading.Thread(target=self._run, name="rgb-voxel-view", daemon=True)
@@ -112,6 +114,7 @@ class VoxelViewWorker:
                 from .rgb_depth import RgbDepthVoxelPredictor
                 predictor = RgbDepthVoxelPredictor(
                     device=self._device,
+                    workspace=self._workspace,
                     spec=VoxelGridSpec(x_max=35, y_min=-17.5, y_max=17.5,
                                        z_min=-5, z_max=5, resolution=0.5),
                     pixel_stride=12, max_rays=2048,

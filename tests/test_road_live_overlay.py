@@ -45,6 +45,11 @@ def test_road_only_session_and_unsupported_backend(tmp_path):
     config = DriveStartConfig.from_mapping(raw, workspace=tmp_path,
                                           expected_host=raw["host"], expected_port=raw["port"])
     assert config.road_enabled and not config.detector_enabled
+    raw.update(road_backend="yolopv2", road_device="cpu")
+    config = DriveStartConfig.from_mapping(raw, workspace=tmp_path,
+                                          expected_host=raw["host"], expected_port=raw["port"])
+    assert config.road_backend == "yolopv2"
+    assert config.road_checkpoint is None
     raw["road_backend"] = "unknown"
     with pytest.raises(ValueError, match="road_backend"):
         DriveStartConfig.from_mapping(raw, workspace=tmp_path,

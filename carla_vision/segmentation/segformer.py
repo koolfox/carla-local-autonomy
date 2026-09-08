@@ -132,7 +132,7 @@ def _checkpoint_options(config: SegmentationConfig) -> tuple[str, dict[str, Any]
     """Resolve safe tensor-only local packages or an explicitly pinned HF model."""
 
     options = dict(config.options)
-    unknown = set(options) - {"revision"}
+    unknown = set(options) - {"revision", "workspace"}
     if unknown:
         raise ValueError("unsupported SegFormer options: " + ", ".join(sorted(unknown)))
     checkpoint = str(config.checkpoint)
@@ -152,7 +152,10 @@ def _checkpoint_options(config: SegmentationConfig) -> tuple[str, dict[str, Any]
         revision = DEFAULT_SEGFORMER_B0_REVISION
     if not isinstance(revision, str) or not re.fullmatch(r"[0-9a-f]{40}", revision):
         raise ValueError("remote SegFormer checkpoints require an exact 40-character revision")
-    return checkpoint, {"revision": revision, "trust_remote_code": False}
+    from ..model_storage import model_directory
+
+    return checkpoint, {"revision": revision, "trust_remote_code": False,
+                        "cache_dir": str(model_directory(config.options.get("workspace")) / "huggingface")}
 
 
 def _load_huggingface_runtime(
