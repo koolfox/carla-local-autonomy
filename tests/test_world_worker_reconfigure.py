@@ -294,7 +294,9 @@ def test_vehicle_and_color_replace_only_ego_at_same_location(native: Any) -> Non
     assert result["ego_actor_id"] != ego.id
     assert ego.destroyed
     assert old_population <= set(native.world.actors)
-    assert scene.ego.get_transform().location == ego.get_transform().location
+    assert scene.ego.get_transform().location.x == ego.get_transform().location.x
+    assert scene.ego.get_transform().location.y == ego.get_transform().location.y
+    assert scene.ego.get_transform().location.z == native.world.get_map().get_spawn_points()[scene.spawn_index].location.z + 0.5
     assert scene.ego.controls[-1].brake == 1.0
     assert scene.ego.attributes["color"] == "0,0,255"
     assert scene.camera_relay is relay
@@ -310,6 +312,24 @@ def test_vehicle_and_color_replace_only_ego_at_same_location(native: Any) -> Non
         "distance": 6.5,
     }
     assert result["config"]["vehicle_blueprint"] == "vehicle.audi.tt"
+
+
+def test_rapid_vehicle_changes_use_stable_clearance(native: Any) -> None:
+    native.worker.prepare({})
+    scene = native.worker._scene
+    height = native.world.get_map().get_spawn_points()[scene.spawn_index].location.z + 0.5
+    spawn = native.world.try_spawn_actor
+
+    def reject_settled_pose(blueprint, transform, *args, **kwargs):
+        if blueprint.id.startswith("vehicle."):
+            assert transform.location.z == height
+        return spawn(blueprint, transform, *args, **kwargs)
+
+    with mock.patch.object(native.world, "try_spawn_actor", side_effect=reject_settled_pose):
+        for blueprint in ("vehicle.audi.tt", "vehicle.tesla.model3", "vehicle.audi.tt"):
+            apply(native.worker, vehicle_blueprint=blueprint)
+            assert scene.ego.get_transform().location.z == height
+            assert scene.config.vehicle_blueprint == blueprint
 
 
 def test_vehicle_failure_restores_old_ego_without_touching_population(native: Any) -> None:

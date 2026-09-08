@@ -2586,6 +2586,17 @@ class WorldWorker:
 
         original = scene.config
         origin = scene.ego.get_transform()
+        # The settled vehicle pose can intersect the road when reused for a
+        # different chassis. Use the map's spawn elevation, not accumulated
+        # physics height, so repeated rapid choices cannot ratchet upward.
+        spawn_points = scene.world.get_map().get_spawn_points()
+        anchor = spawn_points[scene.spawn_index]
+        origin = self._carla.Transform(
+            self._carla.Location(x=origin.location.x, y=origin.location.y,
+                                 z=anchor.location.z + 0.5),
+            self._carla.Rotation(pitch=anchor.rotation.pitch,
+                                 yaw=origin.rotation.yaw, roll=anchor.rotation.roll),
+        )
         original_color = self._actor_attribute(scene.ego, "color") or original.color
         old_owned = next(item for item in scene.owned_actors if item.kind == "ego")
         try:
