@@ -86,7 +86,7 @@
   let orbitInFlight = false;
   let orbitPending = false;
   let streamRetryDelay = 1000;
-  let streamRetries = 0;
+  let streamConnectTimer: ReturnType<typeof setTimeout> | null = null;
   let streamRetryTimer: ReturnType<typeof setTimeout> | null = null;
 
   function updateLifecycle(operation: GaragePreviewOperation): void {
@@ -131,10 +131,12 @@
       });
       // Stage a replacement stream in the hidden slot. The last decoded frame
       // stays visible until the new CARLA camera has produced its first frame.
-      if (response.configure_action === 'started' || response.configure_action === 'restarted') {
+      if (response.configure_action !== 'noop') {
         cancelStreamRetry();
         refreshStream();
-        applyPreset('orbit', false);
+        if (response.configure_action === 'started' || response.configure_action === 'restarted') {
+          applyPreset('orbit', false);
+        }
       }
     }
   });
@@ -222,11 +224,12 @@
   });
 
   function cancelStreamRetry(resetDelay = true): void {
+    if (streamConnectTimer) clearTimeout(streamConnectTimer);
+    streamConnectTimer = null;
     if (streamRetryTimer) clearTimeout(streamRetryTimer);
     streamRetryTimer = null;
     if (resetDelay) {
       streamRetryDelay = 1000;
-      streamRetries = 0;
       streamRetryDeferred = false;
     }
   }
@@ -238,11 +241,19 @@
       streamBuffer,
       `/api/garage/preview/stream.mjpg?t=${Date.now()}-${streamNonce}`
     );
+    if (streamConnectTimer) clearTimeout(streamConnectTimer);
+    streamConnectTimer = setTimeout(() => {
+      streamConnectTimer = null;
+      if (busy) streamRetryDeferred = true;
+      else scheduleStreamRetry();
+    }, 5000);
   }
 
   function streamLoaded(slot: number): void {
     if (destroyed || !available) return;
     streamBuffer = confirmGarageStream(streamBuffer, slot);
+    if (streamConnectTimer) clearTimeout(streamConnectTimer);
+    streamConnectTimer = null;
     cancelStreamRetry();
     streamError = '';
   }
@@ -260,10 +271,9 @@
   }
 
   function scheduleStreamRetry(): void {
-    if (busy || !active || !available || destroyed || streamRetryTimer || streamRetries >= 3) return;
+    if (busy || !active || !available || destroyed || streamRetryTimer) return;
     const delay = streamRetryDelay;
-    streamRetryDelay *= 2;
-    streamRetries += 1;
+    streamRetryDelay = Math.min(2000, streamRetryDelay * 2);
     streamRetryTimer = setTimeout(() => {
       streamRetryTimer = null;
       if (active && available && !destroyed && !busy) refreshStream();

@@ -4723,15 +4723,45 @@ def _internal_map_load_main(argv: Sequence[str]) -> int:
     return 0
 
 
+def _supervise_worker(argv: Sequence[str]) -> int:
+    """Restart native/Python crashes, but respect normal exit and Ctrl+C."""
+    while True:
+        child = subprocess.Popen([sys.executable, str(Path(__file__).resolve()),
+                                  "--internal-worker", *argv])
+        try:
+            code = child.wait()
+            if code in (0, 130, -2):
+                return 0
+            print(f"World Worker exited ({code}); restarting in 2 seconds", flush=True)
+            time.sleep(2)
+        except KeyboardInterrupt:
+            # The console normally broadcasts Ctrl+C to the child as well.
+            try:
+                child.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                child.terminate()
+                try:
+                    child.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    child.kill()
+                    child.wait()
+            return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     child_argv = list(sys.argv[1:] if argv is None else argv)
     if child_argv[:1] == ["--internal-map-load"]:
         return _internal_map_load_main(child_argv[1:])
-    args = parse_args(argv)
+    supervised_child = child_argv[:1] == ["--internal-worker"]
+    if supervised_child:
+        child_argv = child_argv[1:]
+    args = parse_args(child_argv)
     try:
         token, token_source = _load_token(token_file=args.token_file, bind=args.bind)
     except (OSError, UnicodeError, ValueError) as error:
         raise SystemExit(f"World Worker token configuration failed: {error}") from error
+    if not supervised_child:
+        return _supervise_worker(child_argv)
     worker = WorldWorker(
         carla_host=args.carla_host,
         carla_port=args.carla_port,
