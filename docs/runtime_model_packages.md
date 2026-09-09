@@ -1,7 +1,11 @@
 # Runtime model packages
 
-The Garage does not execute an arbitrary checkpoint by filename. A runnable
-model is a directory under `models/` containing the artifact and a validated
+This page covers **registered driving-policy packages**, not every perception
+adapter. Built-in RT-DETR/M9 detectors and road segmenters have their own
+configuration/checkpoint paths; see [M9](m9_detector.md) and [road models](road_models.md).
+
+The Garage does not execute an arbitrary policy checkpoint by filename. A runnable
+policy package is a directory under `models/` containing the artifact and a validated
 `model.json` contract:
 
 ```text

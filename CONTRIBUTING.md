@@ -4,6 +4,7 @@ This project uses small, issue-scoped changes so the maintainer and Codex can
 work in parallel without losing features or creating long-lived integration
 branches.
 
+Start at [`docs/README.md`](docs/README.md) to locate your feature and first test.
 Read [`docs/development.md`](docs/development.md) before changing product
 behavior. It maps the runtime roles, authoritative sources, request/data paths,
 vertical-slice workflow, and live-CARLA evidence boundary.
@@ -32,14 +33,11 @@ branch another contributor is using.
 
 Do not copy a fixed ownership list into long-lived documentation. The active
 GitHub issue must name its branch, expected files, dependencies, and acceptance
-gate before implementation begins. The current roadmap is grouped into:
-
-- **M1 — Developer-ready product convergence:** one SessionConfig, stable
-  Operator boundary, no-CARLA developer mode, and Svelte/Garage parity;
-- **M2 — Vision and voxel autonomy MVP:** NavigationIntent, canonical scene
-  perception, DriverSceneFrame, and supervised hybrid control; and
-- **M3 — Live evidence and OSS release:** real datasets/checkpoints,
-  closed-loop acceptance, final cleanup, and release audit.
+gate before implementation begins. Use the
+[current milestones](https://github.com/koolfox/carla-local-autonomy/milestones)
+for the roadmap. Reliability/developer workflow, perception/voxel scene work,
+trained driving validation and OSS release have separate acceptance gates;
+an experimental console release does not claim completed autonomous driving.
 
 If two tasks need the same file, sequence them instead of resolving a large
 conflict after both are complete. GitHub issues and milestones are the source
@@ -62,6 +60,7 @@ Svelte changes:
 cd web
 npm ci --no-audit --no-fund
 npm run check
+npm test
 npm run build
 ```
 

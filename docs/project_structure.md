@@ -3,6 +3,8 @@
 This document describes current source ownership and the incremental target
 while the Operator completes product and developer convergence.
 
+For a concrete bug or feature, start with the [feature-to-test map](README.md).
+
 ## Source layout
 
 | Path | Responsibility |
@@ -10,6 +12,7 @@ while the Operator completes product and developer convergence.
 | `carla_vision/native/` | Thin CARLA-host processes, Worker protocol, preflight, and native capture |
 | `carla_vision/operator/` | Browser transport, Operator application/session ownership, jobs, and Worker/model adapters |
 | `carla_vision/detectors/` | Model-neutral detector adapters and canonical detections |
+| `carla_vision/segmentation/` | Independent road/lane segmentation adapters, worker and overlays |
 | `carla_vision/model_registry.py`, `model_package_contracts.py` | Runtime model discovery, executable package identity, and pure adapter contracts |
 | `carla_vision/dataset/` | Exact-frame dataset capture, labels, export, and QA |
 | `carla_vision/training/` | Detector training orchestration |
@@ -44,9 +47,11 @@ while the Operator completes product and developer convergence.
   relay through a versioned capability contract.
 - Research jobs consume a session reference plus job-specific values. They do
   not redefine shared world settings.
-- Executable external models enter through the manifest contract documented in
-  [`runtime_model_packages.md`](runtime_model_packages.md); a loose checkpoint
-  filename is never a runnable model identity.
+- Executable driving-policy packages use the manifest contract documented in
+  [`runtime_model_packages.md`](runtime_model_packages.md). Built-in/custom
+  detector selection uses `DetectorConfig` and its adapter; road models use
+  `SegmentationConfig`. These are distinct current interfaces, not a universal
+  loader for any `.pt` or `.onnx` file.
 - The current HTTP request-handler inheritance is transport, not the desired
   home for feature logic. Issue #67 extracts application use cases and stable
   contracts incrementally before any backend-framework decision.
@@ -76,21 +81,15 @@ web/.svelte-kit/
 These paths are ignored by Git. A public sample artifact must be introduced
 explicitly and must include provenance, size, license, and verification data.
 
-## Convergence order
+## Convergence without a rewrite
 
-1. #66 — human developer map and feature-slice playbook.
-2. #54 — one shared SessionConfig for Garage and Research (implemented; live
-   acceptance remains part of closing the issue).
-3. #67 and #68 — stable Operator application seam and deterministic no-CARLA
-   development.
-4. #55, #56, and #57 — executable presets, dense-scene evidence, and stable
-   preview/control presentation.
-5. #69, #62, #70, and #63 — route intent, canonical scene perception,
-   ego-centric driver scene, and supervised Vision/Voxel control.
-6. #27, #29-#32, and #64 — real CARLA data, checkpoints, and closed-loop
-   acceptance.
-7. #58 and #33 — final structural cleanup and release-candidate audit.
+Use the [live milestones](https://github.com/koolfox/carla-local-autonomy/milestones)
+for issue status and the [release assessment](release_readiness.md) for gates.
+First make the core workflow maintainable and reproducible, then extract a
+small tested lifecycle boundary when a feature needs it. Preserve public
+imports, Worker startup, APIs and artifact contracts during extraction.
 
-The milestones and issue bodies are authoritative if this summary becomes
-stale. This order prevents cleanup from deleting a working capability before
-its replacement is understandable, usable, and verified.
+Do not move all modules into new folders in one change. Do not delete a
+working capability before its replacement is understandable, usable and
+verified. Research/voxel work and public-console readiness are separate tracks,
+so a useful console need not wait for every trained-driving experiment.
