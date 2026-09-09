@@ -519,16 +519,15 @@ def test_preview_manager_restarts_for_scene_population_changes(
     assert sessions[1].events == ["start"]
 
 
-@pytest.mark.parametrize("end_error", [EOFError, TimeoutError])
 def test_garage_server_streams_multipart_preview_frames_without_polling(
-    tmp_path, end_error,
+    tmp_path,
 ) -> None:
     class StreamSession:
         def wait_for_frame(self, after_sequence: int, *, timeout: float) -> tuple[int, bytes]:
             assert timeout == 5.0
             if after_sequence < 7:
                 return 7, b"jpeg-payload"
-            raise end_error("done")
+            raise EOFError("done")
 
     class Preview:
         def subscribe(self) -> StreamSession:

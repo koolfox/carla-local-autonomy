@@ -179,8 +179,6 @@ class GarageOperatorRequestHandler(base.OperatorRequestHandler):
 
         boundary = "carla-garage-preview"
         session = self.server.application.preview.subscribe()
-        # A dead browser must not leave a streaming writer blocked indefinitely.
-        self.connection.settimeout(5.0)
         self.send_response(HTTPStatus.OK)
         self.send_header(
             "Content-Type",
@@ -199,10 +197,7 @@ class GarageOperatorRequestHandler(base.OperatorRequestHandler):
                 try:
                     sequence, payload = session.wait_for_frame(sequence, timeout=5.0)
                 except TimeoutError:
-                    # Reconfiguration can retire this session. Keeping its
-                    # HTTP connection forever consumes a browser origin slot.
-                    # The viewer already reconnects when a feed ends.
-                    return
+                    continue
                 header = (
                     f"--{boundary}\r\n"
                     "Content-Type: image/jpeg\r\n"
