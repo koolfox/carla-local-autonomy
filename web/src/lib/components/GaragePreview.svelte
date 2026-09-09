@@ -260,6 +260,15 @@
     streamError = '';
   }
 
+  function releaseStream(node: HTMLImageElement) {
+    return {
+      destroy() {
+        // Explicitly abort MJPEG even when browsers retain detached images.
+        node.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+      }
+    };
+  }
+
   function streamFailed(slot: number): void {
     const failed = failGarageStream(streamBuffer, slot, busy);
     streamBuffer = failed.buffer;
@@ -389,7 +398,9 @@
   <div class="garage-preview-stage" class:live={active && streamBuffer.ready}>
     {#each streamBuffer.sources as source, slot}
       {#if source}
+        {#key source}
         <img
+          use:releaseStream
           src={source}
           alt={slot === streamBuffer.visible ? 'Live CARLA Garage preview' : ''}
           aria-hidden={slot !== streamBuffer.visible}
@@ -399,6 +410,7 @@
           onload={() => streamLoaded(slot)}
           onerror={() => streamFailed(slot)}
         />
+        {/key}
       {/if}
     {/each}
 
