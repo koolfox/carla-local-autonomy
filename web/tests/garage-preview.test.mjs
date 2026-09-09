@@ -53,6 +53,35 @@ function harness(t, overrides = {}) {
   return { queue, requests, applied, errors, busy, retrying };
 }
 
+test('vehicle settling coalesces rapid choices into the latest one', async (t) => {
+  const h = harness(t, { vehicleSettleMs: 1000 });
+  h.queue.select(session(), 'worker');
+  t.mock.timers.tick(300);
+  h.requests[0].resolve('first');
+  await settle();
+  h.queue.select(session({ vehicle: { blueprint: 'vehicle.audi.tt' } }), 'worker');
+  t.mock.timers.tick(300);
+  assert.equal(h.requests.length, 1);
+  h.queue.select(session({ vehicle: { blueprint: 'vehicle.lincoln.mkz_2020' } }), 'worker');
+  t.mock.timers.tick(699);
+  assert.equal(h.requests.length, 1);
+  t.mock.timers.tick(1);
+  assert.equal(h.requests.length, 2);
+  assert.equal(h.requests[1].session.vehicle.blueprint, 'vehicle.lincoln.mkz_2020');
+});
+
+test('leaving Garage cancels the settle window and pending replacement', async (t) => {
+  const h = harness(t, { vehicleSettleMs: 1000 });
+  h.queue.select(session(), 'worker');
+  t.mock.timers.tick(300);
+  h.requests[0].resolve('first');
+  await settle();
+  h.queue.select(session({ vehicle: { color: '255,0,0' } }), 'worker');
+  h.queue.select(session(), '');
+  t.mock.timers.tick(2000);
+  assert.equal(h.requests.length, 1);
+});
+
 test('dense preparation progress is factual and human-readable', () => {
   const progress = {
     status: 'preparing',
