@@ -1306,6 +1306,8 @@ class GaragePreviewSession:
                     "walker_count",
                     "prop_preset",
                     "route_mode",
+                    "start_spawn_index",
+                    "destination_spawn_index",
                     "pedestrian_crossing_factor",
                     "speed_difference_percent",
                     "following_distance_metres",

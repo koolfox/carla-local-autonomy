@@ -936,6 +936,8 @@ class DriveSession:
             "walker_count": self.config.walker_count,
             "prop_preset": self.config.prop_preset,
             "route_mode": self.config.route_mode,
+            "start_spawn_index": self.config.start_spawn_index,
+            "destination_spawn_index": self.config.destination_spawn_index,
             "initial_control_mode": self.config.initial_control_mode,
         }
         for field_name, default in (
