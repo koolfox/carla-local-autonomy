@@ -352,16 +352,23 @@ export class OperatorApi {
       const deadline = Date.now() + 120_000;
       while (true) {
         const path = `/api/garage/preview/operations/${encodeURIComponent(accepted.operation_id)}`;
-        const response = await fetch(path, {
-          headers: { Accept: 'application/json', 'X-Operator-Token': this.token },
-          cache: 'no-store', signal: AbortSignal.timeout(5_000)
-        });
-        const payload = await response.json();
-        if (!response.ok) throw apiError(path, response, payload);
-        terminal = payload as GaragePreviewOperation;
-        lifecycle?.(terminal);
-        if (terminal.status === 'running' || terminal.status === 'failed') break;
-        if (Date.now() >= deadline) throw new Error('Garage preparation is still pending. Check Worker status before retrying.');
+        try {
+          const response = await fetch(path, {
+            headers: { Accept: 'application/json', 'X-Operator-Token': this.token },
+            cache: 'no-store', signal: AbortSignal.timeout(5_000)
+          });
+          const payload = await response.json();
+          if (!response.ok) throw apiError(path, response, payload);
+          terminal = payload as GaragePreviewOperation;
+          lifecycle?.(terminal);
+          if (terminal.status === 'running' || terminal.status === 'failed') break;
+        } catch (error) {
+          // A failed status read does not mean the mutation failed. Keep its
+          // identity rather than letting the apply queue POST it again.
+          if (!(error instanceof TypeError) && !(error instanceof DOMException
+            && ['TimeoutError', 'AbortError', 'NetworkError'].includes(error.name))) throw error;
+        }
+        if (Date.now() >= deadline) throw new Error('Garage result could not be confirmed. Check Worker status before retrying.');
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
     }
