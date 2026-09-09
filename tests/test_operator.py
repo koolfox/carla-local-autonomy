@@ -884,6 +884,31 @@ class EvidenceExplorerServerTests(unittest.TestCase):
                         response.headers["Content-Security-Policy"],
                     )
 
+    def test_artifact_byte_ranges_for_player_seeking(self) -> None:
+        url = self.api_url(
+            "/api/artifact", object="models/models-evidence-v001", path="weights/model.pt"
+        )
+        payload = b"registered-model"
+        for header, expected in [
+            ("bytes=0-3", payload[:4]), ("bytes=4-", payload[4:]),
+            ("bytes=-3", payload[-3:]), ("bytes=2-999", payload[2:]),
+        ]:
+            with self.subTest(header=header):
+                request = urllib.request.Request(url, headers={"Range": header})
+                with urllib.request.urlopen(request, timeout=5) as response:
+                    self.assertEqual(response.status, 206)
+                    self.assertEqual(response.read(), expected)
+                    self.assertEqual(int(response.headers["Content-Length"]), len(expected))
+                    self.assertEqual(response.headers["Accept-Ranges"], "bytes")
+                    self.assertIn("script-src 'none'", response.headers["Content-Security-Policy"])
+        for header in ["bytes=999-", "bytes=5-2", "bytes=-0"]:
+            with self.subTest(header=header):
+                with self.assertRaises(urllib.error.HTTPError) as caught:
+                    urllib.request.urlopen(urllib.request.Request(url, headers={"Range": header}))
+                self.assertEqual(caught.exception.code, 416)
+                self.assertEqual(caught.exception.headers["Content-Range"], f"bytes */{len(payload)}")
+                caught.exception.close()
+
     def test_traversal_symlinks_missing_and_unregistered_files_are_rejected(self) -> None:
         self.assert_http_error({400}, "/api/evidence", path="../outside")
         self.assert_http_error({400}, "/api/evidence", path="/runs/runs-evidence-v001")
