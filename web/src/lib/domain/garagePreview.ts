@@ -148,6 +148,7 @@ interface GarageApplyOptions<Result> {
   retrying: (value: boolean) => void;
   canApply?: () => boolean;
   debounceMs?: number;
+  vehicleSettleMs?: number;
   retryDelays?: number[];
 }
 
@@ -162,6 +163,8 @@ export function createGarageApplyQueue<Result>(options: GarageApplyOptions<Resul
   let inFlight = false;
   let ready = false;
   let retries = 0;
+  let appliedVehicle = '';
+  let settleTimer: ReturnType<typeof setTimeout> | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
 
   function cancelTimer(): void {
@@ -183,7 +186,7 @@ export function createGarageApplyQueue<Result>(options: GarageApplyOptions<Resul
   }
 
   async function drain(): Promise<void> {
-    if (disposed || !scope || !ready || inFlight || !desired || options.canApply?.() === false) return;
+    if (disposed || !scope || !ready || inFlight || settleTimer !== null || !desired || options.canApply?.() === false) return;
     ready = false;
     if (desired.signature === appliedSignature) return;
     const request = desired;
@@ -195,6 +198,14 @@ export function createGarageApplyQueue<Result>(options: GarageApplyOptions<Resul
       if (disposed || revision !== generation) return;
       appliedSignature = request.signature;
       retries = 0;
+      const vehicle = JSON.stringify([request.session.vehicle.blueprint, request.session.vehicle.color]);
+      if (vehicle !== appliedVehicle && (options.vehicleSettleMs ?? 0) > 0) {
+        settleTimer = setTimeout(() => {
+          settleTimer = null;
+          void drain();
+        }, options.vehicleSettleMs);
+      }
+      appliedVehicle = vehicle;
       options.applied(response, request.signature);
     } catch (error) {
       if (disposed || revision !== generation) return;
@@ -217,6 +228,9 @@ export function createGarageApplyQueue<Result>(options: GarageApplyOptions<Resul
     select(session: SessionConfig, nextScope: string, valid = true): void {
       if (disposed) return;
       if (scope !== nextScope) {
+        if (settleTimer !== null) clearTimeout(settleTimer);
+        settleTimer = null;
+        appliedVehicle = '';
         scope = nextScope;
         generation += 1;
         desired = null;
@@ -243,6 +257,8 @@ export function createGarageApplyQueue<Result>(options: GarageApplyOptions<Resul
       void drain();
     },
     dispose(): void {
+      if (settleTimer !== null) clearTimeout(settleTimer);
+      settleTimer = null;
       cancelTimer();
       disposed = true;
       generation += 1;

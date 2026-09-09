@@ -96,6 +96,8 @@
   }
 
   const applyQueue = createGarageApplyQueue({
+    // Keep only the latest edit while the new chassis/camera settles.
+    vehicleSettleMs: 1000,
     apply: (session) => runtimeOperatorApi().configureGaragePreview(session, updateLifecycle),
     canApply: () => !destroyed && !isDriveActive($garageRuntime.drive)
       && $garageRuntime.action !== 'start',
