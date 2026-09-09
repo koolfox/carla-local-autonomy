@@ -176,6 +176,7 @@ def test_matching_preview_transfers_lease_and_closes_only_local_transports(tmp_p
         {"walker_count": 11},
         {"prop_preset": "none"},
         {"route_mode": "random_destination"},
+        {"start_spawn_index": 7},
         {"pedestrian_crossing_factor": 0.8},
         {"speed_difference_percent": -10.0},
         {"following_distance_metres": 5.0},
@@ -240,6 +241,36 @@ def test_drive_camera_settings_and_initial_autopilot_do_not_require_new_populati
     assert transferred is not None
     assert transferred.ego_actor_id == 20
     assert worker.prepared == worker.stopped == []
+
+
+@pytest.mark.parametrize("session_type", [DriveSession, GarageDriveSession])
+def test_fresh_drive_preserves_selected_spawn_indices(
+    tmp_path: Path, no_drive_threads: None, session_type: type[DriveSession]
+) -> None:
+    worker = HandoffWorker()
+    config = drive_config(
+        tmp_path, start_spawn_index=7, destination_spawn_index=12,
+        route_mode="selected_destination",
+    )
+    session = session_type(
+        config.base if session_type is DriveSession else config,
+        workspace=tmp_path,
+        world_worker=worker,
+    )
+    session._begin_worker_scene()
+    assert worker.prepared[0]["start_spawn_index"] == 7
+    assert worker.prepared[0]["destination_spawn_index"] == 12
+
+
+def test_matching_selected_spawn_reuses_garage_scene(tmp_path: Path) -> None:
+    worker = HandoffWorker()
+    manager, _preview, _stream = ready_preview(worker, start_spawn_index=7)
+    try:
+        transferred = manager.take_for_drive(drive_config(tmp_path, start_spawn_index=7))
+        assert transferred is not None
+        assert worker.prepared == worker.stopped == []
+    finally:
+        manager.shutdown()
 
 
 @pytest.mark.parametrize("session_type", [DriveSession, GarageDriveSession])
