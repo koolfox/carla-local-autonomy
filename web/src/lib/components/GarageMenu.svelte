@@ -9,16 +9,18 @@
   import SceneSettings from '$lib/components/SceneSettings.svelte';
   import SystemSettings from '$lib/components/SystemSettings.svelte';
   import VisionSettings from '$lib/components/VisionSettings.svelte';
+  import SavedRuns from '$lib/components/SavedRuns.svelte';
 
   export let locked = false;
 
-  type Panel = 'experiment' | 'scene' | 'drive' | 'vision' | 'research' | 'system';
+  type Panel = 'experiment' | 'scene' | 'drive' | 'vision' | 'research' | 'recordings' | 'system';
   const items: Array<{ id: Panel; label: string; title: string }> = [
     { id: 'experiment', label: 'Experiment', title: 'Experiment purpose and preset' },
     { id: 'scene', label: 'Scene', title: 'Map, weather, traffic and pedestrians' },
     { id: 'drive', label: 'Vehicle', title: 'Vehicle and control owner' },
     { id: 'vision', label: 'Vision', title: 'Camera, perception and recording' },
     { id: 'research', label: 'Research', title: 'Situation recipe and scenario plan' },
+    { id: 'recordings', label: 'Recordings', title: 'Saved runs and recordings' },
     { id: 'system', label: 'System', title: 'Connection and runtime' }
   ];
   let open = false;
@@ -88,6 +90,8 @@
       <VisionSettings />
     {:else if active === 'research'}
       <SceneBuilder useInGarage={useInGarage} />
+    {:else if active === 'recordings'}
+      {#if open}<SavedRuns />{/if}
     {:else}
       <SystemSettings />
     {/if}
