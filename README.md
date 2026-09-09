@@ -33,6 +33,20 @@ explicit `--enable-experimental` server flag. CARLA Traffic Manager autopilot
 is a simulator feature and is not presented as a model developed by this
 project.
 
+## Watch saved recordings
+
+Open **Garage → Menu → Recordings** to search saved runs, switch between original
+camera and recorded overlays, and play them with Video.js. The player includes
+seeking, five-second skip buttons, playback speed, and fullscreen. Expand **Run
+files** to download the original artifacts; browsing does not verify their integrity.
+
+Some older MP4 files use a codec browsers cannot decode. **Prepare playable copy**
+creates a temporary H.264 version using FFmpeg on the WebUI computer (on macOS,
+`brew install ffmpeg` if needed). Conversion runs in the background, one at a time;
+long recordings can take longer. Copies are reused until the WebUI stops and never
+replace the original recording or change its evidence hashes. No CARLA or Windows
+World Worker update is required for playback.
+
 ## Architecture
 
 ```text

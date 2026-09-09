@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import RecordingPlayer from './RecordingPlayer.svelte';
+  import { runtimeOperatorApi } from '$lib/stores/runtime';
 
   interface Run { id: string; path: string; root_kind: string; status: string; created_at: string | null; object_type?: string; roles?: string[] }
   interface Artifact { path: string; role: string; available: boolean; downloadable: boolean; preview_kind: string; mime_type: string }
@@ -9,6 +10,9 @@
   let artifacts: Artifact[] = [];
   let video = '';
   let videoType = '';
+  let originalVideo = '';
+  let preparingCopy = false;
+  let copyTimer: ReturnType<typeof setTimeout> | undefined;
   let loading = false;
   let inspecting = false;
   let error = '';
@@ -32,7 +36,32 @@
     const parsed = new Date(value);
     return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
   }
-  function choose(file: Artifact) { playbackError = false; videoType = file.mime_type; video = url(file.path); }
+  function choose(file: Artifact) {
+    clearTimeout(copyTimer); preparingCopy = false;
+    error = '';
+    playbackError = false; videoType = file.mime_type; video = url(file.path); originalVideo = video;
+  }
+  async function browserCopy() {
+    const source = originalVideo;
+    const run = selected;
+    const file = recordings.find(item => url(item.path) === source);
+    if (!file) return;
+    error = '';
+    preparingCopy = true;
+    try {
+      const result = await runtimeOperatorApi().post<{status: string; id?: string}>(
+        '/api/recording-preview', { object: run, path: file.path }, false, 10000
+      );
+      if (controller.signal.aborted || originalVideo !== source || selected !== run) return;
+      if (result.status === 'ready') {
+        videoType = 'video/mp4'; video = `/api/recording-preview?id=${encodeURIComponent(result.id!)}`;
+        playbackError = false; preparingCopy = false;
+      } else { copyTimer = setTimeout(browserCopy, 2000); }
+    } catch (e) {
+      if (controller.signal.aborted || originalVideo !== source || selected !== run) return;
+      preparingCopy = false; error = e instanceof Error ? e.message : String(e);
+    }
+  }
   const controller = new AbortController();
 
   async function read<T>(url: string): Promise<T> {
@@ -60,6 +89,7 @@
     selected = run.path;
     artifacts = [];
     video = '';
+    originalVideo = ''; preparingCopy = false; clearTimeout(copyTimer);
     playbackError = false;
     error = '';
     inspecting = true;
@@ -77,7 +107,7 @@
   function url(path: string) {
     return `/api/artifact?object=${encodeURIComponent(selected)}&path=${encodeURIComponent(path)}`;
   }
-  onMount(() => { void refresh(); return () => controller.abort(); });
+  onMount(() => { void refresh(); return () => { controller.abort(); clearTimeout(copyTimer); }; });
 </script>
 
 <section aria-label="Saved runs and recordings">
@@ -107,16 +137,20 @@
           <p role="status">{inspecting ? 'Loading recording…' : selected ? 'No playable recording in this run' : 'Select a saved run'}</p>
         {/if}
       </div>
-      {#if playbackError}<p role="alert">This recording could not be played. Download it to open in a compatible player.</p>{/if}
+      {#if playbackError}<p role="alert">Your browser cannot play this recording. Prepare a playable copy or download the original.</p>{/if}
+      {#if playbackError || preparingCopy}
+        <button type="button" disabled={preparingCopy} onclick={browserCopy}>{preparingCopy ? 'Preparing browser copy…' : 'Prepare playable copy'}</button>
+        <p class="note">Creates a temporary H.264 viewing copy. Your original and its evidence hashes stay unchanged.</p>
+      {/if}
       {#if current}
         <h4>{title(current)}</h4><small>{date(current.created_at)} · {current.status === 'success' ? 'Completed' : current.status}</small>
       {/if}
       {#if recordings.length}
         <div class="recording-options" aria-label="Recording tracks">
           {#each recordings as file}
-            <button type="button" class:chosen={video === url(file.path)} aria-pressed={video === url(file.path)} onclick={() => choose(file)}>{label(file)}</button>
+            <button type="button" class:chosen={originalVideo === url(file.path)} aria-pressed={originalVideo === url(file.path)} onclick={() => choose(file)}>{label(file)}</button>
           {/each}
-          <a href={video} download>Download video</a>
+          <a href={originalVideo} download>Download original</a>
         </div>
       {/if}
       {#if selected && !inspecting}
@@ -137,13 +171,24 @@
 </section>
 
 <style>
+  section { padding: .5rem 0; }
+  button, input, a { font: inherit; }
+  button { cursor: pointer; }
+  button:disabled { cursor: wait; opacity: .65; }
+  header button, .detail > button, .recording-options button, .recording-options a {
+    min-height: 40px; box-sizing: border-box; padding: .55rem .8rem;
+    border: 1px solid #cececa; border-radius: 4px; background: #fff;
+    color: #282d30; text-decoration: none;
+  }
+  button:hover:not(:disabled), .recording-options a:hover { background: #f0f0ec; }
+  button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid #343a3d; outline-offset: 2px; }
   header, .artifact { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
   header { justify-content: space-between; }
   h3, h4 { margin: 0; }
   h4 { margin-top: .8rem; overflow-wrap: anywhere; }
   .library { display: grid; grid-template-columns: minmax(160px, 1fr) minmax(0, 2fr); gap: 1rem; margin-top: 1rem; }
   aside, .detail { min-width: 0; }
-  input[type='search'] { width: 100%; box-sizing: border-box; }
+  input[type='search'] { width: 100%; box-sizing: border-box; min-height: 40px; padding: .6rem; border: 1px solid #cececa; border-radius: 4px; background: #fff; }
   .filter { display: flex; align-items: center; gap: .5rem; font-size: .85rem; margin: .75rem 0; }
   .badge { font-size: .75rem; }
   ul { list-style: none; padding: 0; margin: .5rem 0; max-height: 55vh; overflow-y: auto; }

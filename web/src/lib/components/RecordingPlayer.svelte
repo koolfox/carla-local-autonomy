@@ -25,6 +25,7 @@
         controlBar: { skipButtons: { forward: 5, backward: 5 } }
       });
       player.on('error', onerror);
+      if (player.error()) onerror();
     }).catch(() => { if (!disposed) onerror(); });
     return () => { disposed = true; player?.dispose(); };
   });

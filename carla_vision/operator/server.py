@@ -29,6 +29,7 @@ from .configuration import (
 from .contracts import OperatorJobRequest
 from .drive import DriveSessionManager
 from .jobs import JobManager
+from .recording_preview import RecordingPreviews
 from .situations import PROP_PRESETS, WEATHER_PRESETS, SituationSpec, save_situation_suite
 from .world_worker_client import WorldWorkerClient
 
@@ -137,6 +138,7 @@ class OperatorApplication:
         self.world_worker = world_worker
         self.token = secrets.token_urlsafe(24)
         self._discovery_lock = threading.Lock()
+        self.recording_previews = RecordingPreviews()
         self.jobs = JobManager(
             workspace=self.workspace,
             sessions_root=sessions_root,
@@ -165,6 +167,7 @@ class OperatorApplication:
 
     def close(self) -> None:
         self.drive.shutdown()
+        self.recording_previews.close()
 
     def discover_carla(self, raw: Any) -> dict[str, Any]:
         if not isinstance(raw, Mapping):
@@ -654,6 +657,10 @@ class OperatorRequestHandler(BaseHTTPRequestHandler):
                     self.server.application.inspect_research_object(raw),
                 )
                 return
+            if path == "/api/recording-preview":
+                key = parse_qs(parsed.query).get("id", [""])[0]
+                self._file(self.server.application.recording_previews.file(key), untrusted_artifact=True)
+                return
             if path.startswith("/api/jobs/") and path.endswith("/log"):
                 job_id = path.removeprefix("/api/jobs/").removesuffix("/log").rstrip("/")
                 stream = parse_qs(parsed.query).get("stream", ["stdout"])[0]
@@ -756,6 +763,13 @@ class OperatorRequestHandler(BaseHTTPRequestHandler):
                     HTTPStatus.CREATED,
                     self.server.application.save_situation(self._body()),
                 )
+                return
+            if path == "/api/recording-preview":
+                body = self._body()
+                source, _ = self.server.application.artifact_path(body["object"], body["path"])
+                if source.suffix.lower() not in _VIDEO_SUFFIXES:
+                    raise ValueError("Select a registered video recording")
+                self._json(HTTPStatus.OK, self.server.application.recording_previews.request(source))
                 return
             if path == "/api/discovery/carla":
                 self._json(
