@@ -29,6 +29,7 @@ from .configuration import (
 from .contracts import OperatorJobRequest
 from .drive import DriveSessionManager
 from .jobs import JobManager
+from .recording_preview import RecordingPreviews
 from .situations import PROP_PRESETS, WEATHER_PRESETS, SituationSpec, save_situation_suite
 from .world_worker_client import WorldWorkerClient
 
@@ -137,6 +138,7 @@ class OperatorApplication:
         self.world_worker = world_worker
         self.token = secrets.token_urlsafe(24)
         self._discovery_lock = threading.Lock()
+        self.recording_previews = RecordingPreviews()
         self.jobs = JobManager(
             workspace=self.workspace,
             sessions_root=sessions_root,
@@ -165,6 +167,7 @@ class OperatorApplication:
 
     def close(self) -> None:
         self.drive.shutdown()
+        self.recording_previews.close()
 
     def discover_carla(self, raw: Any) -> dict[str, Any]:
         if not isinstance(raw, Mapping):
@@ -521,6 +524,30 @@ class OperatorRequestHandler(BaseHTTPRequestHandler):
     ) -> None:
         size = path.stat().st_size
         mime = _safe_mime_type(path)
+        start, end = 0, size - 1
+        status = HTTPStatus.OK
+        extra_headers = {"Accept-Ranges": "bytes"}
+        requested = self.headers.get("Range")
+        # If-Range cannot be validated without validators: send the full file.
+        if requested and not self.headers.get("If-Range"):
+            match = re.fullmatch(r"bytes=(\d*)-(\d*)", requested.strip())
+            # Unsupported/multiple ranges are ignored, as allowed by HTTP.
+            if match and any(match.groups()):
+                first, last = match.groups()
+                if first:
+                    start = int(first)
+                    end = min(int(last), size - 1) if last else size - 1
+                else:
+                    start = max(0, size - int(last))
+                if start > end or start >= size:
+                    self._headers(
+                        HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE,
+                        content_type=mime, length=0, cache=cache,
+                        extra_headers={"Content-Range": f"bytes */{size}"},
+                    )
+                    return
+                status = HTTPStatus.PARTIAL_CONTENT
+                extra_headers["Content-Range"] = f"bytes {start}-{end}/{size}"
         safe_name = "".join(
             character
             if character.isascii() and (character.isalnum() or character in "._-")
@@ -528,16 +555,20 @@ class OperatorRequestHandler(BaseHTTPRequestHandler):
             for character in path.name
         )
         self._headers(
-            HTTPStatus.OK,
+            status,
             content_type=mime,
-            length=size,
+            length=end - start + 1,
             cache=cache,
             content_disposition=(f'attachment; filename="{safe_name}"' if attachment else None),
             content_security_policy=(_ARTIFACT_CSP if untrusted_artifact else _APPLICATION_CSP),
+            extra_headers=extra_headers,
         )
         with path.open("rb") as stream:
-            while chunk := stream.read(1024 * 1024):
+            stream.seek(start)
+            remaining = end - start + 1
+            while remaining and (chunk := stream.read(min(1024 * 1024, remaining))):
                 self.wfile.write(chunk)
+                remaining -= len(chunk)
 
     def _body(self) -> Any:
         raw_length = self.headers.get("Content-Length")
@@ -625,6 +656,10 @@ class OperatorRequestHandler(BaseHTTPRequestHandler):
                     HTTPStatus.OK,
                     self.server.application.inspect_research_object(raw),
                 )
+                return
+            if path == "/api/recording-preview":
+                key = parse_qs(parsed.query).get("id", [""])[0]
+                self._file(self.server.application.recording_previews.file(key), untrusted_artifact=True)
                 return
             if path.startswith("/api/jobs/") and path.endswith("/log"):
                 job_id = path.removeprefix("/api/jobs/").removesuffix("/log").rstrip("/")
@@ -728,6 +763,13 @@ class OperatorRequestHandler(BaseHTTPRequestHandler):
                     HTTPStatus.CREATED,
                     self.server.application.save_situation(self._body()),
                 )
+                return
+            if path == "/api/recording-preview":
+                body = self._body()
+                source, _ = self.server.application.artifact_path(body["object"], body["path"])
+                if source.suffix.lower() not in _VIDEO_SUFFIXES:
+                    raise ValueError("Select a registered video recording")
+                self._json(HTTPStatus.OK, self.server.application.recording_previews.request(source))
                 return
             if path == "/api/discovery/carla":
                 self._json(
