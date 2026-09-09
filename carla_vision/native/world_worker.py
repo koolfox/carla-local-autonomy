@@ -2449,6 +2449,27 @@ class WorldWorker:
                         self._discard_actor_group(world, owned, controller, walker)
                 partial.walker_actors = verified_walkers
                 partial.walker_controllers = verified_controllers
+                # A pair can disappear after activation (for example during
+                # the next batch). Refill only confirmed missing pairs, with
+                # a bounded budget; never replay uncertain spawn responses.
+                for _ in range(2):
+                    missing = config.walker_count - len(partial.walker_actors)
+                    if missing <= 0:
+                        break
+                    replacements, controllers = self._spawn_walkers(
+                        scene_id, world, missing, role_rng, owned
+                    )
+                    registered = self._registered_actor_ids(
+                        world, [*replacements, *controllers]
+                    )
+                    for walker, controller in zip(replacements, controllers, strict=True):
+                        if int(walker.id) in registered and int(controller.id) in registered:
+                            partial.walker_actors.append(walker)
+                            partial.walker_controllers.append(controller)
+                        else:
+                            self._discard_actor_group(world, owned, controller, walker)
+                    if not replacements:
+                        break
                 actual_traffic = len(partial.vehicle_actors)
                 actual_walkers = len(partial.walker_actors)
                 if actual_traffic != config.traffic_count or actual_walkers != config.walker_count:
@@ -4066,6 +4087,10 @@ class WorldWorker:
                 response_errors[owned.actor_id] = "batch response was missing"
                 continue
             message = str(getattr(responses[index], "error", "") or "").strip()
+            if message.lower() == "unable to destroy actor: not found":
+                # CARLA's command response is authoritative; its asynchronous
+                # client snapshot may still contain this already absent actor.
+                continue
             if message:
                 response_errors[owned.actor_id] = message
 
