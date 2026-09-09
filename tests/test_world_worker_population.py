@@ -499,6 +499,27 @@ def test_persistent_known_spawn_errors_fail_exact_population_without_silent_clam
     assert_exact_population(population, 3, 3)
 
 
+def test_late_walker_loss_is_replaced_without_rebuilding_scene(
+    population: PopulationHarness, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original = population.worker._registered_actor_ids
+    removed = []
+
+    def lose_one(world: Any, actors: Any) -> set[int]:
+        if not removed:
+            walker = next((a for a in actors if a.type_id.startswith("walker.")), None)
+            if walker is not None:
+                removed.append(walker.id)
+                walker.destroy()
+        return original(world, actors)
+
+    monkeypatch.setattr(population.worker, "_registered_actor_ids", lose_one)
+    prepared = population.worker.prepare({"traffic_count": 2, "walker_count": 25})
+    assert removed
+    assert prepared["scene"]["walker_count"] == 25
+    assert_exact_population(population, 2, 25)
+
+
 def _candidate_signature(client: BatchClient) -> list[tuple[Any, ...]]:
     return [
         (

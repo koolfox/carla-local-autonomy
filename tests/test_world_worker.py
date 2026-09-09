@@ -1010,6 +1010,21 @@ class WorldWorkerTest(unittest.TestCase):
         )
         survivor.actor.destroy()
 
+    def test_batch_destroy_accepts_authoritative_absence_with_stale_snapshot(self) -> None:
+        from types import SimpleNamespace
+
+        prepared = self.worker.prepare({"traffic_count": 1})
+        scene_id, lease_token = self.lease(prepared)
+        self.carla.command = SimpleNamespace(DestroyActor=lambda actor_id: actor_id)
+        self.client.apply_batch_sync = lambda commands, tick: [
+            SimpleNamespace(error="unable to destroy actor: not found") for _ in commands
+        ]
+        stopped = self.worker.stop(scene_id, {"lease_token": lease_token})
+        self.assertEqual(stopped["scene"]["cleanup_errors"], [])
+        # The fake client snapshot deliberately lags the authoritative response.
+        for actor in list(self.world.actors.values()):
+            actor.destroy()
+
     def test_batch_destroy_refuses_actor_whose_owned_identity_changed(self) -> None:
         prepared = self.worker.prepare({"traffic_count": 1})
         scene_id, lease_token = self.lease(prepared)
