@@ -441,6 +441,12 @@ class OperatorHTTPServer(ThreadingHTTPServer):
 
 
 class OperatorRequestHandler(BaseHTTPRequestHandler):
+    def handle(self) -> None:
+        try:
+            super().handle()
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True
+
     server: OperatorHTTPServer
     protocol_version = "HTTP/1.1"
 
@@ -553,6 +559,9 @@ class OperatorRequestHandler(BaseHTTPRequestHandler):
         )
 
     def _error(self, error: BaseException) -> None:
+        if isinstance(error, (BrokenPipeError, ConnectionResetError)):
+            self.close_connection = True
+            return
         if isinstance(error, (KeyError, FileNotFoundError)):
             status = HTTPStatus.NOT_FOUND
         elif isinstance(error, (FileExistsError, PermissionError, RuntimeError)):

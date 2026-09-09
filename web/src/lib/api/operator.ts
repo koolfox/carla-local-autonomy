@@ -292,7 +292,7 @@ export class OperatorApi {
     return readJson<DriveCatalogPayload>('/api/drive/catalog');
   }
 
-  async post<T>(path: string, body: Record<string, unknown>, keepalive = false): Promise<T> {
+  async post<T>(path: string, body: Record<string, unknown>, keepalive = false, timeoutMs?: number): Promise<T> {
     const response = await fetch(path, {
       method: 'POST',
       headers: {
@@ -301,7 +301,8 @@ export class OperatorApi {
         'X-Operator-Token': this.token
       },
       body: JSON.stringify(body),
-      keepalive
+      keepalive,
+      signal: timeoutMs === undefined ? undefined : AbortSignal.timeout(timeoutMs)
     });
     const payload: unknown = await response.json().catch(() => null);
     if (!response.ok) throw apiError(path, response, payload);
@@ -339,10 +340,31 @@ export class OperatorApi {
     const accepted = await this.post<GaragePreviewOperation>(startPath, {
       schema_version: '1.0',
       session
-    });
+    }, false, 10_000);
     lifecycle?.(accepted);
 
-    const terminal = await this.waitForGaragePreviewOperation(accepted.operation_id, lifecycle);
+    let terminal: GaragePreviewOperation;
+    try {
+      terminal = await this.waitForGaragePreviewOperation(accepted.operation_id, lifecycle);
+    } catch {
+      // Recover the SAME operation after a dropped event connection. Never
+      // submit another world mutation just because its response was lost.
+      const deadline = Date.now() + 120_000;
+      while (true) {
+        const path = `/api/garage/preview/operations/${encodeURIComponent(accepted.operation_id)}`;
+        const response = await fetch(path, {
+          headers: { Accept: 'application/json', 'X-Operator-Token': this.token },
+          cache: 'no-store', signal: AbortSignal.timeout(5_000)
+        });
+        const payload = await response.json();
+        if (!response.ok) throw apiError(path, response, payload);
+        terminal = payload as GaragePreviewOperation;
+        lifecycle?.(terminal);
+        if (terminal.status === 'running' || terminal.status === 'failed') break;
+        if (Date.now() >= deadline) throw new Error('Garage preparation is still pending. Check Worker status before retrying.');
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+    }
     if (terminal.status !== 'running' || !terminal.result) {
       const detail = terminal.error?.message || `Garage preview ended in ${terminal.status}`;
       throw new Error(detail);
@@ -370,7 +392,8 @@ export class OperatorApi {
         Accept: 'text/event-stream',
         'X-Operator-Token': this.token
       },
-      cache: 'no-store'
+      cache: 'no-store',
+      signal: AbortSignal.timeout(30_000)
     });
     if (!response.ok) {
       const payload: unknown = await response.json().catch(() => null);
@@ -403,6 +426,7 @@ export class OperatorApi {
         }
       }
     } finally {
+      await reader.cancel().catch(() => undefined);
       reader.releaseLock();
     }
     throw new Error('Garage preview lifecycle stream ended before a terminal state');
