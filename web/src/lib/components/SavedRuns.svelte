@@ -3,11 +3,12 @@
   import RecordingPlayer from './RecordingPlayer.svelte';
 
   interface Run { id: string; path: string; root_kind: string; status: string; created_at: string | null; object_type?: string; roles?: string[] }
-  interface Artifact { path: string; role: string; available: boolean; downloadable: boolean; preview_kind: string }
+  interface Artifact { path: string; role: string; available: boolean; downloadable: boolean; preview_kind: string; mime_type: string }
   let runs: Run[] = [];
   let selected = '';
   let artifacts: Artifact[] = [];
   let video = '';
+  let videoType = '';
   let loading = false;
   let inspecting = false;
   let error = '';
@@ -31,7 +32,7 @@
     const parsed = new Date(value);
     return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
   }
-  function choose(file: Artifact) { playbackError = false; video = url(file.path); }
+  function choose(file: Artifact) { playbackError = false; videoType = file.mime_type; video = url(file.path); }
   const controller = new AbortController();
 
   async function read<T>(url: string): Promise<T> {
@@ -100,7 +101,7 @@
       <div class="player">
         {#if video}
           {#key video}
-            <RecordingPlayer src={video} onerror={() => playbackError = true} />
+            <RecordingPlayer src={video} type={videoType} onerror={() => playbackError = true} />
           {/key}
         {:else}
           <p role="status">{inspecting ? 'Loading recording…' : selected ? 'No playable recording in this run' : 'Select a saved run'}</p>

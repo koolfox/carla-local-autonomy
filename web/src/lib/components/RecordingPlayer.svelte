@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import 'video.js/dist/video-js.css';
   export let src: string;
+  export let type: string;
   export let onerror: () => void;
   let host: HTMLDivElement;
   onMount(() => {
@@ -20,7 +21,7 @@
         controls: true, autoplay: false, preload: 'metadata',
         responsive: true, experimentalSvgIcons: true,
         playbackRates: [0.25, 0.5, 1, 1.5, 2],
-        sources: [{ src }],
+        sources: [{ src, type }],
         controlBar: { skipButtons: { forward: 5, backward: 5 } }
       });
       player.on('error', onerror);
