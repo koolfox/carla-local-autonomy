@@ -202,11 +202,12 @@ computer plus an existing CARLA host before advertising "one click."
   failures and support interventions. Ease of installation is a differentiator
   only when newcomers actually succeed.
 
-Multi-camera RGB datasets are a valid future direction, still vision-only,
-but are not part of this change. Require a concrete task that benefits from
-them and budget for frame synchronization, per-camera calibration, storage
-and evaluation. Finish the single-camera reference workflow first. No new
-sensor support, installer, training runtime or autonomy feature is introduced here.
+The follow-up [multi-camera RGB capture slice](multicamera_episodes.md) extends
+teacher collection, verification and recorded-image replay. Live acceptance and
+multi-camera model training remain pending. Budget for synchronization,
+calibration, storage and evaluation before expanding that slice. It preserves
+the single-camera baseline; it does not introduce an installer or validate a
+new autonomy capability.
 
 ## Cleanup policy
 

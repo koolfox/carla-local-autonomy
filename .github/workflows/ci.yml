@@ -63,6 +63,8 @@ jobs:
           tests/test_garage_visual_contract.py
           tests/test_garage_world_route_ui.py
           tests/test_model_registry.py
+          tests/test_multicamera_dataset.py
+          tests/test_multicamera_teacher.py
           tests/test_observable_world_worker.py
           tests/test_prepare_cancellation.py
           tests/test_operator.py

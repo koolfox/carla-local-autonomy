@@ -13,6 +13,7 @@ from typing import Any
 
 import cv2
 
+from ..dataset.camera_views import verify_camera_views, view_path
 from .teacher_routes import NAVIGATION_INTENT_SCHEMA_VERSION, validate_behavior_sample_context
 
 TEACHER_EPISODE_VERIFICATION_SCHEMA_VERSION = "1.0"
@@ -93,9 +94,10 @@ def verify_teacher_dataset(dataset_dir: str | Path) -> dict[str, Any]:
         errors.append(str(error))
 
     for relative, expected in sorted(checksums.items()):
-        path = root / relative
-        if not path.is_file():
-            errors.append(f"checksum artifact is missing: {relative}")
+        try:
+            path = view_path(root, relative)
+        except (OSError, ValueError) as error:
+            errors.append(f"checksum artifact {relative}: {error}")
             continue
         actual = _sha256(path)
         if actual != expected:
@@ -178,6 +180,11 @@ def verify_teacher_dataset(dataset_dir: str | Path) -> dict[str, Any]:
             continue
         if metadata.get("carla_frame") != frame:
             errors.append(f"{prefix} metadata frame does not match dataset sample")
+        errors.extend(
+            f"{prefix}: {message}" for message in verify_camera_views(
+                root, sample, metadata, dataset.get("rgb_camera_ids"), checksums,
+            )
+        )
         metadata_timestamp = metadata.get("simulation_timestamp_seconds")
         if not isinstance(metadata_timestamp, (int, float)) or not math.isclose(
             float(metadata_timestamp), float(timestamp), rel_tol=0.0, abs_tol=1e-6
@@ -273,6 +280,7 @@ def verify_teacher_dataset(dataset_dir: str | Path) -> dict[str, Any]:
         "episode_count": len(frames_by_episode),
         "route_leg_count": len(route_ids),
         "navigation_intent_count": navigation_intent_count,
+        "rgb_camera_ids": dataset.get("rgb_camera_ids", ["front"]),
         "checksum_entry_count": len(checksums),
         "errors": errors,
         "warnings": warnings,

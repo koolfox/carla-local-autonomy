@@ -17,6 +17,7 @@ with one user action, its owner, and its test. This page is the navigation hub;
 | Understand executable driving-policy packages | [Runtime model packages](runtime_model_packages.md) — not the same as detector weights |
 | Understand voxel research | [RGB voxel viewer (Persian)](voxel_live_view_fa.md), [voxel research flow (Persian)](voxel_flow_fa.md) |
 | Build datasets / evaluate models | [Experiment protocol](experiment_protocol.md), [reproducibility](reproducibility.md), [paired replay](paired_replay.md) |
+| Record and replay multi-camera teacher episodes | [Multi-camera capture](multicamera_episodes.md) — research collector, not live Garage controls |
 | Prepare a public release | [Release assessment and gates](release_readiness.md) |
 
 ## The mental model
@@ -60,6 +61,7 @@ only when native code/protocol or native dependencies change, not for every UI e
 | RGB voxel display / geometry | [live_view.py](../carla_vision/voxel/live_view.py), [geometry.py](../carla_vision/voxel/geometry.py), [rendering.py](../carla_vision/voxel/rendering.py) | `tests/test_voxel_live_view.py`, `tests/test_voxel_geometry.py` | Not for RGB-only rendering |
 | Saved runs and player | [SavedRuns](../web/src/lib/components/SavedRuns.svelte), [artifacts.py](../carla_vision/operator/artifacts.py), [recording_preview.py](../carla_vision/operator/recording_preview.py), [catalog.py](../carla_vision/operator/catalog.py) | `tests/test_operator_artifacts.py`, `tests/test_operator.py`, `tests/test_recording_preview.py`; actual playback/seek check | No |
 | Dataset / training / evaluation | [dataset](../carla_vision/dataset/), [training](../carla_vision/training/), [evaluation](../carla_vision/evaluation/) | `tests/test_dataset_collector.py`, `tests/test_training.py`, `tests/test_evaluation.py` | Native collection only |
+| Multi-camera teacher data / replay | [rig contract](../carla_vision/dataset/camera_rig.py), [native rig](../carla_vision/native/camera_rig.py), [episode replay](../carla_vision/dataset/episode_replay.py) | `tests/test_multicamera_dataset.py`, `tests/test_multicamera_teacher.py` | Collector host only; bridge unchanged |
 | Research-job buttons / execution | [commands.py](../carla_vision/operator/commands.py), [jobs.py](../carla_vision/operator/jobs.py), [installed commands](../pyproject.toml) | `tests/test_operator.py`; producer's own test | Depends on job |
 
 The table finds owners; it does not certify a feature's real-CARLA performance.

@@ -1,5 +1,9 @@
 # ثبت Episodeهای Teacher با BehaviorAgent
 
+برای ثبت هم‌زمان چند دوربین RGB و بازپخش آن‌ها، راهنمای
+[Multi-camera episodes](multicamera_episodes.md) را ببین. حالت پیش‌فرض این صفحه
+همچنان تک‌دوربینه است؛ ورودی مدل‌های فعلی خودکار چنددوربینه نمی‌شود.
+
 این مسیر برای ساخت Dataset آموزش imitation learning طراحی شده است. خودرو با `BehaviorAgent` رانده می‌شود، اما ورودی قابل استفاده مدل نهایی همچنان فقط دوربین RGB و سرعت Ego است. اطلاعات نقشه، Actorها، دوربین instance و وضعیت شبیه‌ساز فقط برای Teacher، برچسب و ارزیابی ذخیره می‌شوند.
 
 ## تفاوت با `carla-native-collect`

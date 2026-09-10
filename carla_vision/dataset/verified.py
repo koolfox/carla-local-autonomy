@@ -12,9 +12,12 @@ from pathlib import Path
 from typing import Any
 
 from ..artifacts import fingerprint_file
+from .camera_views import verify_camera_views
 from .writer import DATASET_SCHEMA_VERSION
 
-_REPEATABLE_TRACKER_ROLES = frozenset({"native_episode_provenance"})
+_REPEATABLE_TRACKER_ROLES = frozenset({
+    "native_episode_provenance", "behavior_teacher_episode_provenance", "rgb_camera_view",
+})
 
 
 class DatasetIntegrityError(RuntimeError):
@@ -474,6 +477,15 @@ def load_verified_dataset(path: str | Path) -> VerifiedDataset:
                 sample_id=sample_id,
                 carla_frame=int(sample.get("carla_frame", -1)),
             )
+        if dataset.get("rgb_camera_ids") is not None:
+            metadata = _load_json(_path_inside(root, metadata_relative), "camera bundle metadata")
+            view_errors = verify_camera_views(
+                root, sample, metadata, dataset["rgb_camera_ids"], checksum_entries,
+            )
+            if view_errors:
+                raise DatasetIntegrityError(f"sample {sample_id}: " + "; ".join(view_errors))
+            for view in metadata["rgb_views"].values():
+                rgb_hash_splits[str(view["image"]["sha256"])].add(split)
         if not rgb_path.startswith(f"images/{split}/"):
             raise DatasetIntegrityError(f"sample {sample_id} RGB path does not match its partition")
         rgb_hash_splits[rgb_digest].add(split)

@@ -13,16 +13,18 @@ import json
 import math
 import time
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from ..dataset.camera_rig import resolve_camera_rig
 from ..dataset.sync import SynchronizedFramePair
 from ..dataset.writer import DATASET_PARTITIONS, DatasetWriter
 from ..scenarios.planner import EpisodePlan
 from ..scenarios.splits import canonical_map_family
 from ..scenarios.verified_plan import VerifiedScenarioPlan, load_verified_scenario_plan
-from .synchronization import image_to_bridge_frame
+from .camera_rig import TeacherCameraRig, read_frame_bundle
+from .synchronization import SensorFrameError, image_to_bridge_frame
 from .teacher_routes import (
     BEHAVIOR_TEACHER_CONTROL_SCHEMA_VERSION,
     NAVIGATION_INTENT_SCHEMA_VERSION,
@@ -181,12 +183,16 @@ class BehaviorTeacherSession(NativeCarlaSession):
         behavior: str,
         target_speed_kmh: float,
         minimum_route_distance_m: float,
+        camera_rig: str = "front",
+        camera_rig_config: Mapping[str, Any] | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(carla, **kwargs)
         self.behavior = behavior
         self.target_speed_kmh = target_speed_kmh
         self.minimum_route_distance_m = minimum_route_distance_m
+        self.camera_rig = camera_rig
+        self.camera_rig_config = camera_rig_config
 
     def _spawn_ego(
         self,
@@ -227,6 +233,7 @@ class BehaviorTeacherSession(NativeCarlaSession):
             actors.ego_id: "ego_behavior_agent_teacher_vehicle",
             actors.rgb_sensor_id: "front_rgb_model_input",
             actors.teacher_sensor_id: "front_instance_teacher",
+            **{actor_id: "additional_rgb_model_input" for actor_id in actors.additional_sensor_ids},
             **{actor_id: "background_vehicle" for actor_id in actors.traffic_vehicle_ids},
             **{actor_id: "walker" for actor_id in actors.walker_ids},
             **{actor_id: "walker_controller" for actor_id in actors.walker_controller_ids},
@@ -267,12 +274,18 @@ class BehaviorTeacherSession(NativeCarlaSession):
             spawn_failures.extend(
                 self._spawn_walkers(episode, actors, blueprint_library)
             )
-            rgb_sensor, teacher_sensor, rgb_queue, teacher_queue = self._spawn_cameras(
-                episode,
-                actors,
-                blueprint_library,
+            recipes = resolve_camera_rig(
+                episode.recipe.camera, preset=self.camera_rig, config=self.camera_rig_config
             )
-            sensors.extend((rgb_sensor, teacher_sensor))
+            rig = TeacherCameraRig(recipes) if len(recipes) > 1 else None
+            if rig is None:
+                rgb_sensor, teacher_sensor, rgb_queue, teacher_queue = self._spawn_cameras(
+                    episode, actors, blueprint_library,
+                )
+                sensors.extend((rgb_sensor, teacher_sensor))
+            else:
+                rig.spawn(self, episode, actors, sensors)
+                rgb_queue, teacher_queue = rig.queues["front"], rig.queues["front_teacher"]
             controller = BehaviorRouteController(
                 ego,
                 spawn_points,
@@ -320,6 +333,12 @@ class BehaviorTeacherSession(NativeCarlaSession):
                     f"CARLA frames: {first_rgb_frame} and {first_teacher_frame}"
                 )
             sensor_phase_frame = first_rgb_frame
+            if rig is not None:
+                read_frame_bundle(
+                    {name: sensor_queue for name, sensor_queue in rig.queues.items()
+                     if name not in {"front", "front_teacher"}},
+                    sensor_phase_frame, self.sensor_timeout,
+                )
             for _ in range(recipe.capture.warmup_ticks):
                 controlled_tick()
 
@@ -351,13 +370,34 @@ class BehaviorTeacherSession(NativeCarlaSession):
                     raise RuntimeError(
                         f"capture frame {world_frame} is outside the camera sensor phase"
                     )
-                rgb_queued = rgb_queue.get_exact(world_frame, self.sensor_timeout)
-                teacher_queued = teacher_queue.get_exact(world_frame, self.sensor_timeout)
+                view_frames = None
+                if rig is None:
+                    rgb_queued = rgb_queue.get_exact(world_frame, self.sensor_timeout)
+                    teacher_queued = teacher_queue.get_exact(world_frame, self.sensor_timeout)
+                else:
+                    try:
+                        bundle = read_frame_bundle(rig.queues, world_frame, self.sensor_timeout)
+                    except SensorFrameError as error:
+                        writer.add_auxiliary_json(
+                            f"episodes/{episode.episode_id}/capture_failure.json",
+                            {"carla_frame": world_frame, "error": str(error),
+                             "expected_cameras": list(recipes), "queues": rig.diagnostics()},
+                            role="rgb_capture_failure",
+                        )
+                        raise
+                    rgb_queued, teacher_queued = bundle["front"], bundle["front_teacher"]
+                    view_frames = {
+                        name: image_to_bridge_frame(
+                            bundle[name], fov_degrees=camera.fov_degrees, sensor_type=0
+                        ) for name, camera in recipes.items() if name != "front"
+                    }
                 rgb_frame = image_to_bridge_frame(
                     rgb_queued,
                     fov_degrees=recipe.camera.fov_degrees,
                     sensor_type=0,
                 )
+                if view_frames is not None:
+                    view_frames["front"] = rgb_frame
                 teacher_frame = image_to_bridge_frame(
                     teacher_queued,
                     fov_degrees=recipe.camera.fov_degrees,
@@ -377,6 +417,8 @@ class BehaviorTeacherSession(NativeCarlaSession):
                 )
                 sample = writer.add_pair(
                     pair,
+                    rgb_views=view_frames,
+                    camera_calibrations=rig.calibrations if rig is not None else None,
                     split=episode.split.partition,
                     scenario_id=episode.scenario_id,
                     episode_id=episode.episode_id,
@@ -422,6 +464,9 @@ class BehaviorTeacherSession(NativeCarlaSession):
             result = {
                 "schema_version": BEHAVIOR_TEACHER_WORKER_SCHEMA_VERSION,
                 "native_worker_schema_version": NATIVE_WORKER_SCHEMA_VERSION,
+                "rgb_camera_ids": list(recipes),
+                "rgb_calibrations": rig.calibrations if rig is not None else {},
+                "rgb_queues": rig.diagnostics() if rig is not None else {},
                 "status": "complete",
                 "episode": episode.as_dict(),
                 "teacher": {
@@ -550,8 +595,21 @@ def collect_behavior_teacher(args: argparse.Namespace) -> dict[str, Any]:
         partitions=args.partition,
         max_episodes=args.max_episodes,
     )
+    rig_config = None
+    if args.camera_rig_config:
+        rig_config = json.loads(Path(args.camera_rig_config).read_text(encoding="utf-8"))
+        if not isinstance(rig_config, Mapping):
+            raise ValueError("camera rig config must be a JSON object")
+    resolved_rigs = {
+        episode.episode_id: {
+            name: camera.as_dict() for name, camera in resolve_camera_rig(
+                episode.recipe.camera, preset=args.camera_rig, config=rig_config
+            ).items()
+        } for episode in episodes
+    }
     if args.dry_run:
         result = _dry_run_summary(plan, episodes, args)
+        result["camera_rigs"] = resolved_rigs
         print(json.dumps(result, ensure_ascii=False, indent=2), flush=True)
         return result
     if not args.acknowledge_exclusive_tick_owner:
@@ -585,6 +643,8 @@ def collect_behavior_teacher(args: argparse.Namespace) -> dict[str, Any]:
         behavior=args.behavior,
         target_speed_kmh=args.target_speed_kmh,
         minimum_route_distance_m=args.minimum_route_distance_m,
+        camera_rig=args.camera_rig,
+        camera_rig_config=rig_config,
     )
     episode_results: list[dict[str, Any]] = []
     restored = False
@@ -607,6 +667,7 @@ def collect_behavior_teacher(args: argparse.Namespace) -> dict[str, Any]:
             "target_speed_kmh": args.target_speed_kmh,
             "teacher_uses_privileged_simulator_state": True,
             "runtime_sensor_contract": "front_monocular_rgb_only",
+            "camera_rigs": resolved_rigs,
             "navigation_intent": {
                 "schema_version": NAVIGATION_INTENT_SCHEMA_VERSION,
                 "source": "carla_global_route_planner_via_behavior_agent",
@@ -778,6 +839,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--timeout", type=float, default=30.0)
     parser.add_argument("--sensor-timeout", type=float, default=10.0)
     parser.add_argument("--carla-python-api")
+    rig_options = parser.add_mutually_exclusive_group()
+    rig_options.add_argument(
+        "--camera-rig", choices=("front", "front-three"), default="front",
+        help="RGB collection rig; front-three adds left/right views without changing Drive",
+    )
+    rig_options.add_argument(
+        "--camera-rig-config", help="JSON rig with additional RGB camera mounts and FOVs",
+    )
     parser.add_argument("--episode-id", action="append", default=[])
     parser.add_argument(
         "--partition",
