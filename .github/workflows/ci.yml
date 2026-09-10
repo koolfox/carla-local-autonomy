@@ -65,6 +65,7 @@ jobs:
           tests/test_model_registry.py
           tests/test_multicamera_dataset.py
           tests/test_multicamera_teacher.py
+          tests/test_native_research_jobs.py
           tests/test_observable_world_worker.py
           tests/test_prepare_cancellation.py
           tests/test_operator.py
@@ -94,6 +95,8 @@ jobs:
           uv run carla-garage-acceptance --help
           uv run carla-garage-density-acceptance --help
           uv run carla-vision --help
+          uv run carla-native-jobs --help
+          uv run carla-build-native-task --help
 
       - name: Verify wheel contains the product console
         run: |

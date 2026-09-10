@@ -56,9 +56,9 @@ def test_camera_rig_dry_run_has_no_carla_import(tmp_path: Path, monkeypatch) -> 
     assert set(next(iter(result["camera_rigs"].values()))) == {"front", "front_left", "front_right"}
 
 
-@pytest.mark.parametrize("missing_view", [False, True])
+@pytest.mark.parametrize("missing_view,cancelled", [(False, False), (True, False), (False, True)])
 def test_capture_loop_alignment_and_sensor_cleanup(
-    tmp_path: Path, monkeypatch, missing_view
+    tmp_path: Path, monkeypatch, missing_view, cancelled
 ) -> None:
     episode = expand_scenario_suite(load_scenario_suite(SUITE), load_split_plan(SPLITS))[0]
     primary = replace(episode.recipe.camera, width=320, height=180, sensor_tick_seconds=0.05)
@@ -161,6 +161,7 @@ def test_capture_loop_alignment_and_sensor_cleanup(
     session.minimum_route_distance_m = 10
     session.camera_rig = "front-three"
     session.camera_rig_config = None
+    session.cancel_check = lambda: cancelled and state["frame"] >= 2
     session._configure_world = lambda _: (world, None)
     session._spawn_ego = lambda _episode, actors, *_: (setattr(actors, "ego_id", 1), ego)[1]
     session._spawn_props = lambda *_: []
@@ -209,7 +210,12 @@ def test_capture_loop_alignment_and_sensor_cleanup(
         carla_map="fixture",
         repository_root=ROOT,
     )
-    if missing_view:
+    if cancelled:
+        with pytest.raises(InterruptedError) as failure, writer:
+            session.run_episode(episode, writer)
+        assert failure.value.native_cleanup_confirmed
+        assert not (writer.dataset_dir / "dataset.json").exists()
+    elif missing_view:
         with pytest.raises(SensorFrameError, match="missing front_left"), writer:
             session.run_episode(episode, writer)
         assert list((writer.dataset_dir / "episodes").rglob("capture_failure.json"))

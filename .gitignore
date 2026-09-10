@@ -16,6 +16,8 @@ reports/
 runs/
 bundles/
 native_kits/
+native_jobs/
+native_tasks/
 operator_sessions/
 .env.local
 /CARLA PY.zip

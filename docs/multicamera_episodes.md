@@ -5,6 +5,10 @@ change Garage camera settings, the thin World Worker protocol, or live vehicle
 control. Collection uses the official PythonAPI and requires exclusive ownership
 of CARLA. Offline replay needs neither CARLA nor model weights.
 
+To launch this collector from a Mac that cannot import CARLA, use the optional
+[native research task host](native_research_jobs.md). It runs this same collector
+on Windows and returns an artifact archive; it does not change live Garage video.
+
 ## What is available
 
 - Default `front`: unchanged single-camera capture and detector/imitation inputs.

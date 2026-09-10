@@ -13,7 +13,7 @@ import json
 import math
 import time
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -185,6 +185,7 @@ class BehaviorTeacherSession(NativeCarlaSession):
         minimum_route_distance_m: float,
         camera_rig: str = "front",
         camera_rig_config: Mapping[str, Any] | None = None,
+        cancel_check: Callable[[], bool] | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(carla, **kwargs)
@@ -193,6 +194,7 @@ class BehaviorTeacherSession(NativeCarlaSession):
         self.minimum_route_distance_m = minimum_route_distance_m
         self.camera_rig = camera_rig
         self.camera_rig_config = camera_rig_config
+        self.cancel_check = cancel_check
 
     def _spawn_ego(
         self,
@@ -311,6 +313,8 @@ class BehaviorTeacherSession(NativeCarlaSession):
                 )
 
             def controlled_tick() -> tuple[int, Any, dict[str, Any], dict[str, Any]]:
+                if getattr(self, "cancel_check", None) and self.cancel_check():
+                    raise InterruptedError("native collection cancelled")
                 snapshot = world.get_snapshot()
                 control = controller.apply_before_tick(current_world_frame=int(snapshot.frame))
                 frame = int(world.tick())
@@ -534,6 +538,7 @@ class BehaviorTeacherSession(NativeCarlaSession):
             cleanup = self._cleanup_episode(actors, sensors)
 
         if primary_error is not None:
+            primary_error.native_cleanup_confirmed = bool(cleanup.get("success", False))
             if not cleanup.get("success", False):
                 primary_error.add_note(
                     "CARLA episode cleanup also failed: "
@@ -587,7 +592,12 @@ def _dry_run_summary(
     }
 
 
-def collect_behavior_teacher(args: argparse.Namespace) -> dict[str, Any]:
+def collect_behavior_teacher(
+    args: argparse.Namespace,
+    *,
+    cancel_check: Callable[[], bool] | None = None,
+    cleanup_report: Callable[[bool], None] | None = None,
+) -> dict[str, Any]:
     plan = load_verified_scenario_plan(args.scenario_plan)
     episodes = select_episodes(
         plan,
@@ -645,6 +655,7 @@ def collect_behavior_teacher(args: argparse.Namespace) -> dict[str, Any]:
         minimum_route_distance_m=args.minimum_route_distance_m,
         camera_rig=args.camera_rig,
         camera_rig_config=rig_config,
+        cancel_check=cancel_check,
     )
     episode_results: list[dict[str, Any]] = []
     restored = False
@@ -723,6 +734,8 @@ def collect_behavior_teacher(args: argparse.Namespace) -> dict[str, Any]:
                 episode_results.append(episode_result)
             session.restore_asynchronous_mode()
             restored = True
+            if cleanup_report is not None:
+                cleanup_report(True)
             writer.set_release_metadata(
                 {
                     "collector": "behavior_agent_teacher_official_pythonapi",
@@ -786,10 +799,13 @@ def collect_behavior_teacher(args: argparse.Namespace) -> dict[str, Any]:
             if not restored:
                 try:
                     session.restore_asynchronous_mode()
+                    restored = True
                 except BaseException as restore_error:
                     error.add_note(
                         f"CARLA asynchronous-mode restore also failed: {restore_error}"
                     )
+            if cleanup_report is not None:
+                cleanup_report(restored and getattr(error, "native_cleanup_confirmed", False))
             raise
 
     dataset_dir = (Path(args.datasets_root) / args.dataset_id).resolve()

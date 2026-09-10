@@ -607,7 +607,7 @@ class WorldWorkerTest(unittest.TestCase):
         self.assertTrue(catalog["capabilities"]["asynchronous_world"])
         self.assertTrue(catalog["capabilities"]["world_dynamics_controls"])
         self.assertTrue(catalog["capabilities"]["garage_camera_presets"])
-        self.assertEqual(catalog["worker_api_revision"], 6)
+        self.assertEqual(catalog["worker_api_revision"], 7)
         self.assertTrue(catalog["capabilities"]["spawn_point_selection"])
         self.assertTrue(catalog["capabilities"]["selected_route"])
         self.assertEqual(catalog["spawn_point_map"], "Town10HD_Opt")

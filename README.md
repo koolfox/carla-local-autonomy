@@ -183,6 +183,11 @@ and review MP4s are not canonical training samples. See
 [docs/realtime_streaming.md](docs/realtime_streaming.md) for exact profiles,
 measurements, hard pass/fail thresholds, and the H.264/WebRTC fallback decision.
 
+For synchronized multi-camera teacher collection initiated from the Mac, see
+[native research jobs](docs/native_research_jobs.md). The optional Worker task
+host runs the existing collector on Windows and returns a verified archive;
+normal Garage streaming is unchanged.
+
 ## Garage and Drive
 
 The normal operator journey is:

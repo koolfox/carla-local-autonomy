@@ -31,6 +31,13 @@ Multi-camera research capture extends `native/behavior_teacher.py` using
 replay live under `dataset/`; see [the focused runbook](multicamera_episodes.md).
 It does not add a second live-session configuration or change the Garage camera.
 
+Optional [native research jobs](native_research_jobs.md) launch installed trusted
+tasks in a separate Windows process. `native/research_jobs.py` owns the stable
+host protocol, `native/tasks/` contains task adapters, and
+`operator/native_research.py` is the Mac SDK/CLI. Update a collector task package
+to change its algorithm; change the bridge only for hosting/protocol behavior.
+The existing `operator/jobs.py` still owns local research jobs; it is not replaced.
+
 ## Where should my next change go?
 
 Choose the existing feature owner, not a new generic `utils/` or `services/`
