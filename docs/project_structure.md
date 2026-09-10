@@ -26,6 +26,40 @@ For a concrete bug or feature, start with the [feature-to-test map](README.md).
 | `tests/` | Contract, component, workflow, and fake-runtime regression tests |
 | `docs/` | Architecture, operator runbooks, protocols, and evidence boundaries |
 
+## Where should my next change go?
+
+Choose the existing feature owner, not a new generic `utils/` or `services/`
+directory. Most work needs only one implementation and its focused test:
+
+- **Display and interaction:** Svelte components; pure presentation helpers
+  under `web/src/lib/ui/`. Keep CARLA and model work out of the browser.
+- **Shared setting:** the TypeScript configuration store and Python
+  `operator/configuration.py` mapping together. No per-menu copy of state.
+- **A new detector or road model:** its existing adapter package/factory, not
+  another model-specific branch inside the Drive loop.
+- **A user workflow:** its Operator owner. HTTP routes validate/dispatch and
+  return the result; they should not implement dataset or model algorithms.
+- **CARLA actors, ticks or camera relay:** `native/`, with the matching Worker
+  client/protocol tests. These changes require a Windows update and live evidence.
+- **Research algorithms:** the dataset, training, evaluation, imitation or voxel
+  package. Keep their outputs behind existing contracts; mark experimental scope.
+
+For example, the saved-recordings feature has these distinct owners:
+
+| Responsibility | Source owner |
+| --- | --- |
+| Library list, selection, player UI | `web/src/lib/components/SavedRuns.svelte` |
+| Workspace catalogue | `operator/catalog.py` |
+| Manifest inspection and safe artifact resolution | `operator/artifacts.py` |
+| Browser-compatible video conversion | `operator/recording_preview.py` |
+| HTTP authorization, file transfer and seeking | `operator/server.py` |
+
+The Python paths in this table are under `carla_vision/`. This is a map of
+existing modules, not five services. `ArtifactStore(workspace)` can be used
+without constructing the Operator; its tests are a small starting point for
+backend contributors. Preserve the separation between manifest declarations,
+file availability, and explicit research-object verification.
+
 ## Migration boundaries
 
 - `web/` is the official frontend source. The reviewed release bundle under

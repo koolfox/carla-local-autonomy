@@ -120,6 +120,7 @@ adapter and must never be exposed to the public internet.
 | Preview lifecycle | `carla_vision/operator/garage_preview.py` | `carla_vision/operator/world_worker_client.py` |
 | Drive lifecycle/control | `carla_vision/operator/garage_drive.py` | `carla_vision/operator/drive.py` |
 | HTTP transport and research jobs | `carla_vision/operator/server.py` | `commands.py`, `jobs.py` |
+| Saved-result inspection and allowed downloads | `carla_vision/operator/artifacts.py` | `catalog.py` for listing, `recording_preview.py` for browser video conversion |
 | Windows CARLA behavior | `carla_vision/native/observable_world_worker.py` | `carla_vision/native/world_worker.py` |
 | External runtime models | `carla_vision/model_package_contracts.py` | `model_registry.py`, `torchscript_driver.py` |
 | Detector adapter | `carla_vision/detectors/` | `carla_vision/perception.py` |
@@ -137,11 +138,20 @@ pyproject.toml: carla-operator-ui
   -> operator/local_entrypoint.py      .env.local and launch resolution
   -> operator/garage_server.py         Garage/preview/session routes
   -> operator/server.py                base application, jobs, artifacts, Drive API
+       -> operator/artifacts.py        read-only manifest/file access; no HTTP or CARLA
 ```
 
 This inheritance chain is current implementation, not the desired location for
 new business logic. Issue #67 moves use cases behind a stable application seam
 one slice at a time.
+
+Saved-result logic is one extracted example: `OperatorApplication` delegates
+inspection and file resolution to `ArtifactStore`. Existing `/api/evidence`
+and `/api/artifact` contracts, HTTP error handling, range requests and security
+headers stay in the transport. For a saved-results change, start with
+`tests/test_operator_artifacts.py` (no server/model/simulator), then run
+`tests/test_operator.py` and `tests/test_recording_preview.py` for the adjacent
+HTTP/player boundary. Listing an available file still does not verify its hash.
 
 `pyproject.toml` under `[project.scripts]` is the authoritative installed-command
 registry. The primary operational commands are:

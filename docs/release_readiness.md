@@ -73,6 +73,20 @@ official [carla-plugins](https://github.com/carla-simulator/carla-plugins)
 repository lists CarlaViz, TestPilot and TELECARLA. Browser visualization and
 teleoperation are therefore not unique selling points.
 
+There are also overlapping research tools, not just simulator GUIs:
+
+- [CARLA-GeAR](https://arxiv.org/abs/2206.04365) generates synthetic datasets
+  for vision-model robustness evaluation, particularly physical adversarial
+  patches. Its specialization differs from a general live research console.
+- [Deepware](https://github.com/shunchan0677/deepware) documents CARLA-based
+  data creation, training and evaluation of autonomous-driving models using a
+  ROS/TensorFlow/Autoware-oriented stack.
+
+These primary sources establish overlap, not equal UX, present maintenance
+quality, or feature parity. This is not an exhaustive ecosystem survey. Do not
+claim that vision research in CARLA is an empty niche or that an integrated
+workflow is, by itself, a first-of-its-kind scientific contribution.
+
 Our proposed niche is a lightweight, local, model-oriented research workflow:
 connect an existing CARLA host, load a supported/custom detector, inspect road
 and voxel estimates, save exact-frame evidence, and revisit a run. Whether
@@ -92,6 +106,13 @@ There are three different destinations, not one automatic "main registry":
   Follow the [contribution guidance](https://carla.readthedocs.io/en/latest/cont_contribution_guidelines/)
   and confirm the target branch with maintainers; some documented branch names
   are historical. Do not propose merging this entire application into CARLA.
+
+The community [awesome-CARLA list](https://github.com/Amin-Tgz/awesome-CARLA)
+is useful for finding prior work in imitation, detection, segmentation and
+dataset generation. Its release section still references 0.9.12 as upcoming;
+follow links to the original repositories and check current compatibility.
+Use it to identify reusable work and attribution, not as a feature checklist
+or proof that a listed project is currently supported.
 
 ## A lean release plan with observable exits
 
@@ -116,6 +137,77 @@ where they stop and whether they return to use it. Ask one developer to make
 and test a small change without chat history. These are proposed acceptance
 trials, not results we already have. Use their blockers to choose the next PR.
 
+## A reproducible demonstration and maintainer handoff
+
+The next proof should be one small, complete study using existing capabilities,
+not a larger menu. Proposed question: **how well does the RGB imitation baseline
+generalize to held-out routes and weather compared with its CARLA teacher?**
+The implementation and runbooks exist; this assessment does not claim that
+the following end-to-end experiment has been completed.
+
+1. **Capture and verify:** collect a bounded set of BehaviorAgent episodes,
+   with exact RGB/control/navigation-intent alignment, camera calibration,
+   teacher identity, seeds and configuration. Record any privileged labels
+   separately from deployable model inputs. Teacher demonstrations are a
+   baseline, not an infallible driving oracle.
+2. **Train one baseline:** use the existing imitation path and documented
+   input contract. Split by episode/route group rather than neighboring frames.
+   Publish the split, command, dependency versions, seed, training budget and
+   checkpoint identity; reserve a held-out test set before tuning.
+3. **Evaluate the limits:** report offline errors and multi-seed closed-loop
+   results separately. Retain route completion, collisions, interventions and
+   latency where supported, along with failure videos. If a metric or required
+   target is missing, record that gap instead of substituting a proxy silently.
+4. **Publish evidence:** release a redistributable small dataset sample,
+   checkpoint when permitted, plots, model/data cards, report, hashes and
+   reproduction instructions. A failed route belongs in the report too.
+   Hash verification proves artifact consistency, not model quality or exact
+   cross-hardware simulator determinism.
+5. **Hand it to another developer:** they should be able to reproduce the
+   available offline evaluation and make a tested adapter/UI change from the
+   developer hub without private paths, credentials or chat context.
+
+Use [the imitation runbook](imitation_driving_baseline_fa.md) and the existing
+milestones for implementation tasks. A trajectory-learning claim additionally
+needs defined targets: reference frame, units, future horizon, timestep and
+validity/visibility masks. A projected waypoint overlay alone is not a measured
+trajectory predictor. Keep this distinction explicit when designing the next
+experiment; do not add a parallel training framework in this cleanup.
+
+For a technical portfolio, retain one concise architecture explanation, one
+reproducible result with limitations, and a few reviewable changes showing a
+bug reproduction, a test, a fix and its tradeoffs. Maintainer understanding and
+repeatable delivery matter more than claiming that the idea has no predecessors.
+Automotive-style visualization is a UX reference, not evidence of Tesla/BYD-like
+capability or real-road readiness.
+
+### Installation is part of the demonstration
+
+Aim first for a **guided, repeatable setup**, and measure it on a fresh research
+computer plus an existing CARLA host before advertising "one click."
+
+- Reuse the existing install profiles and bundled Svelte build. Operators
+  should not need Node or the entire experimental dependency set.
+- Offer an offline sample workflow before requiring CARLA/GPU/model downloads;
+  distinguish recorded evidence from synthetic developer fixtures. The sample
+  release and developer fixture are still pending, not current install features.
+- Make the two-host setup explicit: matching CARLA/PythonAPI and the thin
+  Worker on Windows; UI, model runtime and artifacts on the research computer.
+  A launcher cannot eliminate GPU, firewall, package-license or version requirements.
+- A future installer should check prerequisites, keep tokens local, show what
+  it will download, reuse verified caches, and explain how to retry or uninstall
+  without deleting user models or recordings. Wrap the supported entry points;
+  do not invent another application runtime or distribute private checkpoints.
+- Record time to first successful playback and live frame, manual steps,
+  failures and support interventions. Ease of installation is a differentiator
+  only when newcomers actually succeed.
+
+Multi-camera RGB datasets are a valid future direction, still vision-only,
+but are not part of this change. Require a concrete task that benefits from
+them and budget for frame synchronization, per-camera calibration, storage
+and evaluation. Finish the single-camera reference workflow first. No new
+sensor support, installer, training runtime or autonomy feature is introduced here.
+
 ## Cleanup policy
 
 Keep one repository, the Svelte frontend, thin Worker deployment, model
@@ -127,3 +219,14 @@ and voxel modules should be clearly opt-in, not silently removed.
 
 Reduce repeated ownership and supported paths first. A smaller maintainer
 mental model is more valuable than an arbitrary line-count target.
+
+### Organization follow-up, 2026-09-10
+
+Extracted saved-result inspection and file resolution into
+`operator/artifacts.py`; `server.py` delegates through its existing application
+methods. The server went from 1,040 to 791 lines without removing capabilities.
+The extracted methods and HTTP handler methods were checked for structural
+equivalence. Focused artifact, HTTP, player, configuration, Garage and Drive
+regressions passed: 200 tests plus 101 subtests; lint and 65 local documentation
+link targets also passed. No UI redesign, API change, Windows change, full-suite
+run or new live-CARLA validation was part of this extraction.
