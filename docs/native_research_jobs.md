@@ -1,242 +1,104 @@
-# Run native research from the Mac through the Windows bridge
+# Capture through the normal World Worker
 
-The optional native task host gives trusted Python tasks access to the **real
-CARLA PythonAPI on Windows**. The Mac submits JSON, reads status/logs, cancels,
-and downloads checked artifacts. It does not receive Python actor objects or a
-transparent remote `import carla`.
+**Pull the updated checkout on Windows and restart your usual World Worker
+command.** Keep its existing port, token and Python environment. Built-in
+research tasks load directly from that checkout: no package export, separate
+collector environment, second server, or extra startup flags.
 
-The first task is `teacher_capture`: the existing BehaviorAgent collector with
-the `front`, `front-three`, or custom RGB rig. No replacement collector, driving
-controller, UI configuration store, or video transport is introduced.
+## Normal operator workflow
 
-```text
-Mac: native-jobs CLI / NativeResearchClient
-  -> authenticated World Worker task API
-       -> separate Python process, installed task package
-            -> official CARLA PythonAPI + BehaviorAgent
-       <- status, phase logs, cleanup receipt, artifact archive
-  <- size + SHA-256 checked download
+1. In Garage's **Research** menu, choose the shared Scene settings and capture
+   duration/rate/repetitions. Choose a named weather preset for reproducibility.
+2. Under **Record teacher dataset**, choose Front or Front + left + right.
+3. Acknowledge scene reload and teacher motion, then select **Record dataset**.
+4. The WebUI pauses Garage preview, starts the existing BehaviorAgent collector
+   through the Worker, and shows progress and a Cancel action.
+5. After confirmed cleanup, Garage is available again. The WebUI retrieves and
+   verifies the dataset, then creates review videos in **Recordings** automatically.
+
+Stop & Save an active drive first. Capture owns the simulator while collecting;
+changing Scene fields during capture affects the next run, not the running job.
+There is one collector at a time, at most 32 episodes and a 15-minute wall-clock
+deadline (including map loads/cleanup). Begin with one short episode.
+
+The first collector uses the official **BehaviorAgent**, not Traffic Manager
+actions relabelled as a learned policy. Teacher labels and CARLA metadata remain
+separate from deployable RGB model inputs. Camera calibration and exact-frame
+matching use the existing dataset implementation.
+
+## Requirements, in the environment you already use
+
+The bridge itself still starts without ML dependencies. Collection needs the
+matching CARLA PythonAPI and official `agents` module, plus NumPy, OpenCV,
+msgpack and the agents' dependencies (`networkx`, `shapely`). Missing imports
+produce a preflight error without taking the listener down. If needed, add only
+the missing packages to **the existing `.worker-venv`**; do not install the whole
+project, Torch, Node or a second WebUI on Windows. Keep the matching CARLA
+`PythonAPI/carla` directory on that interpreter's Python path for `agents`.
+
+Review video encoding needs FFmpeg with `libx264` on the **WebUI computer**
+(`brew install ffmpeg` on macOS). Videos are encoded directly as H.264 MP4,
+`yuv420p`, with fast-start indexing; no later conversion is needed for new
+recordings. Original training images remain lossless PNGs. This does not
+change the live MJPEG transport.
+
+## Where the outputs go
+
+- Windows: `native_jobs/<job-id>/`, including parameters, logs, cleanup receipt,
+  source identity, original dataset and downloadable archive.
+- Research computer: `operator_sessions/native/<job-id>/artifacts.zip`, then
+  verified data in `datasets/<job-id>/` and review runs in `runs/<job-id>-N/`.
+- Downloads are size/SHA-256 checked; extraction rejects escaping paths,
+  symlinks and oversized contents. Existing output files are never overwritten.
+- Closing the browser does not cancel capture. A WebUI restart resumes observing
+  its saved job. Use **Cancel capture** to request cooperative cancellation.
+
+These are collection/development episodes, not an automatically valid train/test
+split. Use existing split/verification tools before training or evaluation.
+
+## Advanced access uses that same connection
+
+Inside the operator, use its configured Worker client:
+
+```python
+research = application.world_worker.research()
+catalog = research.tasks()
+job = research.submit(
+    task_id="teacher_capture",
+    job_id="my-capture",
+    parameters=parameters,
+    acknowledge_world_reload=True,
+)
+status = research.status(job["job_id"])
+log = research.log(job["job_id"])
 ```
 
-## One-time installation
+`research.fetch(job_id, destination)` and `research.cancel(job_id)` also use that
+client's authenticated HTTP connection. The advanced caller must release its
+existing scene before submitting; Garage handles this automatically. JSON task
+requests, status, logs and file downloads all use `/v1/research/` on the usual
+Worker port. There is no remote Python eval, arbitrary shell, or HTTP code
+upload. Optional host-installed extensions are still supported, but are not part
+of normal startup or built-in collection.
 
-This needs Worker revision **7** or later. Normal Garage/Drive use remains
-unchanged and task hosting is disabled unless explicitly enabled.
+## Failure handling and acceptance
 
-### 1. Export the collector on the research machine
+A collector crash does not terminate the Worker listener. Unknown cleanup blocks
+world mutations: do not automatically erase that warning. Stop the Worker,
+confirm the old child process has exited, reconcile/reset CARLA and other tick
+owners, then remove only `native_jobs/recovery-required.json` and restart. If the
+WebUI retains an unresolved capture guard, stop it and remove only
+`operator_sessions/native_capture_state.json` after that host reconciliation.
+Datasets and job records are retained. A lost network response is observed using
+the same job ID, never resubmitted as another collector.
 
-From the project root, using its existing environment:
+Automated tests cover local HTTP/subprocess execution, built-in collector dry
+runs, capture handoff/cancellation/import, and actual H.264 encoding/decoding.
+**Real Windows/CARLA acceptance is still required:** one short capture, cancel
+another, verify the returned dataset/video, then start a normal Garage drive.
 
-```bash
-uv run carla-build-native-task \
-  --destination native_tasks/teacher_capture \
-  --version YOUR_SOURCE_COMMIT
-```
-
-Use the commit you actually built. The destination must not exist. Transfer the
-whole `native_tasks/teacher_capture/` directory to `native_tasks/teacher_capture/`
-under the Windows checkout. It contains a manifest and Python source snapshot;
-no model weights, datasets, credentials, frontend bundle, or dependency installer.
-The snapshot currently includes the package's Python sources to preserve existing
-imports, but does not install the project or import its ML runtimes.
-
-### 2. Prepare the task interpreter on Windows
-
-Choose a Python 3.11–3.13 environment compatible with the installed CARLA 0.9.16
-wheel. It must provide `carla`, the **matching official** `agents` package, and
-the collector's dependencies: `numpy`, `opencv-python`, `msgpack`, plus the
-dependencies of those CARLA agents (including `networkx` and `shapely`). No Torch,
-Ultralytics, Node, WebUI or model installation is required for this collector.
-
-This can be a separate `.collector-venv`; do not install the full project merely
-to host jobs. Use the matching CARLA wheel/agents from your simulator installation.
-For example, after creating that environment and installing the matching wheel:
-
-```powershell
-.\.collector-venv\Scripts\python.exe -m pip install numpy opencv-python msgpack networkx shapely
-$env:PYTHONPATH = "C:\PATH_TO_CARLA\PythonAPI\carla"
-.\.collector-venv\Scripts\python.exe -c "import carla, cv2, numpy, msgpack; from agents.navigation.behavior_agent import BehaviorAgent; print('native task imports OK')"
-```
-
-Replace `C:\PATH_TO_CARLA` with the actual installation, and preserve any existing
-`PYTHONPATH` entries you need. The task inherits this host-selected path; HTTP
-requests cannot choose an interpreter, environment, executable, or Python path.
-
-If you prefer **pull-and-build on Windows** instead of copying a package from
-the Mac, the prepared collector interpreter can export from the updated checkout:
-
-```powershell
-$taskVersion = git rev-parse --short HEAD
-.\.collector-venv\Scripts\python.exe -m carla_vision.native.task_package `
-  --destination .\native_tasks\teacher_capture --version $taskVersion
-```
-
-Run this from the repository root. It copies source; no project installation is
-needed. Pick either this approach or the Mac export, not both into the same folder.
-
-### 3. Enable the host on your existing Worker command
-
-After updating the Windows checkout, keep the normal token environment variable
-and restart the existing bridge with these three additional options. Example
-from the Windows repository root:
-
-```powershell
-.\.worker-venv\Scripts\python.exe .\carla_vision\native\observable_world_worker.py `
-  --bind 0.0.0.0 --allow-lan --port 8766 `
-  --carla-host 127.0.0.1 --carla-port 2000 --traffic-manager-port 8000 `
-  --research-tasks-dir .\native_tasks `
-  --research-jobs-root .\native_jobs `
-  --research-python .\.collector-venv\Scripts\python.exe
-```
-
-Use your usual bind address/firewall rules if different. Keep
-`CARLA_WORLD_WORKER_TOKEN` set; never paste it into a committed command or request
-file. The bridge's optional runner uses only the Python standard library. A
-standalone-file deployment also needs `research_jobs.py` beside `world_worker.py`
-when enabling this option; it remains unnecessary for the ordinary bridge.
-
-## First capture from the Mac
-
-Use the connected Windows bridge URL, not the Mac WebUI URL. Commands below use
-`CARLA_WORLD_WORKER_URL` and the existing token from the environment or `.env.local`.
-You can instead place `--worker-url http://WINDOWS_IP:8766` **before** the subcommand.
-
-```bash
-export CARLA_WORLD_WORKER_URL=http://WINDOWS_IP:8766
-uv run carla-native-jobs tasks
-uv run carla-native-jobs submit \
-  --job-id multicamera-smoke-001 \
-  --parameters configs/capture/remote_teacher_smoke.json \
-  --acknowledge-world-reload
-uv run carla-native-jobs status multicamera-smoke-001
-uv run carla-native-jobs log multicamera-smoke-001
-```
-
-**Before submitting, Stop & Save Drive, close Garage preview, and close the
-Garage browser tab so it cannot automatically reopen preview.** Stop any other
-simulation/ticking clients too. The collector reloads the map, destroys the old
-world's actors, and moves the ego using BehaviorAgent. It is not a continuation
-of the Garage's current vehicle. A retained preview lease returns `409` rather
-than being silently stolen; close it through its owning Operator and wait for
-cleanup. Native jobs and Garage may not own CARLA simultaneously.
-
-The checked-in smoke request has `dry_run: true`: it validates the plan and rig
-without connecting to CARLA. It still uses the exclusive job gate, deliberately.
-Inspect its result first, then make your own request copy, set `dry_run` to
-`false`, choose an installed map, and submit with a **new job ID**. The sample
-requests a 10-second episode at 5 captured bundles/second: three 1280×720 RGB
-views, two seconds of warmup, no background population or props. These are
-simulation timings, not a promise of ten seconds wall time. Increase population
-only after verifying the small capture; map capacity and rendering speed remain
-CARLA/hardware constraints.
-
-Reusing an ID with the identical request returns the existing job; it never
-starts another capture after an HTTP timeout. Reusing it with different settings
-returns `409`. Request bodies are subject to the existing Worker JSON size limit.
-
-To cancel, then inspect final cleanup status:
-
-```bash
-uv run carla-native-jobs cancel multicamera-smoke-002
-uv run carla-native-jobs status multicamera-smoke-002
-```
-
-Collection checks cancellation between controlled ticks. A blocked native RPC
-may not respond immediately. Jobs have a package-declared wall-clock deadline
-(900 seconds for this collector); cancellation allows 15 seconds for cleanup
-before terminating the process. Forced termination never counts as confirmed
-cleanup. Logs expose phases and native errors, not a fabricated completion
-percentage. The host retains up to 8 MiB of log data; each log response is at
-most 32 KiB. Completed job records are kept across bridge restarts.
-
-## Bring the dataset back and inspect it
-
-After a **real** job reports `succeeded` and `cleanup_confirmed: true`:
-
-```bash
-uv run carla-native-jobs fetch multicamera-smoke-002 \
-  --destination downloads/multicamera-smoke-002.zip
-```
-
-Fetch checks declared size and SHA-256 and refuses to overwrite an existing
-destination. It does not execute or automatically extract anything. Extract into
-a **new empty staging directory**, then move the entire resulting
-`datasets/multicamera-smoke-002/` into your research workspace's `datasets/`.
-Preserve its relative paths and retain `inputs/` and `runs/` as provenance.
-The archive's `inputs/native_task.json` records the installed task version/hash.
-
-```bash
-uv run carla-verify-teacher-episodes datasets/multicamera-smoke-002
-uv run carla-replay-teacher-episode \
-  --dataset datasets/multicamera-smoke-002 \
-  --run-id multicamera-review-002
-```
-
-Open **Garage → Menu → Recordings** for the generated replay run. A dry-run
-archive contains a plan, **not** recorded camera images. Failed/cancelled outputs
-remain on Windows for diagnosis; the download helper intentionally accepts only
-successful archives. See [multi-camera data boundaries](multicamera_episodes.md):
-front teacher labels do not automatically annotate the side cameras.
-
-## Add future native features without another bridge endpoint
-
-Install a reviewed task folder under the Windows task registry. Its `task.json`
-declares `schema_version`, `id`, `version`, `world_access: "exclusive"`,
-`max_seconds` (1–3600), a Python `entrypoint`, and a relative-file SHA-256 inventory
-including that entrypoint. Use the generated collector manifest as the example.
-
-The executable receives `--request PATH --output DIRECTORY`. The request supplies
-JSON `parameters`, the host's CARLA `endpoint`, task identity, and a `cancel_file`
-path. The task may use the native PythonAPI directly, but owns its actors/ticks
-and must release them and restore asynchronous mode before writing a terminal
-`result.json` with `status` and `cleanup_confirmed`. Optional `artifacts.zip`
-metadata declares its SHA-256 and byte size. Never claim cleanup before it has
-actually completed, and do not leave background child processes running.
-
-Registry discovery and checksums are refreshed for new submissions. Update a
-task **only while no job is active**, then refresh the catalog; a stale manifest
-hash is rejected. Future task code updates require deploying that package to
-Windows, but no bridge route change or restart. Host/protocol fixes still need a
-bridge update; new task dependencies still need installation in its interpreter.
-This is not a promise of a permanently frozen bridge.
-
-The narrow stable API is:
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| GET | `/v1/research/tasks` | Installed tasks and versions |
-| POST | `/v1/research/jobs` | Submit one acknowledged, exclusive task |
-| GET | `/v1/research/jobs/{id}` | Status and terminal receipt |
-| GET | `/v1/research/jobs/{id}/log` | Bounded log tail |
-| POST | `/v1/research/jobs/{id}/cancel` | Request cooperative cancellation |
-| GET | `/v1/research/jobs/{id}/files/artifacts.zip` | Completed artifact archive |
-| GET | `/v1/research/jobs/{id}/files/result.json` | Completed receipt |
-
-No Python upload, arbitrary shell, remote `pip`, or arbitrary-file download route
-exists. This is **trusted process isolation, not a security sandbox**. An installed
-task executes as the host user. Checksums establish identity/integrity, not code
-trust. Restrict registry write access and use the bridge only on a trusted LAN or
-protected tunnel; bearer authentication over plain HTTP is not encryption.
-
-## Failure recovery and acceptance
-
-A task crash leaves the HTTP listener alive. If cleanup cannot be confirmed,
-Garage and new native jobs are blocked with `recovery_required`. A bridge restart
-does not clear this: unfinished records are marked `interrupted`, and
-`native_jobs/recovery-required.json` retains the reason. On Windows, stop the
-bridge, confirm the old job PID/process has exited, reconcile/reset CARLA and
-other tick owners, then remove **only that recovery marker** and restart. Do not
-delete datasets or job records. This deliberate host check prevents a recovered
-UI from driving into an unreconciled simulation.
-
-Current automated coverage uses real local HTTP and subprocesses with fixture
-tasks, a source-exported collector dry run, and fake-CARLA sensor/cancellation
-tests. **It does not certify real Windows capture or latency.** Live acceptance
-still requires: install/enable on Windows, dry run, one real short capture,
-verified download/replay, cooperative cancellation, and a subsequent normal
-Garage session. Retain those artifacts before claiming live support is accepted.
-
-Developer ownership: `native/research_jobs.py` owns scheduling/process state;
+Developer owners: `native/research_jobs.py` hosts tasks;
 `native/tasks/teacher_capture.py` adapts the existing collector;
-`native/task_package.py` exports source; `operator/native_research.py` owns the
-SDK/CLI. No Svelte or live-driving changes are needed to add a native task.
+`operator/garage_capture.py` coordinates Garage/import;
+`operator/native_research.py` uses the existing Worker connection. Algorithm
+changes belong in the task/collector, not new bridge routes.

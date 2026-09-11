@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import threading
 from collections import deque
 from dataclasses import dataclass
@@ -8,6 +9,8 @@ from typing import Any
 
 import cv2
 import numpy as np
+
+from .video import BrowserVideoWriter
 
 
 @dataclass(frozen=True)
@@ -44,13 +47,13 @@ class AsyncVideoRecorder:
         frame_size: tuple[int, int],
         fps: float,
         latest_frame_path: str | Path | None = None,
-        codec: str = "mp4v",
+        codec: str = "avc1",
         max_queue: int = 32,
         cv2_backend: Any | None = None,
     ) -> None:
         if frame_size[0] <= 0 or frame_size[1] <= 0:
             raise ValueError("frame_size must contain positive width and height")
-        if fps <= 0.0:
+        if not math.isfinite(fps) or fps <= 0.0:
             raise ValueError("fps must be positive")
         if len(codec) != 4:
             raise ValueError("codec must contain exactly four characters")
@@ -66,15 +69,20 @@ class AsyncVideoRecorder:
             self.latest_frame_path.parent.mkdir(parents=True, exist_ok=True)
 
         self._cv2 = cv2 if cv2_backend is None else cv2_backend
-        fourcc = self._cv2.VideoWriter_fourcc(*codec)
-        self._writer = self._cv2.VideoWriter(
-            str(self.path),
-            fourcc,
-            float(fps),
-            tuple(int(value) for value in frame_size),
-        )
-        if not self._writer.isOpened():
-            raise RuntimeError(f"could not open video writer for {self.path}")
+        if codec == "avc1" and cv2_backend is None:
+            self._writer = BrowserVideoWriter(self.path, frame_size, fps)
+        else:
+            # Preserve the explicit codec/backend hook for integrations and tests.
+            # Product recordings always use the browser-compatible default above.
+            fourcc = self._cv2.VideoWriter_fourcc(*codec)
+            self._writer = self._cv2.VideoWriter(
+                str(self.path),
+                fourcc,
+                float(fps),
+                tuple(int(value) for value in frame_size),
+            )
+            if not self._writer.isOpened():
+                raise RuntimeError(f"could not open video writer for {self.path}")
 
         self._frame_size = tuple(int(value) for value in frame_size)
         self._max_queue = max_queue
@@ -137,6 +145,9 @@ class AsyncVideoRecorder:
             self._condition.notify_all()
         self._thread.join(timeout=15.0)
         if self._thread.is_alive():
+            if isinstance(self._writer, BrowserVideoWriter):
+                self._writer.abort()
+                self._thread.join(timeout=5.0)
             raise TimeoutError("video recorder did not finish")
         self._raise_if_failed()
         if self.latest_frame_path is not None and self._latest_written_image is not None:

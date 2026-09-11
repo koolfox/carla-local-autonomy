@@ -1,4 +1,4 @@
-"""Mac/Linux SDK and CLI for the optional native task host on the World Worker."""
+"""Research requests and downloads over the existing World Worker connection."""
 
 from __future__ import annotations
 
@@ -16,7 +16,31 @@ from urllib.request import Request
 from .world_worker_client import WorldWorkerClient, WorldWorkerError
 
 
-class NativeResearchClient(WorldWorkerClient):
+class NativeResearchClient:
+    def __init__(
+        self,
+        worker: WorldWorkerClient | str,
+        bearer_token: str | None = None,
+        *,
+        timeout: float = 5.0,
+    ):
+        if isinstance(worker, WorldWorkerClient):
+            self.connection = worker
+        else:
+            if not bearer_token:
+                raise ValueError("the World Worker token is required")
+            self.connection = WorldWorkerClient(worker, bearer_token, timeout=timeout)
+
+    @property
+    def base_url(self) -> str:
+        return self.connection.base_url
+
+    def _request(self, *args, **kwargs):
+        return self.connection._request(*args, **kwargs)
+
+    def health(self) -> dict:
+        return self.connection.health()
+
     def tasks(self) -> dict:
         return self._request("GET", "/v1/research/tasks")
 
@@ -78,12 +102,12 @@ class NativeResearchClient(WorldWorkerClient):
                 + "/v1/research/jobs/"
                 + quote(job_id, safe="")
                 + "/files/artifacts.zip",
-                headers={"Authorization": f"Bearer {self._bearer_token}"},
+                headers={"Authorization": f"Bearer {self.connection._bearer_token}"},
             )
             total, checksum = 0, hashlib.sha256()
             with (
                 os.fdopen(descriptor, "wb") as target,
-                self._opener.open(request, timeout=30) as response,
+                self.connection._opener.open(request, timeout=30) as response,
             ):
                 while chunk := response.read(1024 * 1024):
                     total += len(chunk)

@@ -13,6 +13,7 @@ import numpy as np
 
 from ..artifacts import RunArtifactTracker, fingerprint_file
 from ..native.teacher_verify import verify_teacher_dataset
+from ..video import BrowserVideoWriter
 from .camera_views import view_path
 
 
@@ -65,13 +66,13 @@ def replay_teacher_episode(
             "camera_ids": camera_ids,
             "source": "recorded_rgb",
             "fps": 1.0 / period,
+            "video_codec": "h264",
+            "video_pixel_format": "yuv420p",
             "resized_for_preview_only": True,
         },
     ) as tracker:
         target = tracker.artifact_path("camera-rig.mp4")
-        video = cv2.VideoWriter(str(target), cv2.VideoWriter_fourcc(*"mp4v"), 1 / period, size)
-        if not video.isOpened():
-            raise RuntimeError("OpenCV could not open the episode video encoder")
+        video = BrowserVideoWriter(target, size, 1 / period)
         frame_index = []
         try:
             for sample in samples:

@@ -8,7 +8,8 @@
   } from '$lib/api/operator';
   import SceneWorldFields from '$lib/components/SceneWorldFields.svelte';
   import { sessionConfig, systemSettings, workspaceOptions } from '$lib/stores/configuration';
-  import { runtimeOperatorApi } from '$lib/stores/runtime';
+  import { cancelCapture, captureRuntime, garageRuntime, runtimeOperatorApi, startCapture } from '$lib/stores/runtime';
+  import { isDriveActive } from '$lib/domain/runtime';
   import { fieldValue } from '$lib/ui/events';
 
   export let useInGarage: () => void;
@@ -32,6 +33,28 @@
   let planning = false;
   let error = '';
   let disposed = false;
+  let cameraRig = 'front';
+  let acknowledgeCapture = false;
+  let captureRequest = false;
+
+  async function capture(): Promise<void> {
+    if (!acknowledgeCapture || captureRequest || $captureRuntime.active) return;
+    captureRequest = true;
+    error = '';
+    try {
+      await startCapture($sessionConfig, situation, cameraRig);
+      acknowledgeCapture = false;
+    } catch (caught) {
+      error = caught instanceof Error ? caught.message : String(caught);
+    } finally {
+      captureRequest = false;
+    }
+  }
+
+  async function cancel(): Promise<void> {
+    try { await cancelCapture(); }
+    catch (caught) { error = caught instanceof Error ? caught.message : String(caught); }
+  }
 
   $: if (!splitPlan && $workspaceOptions.splitPlans.length) {
     splitPlan = $workspaceOptions.splitPlans[0];
@@ -133,10 +156,10 @@
   <section class="builder-section">
     <div class="section-heading">
       <div>
-        <span class="eyebrow">Recipe only</span>
+        <span class="eyebrow">Dataset</span>
         <h3>Capture plan</h3>
       </div>
-      <span class="section-note">Only offline dataset-planning fields live here.</span>
+      <span class="section-note">Save a recipe or record it with the connected World Worker.</span>
     </div>
 
     <div class="shared-config-summary">
@@ -204,6 +227,41 @@
         <div><span>Applied</span><strong>{recipeDirty ? 'Changed · save a new recipe' : 'Offline recipe saved'}</strong></div>
       </div>
       <p class="saved-path">{saved.path}</p>
+    {/if}
+  </section>
+
+  <section class="builder-section" aria-label="Teacher capture">
+    <div class="section-heading">
+      <h3>Record teacher dataset</h3>
+      <span class="section-note">Uses these Scene and Capture plan settings. Results return here automatically.</span>
+    </div>
+    <label class="field">
+      <span>RGB camera rig</span>
+      <select bind:value={cameraRig} disabled={$captureRuntime.active}>
+        <option value="front">Front camera</option>
+        <option value="front-three">Front + left + right</option>
+      </select>
+    </label>
+    <label class="field">
+      <span><input type="checkbox" bind:checked={acknowledgeCapture} disabled={$captureRuntime.active} />
+        Reload the scene and let CARLA's BehaviorAgent drive for this capture.</span>
+      <small>Garage preview pauses during collection. Images and labels are retained; review videos appear in Recordings.</small>
+    </label>
+    <div class="builder-actions">
+      <button type="button" class="button primary-button"
+        disabled={!reproducible || !$captureRuntime.available || !acknowledgeCapture || captureRequest || $captureRuntime.active || $captureRuntime.holds_world || isDriveActive($garageRuntime.drive)}
+        onclick={capture}>{captureRequest ? 'Starting capture…' : 'Record dataset'}</button>
+      {#if $captureRuntime.active && $captureRuntime.holds_world}
+        <button type="button" class="button secondary-button" onclick={cancel}
+          disabled={$captureRuntime.cancel_requested}>{$captureRuntime.cancel_requested ? 'Cancelling…' : 'Cancel capture'}</button>
+      {/if}
+    </div>
+    {#if !$captureRuntime.available}<p class="section-note">Connect the normal World Worker to capture.</p>{/if}
+    {#if $captureRuntime.phase !== 'idle'}
+      <p role="status">{$captureRuntime.phase} · {$captureRuntime.job_id ?? ''}</p>
+      {#if $captureRuntime.error}<p class="inline-error" role="alert">{$captureRuntime.error}</p>{/if}
+      {#each $captureRuntime.results ?? [] as path}<p class="saved-path">{path} · available in Recordings</p>{/each}
+      {#if $captureRuntime.log}<details><summary>Capture log</summary><pre>{$captureRuntime.log}</pre></details>{/if}
     {/if}
   </section>
 

@@ -4815,7 +4815,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--log-requests", action="store_true")
     parser.add_argument(
         "--research-tasks-dir",
-        help="Opt-in directory of locally installed trusted native task packages",
+        help="Optional directory of locally installed extensions; built-in tasks need no setup",
     )
     parser.add_argument("--research-jobs-root", default="native_jobs")
     parser.add_argument(
@@ -4946,17 +4946,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         expected_carla_version=args.expected_carla_version,
     )
     research_jobs = None
-    if args.research_tasks_dir:
-        # Optional sibling, loaded without importing the research package. The
-        # original single-file bridge still runs when task hosting is disabled.
-        helper = Path(__file__).with_name("research_jobs.py")
+    helper = Path(__file__).with_name("research_jobs.py")
+    if helper.is_file() or args.research_tasks_dir:
+        # Normal checkout startup serves research through this same listener.
+        # A legacy standalone-file deployment can still run without the helper.
         spec = importlib.util.spec_from_file_location("carla_native_research_jobs", helper)
         if spec is None or spec.loader is None:
             raise SystemExit("research_jobs.py must be installed beside world_worker.py")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         research_jobs = module.ResearchJobs(
-            Path(args.research_tasks_dir), Path(args.research_jobs_root), worker,
+            Path(args.research_tasks_dir) if args.research_tasks_dir else None,
+            Path(args.research_jobs_root), worker,
             python=args.research_python,
         )
     server = create_server(

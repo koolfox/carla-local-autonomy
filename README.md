@@ -41,6 +41,12 @@ camera and recorded overlays, and play them with Video.js. The player includes
 seeking, five-second skip buttons, playback speed, and fullscreen. Expand **Run
 files** to download the original artifacts; browsing does not verify their integrity.
 
+New recordings (raw, overlays, voxel, and dataset replay) are encoded directly as
+**H.264 MP4** with `yuv420p` and fast-start indexing. Install FFmpeg with `libx264`
+on the recording/WebUI computer (`brew install ffmpeg` on macOS), then restart
+the WebUI. No subsequent conversion is needed. Lossless dataset images and the
+live MJPEG feed are unchanged.
+
 Some older MP4 files use a codec browsers cannot decode. **Prepare playable copy**
 creates a temporary H.264 version using FFmpeg on the WebUI computer (on macOS,
 `brew install ffmpeg` if needed). Conversion runs in the background, one at a time;
@@ -184,9 +190,10 @@ and review MP4s are not canonical training samples. See
 measurements, hard pass/fail thresholds, and the H.264/WebRTC fallback decision.
 
 For synchronized multi-camera teacher collection initiated from the Mac, see
-[native research jobs](docs/native_research_jobs.md). The optional Worker task
-host runs the existing collector on Windows and returns a verified archive;
-normal Garage streaming is unchanged.
+[native research jobs](docs/native_research_jobs.md). Use **Research → Record
+teacher dataset**: the normal Worker runs the existing collector on Windows;
+the WebUI retrieves the verified dataset and adds review videos to Recordings.
+No separate service, task export, or extra Worker startup flags are needed.
 
 ## Garage and Drive
 
