@@ -8,6 +8,7 @@ import type {
   WorkspaceOptions
 } from '$lib/domain/config';
 import type { GaragePreparationProgress } from '$lib/domain/garagePreview';
+import type { RigSelection } from '$lib/domain/capture';
 import type {
   DriveControlRequest,
   DriveState,
@@ -303,7 +304,7 @@ export class OperatorApi {
     return readJson<CaptureState>('/api/garage/capture');
   }
 
-  startCapture(session: SessionConfig, situation: SituationSettings, cameraRig: string): Promise<CaptureState> {
+  startCapture(session: SessionConfig, situation: SituationSettings, cameraRig: RigSelection): Promise<CaptureState> {
     return this.post('/api/garage/capture', { session, situation, camera_rig: cameraRig, acknowledge: true });
   }
 

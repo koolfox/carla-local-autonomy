@@ -95,6 +95,7 @@ packages = ["carla_vision"]
 
 [tool.ruff]
 line-length = 100
+extend-exclude = ["carla_vision/_vendor"]
 
 [tool.ruff.lint]
 # Pin the baseline so upgrades do not silently enable a different policy.

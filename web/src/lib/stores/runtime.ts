@@ -2,6 +2,7 @@ import { get, writable } from 'svelte/store';
 
 import { OperatorApi, type CaptureState, type SituationSettings } from '$lib/api/operator';
 import type { SessionConfig } from '$lib/domain/config';
+import type { RigSelection } from '$lib/domain/capture';
 import { isDriveActive, type DriveControlRequest, type DriveState } from '$lib/domain/runtime';
 
 export type RuntimeAction = 'start' | 'stop' | 'emergency' | 'takeover' | null;
@@ -167,7 +168,7 @@ export function runtimeOperatorApi(): OperatorApi {
   return runtimeApi();
 }
 
-export async function startCapture(session: SessionConfig, situation: SituationSettings, rig: string): Promise<void> {
+export async function startCapture(session: SessionConfig, situation: SituationSettings, rig: RigSelection): Promise<void> {
   // Suspend auto-apply before the backend releases the preview for collection.
   captureRuntime.update((state) => ({ ...state, active: true, holds_world: true, phase: 'preparing', error: null }));
   try {

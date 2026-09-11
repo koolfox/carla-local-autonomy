@@ -9,6 +9,7 @@
   import StatusHeader from '$lib/components/StatusHeader.svelte';
   import { isDriveActive } from '$lib/domain/runtime';
   import { hydrateWorkspace } from '$lib/stores/configuration';
+  import { hydrateCaptureSettings } from '$lib/stores/capture';
   import {
     beginRuntimePolling,
     endRuntimePolling,
@@ -27,6 +28,7 @@
         const snapshot = await loadWorkspaceSnapshot();
         if (cancelled) return;
         hydrateWorkspace(snapshot);
+        hydrateCaptureSettings();
         initializeRuntime(snapshot.token, snapshot.driveState, snapshot.captureState);
         beginRuntimePolling();
       } catch (caught) {

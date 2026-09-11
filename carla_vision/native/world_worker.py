@@ -361,6 +361,23 @@ def _default_carla_loader() -> Any:
 def _default_route_planner_loader() -> Callable[[Any], Any] | None:
     try:
         module = importlib.import_module("agents.navigation.global_route_planner")
+    except ModuleNotFoundError as error:
+        if error.name != "agents":
+            return None
+        # A checkout ships official agents; a legacy single-file bridge still
+        # runs without them. Avoid importing the heavy research package here.
+        helper = Path(__file__).with_name("agent_support.py")
+        if not helper.is_file():
+            return None
+        spec = importlib.util.spec_from_file_location("carla_agent_support", helper)
+        if spec is None or spec.loader is None:
+            return None
+        support = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(support)
+        try:
+            module = support.load_navigation_module("global_route_planner")
+        except ImportError:
+            return None
     except ImportError:
         return None
     planner_type = getattr(module, "GlobalRoutePlanner", None)

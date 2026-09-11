@@ -16,6 +16,7 @@ import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from ..dataset.camera_rig import resolve_camera_rig
 from .configuration import build_situation_request
 from .jobs import _atomic_json
 from .situations import SituationSpec, build_scenario_suite
@@ -103,8 +104,6 @@ class GarageCapture:
             raise ValueError(
                 "capture reloads the scene and moves the teacher vehicle; acknowledgement required"
             )
-        if raw["camera_rig"] not in {"front", "front-three"}:
-            raise ValueError("unsupported capture camera rig")
         if self.application.world_worker is None:
             raise ValueError("connect the normal World Worker before capturing")
         spec = SituationSpec.from_mapping(
@@ -116,8 +115,18 @@ class GarageCapture:
         )
         if spec.repetitions > 32:
             raise ValueError("one native capture supports at most 32 episodes")
+        suite = build_scenario_suite(spec)
+        rig = raw["camera_rig"]
+        if isinstance(rig, str):
+            resolve_camera_rig(suite.recipes[0].camera, preset=rig)
+            rig_parameter = {"camera_rig": rig}
+        elif isinstance(rig, dict):
+            resolve_camera_rig(suite.recipes[0].camera, config=rig)
+            rig_parameter = {"camera_rig_config": json.loads(json.dumps(rig, allow_nan=False))}
+        else:
+            raise ValueError("camera_rig must be a preset name or a camera rig object")
         parameters = {
-            "scenario_suite": build_scenario_suite(spec).as_dict(),
+            "scenario_suite": suite.as_dict(),
             "split_plan": {
                 "schema_version": "1.0",
                 "plan_id": "garage-capture",
@@ -126,7 +135,7 @@ class GarageCapture:
                 "validation_map_families": [],
                 "validation_weather_ids": [],
             },
-            "camera_rig": raw["camera_rig"],
+            **rig_parameter,
             "max_episodes": spec.repetitions,
             "behavior": "cautious",
             "target_speed_kmh": 20,
