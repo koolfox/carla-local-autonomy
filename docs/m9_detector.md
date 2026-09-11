@@ -20,8 +20,8 @@ Test the checkpoint without CARLA:
 
 ```sh
 uv run --extra vision --extra m9 python -m carla_vision.detectors.m9_check \
-  --weights hierarchical_rtdetr_m9_precal_m6_query_film_img800.pt \
-  --image runs/drive-20260902t151919593z/latest-raw.jpg \
+  --weights models/hierarchical_rtdetr_m9_precal_m6_query_film_img800.pt \
+  --image /absolute/path/to/your/camera-image.jpg \
   --device cpu --output runs/m9-image-check
 ```
 
@@ -41,29 +41,22 @@ the adapter only deserializes the exact SHA-256 recorded by the training noteboo
 Other checkpoints need an explicitly supported architecture and inference recipe.
 
 Lane markings and road-surface segmentation are separate from this detector.
-# Road surface and overlay labels
 
-Enable **Vision → Road & lane overlay**, choose the road model, then choose **Detections** during Drive.
-YOLOP ONNX provides road and lane markings; SegFormer provides road and sidewalk.
-Leave Checkpoint blank for the pinned official weights, or select a workspace
-ONNX file for YOLOP / model directory for SegFormer. YOLOP uses CPU by default;
-CUDA requires an ONNX Runtime build with CUDAExecutionProvider. MPS is SegFormer-only.
-The official YOLOP download is approximately 36 MB, cached and SHA-256 verified.
-Preprocessing/output names follow [upstream test_onnx.py](https://github.com/hustvl/YOLOP/blob/8d8f68df318c71f01d6f813c024df646c7d1978f/test_onnx.py).
-The upstream weights are downloaded on demand, not redistributed in this repository.
+## Independent labels and road overlay
 
-M9 labels now show both independent head predictions, e.g. `vehicles -> car`.
+M9 labels show both independent head predictions and confidences, e.g.
+`Coarse: vehicles 80% | Fine: car 90%`. There is no hierarchy arrow or claim
+that the two head predictions necessarily agree.
 Canonical coarse class IDs and fused confidence remain unchanged; `fine_label`
 and `coarse_label` are also saved in detection attributes. Head disagreements
 are not silently relabeled. The certified notebook/checkpoint has nine fine
 classes: car, bus, truck, person, rider, bike, motor, traffic_lights, traffic_signs.
 It has no TrafficBoard class.
 
-This uses pinned SegFormer B0 Cityscapes safetensors weights to identify road,
-sidewalk and terrain from RGB. It does not detect lane markings or control steering.
-It works with object detection enabled or by itself. Combined masks and boxes use
-the same camera frame; raw streaming is independent. First use downloads weights
-in the background. Loading and model errors are displayed in the overlay toolbar.
+Road/lane perception is independent of M9. See [Road models](road_models.md)
+for YOLOP, YOLOPv2 and SegFormer selection, supported devices, preprocessing
+and model storage. Combined masks and boxes use the same camera frame; raw
+streaming is independent. Loading and model errors appear in the overlay toolbar.
 
 Install on the operator/ML computer with `uv sync --extra vision --extra m9 --extra segmentation --group dev`.
 No Windows World Worker update is needed. Restart the operator after updating.

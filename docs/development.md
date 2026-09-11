@@ -1,5 +1,8 @@
 # Developer guide
 
+New here? Use the [navigation hub and feature-to-test map](README.md) first.
+This longer page explains the underlying lifecycle and contribution rules.
+
 This is the shortest supported path from a clean checkout to a safe,
 reviewable feature. It describes the product as it exists now; future work is
 linked as an issue instead of being presented as current behavior.
@@ -51,6 +54,11 @@ endpoint and omit the Worker:
 ```bash
 uv run carla-operator-ui --carla-host 127.0.0.1 --open-browser
 ```
+
+This offline command assumes a clean checkout with no `.env.local` Worker
+configuration or inherited `CARLA_WORLD_WORKER_*` settings. A saved Worker token
+can enable automatic Worker resolution even with an explicit CARLA host; do
+not treat this command as an isolated fixture in a configured live workspace.
 
 The Operator will expose unavailable capabilities, but live preview, world
 mutation, and driving will not work. A deterministic no-CARLA product fixture
@@ -112,9 +120,12 @@ adapter and must never be exposed to the public internet.
 | Preview lifecycle | `carla_vision/operator/garage_preview.py` | `carla_vision/operator/world_worker_client.py` |
 | Drive lifecycle/control | `carla_vision/operator/garage_drive.py` | `carla_vision/operator/drive.py` |
 | HTTP transport and research jobs | `carla_vision/operator/server.py` | `commands.py`, `jobs.py` |
+| Saved-result inspection and allowed downloads | `carla_vision/operator/artifacts.py` | `catalog.py` for listing, `recording_preview.py` for browser video conversion |
 | Windows CARLA behavior | `carla_vision/native/observable_world_worker.py` | `carla_vision/native/world_worker.py` |
 | External runtime models | `carla_vision/model_package_contracts.py` | `model_registry.py`, `torchscript_driver.py` |
 | Detector adapter | `carla_vision/detectors/` | `carla_vision/perception.py` |
+| Road/lane model | `carla_vision/segmentation/factory.py` | `segmentation/contracts.py`, `docs/road_models.md` |
+| M9 head labels and confidence | `carla_vision/detectors/m9_hierarchical.py` | `carla_vision/display.py`, `tests/test_overlay_labels.py` |
 | Imitation research | `carla_vision/imitation/` | teacher code under `carla_vision/native/` |
 | Voxel research/control | `carla_vision/voxel/` | voxel configs and focused tests |
 | Dataset/evaluation/report artifacts | the producer package under `carla_vision/` | its `contracts.py` and verifier |
@@ -127,11 +138,20 @@ pyproject.toml: carla-operator-ui
   -> operator/local_entrypoint.py      .env.local and launch resolution
   -> operator/garage_server.py         Garage/preview/session routes
   -> operator/server.py                base application, jobs, artifacts, Drive API
+       -> operator/artifacts.py        read-only manifest/file access; no HTTP or CARLA
 ```
 
 This inheritance chain is current implementation, not the desired location for
 new business logic. Issue #67 moves use cases behind a stable application seam
 one slice at a time.
+
+Saved-result logic is one extracted example: `OperatorApplication` delegates
+inspection and file resolution to `ArtifactStore`. Existing `/api/evidence`
+and `/api/artifact` contracts, HTTP error handling, range requests and security
+headers stay in the transport. For a saved-results change, start with
+`tests/test_operator_artifacts.py` (no server/model/simulator), then run
+`tests/test_operator.py` and `tests/test_recording_preview.py` for the adjacent
+HTTP/player boundary. Listing an available file still does not verify its hash.
 
 `pyproject.toml` under `[project.scripts]` is the authoritative installed-command
 registry. The primary operational commands are:
@@ -262,9 +282,10 @@ reports `reused_garage_scene`; the recorded config states
 seeded experiment reset.
 
 Remaining stabilization work: Stop & Save still releases the Drive scene and
-reopening Garage creates a fresh scene. Non-weather scene changes still rebuild
-the population; incremental vehicle/population editing is a separate change.
-Do not mistake batching or start handoff for completion of those acceptance gates.
+reopening Garage creates a fresh scene. Workers with `prepared_scene_reconfigure`
+apply the deltas listed above; older Workers or scene-reset edits can still
+take the prepare path. Do not mistake implementation of batching, incremental
+editing or start handoff for completion of real-CARLA acceptance gates.
 
 ### Drive
 
@@ -307,8 +328,11 @@ models/<model-id>/model.json
   -> exact package, artifact, adapter hashes in run lineage
 ```
 
-A loose `.pt` file is not a runnable model identity. Downstream code must not
-import framework-specific result objects.
+This manifest path describes registered executable policy packages. Built-in
+detectors instead use `DetectorConfig` plus a selected checkpoint and adapter;
+see [M9](m9_detector.md) and the [detector factory](../carla_vision/detectors/factory.py).
+A `.pt` suffix alone does not define architecture or input/output semantics.
+Downstream code must not import framework-specific result objects.
 
 ### Retained artifact
 
@@ -356,7 +380,7 @@ The intended unified trace is:
 SceneSettings.svelte
   -> SessionConfig.scene.pedestrianCrossingFactor
   -> configuration store
-  -> POST /api/session/start or explicit Preview
+  -> automatic preview configuration / POST /api/session/start
   -> Operator canonical mapping
   -> WorldWorkerClient request
   -> world.set_pedestrians_cross_factor(...)
@@ -405,6 +429,7 @@ Svelte:
 cd web
 npm ci --no-audit --no-fund
 npm run check
+npm test
 npm run build
 ```
 

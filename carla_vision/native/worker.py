@@ -270,11 +270,13 @@ class EpisodeActors:
     walker_ids: list[int] = field(default_factory=list)
     walker_controller_ids: list[int] = field(default_factory=list)
     prop_ids: list[int] = field(default_factory=list)
+    additional_sensor_ids: list[int] = field(default_factory=list)
 
     def destruction_order(self) -> list[int]:
         values = [
             self.rgb_sensor_id,
             self.teacher_sensor_id,
+            *self.additional_sensor_ids,
             *self.walker_controller_ids,
             *self.walker_ids,
             *self.traffic_vehicle_ids,

@@ -16,6 +16,8 @@ from typing import Any, Self
 import cv2
 
 from ..artifacts import RunArtifactTracker, fingerprint_file
+from ..bridge import CarlaImageFrame
+from .camera_rig import validate_bundle
 from .instance_labels import InstanceLabel, extract_instance_labels
 from .ontology import CARLA_SEMANTIC_TAGS, DETECTOR_CATEGORIES
 from .sync import SynchronizedFramePair
@@ -165,6 +167,7 @@ class DatasetWriter:
         self._auxiliary_artifacts: list[AuxiliaryArtifact] = []
         self._auxiliary_paths: set[str] = set()
         self._release_metadata: dict[str, Any] = {}
+        self._rgb_camera_ids: tuple[str, ...] | None = None
         self._entered = False
         self._closed = False
 
@@ -254,6 +257,8 @@ class DatasetWriter:
         scenario_id: str,
         episode_id: str,
         context: Mapping[str, Any] | None = None,
+        rgb_views: Mapping[str, CarlaImageFrame] | None = None,
+        camera_calibrations: Mapping[str, Mapping[str, Any]] | None = None,
     ) -> DatasetSample:
         if not self._entered:
             raise RuntimeError("dataset writer must be used as a context manager")
@@ -264,6 +269,13 @@ class DatasetWriter:
         if not scenario_id or not episode_id:
             raise ValueError("scenario_id and episode_id must not be empty")
         self._validate_pair(pair)
+        camera_ids = tuple(sorted(rgb_views)) if rgb_views is not None else ()
+        if self._rgb_camera_ids is not None and camera_ids != self._rgb_camera_ids:
+            raise ValueError("RGB camera IDs must stay constant within a dataset release")
+        if rgb_views is not None:
+            validate_bundle(pair.rgb, rgb_views, camera_calibrations or {})
+        elif camera_calibrations is not None:
+            raise ValueError("camera calibration requires an RGB bundle")
         episode_key = (scenario_id, episode_id)
         prior_split = self._episode_splits.get(episode_key)
         if prior_split is not None and prior_split != split:
@@ -341,6 +353,30 @@ class DatasetWriter:
             "annotations": [label.as_dict() for label in labels],
             "context": dict(context or {}),
         }
+        if rgb_views is not None:
+            view_rows = {}
+            for name, frame in rgb_views.items():
+                view_path = rgb_path if name == "front" else (
+                    self.dataset_dir / "cameras" / name / split / f"{sample_id}.png"
+                )
+                if name != "front":
+                    if view_path.exists():
+                        raise FileExistsError(f"RGB view already exists: {view_path}")
+                    _write_png(view_path, frame.bgr())
+                    relative = view_path.relative_to(self.dataset_dir).as_posix()
+                    self._auxiliary_paths.add(relative)
+                    self._auxiliary_artifacts.append(AuxiliaryArtifact(
+                        path=relative, role="rgb_camera_view",
+                        metadata={"camera_id": name, "sample_id": sample_id},
+                    ))
+                view_rows[name] = {
+                    "image": asdict(self._sample_artifact(view_path)),
+                    "carla_frame": frame.frame,
+                    "timestamp_seconds": frame.timestamp,
+                    "calibration": dict(camera_calibrations[name]),
+                    "privileged_camera_world_transform": list(frame.transform),
+                }
+            metadata_payload["rgb_views"] = view_rows
         _write_json(metadata_path, metadata_payload)
 
         rgb_artifact = self._sample_artifact(rgb_path)
@@ -362,6 +398,7 @@ class DatasetWriter:
             annotation_count=len(labels),
         )
         self._samples.append(sample)
+        self._rgb_camera_ids = camera_ids
         self._append_coco(sample, labels, pair.rgb.width, pair.rgb.height)
         self._episode_splits[episode_key] = split
         self._last_frame_by_episode[episode_key] = pair.carla_frame
@@ -456,6 +493,9 @@ class DatasetWriter:
                 "dataset_id": self.dataset_id,
                 "status": "complete",
                 "runtime_sensor_contract": "front_monocular_rgb_only",
+                **({"rgb_camera_ids": list(self._rgb_camera_ids),
+                    "capture_sensor_contract": "synchronized_multicamera_rgb"}
+                   if self._rgb_camera_ids else {}),
                 "teacher_sensor": {
                     "type": "sensor.camera.instance_segmentation",
                     "privileged": True,

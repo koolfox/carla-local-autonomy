@@ -9,7 +9,8 @@ This repository is a LAN research tool, not an internet-facing or multi-user
 service. The browser server deliberately binds to loopback only.
 
 New contributors should start with the
-[`Developer guide`](docs/development.md). Branch/PR rules and the current
+[`developer navigation hub`](docs/README.md): find a feature, its owner, and
+its first test without reading the whole codebase. Branch/PR rules and the current
 source map are documented in [`CONTRIBUTING.md`](CONTRIBUTING.md) and
 [`docs/project_structure.md`](docs/project_structure.md).
 
@@ -181,6 +182,11 @@ synchronized native dataset-capture workflow; dropped/newest-only preview frames
 and review MP4s are not canonical training samples. See
 [docs/realtime_streaming.md](docs/realtime_streaming.md) for exact profiles,
 measurements, hard pass/fail thresholds, and the H.264/WebRTC fallback decision.
+
+For synchronized multi-camera teacher collection initiated from the Mac, see
+[native research jobs](docs/native_research_jobs.md). The optional Worker task
+host runs the existing collector on Windows and returns a verified archive;
+normal Garage streaming is unchanged.
 
 ## Garage and Drive
 

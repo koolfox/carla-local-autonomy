@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "additional_views": [
+    {
+      "id": "front_left",
+      "mount": {"x": 1.5, "y": -0.3, "z": 2.0, "pitch": 0.0, "yaw": -60.0, "roll": 0.0},
+      "fov_degrees": 100.0
+    },
+    {
+      "id": "front_right",
+      "mount": {"x": 1.5, "y": 0.3, "z": 2.0, "pitch": 0.0, "yaw": 60.0, "roll": 0.0},
+      "fov_degrees": 100.0
+    }
+  ]
+}

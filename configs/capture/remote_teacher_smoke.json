@@ -1,0 +1,57 @@
+{
+  "dry_run": true,
+  "camera_rig": "front-three",
+  "behavior": "cautious",
+  "target_speed_kmh": 20,
+  "minimum_route_distance_m": 40,
+  "max_episodes": 1,
+  "scenario_suite": {
+    "schema_version": "1.0",
+    "suite_id": "suite-remote-teacher-smoke-v1",
+    "carla_version": "0.9.16",
+    "traffic_manager_port": 8000,
+    "master_seed": 7,
+    "recipes": [{
+      "recipe_id": "town10-remote-teacher-smoke",
+      "repetitions": 1,
+      "route_region_id": "spawn-000-smoke",
+      "map_name": "Town10HD_Opt",
+      "ego_blueprint": "vehicle.tesla.model3",
+      "ego_spawn_index": 0,
+      "fixed_delta_seconds": 0.05,
+      "camera": {
+        "width": 1280, "height": 720, "fov_degrees": 90,
+        "sensor_tick_seconds": 0.1, "gamma": 2.2,
+        "enable_postprocess_effects": true,
+        "mount": {"x": 1.5, "y": 0, "z": 1.7, "pitch": 0, "yaw": 0, "roll": 0}
+      },
+      "capture": {
+        "warmup_ticks": 40, "duration_ticks": 200, "capture_every_ticks": 4,
+        "minimum_visible_pixels": 16, "minimum_box_width": 2, "minimum_box_height": 2
+      },
+      "props": [],
+      "traffic": {
+        "vehicle_count": 0, "walker_count": 0,
+        "vehicle_filter": "vehicle.*", "vehicle_generation": "All",
+        "walker_filter": "walker.pedestrian.*", "walker_generation": "2",
+        "global_distance_to_leading_vehicle": 3,
+        "global_speed_difference_percent": 30,
+        "pedestrian_crossing_factor": 0.1,
+        "automatic_vehicle_lights": true
+      },
+      "weather": {
+        "weather_id": "clear-day-smoke", "light": "day",
+        "cloudiness": 10, "precipitation": 0, "precipitation_deposits": 0,
+        "wind_intensity": 8, "sun_azimuth_angle": 45, "sun_altitude_angle": 50,
+        "fog_density": 0, "fog_distance": 0, "fog_falloff": 0.2, "wetness": 0,
+        "scattering_intensity": 1, "mie_scattering_scale": 0.03,
+        "rayleigh_scattering_scale": 0.0331, "dust_storm": 0
+      }
+    }]
+  },
+  "split_plan": {
+    "schema_version": "1.0", "plan_id": "split-remote-teacher-smoke-v1",
+    "test_map_families": [], "test_weather_ids": [],
+    "validation_map_families": [], "validation_weather_ids": []
+  }
+}

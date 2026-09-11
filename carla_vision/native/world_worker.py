@@ -40,7 +40,7 @@ from typing import Any, Self
 from urllib.parse import urlparse
 
 SCHEMA_VERSION = "1.0"
-WORKER_API_REVISION = 6
+WORKER_API_REVISION = 7
 EXPECTED_CARLA_VERSION = "0.9.16"
 DEFAULT_BIND = "127.0.0.1"
 DEFAULT_PORT = 8766
@@ -1046,6 +1046,8 @@ class WorldWorker:
         self._monitor_period = float(monitor_period)
         self._map_process_runner = map_process_runner
         self._lock = threading.RLock()
+        self._research_owner: str | None = None
+        self.research_recovery_required = False
         self._client: Any | None = None
         self._carla: Any | None = None
         self._route_planner_factory: Callable[[Any], Any] | None = None
@@ -1064,6 +1066,7 @@ class WorldWorker:
             self._monitor.start()
 
     def _ensure_client(self) -> tuple[Any, Any, Any]:
+        self._require_no_research_owner()
         try:
             if self._client is None:
                 self._carla = self._carla_loader()
@@ -1094,6 +1097,48 @@ class WorldWorker:
                 f"{self.expected_carla_version}; client={client_version}, server={server_version}",
             )
         return self._client, world, self._carla
+
+    def _require_no_research_owner(self) -> None:
+        if self._research_owner or self.research_recovery_required:
+            raise WorkerError(
+                HTTPStatus.CONFLICT,
+                "research_world_owned",
+                (
+                    "Native research owns the simulator; wait for completion and confirmed cleanup"
+                    if self._research_owner else
+                    "Native task cleanup is unconfirmed; reconcile CARLA on the host before restarting Garage"
+                ),
+            )
+
+    def reserve_research(self, job_id: str) -> dict[str, Any]:
+        # Do not queue a native job behind a slow Garage mutation.
+        if not self._lock.acquire(blocking=False):
+            raise WorkerError(HTTPStatus.CONFLICT, "world_busy", "Garage operation is still active")
+        try:
+            self._require_no_research_owner()
+            if self._closed or self._scene is not None:
+                raise WorkerError(
+                    HTTPStatus.CONFLICT, "scene_active",
+                    "Stop Drive and close Garage preview before native research",
+                )
+            self._research_owner = job_id
+            self._invalidate_client()
+            return {
+                "host": self.carla_host,
+                "port": self.carla_port,
+                "traffic_manager_port": self.traffic_manager_port,
+                "expected_carla_version": self.expected_carla_version,
+            }
+        finally:
+            self._lock.release()
+
+    def release_research(self, job_id: str, *, cleanup_confirmed: bool) -> None:
+        with self._lock:
+            if self._research_owner != job_id:
+                return
+            self._research_owner = None
+            self.research_recovery_required = not cleanup_confirmed
+            self._invalidate_client()
 
     def _invalidate_client(self) -> None:
         self._client = None
@@ -1255,6 +1300,17 @@ class WorldWorker:
 
     def health(self) -> dict[str, Any]:
         """Return authenticated readiness without exposing credentials."""
+
+        if self._research_owner or self.research_recovery_required:
+            return {
+                "schema_version": SCHEMA_VERSION, "worker_api_revision": WORKER_API_REVISION,
+                "status": "research_running" if self._research_owner else "recovery_required",
+                "ready": not self.research_recovery_required,
+                "error_code": "research_recovery_required" if self.research_recovery_required else None,
+                "carla": {"connected": None, "host": self.carla_host, "port": self.carla_port},
+                "active_scene": None, "research_job_id": self._research_owner,
+                "capabilities": self._capabilities(None),
+            }
 
         # Long scene prepare/cleanup operations intentionally retain the world
         # lifecycle lock. Health must still answer immediately so a healthy,
@@ -2286,6 +2342,7 @@ class WorldWorker:
     def prepare(self, raw: Mapping[str, Any]) -> dict[str, Any]:
         config = SceneConfig.from_mapping(raw)
         with self._lock:
+            self._require_no_research_owner()
             if self._closed:
                 raise WorkerError(
                     HTTPStatus.SERVICE_UNAVAILABLE, "worker_closed", "worker is closed"
@@ -4314,10 +4371,12 @@ class WorldWorkerHTTPServer(ThreadingHTTPServer):
         *,
         token: str,
         log_requests: bool = False,
+        research_jobs: Any | None = None,
     ) -> None:
         self.worker = worker
         self.token = token
         self.log_requests = bool(log_requests)
+        self.research_jobs = research_jobs
         super().__init__(address, WorldWorkerRequestHandler)
 
 
@@ -4494,6 +4553,59 @@ class WorldWorkerRequestHandler(BaseHTTPRequestHandler):
             )
         return value
 
+    def _research_request(self, path: str, body: Mapping[str, Any] | None = None) -> bool:
+        if not path.startswith("/v1/research/"):
+            return False
+        jobs = self.server.research_jobs
+        if jobs is None:
+            raise WorkerError(
+                HTTPStatus.NOT_IMPLEMENTED, "research_disabled",
+                "Native task hosting is not enabled on this bridge",
+            )
+        parts = path.removeprefix("/v1/research/").split("/")
+        try:
+            if body is None and parts == ["tasks"]:
+                self._send_json(HTTPStatus.OK, jobs.catalog())
+            elif body is not None and parts == ["jobs"]:
+                self._send_json(HTTPStatus.ACCEPTED, jobs.submit(dict(body)))
+            elif len(parts) >= 2 and parts[0] == "jobs":
+                job_id = parts[1]
+                if len(parts) == 2 and body is None:
+                    self._send_json(HTTPStatus.OK, jobs.get(job_id))
+                elif len(parts) == 3 and parts[2] == "cancel" and body is not None:
+                    if body:
+                        raise WorkerError(HTTPStatus.BAD_REQUEST, "invalid_cancel", "cancel body must be empty")
+                    self._send_json(HTTPStatus.ACCEPTED, jobs.cancel(job_id))
+                elif len(parts) == 3 and parts[2] == "log" and body is None:
+                    self._send_json(HTTPStatus.OK, jobs.log(job_id))
+                elif len(parts) == 4 and parts[2] == "files" and body is None:
+                    target = jobs.output_file(job_id, parts[3])
+                    # An archive can exceed RAM; stream it on its own HTTP request.
+                    with target.open("rb") as stream:
+                        self.send_response(HTTPStatus.OK)
+                        self.send_header("Content-Type", "application/octet-stream")
+                        self.send_header("Content-Length", str(os.fstat(stream.fileno()).st_size))
+                        self.send_header("Cache-Control", "no-store")
+                        self.send_header("X-Content-Type-Options", "nosniff")
+                        self.end_headers()
+                        while chunk := stream.read(1024 * 1024):
+                            self.wfile.write(chunk)
+                else:
+                    raise WorkerError(HTTPStatus.NOT_FOUND, "route_not_found", "research route not found")
+            else:
+                raise WorkerError(HTTPStatus.NOT_FOUND, "route_not_found", "research route not found")
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            self.close_connection = True
+        except (ValueError, OSError) as error:
+            raise WorkerError(HTTPStatus.BAD_REQUEST, "invalid_research_request", str(error)) from error
+        except RuntimeError as error:
+            if isinstance(error, WorkerError):
+                raise
+            raise WorkerError(
+                getattr(error, "status", 400), getattr(error, "code", "research_error"), str(error)
+            ) from error
+        return True
+
     def do_GET(self) -> None:  # noqa: N802
         if not self._authenticate():
             return
@@ -4505,6 +4617,8 @@ class WorldWorkerRequestHandler(BaseHTTPRequestHandler):
                     "query_not_supported",
                     "query strings are not supported",
                 )
+            if self._research_request(parsed.path):
+                return
             camera_match = _CAMERA_FRAME_PATH.fullmatch(parsed.path)
             if camera_match is not None:
                 lease_token = self.headers.get("X-Scene-Lease", "")
@@ -4536,7 +4650,11 @@ class WorldWorkerRequestHandler(BaseHTTPRequestHandler):
                     self.headers.get("X-Scene-Lease", ""),
                 )
             elif parsed.path == "/v1/health":
-                self._send_json(HTTPStatus.OK, self.server.worker.health())
+                payload = self.server.worker.health()
+                payload["native_tasks"] = {
+                    "enabled": self.server.research_jobs is not None, "schema_version": "1.0",
+                }
+                self._send_json(HTTPStatus.OK, payload)
             elif parsed.path == "/v1/catalog":
                 self._send_json(HTTPStatus.OK, self.server.worker.catalog())
             elif parsed.path == "/v1/scenes/current":
@@ -4568,6 +4686,8 @@ class WorldWorkerRequestHandler(BaseHTTPRequestHandler):
                     "query strings are not supported",
                 )
             body = self._body()
+            if self._research_request(parsed.path, body):
+                return
             if parsed.path == "/v1/scenes/prepare":
                 result = self.server.worker.prepare(body)
                 self._send_json(HTTPStatus.CREATED, result)
@@ -4654,6 +4774,7 @@ def create_server(
     worker: WorldWorker,
     allow_lan: bool = False,
     log_requests: bool = False,
+    research_jobs: Any | None = None,
 ) -> WorldWorkerHTTPServer:
     loopback = _is_loopback_bind(bind)
     if not loopback and not allow_lan:
@@ -4666,6 +4787,7 @@ def create_server(
         worker,
         token=checked_token,
         log_requests=log_requests,
+        research_jobs=research_jobs,
     )
 
 
@@ -4691,6 +4813,15 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--control-timeout", type=float, default=0.75)
     parser.add_argument("--expected-carla-version", default=EXPECTED_CARLA_VERSION)
     parser.add_argument("--log-requests", action="store_true")
+    parser.add_argument(
+        "--research-tasks-dir",
+        help="Opt-in directory of locally installed trusted native task packages",
+    )
+    parser.add_argument("--research-jobs-root", default="native_jobs")
+    parser.add_argument(
+        "--research-python", default=sys.executable,
+        help="Interpreter with CARLA and task dependencies; never selected by an HTTP request",
+    )
     args = parser.parse_args(argv)
     if not 0 <= args.port <= 65535:
         parser.error("--port must be in [0, 65535]")
@@ -4814,6 +4945,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         control_timeout=args.control_timeout,
         expected_carla_version=args.expected_carla_version,
     )
+    research_jobs = None
+    if args.research_tasks_dir:
+        # Optional sibling, loaded without importing the research package. The
+        # original single-file bridge still runs when task hosting is disabled.
+        helper = Path(__file__).with_name("research_jobs.py")
+        spec = importlib.util.spec_from_file_location("carla_native_research_jobs", helper)
+        if spec is None or spec.loader is None:
+            raise SystemExit("research_jobs.py must be installed beside world_worker.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        research_jobs = module.ResearchJobs(
+            Path(args.research_tasks_dir), Path(args.research_jobs_root), worker,
+            python=args.research_python,
+        )
     server = create_server(
         bind=args.bind,
         port=args.port,
@@ -4821,6 +4966,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         worker=worker,
         allow_lan=args.allow_lan,
         log_requests=args.log_requests,
+        research_jobs=research_jobs,
     )
     address, port = server.server_address[:2]
     print(
@@ -4852,6 +4998,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     finally:
         server.shutdown()
         server.server_close()
+        if research_jobs is not None:
+            research_jobs.close()
         worker.close()
     return 0
 

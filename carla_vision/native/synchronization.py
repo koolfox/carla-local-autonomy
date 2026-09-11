@@ -26,9 +26,11 @@ class QueuedSensorFrame:
 class NativeSensorQueue:
     """Thread-safe CARLA callback queue with strict target-frame retrieval."""
 
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, *, max_frames: int = 0) -> None:
+        if isinstance(max_frames, bool) or not isinstance(max_frames, int) or max_frames < 0:
+            raise ValueError("max_frames must be a non-negative integer")
         self.name = name
-        self._queue: queue.Queue[QueuedSensorFrame] = queue.Queue()
+        self._queue: queue.Queue[QueuedSensorFrame] = queue.Queue(maxsize=max_frames)
         self._received = 0
         self._discarded = 0
 
@@ -42,13 +44,23 @@ class NativeSensorQueue:
 
     def callback(self, image: Any) -> None:
         self._received += 1
-        self._queue.put(
-            QueuedSensorFrame(
-                sequence=self._received,
-                received_monotonic=time.monotonic(),
-                image=image,
-            )
+        item = QueuedSensorFrame(
+            sequence=self._received,
+            received_monotonic=time.monotonic(),
+            image=image,
         )
+        try:
+            self._queue.put_nowait(item)
+        except queue.Full:
+            try:
+                self._queue.get_nowait()
+                self._discarded += 1
+            except queue.Empty:
+                pass
+            try:
+                self._queue.put_nowait(item)
+            except queue.Full:
+                self._discarded += 1
 
     def get_next(self, timeout: float) -> QueuedSensorFrame:
         """Return the next callback item, preserving its receive sequence."""
