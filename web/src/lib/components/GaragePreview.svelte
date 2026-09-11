@@ -26,7 +26,7 @@
     systemSettings,
     workspaceOptions
   } from '$lib/stores/configuration';
-  import { garageRuntime, runtimeOperatorApi } from '$lib/stores/runtime';
+  import { captureRuntime, garageRuntime, runtimeOperatorApi } from '$lib/stores/runtime';
 
   type CameraPreset = GarageOrbitRequest['preset'];
 
@@ -148,7 +148,7 @@
   );
   $: driveActive = isDriveActive($garageRuntime.drive) || $garageRuntime.action === 'start';
   $: available = Boolean(
-    $systemSettings?.workerConfigured && $sessionConfig.vehicle.blueprint && !driveActive
+    $systemSettings?.workerConfigured && $sessionConfig.vehicle.blueprint && !driveActive && !$captureRuntime.holds_world
   );
   $: signature = garagePreviewSignature($sessionConfig);
   $: inputError = garagePreviewInputError($sessionConfig);
@@ -237,7 +237,7 @@
   }
 
   function refreshStream(): void {
-    if (!active || driveActive || destroyed) return;
+    if (!active || !available || destroyed) return;
     streamNonce += 1;
     streamBuffer = stageGarageStream(
       streamBuffer,
@@ -415,7 +415,10 @@
 
     {#if !active}
       <div class="garage-preview-placeholder">
-        {#if busy}
+        {#if $captureRuntime.holds_world}
+          <strong>Teacher capture · {$captureRuntime.phase}</strong>
+          <span>Progress and cancellation are in Research.</span>
+        {:else if busy}
           <span class="loading-ring"></span>
           <strong>{garagePreparationStageLabel(lifecycleStage)}</strong>
         {:else}
@@ -472,7 +475,7 @@
         aria-live="polite"
       >
         {#if busy}<span class="loading-ring" aria-hidden="true"></span>{/if}
-        {#if driveActive}Drive active{:else if busy}{garagePreparationStageLabel(lifecycleStage)}{:else if configureRetrying || streamRetryTimer}Reconnecting…{:else if error}Needs attention{:else if dirty}Syncing settings…{:else if active}Live CARLA{:else}Waiting for bridge{/if}
+        {#if $captureRuntime.holds_world}Teacher capture{:else if driveActive}Drive active{:else if busy}{garagePreparationStageLabel(lifecycleStage)}{:else if configureRetrying || streamRetryTimer}Reconnecting…{:else if error}Needs attention{:else if dirty}Syncing settings…{:else if active}Live CARLA{:else}Waiting for bridge{/if}
       </span>
       <SessionLaunchBar compact={true} configurationPending={dirty || busy} />
     </div>

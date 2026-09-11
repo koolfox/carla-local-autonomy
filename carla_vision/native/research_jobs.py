@@ -1,8 +1,9 @@
-"""Optional stdlib-only host for locally installed, trusted native Python tasks.
+"""Stdlib-only native jobs served by the normal World Worker.
 
 This is process isolation, not a security sandbox. There is deliberately no
 network endpoint for uploading Python, choosing an executable, or installing pip
-packages. A host operator installs task packages in the configured registry.
+packages. Built-in tasks run directly from this checkout; optional local task
+directories are for host-installed extensions, not normal operation.
 """
 
 from __future__ import annotations
@@ -65,10 +66,13 @@ def write_json(path: Path, value: Any) -> None:
 
 
 class ResearchJobs:
-    def __init__(self, tasks: Path, root: Path, worker: Any, *, python: str = sys.executable):
-        self.tasks = Path(tasks).expanduser().resolve(strict=True)
+    def __init__(
+        self, tasks: Path | None, root: Path, worker: Any, *, python: str = sys.executable
+    ):
+        self.tasks = Path(tasks).expanduser().resolve(strict=True) if tasks is not None else None
+        self.source = Path(__file__).resolve().parent.parent
         self.root = Path(root).expanduser().resolve()
-        if not self.tasks.is_dir():
+        if self.tasks is not None and not self.tasks.is_dir():
             raise ValueError("research tasks directory must exist")
         self.root.mkdir(parents=True, exist_ok=True)
         # Resolving a virtualenv's Python symlink selects the system interpreter
@@ -107,6 +111,32 @@ class ResearchJobs:
             self.worker.research_recovery_required = True
 
     def _task(self, task_id: str, *, verify: bool = False) -> tuple[Path, dict[str, Any]]:
+        identifier(task_id)
+        if (
+            task_id == "teacher_capture"
+            and (self.source / "native/tasks/run.py").is_file()
+            and (self.tasks is None or not (self.tasks / task_id / "task.json").is_file())
+        ):
+            # No copied source tree or generated manifest is needed for code
+            # already shipped with the Worker. Record the exact source identity.
+            files = {
+                path.relative_to(self.source.parent).as_posix(): digest(path)
+                for path in sorted(self.source.rglob("*.py"))
+                if not path.is_symlink()
+            }
+            source_hash = hashlib.sha256(json.dumps(files, sort_keys=True).encode()).hexdigest()
+            return self.source.parent, {
+                "schema_version": SCHEMA_VERSION,
+                "id": task_id,
+                "version": source_hash[:12],
+                "manifest_sha256": source_hash,
+                "entrypoint": "carla_vision/native/tasks/run.py",
+                "world_access": "exclusive",
+                "max_seconds": 900,
+                "builtin": True,
+            }
+        if self.tasks is None:
+            raise ResearchJobError("native task is not available on this Worker", status=404)
         directory = inside(self.tasks, identifier(task_id))
         path = inside(directory, "task.json")
         if not path.is_file():
@@ -142,11 +172,16 @@ class ResearchJobs:
 
     def catalog(self) -> dict[str, Any]:
         tasks, invalid = [], []
-        for directory in sorted(self.tasks.iterdir()):
-            if not directory.is_dir() or directory.is_symlink():
-                continue
+        names = {"teacher_capture"} if (self.source / "native/tasks/run.py").is_file() else set()
+        if self.tasks is not None:
+            names.update(
+                path.name
+                for path in self.tasks.iterdir()
+                if path.is_dir() and not path.is_symlink()
+            )
+        for name in sorted(names):
             try:
-                _, item = self._task(directory.name)
+                _, item = self._task(name)
                 tasks.append(
                     {
                         key: item[key]
@@ -160,7 +195,7 @@ class ResearchJobs:
                     }
                 )
             except (OSError, ValueError, ResearchJobError) as error:
-                invalid.append({"id": directory.name, "error": str(error)})
+                invalid.append({"id": name, "error": str(error)})
         return {
             "schema_version": SCHEMA_VERSION,
             "tasks": tasks,

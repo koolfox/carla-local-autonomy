@@ -27,7 +27,7 @@
         const snapshot = await loadWorkspaceSnapshot();
         if (cancelled) return;
         hydrateWorkspace(snapshot);
-        initializeRuntime(snapshot.token, snapshot.driveState);
+        initializeRuntime(snapshot.token, snapshot.driveState, snapshot.captureState);
         beginRuntimePolling();
       } catch (caught) {
         if (!cancelled) error = caught instanceof Error ? caught.message : String(caught);

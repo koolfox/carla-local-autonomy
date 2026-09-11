@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import copy
 import json
+import shutil
+import threading
+import zipfile
 from dataclasses import make_dataclass, replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -23,6 +26,7 @@ from carla_vision.native.synchronization import NativeSensorQueue, SensorFrameEr
 from carla_vision.native.teacher_verify import verify_teacher_dataset
 from carla_vision.native.worker import EpisodeActors
 from carla_vision.operator.artifacts import ArtifactStore
+from carla_vision.operator.garage_capture import GarageCapture
 from carla_vision.scenarios.contracts import CameraRecipe, TransformRecipe
 
 
@@ -286,3 +290,37 @@ def test_replay_produces_playable_indexed_artifact(tmp_path: Path, multi: bool) 
     index = json.loads((result / "frames.json").read_text())
     assert index["frames"][0]["carla_frame"] == 100
     assert len(index["frames"][0]["rgb_views"]) == (3 if multi else 1)
+
+
+def test_native_capture_download_is_verified_imported_and_playable_in_recordings(tmp_path):
+    from carla_vision.native.research_jobs import digest
+
+    dataset = make_dataset(tmp_path / "native/datasets")
+    archive = tmp_path / "capture.zip"
+    with zipfile.ZipFile(archive, "w") as stream:
+        for path in dataset.rglob("*"):
+            if path.is_file():
+                stream.write(path, path.relative_to(tmp_path / "native").as_posix())
+    workspace = tmp_path / "research"
+    app = SimpleNamespace(
+        workspace=workspace,
+        jobs=SimpleNamespace(sessions_root=workspace / "operator_sessions"),
+        world_worker=object(),
+    )
+    capture = GarageCapture(app, threading.RLock())
+    client = SimpleNamespace(
+        fetch=lambda job, target: shutil.copyfile(archive, target),
+        status=lambda job: {"result": {"archive": {"sha256": digest(archive)}}},
+    )
+    results = capture._receive(client, "teacher")
+    assert results == ["runs/teacher-1"]
+    assert verify_teacher_dataset(workspace / "datasets/teacher")["status"] == "passed"
+    # Restart/import retries reuse verified files; they do not overwrite recordings.
+    assert capture._receive(client, "teacher") == results
+    recorded = workspace / results[0] / "camera-rig.mp4"
+    video = cv2.VideoCapture(str(recorded))
+    try:
+        assert video.read()[0]
+        assert int(video.get(cv2.CAP_PROP_FRAME_COUNT)) == 3
+    finally:
+        video.release()

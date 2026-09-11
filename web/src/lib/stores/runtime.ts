@@ -1,6 +1,6 @@
 import { get, writable } from 'svelte/store';
 
-import { OperatorApi } from '$lib/api/operator';
+import { OperatorApi, type CaptureState, type SituationSettings } from '$lib/api/operator';
 import type { SessionConfig } from '$lib/domain/config';
 import { isDriveActive, type DriveControlRequest, type DriveState } from '$lib/domain/runtime';
 
@@ -25,6 +25,10 @@ export const garageRuntime = writable<GarageRuntimeState>({
   action: null,
   error: null,
   lastUpdatedAt: null
+});
+
+export const captureRuntime = writable<CaptureState>({
+  phase: 'idle', active: false, holds_world: false, available: false, job_id: null, error: null
 });
 
 let api: OperatorApi | null = null;
@@ -54,21 +58,26 @@ function setError(error: unknown): void {
   garageRuntime.update((current) => ({ ...current, error: message }));
 }
 
-export function initializeRuntime(token: string, initialDrive: DriveState): void {
+export function initializeRuntime(token: string, initialDrive: DriveState, capture?: CaptureState): void {
   api = new OperatorApi(token);
   setDrive(initialDrive);
+  if (capture) captureRuntime.set(capture);
 }
 
 export async function refreshRuntime(): Promise<void> {
   try {
-    setDrive(await runtimeApi().getDriveState());
+    const [drive, capture] = await Promise.all([
+      runtimeApi().getDriveState(), runtimeApi().getCaptureState()
+    ]);
+    setDrive(drive);
+    captureRuntime.set(capture);
   } catch (error) {
     setError(error);
   }
 }
 
 function nextPollDelay(): number {
-  return isDriveActive(get(garageRuntime).drive) ? 700 : 3000;
+  return isDriveActive(get(garageRuntime).drive) || get(captureRuntime).active ? 700 : 3000;
 }
 
 async function pollOnce(): Promise<void> {
@@ -156,4 +165,19 @@ export async function sendManualDriveControl(
 
 export function runtimeOperatorApi(): OperatorApi {
   return runtimeApi();
+}
+
+export async function startCapture(session: SessionConfig, situation: SituationSettings, rig: string): Promise<void> {
+  // Suspend auto-apply before the backend releases the preview for collection.
+  captureRuntime.update((state) => ({ ...state, active: true, holds_world: true, phase: 'preparing', error: null }));
+  try {
+    captureRuntime.set(await runtimeApi().startCapture(session, situation, rig));
+  } catch (error) {
+    await refreshRuntime();
+    throw error;
+  }
+}
+
+export async function cancelCapture(): Promise<void> {
+  captureRuntime.set(await runtimeApi().cancelCapture());
 }

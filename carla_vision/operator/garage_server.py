@@ -26,6 +26,7 @@ from .configuration import (
     build_legacy_drive_request,
 )
 from .garage_async import GaragePreviewAsyncFacade
+from .garage_capture import GarageCapture
 from .garage_drive import GarageDriveSessionManager, GarageDriveStartConfig
 from .garage_preview import GaragePreviewConfig, GaragePreviewManager
 from .garage_research import GarageResearchRequest, build_garage_research_plan
@@ -137,6 +138,9 @@ class GarageOperatorRequestHandler(base.OperatorRequestHandler):
     def do_GET(self) -> None:
         try:
             path = urlparse(self.path).path
+            if path == "/api/garage/capture":
+                self._json(HTTPStatus.OK, self.server.application.capture.state())
+                return
             if path == "/api/garage/preview/state":
                 self._json(HTTPStatus.OK, self.server.application.preview.state())
                 return
@@ -257,7 +261,8 @@ class GarageOperatorRequestHandler(base.OperatorRequestHandler):
             "/api/garage/preview/orbit",
             "/api/garage/preview/stop",
         }
-        handled_routes = {"/api/garage/jobs", "/api/session/start", *preview_routes}
+        capture_routes = {"/api/garage/capture", "/api/garage/capture/cancel"}
+        handled_routes = {"/api/garage/jobs", "/api/session/start", *preview_routes, *capture_routes}
         if path not in handled_routes:
             super().do_POST()
             return
@@ -269,6 +274,16 @@ class GarageOperatorRequestHandler(base.OperatorRequestHandler):
                 )
                 return
             body = self._body()
+            if path in capture_routes:
+                capture = self.server.application.capture
+                if path.endswith("/cancel"):
+                    if body != {}:
+                        raise ValueError("capture cancellation requires an empty object")
+                    result = capture.cancel()
+                else:
+                    result = capture.start(body)
+                self._json(HTTPStatus.ACCEPTED, result)
+                return
             if path == "/api/session/start":
                 request = _canonical_session_request(body, self.server.application)
                 result = self.server.application.drive.start(request)
@@ -356,6 +371,9 @@ class GarageOperatorDriveManager(GarageDriveSessionManager):
         if preview is None or world_mode_lock is None:
             return super().start(raw)
         with world_mode_lock:
+            capture = getattr(self, "_garage_capture", None)
+            if capture is not None:
+                capture.require_world_available()
             return super().start(raw)
 
     def _prepare_worker_scene(self, config: GarageDriveStartConfig) -> WorldWorkerScene | None:
@@ -404,6 +422,9 @@ class GarageOperatorApplication(base.OperatorApplication):
     experimental_enabled: bool
 
     def close(self) -> None:
+        capture = getattr(self, "capture", None)
+        if capture is not None:
+            capture.close()
         preview_async = getattr(self, "preview_async", None)
         if preview_async is not None:
             preview_async.close()
@@ -458,17 +479,27 @@ def create_server(
     )
     application.drive = drive
     world_mode_lock = threading.RLock()
+    application.capture = GarageCapture(application, world_mode_lock)
+    drive._garage_capture = application.capture
+
+    def preview_owner_state() -> dict[str, Any]:
+        # Reuse preview's exclusive-world gate; no new CARLA control path.
+        if application.capture.state()["holds_world"]:
+            return {"status": "running"}
+        return drive.state()
+
     application.preview = GaragePreviewManager(
         carla_host=application.carla_host,
         carla_port=application.carla_port,
         world_worker=application.world_worker,
-        drive_state=drive.state,
+        drive_state=preview_owner_state,
         world_mode_lock=world_mode_lock,
     )
     application.preview_async = GaragePreviewAsyncFacade(application.preview)
     drive.attach_preview(application.preview, world_mode_lock)
     server = base.OperatorHTTPServer((str(bind), int(port)), application)
     server.RequestHandlerClass = GarageOperatorRequestHandler
+    application.capture.resume()
     return server
 
 

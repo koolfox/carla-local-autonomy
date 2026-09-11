@@ -536,6 +536,12 @@ class WorldWorkerClient:
     def health(self) -> dict[str, Any]:
         return self._request("GET", "/v1/health")
 
+    def research(self):
+        """Native JSON operations and files share this connection and token."""
+        from .native_research import NativeResearchClient
+
+        return NativeResearchClient(self)
+
     def catalog(self) -> dict[str, Any]:
         payload = self._request("GET", "/v1/catalog")
         capabilities = payload.get("capabilities")

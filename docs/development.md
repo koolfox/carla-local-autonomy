@@ -120,8 +120,11 @@ adapter and must never be exposed to the public internet.
 | Preview lifecycle | `carla_vision/operator/garage_preview.py` | `carla_vision/operator/world_worker_client.py` |
 | Drive lifecycle/control | `carla_vision/operator/garage_drive.py` | `carla_vision/operator/drive.py` |
 | HTTP transport and research jobs | `carla_vision/operator/server.py` | `commands.py`, `jobs.py` |
-| Saved-result inspection and allowed downloads | `carla_vision/operator/artifacts.py` | `catalog.py` for listing, `recording_preview.py` for browser video conversion |
+| Saved-result inspection and allowed downloads | `carla_vision/operator/artifacts.py` | `catalog.py` for listing; `recording_preview.py` converts legacy video only |
+| Recording format/encoder | `carla_vision/video.py` | `recording.py` for the live bounded queue; `dataset/episode_replay.py` for offline mosaics |
+| Capture from Garage | `carla_vision/operator/garage_capture.py` | `SceneBuilder.svelte`; `native_research.py` reuses the configured World Worker |
 | Windows CARLA behavior | `carla_vision/native/observable_world_worker.py` | `carla_vision/native/world_worker.py` |
+| Native research task algorithm | `carla_vision/native/tasks/teacher_capture.py` | Existing `native/behavior_teacher.py`; no new host protocol needed |
 | External runtime models | `carla_vision/model_package_contracts.py` | `model_registry.py`, `torchscript_driver.py` |
 | Detector adapter | `carla_vision/detectors/` | `carla_vision/perception.py` |
 | Road/lane model | `carla_vision/segmentation/factory.py` | `segmentation/contracts.py`, `docs/road_models.md` |

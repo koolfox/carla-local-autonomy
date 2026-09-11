@@ -48,6 +48,18 @@ export interface SituationSettings {
   repetitions: number;
 }
 
+export interface CaptureState {
+  phase: string;
+  active: boolean;
+  holds_world: boolean;
+  available: boolean;
+  job_id: string | null;
+  error: string | null;
+  log?: string;
+  results?: string[];
+  cancel_requested?: boolean;
+}
+
 export interface SituationSaveResponse {
   status: 'saved';
   path: string;
@@ -144,6 +156,7 @@ export interface WorkspaceSnapshot {
   experimentPresets: ExperimentPresetDefinition[];
   driveCatalog: DriveCatalogPayload;
   driveState: DriveState;
+  captureState: CaptureState;
 }
 
 interface ApiErrorPayload {
@@ -207,12 +220,13 @@ async function readJson<T>(path: string): Promise<T> {
 }
 
 export async function loadWorkspaceSnapshot(): Promise<WorkspaceSnapshot> {
-  const [bootstrap, configuration, driveCatalog, driveState, modelRegistry] = await Promise.all([
+  const [bootstrap, configuration, driveCatalog, driveState, modelRegistry, captureState] = await Promise.all([
     readJson<BootstrapPayload>('/api/bootstrap'),
     readJson<ConfigurationContractPayload>('/api/configuration'),
     readJson<DriveCatalogPayload>('/api/drive/catalog'),
     readJson<DriveState>('/api/drive/state'),
-    readJson<ModelRegistryPayload>('/api/models')
+    readJson<ModelRegistryPayload>('/api/models'),
+    readJson<CaptureState>('/api/garage/capture')
   ]);
 
   const drivingPackages = Array.isArray(modelRegistry.packages)
@@ -277,12 +291,25 @@ export async function loadWorkspaceSnapshot(): Promise<WorkspaceSnapshot> {
     sessionDefaults: configuration.sessionDefaults,
     experimentPresets: configuration.experimentPresets,
     driveCatalog,
-    driveState
+    driveState,
+    captureState
   };
 }
 
 export class OperatorApi {
   constructor(private readonly token: string) {}
+
+  getCaptureState(): Promise<CaptureState> {
+    return readJson<CaptureState>('/api/garage/capture');
+  }
+
+  startCapture(session: SessionConfig, situation: SituationSettings, cameraRig: string): Promise<CaptureState> {
+    return this.post('/api/garage/capture', { session, situation, camera_rig: cameraRig, acknowledge: true });
+  }
+
+  cancelCapture(): Promise<CaptureState> {
+    return this.post('/api/garage/capture/cancel', {});
+  }
 
   getDriveState(): Promise<DriveState> {
     return readJson<DriveState>('/api/drive/state');

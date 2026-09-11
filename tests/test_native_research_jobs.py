@@ -20,6 +20,64 @@ from carla_vision.operator.world_worker_client import WorldWorkerError
 
 ROOT = Path(__file__).resolve().parents[1]
 TOKEN = "native-research-test-token-with-enough-length"
+
+
+def test_builtin_capture_needs_no_export_or_separate_interpreter(tmp_path):
+    worker = WorldWorker(start_monitor=False)
+    jobs = ResearchJobs(None, tmp_path / "jobs", worker)
+    try:
+        task = next(item for item in jobs.catalog()["tasks"] if item["id"] == "teacher_capture")
+        parameters = json.loads((ROOT / "configs/capture/remote_teacher_smoke.json").read_text())
+        jobs.submit(
+            {
+                "job_id": "builtin-dry",
+                "task_id": "teacher_capture",
+                "parameters": parameters,
+                "task_sha256": task["manifest_sha256"],
+                "acknowledge_world_reload": True,
+            }
+        )
+        final = wait_done(jobs, "builtin-dry")
+        assert final["status"] == "succeeded", jobs.log("builtin-dry")
+        assert final["cleanup_confirmed"]
+        assert Path(jobs.python) == Path(sys.executable).absolute()
+        assert jobs.output_file("builtin-dry", "artifacts.zip").is_file()
+    finally:
+        jobs.close()
+        worker.close()
+
+
+def test_research_facade_reuses_existing_connection(host):
+    _, _, client, _ = host
+    research = client.connection.research()
+    assert research.connection is client.connection
+    assert research.tasks()["tasks"] == client.tasks()["tasks"]
+
+
+def test_builtin_preflight_missing_dependencies_isolated_from_listener(tmp_path):
+    request = tmp_path / "request.json"
+    write_json(request, {"task": {"id": "teacher_capture"}, "parameters": {"dry_run": True}})
+    process = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-S",
+            str(ROOT / "carla_vision/native/tasks/run.py"),
+            "--request",
+            str(request),
+            "--output",
+            str(tmp_path),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert process.returncode == 1
+    result = json.loads((tmp_path / "result.json").read_text())
+    assert result["cleanup_confirmed"] is True
+    assert "same environment" in result["error"]
+
+
 SCRIPT = """import argparse, hashlib, json, os, time
 from pathlib import Path
 p=argparse.ArgumentParser()
@@ -373,7 +431,10 @@ def test_optional_host_module_imports_only_stdlib_in_isolation():
     assert result.stdout.strip() == "[]"
 
 
-def test_standalone_bridge_launches_tasks_without_project_dependencies(tmp_path, monkeypatch):
+@pytest.mark.parametrize("built_in", [False, True])
+def test_standalone_bridge_launches_tasks_without_project_dependencies(
+    tmp_path, monkeypatch, built_in
+):
     raw = install(tmp_path / "tasks")
     monkeypatch.setenv("CARLA_WORLD_WORKER_TOKEN", TOKEN)
     log = tmp_path / "bridge.log"
@@ -389,12 +450,18 @@ def test_standalone_bridge_launches_tasks_without_project_dependencies(tmp_path,
                 "127.0.0.1",
                 "--port",
                 "0",
-                "--research-tasks-dir",
-                str(tmp_path / "tasks"),
-                "--research-jobs-root",
-                str(tmp_path / "jobs"),
-                "--research-python",
-                sys.executable,
+                *(
+                    []
+                    if built_in
+                    else [
+                        "--research-tasks-dir",
+                        str(tmp_path / "tasks"),
+                        "--research-jobs-root",
+                        str(tmp_path / "jobs"),
+                        "--research-python",
+                        sys.executable,
+                    ]
+                ),
             ],
             stdout=output,
             stderr=subprocess.STDOUT,
@@ -412,10 +479,23 @@ def test_standalone_bridge_launches_tasks_without_project_dependencies(tmp_path,
                 break
             assert ready and ready["status"] == "listening", log.read_text()
             client = NativeResearchClient(f"http://127.0.0.1:{ready['port']}", TOKEN, timeout=2)
-            client._request("POST", "/v1/research/jobs", raw)
+            if built_in:
+                parameters = json.loads(
+                    (ROOT / "configs/capture/remote_teacher_smoke.json").read_text()
+                )
+                client.submit(
+                    task_id="teacher_capture",
+                    job_id="sample",
+                    parameters=parameters,
+                    acknowledge_world_reload=True,
+                )
+            else:
+                client._request("POST", "/v1/research/jobs", raw)
             result = wait_done(SimpleNamespace(get=client.status))
             assert result["status"] == "succeeded", result
-            assert client.tasks()["tasks"][0]["id"] == "fixture"
+            assert client.tasks()["tasks"][0]["id"] == (
+                "teacher_capture" if built_in else "fixture"
+            )
         finally:
             process.terminate()
             try:
