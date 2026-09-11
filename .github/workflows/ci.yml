@@ -170,5 +170,8 @@ jobs:
       - name: Install every supported profile
         run: uv sync --all-extras --all-groups --frozen
 
+      - name: Install browser recording encoder
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
       - name: Run complete test suite
         run: uv run pytest -q
