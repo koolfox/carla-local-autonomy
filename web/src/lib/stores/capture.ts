@@ -7,8 +7,6 @@ export const captureSettings = writable<CaptureSettings>({
   rig: { schema_version: '1.0', additional_views: [] },
   durationSeconds: 30, captureFps: 5, repetitions: 1
 });
-// Choice/acknowledgement are per visit, never restored as permission to move.
-export const sessionPurpose = writable<'drive' | 'dataset'>('drive');
 let hydrated = false;
 export function hydrateCaptureSettings(): void {
   if (!browser || hydrated) return;

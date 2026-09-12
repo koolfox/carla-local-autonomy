@@ -14,6 +14,7 @@ export interface CaptureSettings {
   durationSeconds: number;
   captureFps: 1 | 2 | 5 | 10;
   repetitions: number;
+  recordDuringDrive?: boolean;
 }
 
 export function frontCamera(fov: number): CameraView {
@@ -57,10 +58,20 @@ export function cameraRigError(rig: CaptureRig): string | null {
 }
 
 export function captureSettingsError(settings: CaptureSettings): string | null {
+  if (settings?.recordDuringDrive !== undefined && typeof settings.recordDuringDrive !== 'boolean') return 'Drive recording must be enabled or disabled.';
   if (!settings || !Number.isInteger(settings.durationSeconds) || settings.durationSeconds < 5 || settings.durationSeconds > 3600) return 'Capture duration must be 5–3600 whole seconds.';
   if (![1, 2, 5, 10].includes(settings.captureFps)) return 'Choose 1, 2, 5 or 10 capture FPS.';
   if (!Number.isInteger(settings.repetitions) || settings.repetitions < 1 || settings.repetitions > 32) return 'Choose 1–32 episodes.';
   return cameraRigError(settings.rig);
+}
+
+/** Snapshot the shared rig into this run; never mutate Garage or Research drafts. */
+export function driveRecordingSettings(session: SessionConfig, settings: CaptureSettings): SessionConfig['recording'] {
+  if (!settings.recordDuringDrive || !session.recording.video) return { video: session.recording.video };
+  const error = cameraRigError(settings.rig);
+  if (error) throw new Error(error);
+  if (![1, 2, 5, 10].includes(settings.captureFps)) throw new Error('Choose 1, 2, 5 or 10 rig FPS.');
+  return { video: true, cameraRig: structuredClone(settings.rig), cameraRigFps: settings.captureFps };
 }
 
 export function captureSituation(session: SessionConfig, settings: CaptureSettings) {

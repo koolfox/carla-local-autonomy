@@ -44,6 +44,7 @@ from ..segmentation.overlay import render_segmentation_overlay
 from ..segmentation.worker import AsyncSegmentationRuntime, SegmentationFrameInput
 from ..voxel.live_view import VoxelViewWorker
 from ..watchdog import SafeActuator
+from .drive_cameras import DriveCameraRecording
 from .drive_contracts import DriveInput, DriveStartConfig, weather_payload
 from .situations import PROP_PRESETS, WEATHER_PRESETS
 from .world_worker_client import (
@@ -1138,6 +1139,7 @@ class DriveSession:
         raw_recorder: AsyncVideoRecorder | None = None
         overlay_recorder: AsyncVideoRecorder | None = None
         voxel_recorder: AsyncVideoRecorder | None = None
+        rig_recording: DriveCameraRecording | None = None
         voxel_log: TextIO | None = None
         latest_voxel: Any = None
         last_voxel_sequence = -1
@@ -1373,6 +1375,12 @@ class DriveSession:
                         fps=self.config.camera_fps,
                     )
 
+            if self.config.recording_rig is not None:
+                if self._world_worker is None or worker_scene is None:
+                    raise RuntimeError("Drive recording cameras require the World Worker")
+                rig_recording = DriveCameraRecording(tracker.artifact_path("cameras"))
+                rig_recording.start(self._world_worker, worker_scene, self.config)
+
             if self.config.spectator_follow:
                 try:
                     spectator = rpc.spectator()
@@ -1427,6 +1435,8 @@ class DriveSession:
 
             renderer = OverlayRenderer(stale_after_seconds=2.0)
             while not self._stop_event.is_set():
+                if rig_recording is not None:
+                    rig_recording.check_health()
                 self._drain_pending_events(events_stream)
                 now = time.monotonic()
                 frame = stream.latest()
@@ -1704,6 +1714,8 @@ class DriveSession:
         finally:
             self._set_status("stopping")
             self._drain_pending_events(events_stream)
+            if rig_recording is not None:
+                rig_recording.request_stop()
             if self._world_worker is not None:
                 try:
                     # The worker owns the ego/world. Stop that lease first; the
@@ -1719,6 +1731,11 @@ class DriveSession:
                     actuator.stop()
                 except Exception as error:
                     self._cleanup_errors.append(f"actuator stop: {error}")
+            if rig_recording is not None:
+                try:
+                    self._cleanup_errors.extend(rig_recording.close(tracker))
+                except Exception as error:
+                    self._cleanup_errors.append(f"camera rig recording: {error}")
             if stream is not None:
                 try:
                     stream.close()

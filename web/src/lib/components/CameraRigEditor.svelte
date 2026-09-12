@@ -73,7 +73,7 @@
     <small>Relative to the vehicle origin. Negative X: rear, negative Y: left. Yaw 180°: rear-facing. Front is required for labels.</small>
     {#if selected !== 'front'}<button type="button" class="button secondary-button" onclick={remove}>Remove camera</button>{/if}
   </div>
-  <small>Changes are kept for the next dataset capture. Review placement in Recordings after a short capture; this does not alter the live driving camera. More cameras cost GPU time and storage.</small>
+  <small>Shared by Research capture and optional Drive rig recording. Changes apply to the next run, not the current live/model camera. Review angles in Recordings after a short run. More cameras cost GPU time and storage.</small>
   {#if error}<p class="inline-error" role="alert">{error}</p>{/if}
 </fieldset>
 

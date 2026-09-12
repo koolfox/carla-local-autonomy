@@ -1,5 +1,9 @@
 <script lang="ts">
   import type { DetectorKind } from '$lib/domain/config';
+  import CameraRigEditor from './CameraRigEditor.svelte';
+  import { captureSettings } from '$lib/stores/capture';
+  import { garageRuntime } from '$lib/stores/runtime';
+  import { isDriveActive } from '$lib/domain/runtime';
   import {
     patchSessionSection,
     sessionConfig,
@@ -68,6 +72,25 @@
       <span><strong>Spectator follow</strong><small>Mirror the ego from CARLA</small></span>
     </label>
   </div>
+
+  {#if $sessionConfig.recording.video}
+    <label class="switch-field">
+      <input type="checkbox" checked={$captureSettings.recordDuringDrive ?? false}
+        disabled={isDriveActive($garageRuntime.drive)}
+        onchange={(event) => { $captureSettings = { ...$captureSettings, recordDuringDrive: fieldChecked(event) }; }} />
+      <span><strong>Record camera rig during Drive</strong><small>Same car and session · separate RGB videos · no world reload</small></span>
+    </label>
+    {#if $captureSettings.recordDuringDrive}
+      <CameraRigEditor disabled={isDriveActive($garageRuntime.drive)} />
+      <label class="field"><span>Rig recording FPS</span>
+        <select value={$captureSettings.captureFps} disabled={isDriveActive($garageRuntime.drive)}
+          onchange={(event) => { $captureSettings = { ...$captureSettings, captureFps: fieldNumber(event) as 1 | 2 | 5 | 10 }; }}>
+          {#each [1, 2, 5, 10] as fps}<option value={fps}>{fps} FPS</option>{/each}
+        </select>
+        <small>Shared rig with Research. Drive records asynchronous, compressed review videos, not a synchronized training dataset. The live/model camera is unchanged.</small>
+      </label>
+    {/if}
+  {/if}
 
   <label class="switch-field">
     <input type="checkbox" checked={$sessionConfig.perception.roadEnabled}

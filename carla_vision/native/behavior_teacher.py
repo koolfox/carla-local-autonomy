@@ -266,6 +266,7 @@ class BehaviorTeacherSession(NativeCarlaSession):
             world, _ = self._configure_world(episode)
             blueprint_library = world.get_blueprint_library()
             spawn_points = list(world.get_map().get_spawn_points())
+            print("Spawning teacher vehicle and scene population", flush=True)
             ego = self._spawn_ego(episode, actors, spawn_points, blueprint_library)
             ego_start = _transform_recipe(ego.get_transform())
             prop_placements = self._spawn_props(
@@ -284,6 +285,7 @@ class BehaviorTeacherSession(NativeCarlaSession):
                 self._spawn_walkers(episode, actors, blueprint_library)
             )
             rig = TeacherCameraRig(recipes) if len(recipes) > 1 else None
+            print(f"Spawning RGB cameras: {', '.join(recipes)}", flush=True)
             if rig is None:
                 rgb_sensor, teacher_sensor, rgb_queue, teacher_queue = self._spawn_cameras(
                     episode, actors, blueprint_library,
@@ -292,6 +294,7 @@ class BehaviorTeacherSession(NativeCarlaSession):
             else:
                 rig.spawn(self, episode, actors, sensors)
                 rgb_queue, teacher_queue = rig.queues["front"], rig.queues["front_teacher"]
+            print("Preparing BehaviorAgent route", flush=True)
             controller = BehaviorRouteController(
                 ego,
                 spawn_points,
@@ -331,6 +334,7 @@ class BehaviorTeacherSession(NativeCarlaSession):
 
             for _ in range(sensor_tick_multiple):
                 controlled_tick()
+            print("Waiting for first synchronized camera frames", flush=True)
             first_rgb = rgb_queue.get_next(self.sensor_timeout)
             first_teacher = teacher_queue.get_next(self.sensor_timeout)
             first_rgb_frame = int(first_rgb.image.frame)
@@ -806,10 +810,14 @@ def collect_behavior_teacher(
                     restored = True
                 except BaseException as restore_error:
                     error.add_note(
-                        f"CARLA asynchronous-mode restore also failed: {restore_error}"
+                        "CARLA world restoration failed after episode cleanup. "
+                        "Actor/sensor cleanup status remains authoritative. "
+                        f"Restore error: {restore_error}"
                     )
+            cleanup_confirmed = getattr(error, "native_cleanup_confirmed", False)
+
             if cleanup_report is not None:
-                cleanup_report(restored and getattr(error, "native_cleanup_confirmed", False))
+                cleanup_report(bool(cleanup_confirmed))
             raise
 
     dataset_dir = (Path(args.datasets_root) / args.dataset_id).resolve()

@@ -104,6 +104,8 @@ export interface SessionConfig {
   };
   recording: {
     video: boolean;
+    cameraRig?: import('./capture').CaptureRig;
+    cameraRigFps?: number;
   };
   experiment: {
     preset: ExperimentPreset;

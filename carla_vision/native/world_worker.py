@@ -57,7 +57,7 @@ _VEHICLE_BLUEPRINT = re.compile(r"^vehicle\.[A-Za-z0-9_.-]{1,150}$")
 _COLOR = re.compile(r"^\d{1,3},\d{1,3},\d{1,3}$")
 _SCENE_PATH = re.compile(
     r"^/v1/scenes/(?P<scene_id>[A-Za-z0-9_-]{16,128})/"
-    r"(?P<action>start|heartbeat|control|mode|weather|configure|camera|camera_orbit|camera_pause|camera_resume|waypoints|stop)$"
+    r"(?P<action>start|heartbeat|control|mode|weather|configure|camera|recording_cameras|camera_orbit|camera_pause|camera_resume|waypoints|stop)$"
 )
 _CAMERA_FRAME_PATH = re.compile(
     r"^/v1/scenes/(?P<scene_id>[A-Za-z0-9_-]{16,128})/camera/frame\.jpg$"
@@ -1005,6 +1005,7 @@ class SceneLease:
     cleanup_errors: list[str] = field(default_factory=list)
     camera_relay: CompressedCameraRelay | None = None
     camera_config: CompressedCameraConfig | None = None
+    recording_relays: dict[str, CompressedCameraRelay] = field(default_factory=dict)
 
 
 class WorldWorker:
@@ -1064,7 +1065,7 @@ class WorldWorker:
         self._map_process_runner = map_process_runner
         self._lock = threading.RLock()
         self._research_owner: str | None = None
-        self.research_recovery_required = False
+        self.research_reset_pending = False
         self._client: Any | None = None
         self._carla: Any | None = None
         self._route_planner_factory: Callable[[Any], Any] | None = None
@@ -1116,15 +1117,11 @@ class WorldWorker:
         return self._client, world, self._carla
 
     def _require_no_research_owner(self) -> None:
-        if self._research_owner or self.research_recovery_required:
+        if self._research_owner:
             raise WorkerError(
                 HTTPStatus.CONFLICT,
                 "research_world_owned",
-                (
-                    "Native research owns the simulator; wait for completion and confirmed cleanup"
-                    if self._research_owner else
-                    "Native task cleanup is unconfirmed; reconcile CARLA on the host before restarting Garage"
-                ),
+                "Native capture is running; finish or cancel it before changing the world",
             )
 
     def reserve_research(self, job_id: str) -> dict[str, Any]:
@@ -1154,7 +1151,7 @@ class WorldWorker:
             if self._research_owner != job_id:
                 return
             self._research_owner = None
-            self.research_recovery_required = not cleanup_confirmed
+            self.research_reset_pending = not cleanup_confirmed
             self._invalidate_client()
 
     def _invalidate_client(self) -> None:
@@ -1292,6 +1289,7 @@ class WorldWorker:
             "prepared_scene_reconfigure": True,
             "waypoint_teacher": True,
             "camera_pause_resume": True,
+            "drive_recording_cameras": True,
             "in_memory_jpeg_encoder_available": in_memory_encoder,
             "camera_60_fps": in_memory_encoder,
             "garage_camera_presets": True,
@@ -1318,12 +1316,12 @@ class WorldWorker:
     def health(self) -> dict[str, Any]:
         """Return authenticated readiness without exposing credentials."""
 
-        if self._research_owner or self.research_recovery_required:
+        if self._research_owner:
             return {
                 "schema_version": SCHEMA_VERSION, "worker_api_revision": WORKER_API_REVISION,
-                "status": "research_running" if self._research_owner else "recovery_required",
-                "ready": not self.research_recovery_required,
-                "error_code": "research_recovery_required" if self.research_recovery_required else None,
+                "status": "research_running",
+                "ready": True,
+                "error_code": None,
                 "carla": {"connected": None, "host": self.carla_host, "port": self.carla_port},
                 "active_scene": None, "research_job_id": self._research_owner,
                 "capabilities": self._capabilities(None),
@@ -2376,6 +2374,15 @@ class WorldWorker:
                 world = current_world
             else:
                 client, world = self._load_world_isolated(target)
+            if self.research_reset_pending:
+                # Our terminated capture can leave synchronous ticking enabled.
+                # Resume the ordinary Garage world during its next preparation,
+                # not as a side effect of a read-only health check.
+                settings = world.get_settings()
+                if settings.synchronous_mode:
+                    settings.synchronous_mode = False
+                    settings.fixed_delta_seconds = None
+                    world.apply_settings(settings)
             self._ensure_async_world(world)
             traffic_manager: Any | None = None
             try:
@@ -2389,6 +2396,7 @@ class WorldWorker:
                         "planned routes require GlobalRoutePlanner and TrafficManager.set_path",
                     )
                 traffic_manager.set_synchronous_mode(False)
+                self.research_reset_pending = False
                 simulator_seed = config.seed % _SIMULATOR_SEED_MODULUS
                 if hasattr(traffic_manager, "set_random_device_seed"):
                     traffic_manager.set_random_device_seed(simulator_seed)
@@ -3406,6 +3414,83 @@ class WorldWorker:
                 },
             }
 
+    def recording_cameras(self, scene_id: str, raw: Mapping[str, Any]) -> dict[str, Any]:
+        """Attach a bounded RGB recording rig to the existing ego, without a map reload.
+
+        These sensors do not replace the driving/perception camera. They share
+        the scene lease, streaming transport and ordinary actor cleanup.
+        """
+        _strict_keys(raw, allowed={"lease_token", "views", "width", "height", "fps"},
+                     required={"lease_token", "views", "width", "height", "fps"},
+                     name="recording cameras")
+        width = _integer(raw["width"], "width", 320, 1920)
+        height = _integer(raw["height"], "height", 180, 1080)
+        fps = _number(raw["fps"], "fps", 1.0, 10.0)
+        views = raw["views"]
+        if not isinstance(views, dict) or not 1 <= len(views) <= 8:
+            raise WorkerError(400, "invalid_field", "recording rig needs 1 to 8 views")
+        validated = {}
+        matrices = {}
+        for name, view in views.items():
+            if not isinstance(name, str) or not re.fullmatch(r"[a-z][a-z0-9_]{0,31}", name):
+                raise WorkerError(400, "invalid_field", "invalid recording camera name")
+            if not isinstance(view, dict) or set(view) != {"mount", "fov_degrees"}:
+                raise WorkerError(400, "invalid_field", "camera needs mount and fov_degrees")
+            mount = view["mount"]
+            if not isinstance(mount, dict) or set(mount) != {"x", "y", "z", "pitch", "yaw", "roll"}:
+                raise WorkerError(400, "invalid_field", "camera mount needs x/y/z/pitch/yaw/roll")
+            validated[name] = {
+                "mount": {key: _number(value, key, -360 if key in {"pitch", "yaw", "roll"} else -100,
+                                       360 if key in {"pitch", "yaw", "roll"} else 100)
+                          for key, value in mount.items()},
+                "fov_degrees": _number(view["fov_degrees"], "fov_degrees", 30, 150),
+            }
+        encoder = _load_in_memory_jpeg_encoder()
+        with self._lock:
+            scene = self._require_scene(scene_id, str(raw["lease_token"]))
+            if scene.status != "prepared" or scene.recording_relays:
+                raise WorkerError(409, "recording_rig_active", "configure the recording rig before Drive starts")
+            assert self._carla is not None
+            try:
+                for name, view in validated.items():
+                    blueprint = scene.world.get_blueprint_library().find("sensor.camera.rgb")
+                    role = f"world_worker_recording_{name}"
+                    for key, value in {"role_name": role, "image_size_x": str(width),
+                                       "image_size_y": str(height), "sensor_tick": str(1 / fps),
+                                       "fov": str(view["fov_degrees"]), "gamma": "2.2",
+                                       "enable_postprocess_effects": "true",
+                                       "motion_blur_intensity": "0.0"}.items():
+                        if blueprint.has_attribute(key):
+                            blueprint.set_attribute(key, value)
+                    mount = view["mount"]
+                    transform = self._carla.Transform(
+                        self._carla.Location(**{key: mount[key] for key in ("x", "y", "z")}),
+                        self._carla.Rotation(**{key: mount[key] for key in ("pitch", "yaw", "roll")}),
+                    )
+                    matrices[name] = transform.get_matrix()
+                    sensor = scene.world.spawn_actor(blueprint, transform, attach_to=scene.ego)
+                    scene.owned_actors.append(OwnedActor(
+                        actor=sensor, actor_id=int(sensor.id), type_id=str(sensor.type_id),
+                        kind="compressed_camera", role_name=role,
+                    ))
+                    relay = CompressedCameraRelay(sensor, jpeg_encoder=encoder)
+                    scene.recording_relays[name] = relay
+                    relay.listen()
+            except BaseException:
+                # The regular scene stop owns rollback, including any sensor
+                # created before a later camera failed. Never lose ownership.
+                raise
+            self._refresh_lease(scene)
+            return {"schema_version": SCHEMA_VERSION, "scene_id": scene_id,
+                    "views": validated, "camera_to_ego": matrices,
+                    "width": width, "height": height, "fps": fps}
+
+    @staticmethod
+    def _close_recording_relays(scene: SceneLease) -> None:
+        for name, relay in list(scene.recording_relays.items()):
+            relay.close()
+            del scene.recording_relays[name]
+
     def camera_orbit(self, scene_id: str, raw: Mapping[str, Any]) -> dict[str, Any]:
         allowed = {"lease_token", "yaw", "pitch", "distance", "preset"}
         lease_token = self._lease_token(raw, allowed=allowed)
@@ -3522,10 +3607,11 @@ class WorldWorker:
         *,
         after_sequence: int,
         timeout: float,
+        view: str | None = None,
     ) -> tuple[int, bytes, dict[str, Any]]:
         with self._lock:
             scene = self._require_scene(scene_id, lease_token)
-            relay = scene.camera_relay
+            relay = scene.camera_relay if view is None else scene.recording_relays.get(view)
             if relay is None:
                 raise WorkerError(
                     HTTPStatus.NOT_FOUND, "camera_inactive", "compressed camera is not active"
@@ -4250,6 +4336,7 @@ class WorldWorker:
             scene.cleanup_errors.append(f"episode guard query failed: {error}")
         scene.cleanup_guard_passed = same_episode
         if not same_episode:
+            self._close_recording_relays(scene)
             if scene.camera_relay is not None:
                 scene.camera_relay.close()
                 scene.camera_relay = None
@@ -4315,6 +4402,7 @@ class WorldWorker:
             scene.camera_relay.close()
             scene.camera_relay = None
         scene.camera_config = None
+        self._close_recording_relays(scene)
         self._destroy_owned_actors(scene, current_world)
         try:
             current_world.set_weather(scene.original_weather)
@@ -4467,6 +4555,8 @@ class WorldWorkerRequestHandler(BaseHTTPRequestHandler):
         return headers + payload + b"\r\n"
 
     def _send_mjpeg(self, scene_id: str, lease_token: str) -> None:
+        view = self.headers.get("X-Camera-View")
+        view_options = {} if view is None else {"view": view}
         # Fetch one frame before committing HTTP headers, so invalid scene
         # credentials and startup encoder errors retain the normal JSON error
         # envelope.
@@ -4475,6 +4565,7 @@ class WorldWorkerRequestHandler(BaseHTTPRequestHandler):
             lease_token,
             after_sequence=-1,
             timeout=5.0,
+            **view_options,
         )
         self.send_response(HTTPStatus.OK)
         self.send_header(
@@ -4499,6 +4590,7 @@ class WorldWorkerRequestHandler(BaseHTTPRequestHandler):
                             lease_token,
                             after_sequence=sequence,
                             timeout=5.0,
+                            **view_options,
                         )
                         break
                     except WorkerError as error:
@@ -4659,6 +4751,8 @@ class WorldWorkerRequestHandler(BaseHTTPRequestHandler):
                     lease_token,
                     after_sequence=after_sequence,
                     timeout=timeout,
+                    **({"view": self.headers["X-Camera-View"]}
+                       if "X-Camera-View" in self.headers else {}),
                 )
                 self._send_jpeg(sequence, payload, metadata)
             elif (stream_match := _CAMERA_STREAM_PATH.fullmatch(parsed.path)) is not None:

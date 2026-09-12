@@ -137,6 +137,8 @@ class DriveStartConfig:
     road_backend: str = "segformer"
     road_checkpoint: Path | None = None
     road_device: str = "cpu"
+    recording_rig: dict[str, Any] | None = None
+    recording_rig_fps: float = 5.0
 
     @classmethod
     def from_mapping(
@@ -169,13 +171,15 @@ class DriveStartConfig:
             "camera_fps",
             "camera_fov",
             "record_video",
+            "recording_rig", "recording_rig_fps",
             "spectator_follow",
             "experiment_preset",
             *_WORKER_FIELDS,
         }
         _strict_keys(raw, allowed, "drive start request")
         required = allowed - {"color", "experiment_preset", "voxel_enabled", "road_enabled",
-                              "road_backend", "road_checkpoint", "road_device"} - _WORKER_FIELDS
+                              "road_backend", "road_checkpoint", "road_device",
+                              "recording_rig", "recording_rig_fps"} - _WORKER_FIELDS
         missing = sorted(key for key in required if key not in raw)
         if missing:
             raise ValueError(f"drive start request is missing fields: {', '.join(missing)}")
@@ -353,7 +357,21 @@ class DriveStartConfig:
                     "configured World Worker is required for: " + ", ".join(unsupported)
                 )
 
+        rig = raw.get("recording_rig")
+        rig_fps = _number(raw.get("recording_rig_fps", 5.0), "recording_rig_fps", 1, 10)
+        if rig is not None:
+            if not world_worker_configured or raw["record_video"] is not True:
+                raise ValueError("Drive camera rig requires the World Worker and Record video enabled")
+            from .drive_cameras import recording_views
+
+            recording_views(rig, width=width, height=height, fps=rig_fps,
+                            fov=_number(raw["camera_fov"], "camera_fov", 30, 150))
+            import copy
+
+            rig = copy.deepcopy(rig)
         return cls(
+            recording_rig=rig,
+            recording_rig_fps=rig_fps,
             run_id=run_id,
             host=host,
             port=port,
@@ -405,6 +423,8 @@ class DriveStartConfig:
             "world_owner": "world_worker" if self.world_worker_enabled else "raw_bridge_session",
             "model_output_actuated": False,
             "run_id": self.run_id,
+            "recording_rig": self.recording_rig,
+            "recording_rig_fps": self.recording_rig_fps,
             "host": self.host,
             "port": self.port,
             "vehicle_blueprint": self.vehicle_blueprint,

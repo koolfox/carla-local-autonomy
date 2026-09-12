@@ -42,10 +42,19 @@ def build_teacher_task(destination: Path, *, version: str) -> Path:
         target = destination / "source" / "carla_vision" / path.relative_to(source)
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(path, target)
+    # Bundled upstream source must travel with its license and pinned provenance.
+    notices = []
+    for name in ("LICENSE", "README.md"):
+        path = source / "_vendor" / "carla_0_9_16" / name
+        if path.is_file():
+            target = destination / "source" / "carla_vision" / path.relative_to(source)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(path, target)
+            notices.append(target)
     # Source only: no weights, frontend bundle, credentials, or auto-installation.
     files = {
         path.relative_to(destination).as_posix(): digest(path)
-        for path in sorted(destination.rglob("*.py"))
+        for path in sorted([*destination.rglob("*.py"), *notices])
     }
     write_json(
         destination / "task.json",

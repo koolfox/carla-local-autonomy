@@ -24,6 +24,7 @@
   $: current = runs.find(run => run.path === selected);
   $: recordings = artifacts.filter(file => file.preview_kind === 'video' && file.available && file.downloadable);
   function label(file: Artifact) {
+    if (file.role === 'drive_camera_video') return `Camera · ${file.path.split('/').pop()?.replace(/\.mp4$/, '').replaceAll('_', ' ')}`;
     return ({ raw_drive_video: 'Original camera', advisory_model_overlay_video: 'Model detections', rgb_voxel_review_video: 'Voxel view' } as Record<string, string>)[file.role] ?? file.role.replaceAll('_', ' ');
   }
   function hasVideo(run: Run) { return run.roles?.some(role => role.includes('video')) ?? false; }

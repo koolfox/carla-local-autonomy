@@ -7,7 +7,10 @@
     SituationSettings
   } from '$lib/api/operator';
   import SceneWorldFields from '$lib/components/SceneWorldFields.svelte';
-  import { sessionConfig, systemSettings, workspaceOptions } from '$lib/stores/configuration';
+  import CameraRigEditor from '$lib/components/CameraRigEditor.svelte';
+  import { captureSettingsError } from '$lib/domain/capture';
+  import { captureSettings } from '$lib/stores/capture';
+  import { patchSessionSection, sessionConfig, systemSettings, workspaceOptions } from '$lib/stores/configuration';
   import { cancelCapture, captureRuntime, garageRuntime, runtimeOperatorApi, startCapture } from '$lib/stores/runtime';
   import { isDriveActive } from '$lib/domain/runtime';
   import { fieldValue } from '$lib/ui/events';
@@ -19,10 +22,6 @@
   }
 
   let situationId = token('scene');
-  let egoSpawnIndex = 0;
-  let durationSeconds = 30;
-  let captureFps: SituationSettings['captureFps'] = 5;
-  let repetitions = 1;
   let splitPlan = '';
   let planRunId = token('plan');
   let saved: SituationSaveResponse | null = null;
@@ -33,7 +32,6 @@
   let planning = false;
   let error = '';
   let disposed = false;
-  let cameraRig = 'front';
   let acknowledgeCapture = false;
   let captureRequest = false;
 
@@ -42,7 +40,7 @@
     captureRequest = true;
     error = '';
     try {
-      await startCapture($sessionConfig, situation, cameraRig);
+      await startCapture($sessionConfig, situation, $captureSettings.rig);
       acknowledgeCapture = false;
     } catch (caught) {
       error = caught instanceof Error ? caught.message : String(caught);
@@ -61,10 +59,10 @@
   }
   $: situation = {
     situationId,
-    egoSpawnIndex,
-    durationSeconds,
-    captureFps,
-    repetitions
+    egoSpawnIndex: $sessionConfig.route.startSpawnIndex ?? 0,
+    durationSeconds: $captureSettings.durationSeconds,
+    captureFps: $captureSettings.captureFps,
+    repetitions: $captureSettings.repetitions
   } satisfies SituationSettings;
   $: signature = currentSignature(situation);
   $: recipeDirty = Boolean(saved && signature !== savedSignature);
@@ -175,22 +173,23 @@
       </label>
       <label class="field">
         <span>Ego spawn index</span>
-        <input type="number" min="0" max="10000" bind:value={egoSpawnIndex} />
+        <input type="number" min="0" max="10000" value={$sessionConfig.route.startSpawnIndex ?? 0}
+          oninput={(event) => patchSessionSection('route', { startSpawnIndex: fieldValue(event) === '' ? null : Number(fieldValue(event)) })} />
       </label>
       <label class="field">
         <span>Repetitions</span>
-        <input type="number" min="1" max="100" bind:value={repetitions} />
+        <input type="number" min="1" max="32" bind:value={$captureSettings.repetitions} />
       </label>
       <label class="field">
         <span>Capture duration seconds</span>
-        <input type="number" min="5" max="3600" bind:value={durationSeconds} />
+        <input type="number" min="5" max="3600" bind:value={$captureSettings.durationSeconds} />
       </label>
       <label class="field">
         <span>Dataset capture rate</span>
         <select
-          value={captureFps}
+          value={$captureSettings.captureFps}
           onchange={(event) =>
-            (captureFps = Number(fieldValue(event)) as SituationSettings['captureFps'])}
+            ($captureSettings.captureFps = Number(fieldValue(event)) as SituationSettings['captureFps'])}
         >
           <option value="1">1 FPS</option>
           <option value="2">2 FPS</option>
@@ -235,13 +234,7 @@
       <h3>Record teacher dataset</h3>
       <span class="section-note">Uses these Scene and Capture plan settings. Results return here automatically.</span>
     </div>
-    <label class="field">
-      <span>RGB camera rig</span>
-      <select bind:value={cameraRig} disabled={$captureRuntime.active}>
-        <option value="front">Front camera</option>
-        <option value="front-three">Front + left + right</option>
-      </select>
-    </label>
+    <CameraRigEditor disabled={$captureRuntime.active || captureRequest} />
     <label class="field">
       <span><input type="checkbox" bind:checked={acknowledgeCapture} disabled={$captureRuntime.active} />
         Reload the scene and let CARLA's BehaviorAgent drive for this capture.</span>
@@ -249,13 +242,14 @@
     </label>
     <div class="builder-actions">
       <button type="button" class="button primary-button"
-        disabled={!reproducible || !$captureRuntime.available || !acknowledgeCapture || captureRequest || $captureRuntime.active || $captureRuntime.holds_world || isDriveActive($garageRuntime.drive)}
+        disabled={!reproducible || Boolean(captureSettingsError($captureSettings)) || !$captureRuntime.available || !acknowledgeCapture || captureRequest || $captureRuntime.active || $captureRuntime.holds_world || isDriveActive($garageRuntime.drive)}
         onclick={capture}>{captureRequest ? 'Starting capture…' : 'Record dataset'}</button>
       {#if $captureRuntime.active && $captureRuntime.holds_world}
         <button type="button" class="button secondary-button" onclick={cancel}
           disabled={$captureRuntime.cancel_requested}>{$captureRuntime.cancel_requested ? 'Cancelling…' : 'Cancel capture'}</button>
       {/if}
     </div>
+    {#if captureSettingsError($captureSettings)}<p class="inline-error" role="alert">{captureSettingsError($captureSettings)}</p>{/if}
     {#if !$captureRuntime.available}<p class="section-note">Connect the normal World Worker to capture.</p>{/if}
     {#if $captureRuntime.phase !== 'idle'}
       <p role="status">{$captureRuntime.phase} · {$captureRuntime.job_id ?? ''}</p>
