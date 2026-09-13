@@ -243,11 +243,26 @@ def test_failed_capture_sync_mode_is_reset_by_normal_garage_prepare(native, monk
 
 
 @pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="requires recording encoder")
-def test_http_rig_records_two_real_mp4s_without_reloading_world(native, tmp_path, monkeypatch):
+@pytest.mark.parametrize("with_perception", [False, True])
+def test_http_rig_records_two_real_mp4s_without_reloading_world(native, tmp_path, monkeypatch, with_perception):
     import cv2
 
+    from carla_vision.contracts import Detection
     from carla_vision.native.world_worker import create_server
     from carla_vision.operator.world_worker_client import WorldWorkerClient, WorldWorkerScene
+    from carla_vision.perception import PerceptionWorker
+
+    class Detector:
+        name = "fake-signs"
+        detection_only_name = "fake-boxes"
+        def infer_without_signs(self, image):
+            return (Detection(0, "pixel", .9, (20, 100, 100, 180), attributes={"pixel": int(image[0, 0, 0])}),)
+        def infer(self, image):
+            detections = self.infer_without_signs(image)
+            detections[0].attributes["sign_classification"] = {"accepted": True, "label": "STOP", "confidence": .95}
+            return detections
+        def close(self):
+            pass
 
     worker, world, attached, _, _ = native
     token = "drive-camera-http-test"
@@ -263,22 +278,27 @@ def test_http_rig_records_two_real_mp4s_without_reloading_world(native, tmp_path
     recording = drive_cameras.DriveCameraRecording(tmp_path / "cameras")
     done = threading.Event()
     config = SimpleNamespace(
-        recording_rig=rig(), width=640, height=384, recording_rig_fps=5, camera_fov=90
+        recording_rig=rig(), width=640, height=384, recording_rig_fps=5, camera_fov=90,
+        recording_perception={"front": "detections", "rear": "signs"} if with_perception else None,
     )
     artifacts = []
     tracker = SimpleNamespace(
         register_artifact=lambda path, **kwargs: artifacts.append((path, kwargs))
     )
     publisher = None
+    perception = PerceptionWorker(Detector(), camera_ids=("rig:front", "rig:rear"),
+                                  sign_cameras=frozenset({"rig:rear"})) if with_perception else None
+    previews = {}
     try:
-        recording.start(client, scene, config)
-        jpeg = cv2.imencode(".jpg", np.zeros((384, 640, 3), np.uint8))[1].tobytes()
+        recording.start(client, scene, config, perception=perception,
+                        publish=lambda key, sequence, jpeg: previews.update({key: (sequence, jpeg)}))
+        jpegs = [cv2.imencode(".jpg", np.full((384, 640, 3), value, np.uint8))[1].tobytes() for value in (30, 200)]
 
         def publish():
             frame = 100
             while not done.wait(0.05):
                 frame += 1
-                for sensor, _ in attached:
+                for index, (sensor, _) in enumerate(attached):
                     sensor.callback(
                         SimpleNamespace(
                             width=640,
@@ -287,17 +307,22 @@ def test_http_rig_records_two_real_mp4s_without_reloading_world(native, tmp_path
                             timestamp=frame / 20,
                             fov=float(sensor.attributes["fov"]),
                             transform=sensor.transform,
-                            jpeg=jpeg,
+                            jpeg=jpegs[index],
                         )
                     )
 
         publisher = threading.Thread(target=publish, daemon=True)
         publisher.start()
         deadline = time.monotonic() + 8
-        while time.monotonic() < deadline and any(view.written < 3 for view in recording.views):
+        while time.monotonic() < deadline and (
+            any(view.written < 3 for view in recording.views) or
+            any(view.written < 2 for view in recording.perception_views.values())
+        ):
             recording.check_health()
             time.sleep(0.05)
         assert all(view.written >= 3 for view in recording.views)
+        assert all(view.written >= 2 for view in recording.perception_views.values())
+        assert recording.snapshot()["rear"]["mode"] == ("signs" if with_perception else "off")
         assert recording.close(tracker) == []
         for view in recording.views:
             video = cv2.VideoCapture(str(view.video))
@@ -308,16 +333,34 @@ def test_http_rig_records_two_real_mp4s_without_reloading_world(native, tmp_path
                 assert count == len(rows) >= 3
             finally:
                 video.release()
+        for name, observer in recording.perception_views.items():
+            assert observer.error is None
+            rows = [json.loads(line) for line in observer.index.read_text().splitlines()]
+            video = cv2.VideoCapture(str(observer.video))
+            try:
+                assert video.isOpened()
+                assert int(video.get(cv2.CAP_PROP_FRAME_COUNT)) == len(rows) >= 2
+                assert video.read()[0]
+            finally:
+                video.release()
+            for row in rows:
+                attrs = row["detections"][0]["attributes"]
+                assert attrs["pixel"] == (200 if name == "rear" else 30)
+                assert ("sign_classification" in attrs) is (name == "rear")
+                assert row["camera_id"] == name and row["model_output_actuated"] is False
+            assert f"rig:{name}:raw" in previews and f"rig:{name}:overlay" in previews
         metadata = json.loads((recording.root / "rig.json").read_text())
         assert metadata["synchronized"] is False
         assert metadata["views"]["rear"]["mount"]["yaw"] == 180
         assert world is worker._scene.world
-        assert len(artifacts) == 5  # Rig metadata, two videos, two indexes.
+        assert len(artifacts) == (9 if with_perception else 5)
     finally:
         done.set()
         if publisher:
             publisher.join(timeout=1)
         recording.close(SimpleNamespace(register_artifact=lambda *args, **kwargs: None))
+        if perception:
+            perception.close()
         client.stop_scene(scene)
         server.shutdown()
         server.server_close()

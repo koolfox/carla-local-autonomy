@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { cameraRigError, frontCamera, newCamera, presetRig, type CameraMount, type CameraView } from '$lib/domain/capture';
+  import { cameraRigError, frontCamera, newCamera, presetRig, type CameraMount, type CameraView, type CameraPerceptionMode } from '$lib/domain/capture';
   import { captureSettings } from '$lib/stores/capture';
   import { sessionConfig } from '$lib/stores/configuration';
   import { fieldValue } from '$lib/ui/events';
 
   export let disabled = false;
+  export let showPerception = false;
   let selected = 'front';
   const mountFields: { key: keyof CameraMount; label: string; angular: boolean }[] = [
     { key: 'x', label: 'Forward (m)', angular: false },
@@ -34,7 +35,9 @@
   }
   function remove(): void {
     if (selected === 'front') return;
-    $captureSettings = { ...$captureSettings, rig: { ...rig, additional_views: rig.additional_views.filter((view) => view.id !== selected) } };
+    const perceptionViews = { ...$captureSettings.perceptionViews };
+    delete perceptionViews[selected];
+    $captureSettings = { ...$captureSettings, perceptionViews, rig: { ...rig, additional_views: rig.additional_views.filter((view) => view.id !== selected) } };
     selected = 'front';
   }
 </script>
@@ -44,7 +47,7 @@
   <div class="camera-toolbar">
     <label class="field"><span>Start from a layout</span>
       <select value="" onchange={(event) => {
-        $captureSettings = { ...$captureSettings, rig: presetRig(fieldValue(event), $sessionConfig.camera.fov) };
+        $captureSettings = { ...$captureSettings, perceptionViews: {}, rig: presetRig(fieldValue(event), $sessionConfig.camera.fov) };
         selected = 'front';
       }}>
         <option value="" disabled>Choose preset…</option>
@@ -54,6 +57,22 @@
     </label>
     <button type="button" class="button secondary-button" onclick={add} disabled={disabled || rig.additional_views.length >= 7}>Add camera</button>
   </div>
+  {#if showPerception}
+    <label class="field"><span>Perception for {selected.replaceAll('_', ' ')}</span>
+      <select value={$captureSettings.perceptionViews?.[selected] ?? 'off'} onchange={(event) => {
+        const mode = fieldValue(event);
+        const perceptionViews = { ...$captureSettings.perceptionViews };
+        if (mode === 'off') delete perceptionViews[selected];
+        else perceptionViews[selected] = mode as CameraPerceptionMode;
+        $captureSettings = { ...$captureSettings, perceptionViews };
+      }}>
+        <option value="off">Off · raw video only</option>
+        <option value="detections" disabled={!$sessionConfig.perception.enabled}>Detections</option>
+        <option value="signs" disabled={!$sessionConfig.perception.enabled || !$sessionConfig.perception.signClassifier || $sessionConfig.perception.detector !== 'm9-hierarchical'}>Detections + sign reading</option>
+      </select>
+      <small>Uses the model selected in Vision. Sign reading needs M9 + DeiT-64. Cameras share inference time; more selected cameras mean fewer overlay frames each.</small>
+    </label>
+  {/if}
   <div class="camera-tabs" aria-label="Select camera to edit">
     {#each ['front', ...rig.additional_views.map((view) => view.id)] as id}
       <button type="button" class="button secondary-button" aria-pressed={selected === id} onclick={() => selected = id}>{id.replaceAll('_', ' ')}</button>
@@ -73,7 +92,7 @@
     <small>Relative to the vehicle origin. Negative X: rear, negative Y: left. Yaw 180°: rear-facing. Front is required for labels.</small>
     {#if selected !== 'front'}<button type="button" class="button secondary-button" onclick={remove}>Remove camera</button>{/if}
   </div>
-  <small>Shared by Research capture and optional Drive rig recording. Changes apply to the next run, not the current live/model camera. Review angles in Recordings after a short run. More cameras cost GPU time and storage.</small>
+  <small>Shared camera placement for Research and Drive. Changes apply to the next run; the main driving camera is unchanged. Select rig cameras in the Drive viewer and review saved videos in Recordings.</small>
   {#if error}<p class="inline-error" role="alert">{error}</p>{/if}
 </fieldset>
 

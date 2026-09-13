@@ -120,6 +120,14 @@ running DeiT requires the updated backend process.
 - A second label line shows `Sign: STOP 95%`, or `Sign: unknown` when below
   the separate sign-confidence threshold (default 0.70), or when the original
   visible detection crop is smaller than 2 pixels in either dimension.
+- A compact **Best sign** panel shows the notebook's `bbox`, `F`, `Pf`, `C`,
+  `Pc`, `Q`, `S`, `sign` and `deit` fields, with scores to four decimal places.
+  It chooses the highest **M9 S** among this frame's displayed sign candidates,
+  not the highest DeiT probability. The existing confidence slider is the only
+  detection display threshold; the notebook's hard-coded 0.50 gate is not added.
+  Low-confidence recognition is marked **unaccepted** in this diagnostic panel
+  and remains **unknown** on the box label. No sign candidate means no panel;
+  nothing is carried over from an earlier frame or a different camera.
 - `detections.jsonl` retains `attributes.sign_classification` (predicted ID,
   label, confidence, acceptance, crop coordinates) and both M9 head scores.
   Rejected class predictions are retained for analysis, but not shown as
@@ -181,9 +189,9 @@ finally:
 Implementation: `detectors/sign_config.py` validates configuration and labels;
 `detectors/deit64.py` owns classifier loading, crops and enrichment. The existing
 factory, session configuration and renderer remain the integration boundaries.
-This first integration applies to the existing **front-camera perception feed**.
-Additional Drive cameras still record raw video; per-camera inference scheduling
-and cross-camera object fusion are separate future work. The cascade serializes
-calls because M9's hook capture is mutable, and batches at most 16 sign crops at
-a time. Raw streaming is independent of inference; more models do not guarantee
-real-time overlay FPS.
+The front feed and [selected Drive rig cameras](native_research_jobs.md#detections-and-sign-reading-on-selected-cameras)
+use this same renderer and cascade. Select Detections or Detections + sign reading
+per camera; all selected cameras share one serial model scheduler. The cascade
+serializes calls because M9's hook capture is mutable, and batches at most 16 sign
+crops at a time. Raw streaming is independent of inference; more cameras do not
+guarantee real-time overlay FPS. Cross-camera object fusion remains separate work.

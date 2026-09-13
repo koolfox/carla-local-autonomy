@@ -14,7 +14,12 @@ from carla_vision.contracts import Detection, DetectorConfig, DetectorMetadata, 
 from carla_vision.detectors.deit64 import DeiT64Classifier, SignRecognitionDetector, sign_crop_box
 from carla_vision.detectors.factory import create_detector
 from carla_vision.detectors.sign_config import SignClassifierConfig, read_sign_ontology
-from carla_vision.display import OverlayRenderer, detection_display_label
+from carla_vision.display import (
+    OverlayRenderer,
+    best_sign_summary,
+    detection_display_label,
+    sign_summary_lines,
+)
 
 
 @pytest.fixture
@@ -116,6 +121,52 @@ def test_no_sign_does_not_run_classifier_and_invalid_crop_is_unknown():
     classifier.predict.assert_not_called()
 
 
+def test_detection_only_camera_skips_deit_even_when_sign_boxes_are_present():
+    sign = _sign()
+    model, detector, classifier = _cascade((sign,))
+    image = np.zeros((80, 100, 3), np.uint8)
+    assert model.infer_without_signs(image) == (sign,)
+    classifier.predict.assert_not_called()
+    assert model.detection_only_name == detector.name
+    assert "sign_classification" in model.infer(image)[0].attributes
+    classifier.predict.assert_called_once()
+    model.close()
+    with pytest.raises(RuntimeError, match="closed"):
+        model.infer_without_signs(image)
+
+
+def test_notebook_summary_preserves_separate_scores_and_uses_highest_m9_score():
+    model, _, _ = _cascade((_sign(),))
+    result = model.infer(np.zeros((80, 100, 3), np.uint8))[0]
+    # A higher DeiT confidence must not win over the best detector score.
+    weaker = replace(result, confidence=.2, attributes={**result.attributes,
+        "sign_classification": {"label": "OTHER", "confidence": .99, "accepted": True}})
+    summary = best_sign_summary((weaker, result))
+    assert summary == {"bbox": [30, 30, 40, 40], "F": "traffic_signs", "Pf": .8,
+        "C": "vehicles", "Pc": .6, "Q": .4, "S": .5, "sign": "STOP", "deit": .95, "accepted": True}
+    lines = "\n".join(sign_summary_lines(summary))
+    assert "Pf: 0.8000" in lines and "Pc: 0.6000" in lines
+    assert "Q: 0.4000" in lines and "S: 0.5000" in lines and "deit: 0.9500" in lines
+    assert "->" not in lines
+    assert best_sign_summary((weaker,))["S"] == .2  # No hidden 0.50 display gate.
+    assert best_sign_summary(()) is None
+    assert best_sign_summary((_sign(),)) is None  # Sign reading disabled.
+    rejected = {**summary, "accepted": False, "sign": "STOP", "deit": .1}
+    assert "unaccepted" in "\n".join(sign_summary_lines(rejected))
+
+
+def test_best_sign_panel_is_frame_local_and_disappears_without_signs():
+    model, _, _ = _cascade((_sign(),))
+    image = np.zeros((720, 1280, 3), np.uint8)
+    frame = PerceptionResult(1, 2, 0, 0, 0, model.infer(image), image, model.name)
+    renderer = OverlayRenderer()
+    with_sign = renderer.render(frame, stale=False)
+    without_sign = renderer.render(replace(frame, detections=()), stale=False)
+    assert with_sign[:220, -500:].any()
+    assert not without_sign[:220, -500:].any()
+    assert not image.any()
+
+
 def test_crop_bounds_and_low_confidence_overlay():
     assert sign_crop_box((0, 0, 10, 10), 20, 20, 4) == (0, 0, 20, 20)
     assert sign_crop_box((1, 1, 1, 2), 20, 20, 4) is None
@@ -164,6 +215,14 @@ def test_session_settings_reach_drive_and_old_sessions_still_work(settings, tmp_
         expected_host="127.0.0.1", expected_port=2000, world_worker_configured=True).base
     assert config.sign_classifier["crop_scale"] == 4.0
     assert config.manifest_config()["sign_classifier"]["checkpoint"] == settings["checkpoint"]
+    from test_drive_cameras import rig
+
+    session["recording"].update(cameraRig=rig(), cameraPerception={"rear": "signs", "front": "detections"})
+    request = build_legacy_drive_request(session, **kwargs)
+    multi = GarageDriveStartConfig.from_mapping(request, workspace=tmp_path,
+        expected_host="127.0.0.1", expected_port=2000, world_worker_configured=True).base
+    assert multi.recording_perception == {"rear": "signs", "front": "detections"}
+    assert multi.manifest_config()["recording_perception"] == multi.recording_perception
     session["perception"].pop("signClassifier")
     assert "sign_classifier" not in build_legacy_drive_request(session, **kwargs)
 

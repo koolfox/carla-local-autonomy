@@ -113,16 +113,25 @@ class SignRecognitionDetector:
         self._lock = threading.Lock()
         self._closed = False
         self.name = f"{detector.name} + DeiT-64"
+        self.detection_only_name = detector.name
         self.metadata: DetectorMetadata = replace(
             detector.metadata, name=self.name,
             extra={**detector.metadata.extra, "sign_classifier": classifier.identity},
         )
 
+    def infer_without_signs(self, image_bgr: np.ndarray) -> tuple[Detection, ...]:
+        return self._infer(image_bgr, read_signs=False)
+
     def infer(self, image_bgr: np.ndarray) -> tuple[Detection, ...]:
+        return self._infer(image_bgr, read_signs=True)
+
+    def _infer(self, image_bgr: np.ndarray, *, read_signs: bool) -> tuple[Detection, ...]:
         with self._lock:
             if self._closed:
                 raise RuntimeError("Sign recognition detector is closed")
             detections = list(self._detector.infer(image_bgr))
+            if not read_signs:
+                return tuple(detections)
             crops, indices, boxes = [], [], []
             height, width = image_bgr.shape[:2]
             for index, detection in enumerate(detections):

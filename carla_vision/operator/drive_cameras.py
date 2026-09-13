@@ -12,9 +12,12 @@ import threading
 from pathlib import Path
 from typing import Any
 
+import cv2
+
 from ..dataset.camera_rig import intrinsic_matrix, resolve_camera_rig
 from ..scenarios.contracts import CameraRecipe, TransformRecipe
 from ..video import BrowserVideoWriter
+from .camera_perception import CameraPerception
 from .world_worker_client import WorldWorkerCameraStream
 
 
@@ -34,9 +37,11 @@ def recording_views(rig: dict, *, width: int, height: int, fps: float, fov: floa
 
 class _ViewRecording:
     def __init__(
-        self, client: Any, scene: Any, name: str, root: Path, width: int, height: int, fps: float
+        self, client: Any, scene: Any, name: str, root: Path, width: int, height: int, fps: float,
+        on_frame: Any = None,
     ) -> None:
         self.name = name
+        self.on_frame = on_frame
         self.video = root / f"{name}.mp4"
         self.index = root / f"{name}.frames.jsonl"
         self.stop = threading.Event()
@@ -61,6 +66,8 @@ class _ViewRecording:
                     frame = self.stream.wait_for_frame(sequence, timeout=10)
                     if self.stop.is_set():
                         break
+                    if self.on_frame:
+                        self.on_frame(frame)
                     self.writer.write(frame.bgr())
                     index.write(
                         json.dumps(
@@ -109,8 +116,13 @@ class DriveCameraRecording:
         self.root = root
         self.views: list[_ViewRecording] = []
         self.metadata: dict = {}
+        self.perception_views: dict[str, CameraPerception] = {}
+        self.perception_errors: dict[str, str] = {}
 
-    def start(self, client: Any, scene: Any, config: Any) -> None:
+    def start(
+        self, client: Any, scene: Any, config: Any, *, perception: Any = None,
+        publish: Any = None, hud_factory: Any = None,
+    ) -> None:
         self.root.mkdir(parents=True, exist_ok=False)
         views = recording_views(
             config.recording_rig,
@@ -131,7 +143,9 @@ class DriveCameraRecording:
             "kind": "drive_rgb_review_rig",
             "synchronized": False,
             "lossless": False,
-            "model_input": False,
+            "model_input": bool(getattr(config, "recording_perception", None)),
+            "perception_views": dict(getattr(config, "recording_perception", None) or {}),
+            "overlay_timing": "sampled inference frames at video_fps; use detections timestamps for elapsed time",
             "coordinate_frame": "ego_x_forward_y_right_z_up",
             "width": config.width,
             "height": config.height,
@@ -144,6 +158,30 @@ class DriveCameraRecording:
             },
         }
         for name in views:
+            mode = (getattr(config, "recording_perception", None) or {}).get(name)
+            if mode and perception is not None:
+                try:
+                    self.perception_views[name] = CameraPerception(
+                        perception, name, self.root, width=config.width, height=config.height,
+                        fps=config.recording_rig_fps, publish=publish,
+                        hud=hud_factory(mode) if hud_factory else {},
+                    )
+                except Exception as error:
+                    self.perception_errors[name] = f"Overlay setup failed: {error}"
+
+            def on_frame(frame: Any, name: str = name) -> None:
+                if publish:
+                    jpeg = getattr(frame, "jpeg", None)
+                    if not isinstance(jpeg, bytes):
+                        ok, encoded = cv2.imencode(".jpg", frame.bgr())
+                        if not ok:
+                            raise RuntimeError("Could not encode rig preview")
+                        jpeg = encoded.tobytes()
+                    publish(f"rig:{name}:raw", frame.sequence, jpeg)
+                observer = self.perception_views.get(name)
+                if observer:
+                    observer.submit(frame)
+
             self.views.append(
                 _ViewRecording(
                     client,
@@ -153,6 +191,7 @@ class DriveCameraRecording:
                     config.width,
                     config.height,
                     config.recording_rig_fps,
+                    on_frame=on_frame,
                 )
             )
 
@@ -160,6 +199,10 @@ class DriveCameraRecording:
         self.request_stop()
         results = {view.name: view.close() for view in self.views}
         self.metadata["results"] = results
+        self.metadata["perception_results"] = {
+            name: observer.close() for name, observer in self.perception_views.items()
+        }
+        self.metadata["perception_setup_errors"] = dict(self.perception_errors)
         errors = [
             f"camera {name}: {result['error']}"
             for name, result in results.items()
@@ -175,11 +218,26 @@ class DriveCameraRecording:
             ):
                 if path.is_file():
                     tracker.register_artifact(path, role=role, metadata={"camera_id": view.name})
+        for name, observer in self.perception_views.items():
+            for path, role in ((observer.video, "drive_camera_overlay_video"),
+                               (observer.index, "drive_camera_detections")):
+                if path.is_file():
+                    tracker.register_artifact(path, role=role, metadata={"camera_id": name})
         return errors
 
     def request_stop(self) -> None:
         for view in self.views:
             view.stop.set()
+        for observer in self.perception_views.values():
+            observer.stop.set()
+
+    def snapshot(self) -> dict:
+        modes = self.metadata.get("perception_views", {})
+        return {view.name: {
+            "mode": modes.get(view.name, "off"), "raw_error": view.error,
+            "perception_error": self.perception_errors.get(view.name) or (
+                self.perception_views[view.name].error if view.name in self.perception_views else None),
+        } for view in self.views}
 
     def check_health(self) -> None:
         for view in self.views:

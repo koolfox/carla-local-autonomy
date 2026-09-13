@@ -1026,6 +1026,30 @@ class DriveHttpTests(_WorkspaceTestCase):
             )
         self.assertEqual(caught.exception.code, 403)
 
+    def test_rig_raw_and_detection_streams_can_be_switched_independently(self) -> None:
+        frames = {"raw": b"main", "rig:rear:raw": b"rear", "rig:rear:overlay": b"rear boxes"}
+
+        def wait(view, after_sequence, timeout):
+            if view not in frames:
+                raise ValueError("camera not configured")
+            if after_sequence >= 1:
+                raise EOFError("test frame delivered")
+            return 1, frames[view]
+
+        self.fake.wait_for_frame = wait
+        # Same URLs used by the Svelte camera picker and Raw/Detections buttons.
+        for view in ("rig:rear:raw", "rig:rear:overlay", "rig:rear:raw", "raw"):
+            with self.subTest(view=view):
+                query = urllib.parse.urlencode({"view": view})
+                status, headers, body = self.request(f"/api/drive/stream.mjpg?{query}")
+                self.assertEqual(status, 200)
+                self.assertIn("multipart/x-mixed-replace", headers["Content-Type"])
+                self.assertIn(frames[view], body)
+        for invalid in ("rig:missing:overlay", "rig:../rear:raw", "rig:rear:voxel"):
+            with self.assertRaises(urllib.error.HTTPError) as caught:
+                self.request("/api/drive/stream.mjpg?" + urllib.parse.urlencode({"view": invalid}))
+            self.assertEqual(caught.exception.code, 400)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -94,7 +94,7 @@
       <span><strong>Record camera rig during Drive</strong><small>Same car and session · separate RGB videos · no world reload</small></span>
     </label>
     {#if $captureSettings.recordDuringDrive}
-      <CameraRigEditor disabled={isDriveActive($garageRuntime.drive)} />
+      <CameraRigEditor showPerception disabled={isDriveActive($garageRuntime.drive)} />
       <label class="field"><span>Rig recording FPS</span>
         <select value={$captureSettings.captureFps} disabled={isDriveActive($garageRuntime.drive)}
           onchange={(event) => { $captureSettings = { ...$captureSettings, captureFps: fieldNumber(event) as 1 | 2 | 5 | 10 }; }}>
@@ -282,7 +282,7 @@
               signClassifier: fieldChecked(event) ? { ...defaultSignClassifier } : null
             })}
           />
-          <span><strong>Read traffic signs · DeiT-64</strong><small>Classify M9 sign crops on the front camera. Applies next session.</small></span>
+          <span><strong>Read traffic signs · DeiT-64</strong><small>Front-camera sign reading; also available to selected rig cameras. Applies next session.</small></span>
         </label>
         {#if $sessionConfig.perception.signClassifier}
           <div class="field-grid two-columns">

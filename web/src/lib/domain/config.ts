@@ -112,6 +112,7 @@ export interface SessionConfig {
     video: boolean;
     cameraRig?: import('./capture').CaptureRig;
     cameraRigFps?: number;
+    cameraPerception?: Record<string, import('./capture').CameraPerceptionMode>;
   };
   experiment: {
     preset: ExperimentPreset;
@@ -252,7 +253,9 @@ export function sessionForApi(session: SessionConfig, preview = false): SessionC
   // Preview owns the parked world, not inference. Omit disabled optional fields
   // so a freshly rebuilt UI also works while the old Operator awaits restart.
   if (preview || perception.signClassifier == null) delete perception.signClassifier;
-  return { ...session, perception };
+  const recording = { ...session.recording };
+  if (preview || !Object.keys(recording.cameraPerception ?? {}).length) delete recording.cameraPerception;
+  return { ...session, perception, recording };
 }
 
 export function mergeSessionDefaults(

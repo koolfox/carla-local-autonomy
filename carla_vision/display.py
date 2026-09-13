@@ -9,6 +9,7 @@ the process main thread, as required by OpenCV's native GUI backends.
 
 from __future__ import annotations
 
+import textwrap
 import threading
 from collections.abc import Mapping
 from enum import Enum
@@ -37,6 +38,48 @@ def detection_display_label(detection: Detection) -> str:
         else:
             label += "\nSign: unknown"
     return label
+
+
+def best_sign_summary(detections: tuple[Detection, ...]) -> dict[str, Any] | None:
+    """Notebook field names, from the highest M9 score among visible sign candidates.
+
+    The detector already applied the user's display threshold. Do not introduce
+    the notebook's hard-coded 0.50 gate here, or select by DeiT confidence.
+    Coarse/fine heads stay independent; S is not a recognition probability.
+    """
+    candidates = [item for item in detections
+                  if item.attributes.get("fine_label") == "traffic_signs"
+                  and isinstance(item.attributes.get("sign_classification"), Mapping)
+                  and {"fine_confidence", "coarse_confidence", "quality"} <= item.attributes.keys()]
+    if not candidates:
+        return None
+    best = max(candidates, key=lambda item: item.confidence)
+    attributes = best.attributes
+    sign = attributes["sign_classification"]
+    return {
+        "bbox": list(best.xyxy),
+        "F": attributes["fine_label"], "Pf": float(attributes["fine_confidence"]),
+        "C": best.label, "Pc": float(attributes["coarse_confidence"]),
+        "Q": float(attributes["quality"]), "S": best.confidence,
+        "sign": sign.get("label"), "deit": sign.get("confidence"),
+        "accepted": bool(sign.get("accepted")),
+    }
+
+
+def sign_summary_lines(summary: Mapping[str, Any]) -> list[str]:
+    """Compact, explicit diagnostics shared by live and recorded overlays."""
+    sign = str(summary.get("sign") or "unknown")
+    if not summary["accepted"]:
+        sign += " (unaccepted)"
+    return [
+        "Best sign (highest M9 S)",
+        "bbox: [" + ", ".join(f"{value:.1f}" for value in summary["bbox"]) + "]",
+        f"F: {summary['F']}  Pf: {summary['Pf']:.4f}",
+        f"C: {summary['C']}  Pc: {summary['Pc']:.4f}",
+        f"Q: {summary['Q']:.4f}  S: {summary['S']:.4f}",
+        *textwrap.wrap(f"sign: {sign}", width=42),
+        f"deit: {float(summary['deit']):.4f}" if summary.get("deit") is not None else "deit: unavailable",
+    ]
 
 
 class DisplayMode(str, Enum):
@@ -155,6 +198,9 @@ class OverlayRenderer:
                 f"{str(key).upper()}: {_format_hud_value(value)}" for key, value in hud.items()
             )
         self._draw_hud(image, hud_lines)
+        summary = best_sign_summary(result.detections)
+        if summary is not None:
+            self._draw_sign_summary(image, sign_summary_lines(summary))
 
         if is_stale:
             self._draw_stale_warning(image, source_age)
@@ -233,6 +279,28 @@ class OverlayRenderer:
                 1,
                 cv2.LINE_AA,
             )
+
+    def _draw_sign_summary(self, image: np.ndarray, lines: list[str]) -> None:
+        height, width = image.shape[:2]
+        scale = min(self.font_scale, 0.5)
+        sizes = [cv2.getTextSize(line, cv2.FONT_HERSHEY_SIMPLEX, scale, 1)[0] for line in lines]
+        text_width = max(size[0] for size in sizes)
+        # Keep the identity HUD on the left and fit the complete sign panel
+        # on the right, including long ontology names and narrow cameras.
+        scale *= min(1.0, (width * 0.52 - 16) / max(1, text_width),
+                     (height - 24) / max(1, len(lines) * 22))
+        if scale < 0.2:
+            return  # Tiny thumbnails cannot fit readable diagnostics.
+        line_height = max(12, round(44 * scale))
+        panel_width = min(width - 16, round(text_width * scale / min(self.font_scale, 0.5)) + 16)
+        panel_height = min(height - 16, 12 + line_height * len(lines))
+        x, y = width - panel_width - 8, 8
+        roi = image[y:y + panel_height, x:x + panel_width]
+        background = np.full_like(roi, self._HUD_BACKGROUND)
+        cv2.addWeighted(background, .78, roi, .22, 0, roi)
+        for index, line in enumerate(lines):
+            cv2.putText(image, line, (x + 8, y + (index + 1) * line_height),
+                        cv2.FONT_HERSHEY_SIMPLEX, scale, self._HUD_TEXT, 1, cv2.LINE_AA)
 
     def _draw_stale_warning(self, image: np.ndarray, source_age: float) -> None:
         height, width = image.shape[:2]

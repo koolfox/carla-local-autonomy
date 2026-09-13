@@ -13,6 +13,7 @@
   import ManualControlPad from './ManualControlPad.svelte';
 
   let view: 'raw' | 'overlay' | 'voxel' | 'voxel_overlay' = 'raw';
+  let camera = 'live';
   let streamReady = false;
   let streamNonce = Date.now();
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -38,9 +39,13 @@
             : 'Browser manual';
   $: speedKmh = speedMetresPerSecond(drive) * 3.6;
   $: stream = drive.stream ?? {};
-  $: detectorEnabled = Boolean(drive.detector?.enabled || drive.road_segmentation?.enabled);
+  $: rigCameras = drive.rig_cameras ?? {};
+  $: selectedCamera = camera === 'live' ? null : rigCameras[camera];
+  $: if (camera !== 'live' && !rigCameras[camera]) camera = 'live';
+  $: detectorEnabled = camera === 'live' ? Boolean(drive.detector?.enabled || drive.road_segmentation?.enabled)
+    : Boolean(selectedCamera && selectedCamera.mode !== 'off' && !selectedCamera.perception_error);
   $: voxel = drive.voxel;
-  $: voxelEnabled = Boolean(voxel?.enabled);
+  $: voxelEnabled = camera === 'live' && Boolean(voxel?.enabled);
   $: voxelView = view === 'voxel' || view === 'voxel_overlay';
   $: navigationIntent = navigationIntentFromDrive(drive);
   $: navigationLabel = navigationIntent ? navigationCommandLabel(navigationIntent.command) : '';
@@ -59,14 +64,16 @@
     initializedViewSession !== drive.session_id
   ) {
     initializedViewSession = drive.session_id;
+    camera = 'live';
     view = 'raw';
     streamReady = false;
     streamNonce = Date.now();
   }
   $: streamSource = running && drive.session_id && (!voxelView || voxel?.status === 'running')
-    ? `/api/drive/stream.mjpg?view=${view}&session=${encodeURIComponent(drive.session_id)}&t=${streamNonce}`
+    ? `/api/drive/stream.mjpg?view=${encodeURIComponent(camera === 'live' ? view : `rig:${camera}:${view}`)}&session=${encodeURIComponent(drive.session_id)}&t=${streamNonce}`
     : '';
-  $: viewFps = Number((view === 'overlay' ? stream.overlay_fps : stream.source_fps) || 0);
+  $: cameraMetrics = selectedCamera ? (view === 'overlay' ? selectedCamera.overlay : selectedCamera.raw) : null;
+  $: viewFps = Number((selectedCamera ? cameraMetrics?.fps : view === 'overlay' ? stream.overlay_fps : stream.source_fps) || 0);
 
   function retryStream(): void {
     streamReady = false;
@@ -105,13 +112,13 @@
   }
 
   function frameAge(): string {
-    const value = view === 'overlay' ? stream.overlay_age_seconds : stream.frame_age_seconds;
+    const value = selectedCamera ? cameraMetrics?.age_seconds : view === 'overlay' ? stream.overlay_age_seconds : stream.frame_age_seconds;
     if (value == null || !Number.isFinite(Number(value))) return 'waiting';
     return `${Math.round(Number(value) * 1000)} ms`;
   }
 
   function armFromViewport(event: PointerEvent): void {
-    if (event.target instanceof Element && event.target.closest('button')) return;
+    if (event.target instanceof Element && event.target.closest('button, select, input, label')) return;
     manualArmRequest += 1;
   }
 
@@ -168,7 +175,19 @@
       {/if}
 
       <div class="viewport-toolbar">
-        {#if view === 'overlay' && drive.road_segmentation?.enabled && drive.road_segmentation.state !== 'ready'}
+        {#if Object.keys(rigCameras).length}
+          <select aria-label="Live camera" value={camera} onchange={(event) => {
+            camera = event.currentTarget.value;
+            chooseView('raw');
+          }}>
+            <option value="live">Driving camera</option>
+            {#each Object.keys(rigCameras) as id}<option value={id}>{id.replaceAll('_', ' ')} · rig</option>{/each}
+          </select>
+        {/if}
+        {#if selectedCamera?.perception_error}<small role="alert">Perception: {selectedCamera.perception_error}. Raw recording continues.</small>{/if}
+        {#if selectedCamera?.raw_error}<small role="alert">Camera: {selectedCamera.raw_error}</small>{/if}
+        {#if selectedCamera?.mode === 'off'}<small>Raw only · enable this camera’s perception in Vision before the next session.</small>{/if}
+        {#if camera === 'live' && view === 'overlay' && drive.road_segmentation?.enabled && drive.road_segmentation.state !== 'ready'}
           <small role="status">{drive.road_segmentation.state === 'failed'
             ? `Road model: ${drive.road_segmentation.error}`
             : 'Loading road model… first use downloads weights'}</small>
