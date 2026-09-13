@@ -8,6 +8,7 @@ import type {
   WorkspaceOptions
 } from '$lib/domain/config';
 import type { GaragePreparationProgress } from '$lib/domain/garagePreview';
+import { sessionForApi } from '$lib/domain/config';
 import type { RigSelection } from '$lib/domain/capture';
 import type {
   DriveControlRequest,
@@ -305,7 +306,7 @@ export class OperatorApi {
   }
 
   startCapture(session: SessionConfig, situation: SituationSettings, cameraRig: RigSelection): Promise<CaptureState> {
-    return this.post('/api/garage/capture', { session, situation, camera_rig: cameraRig, acknowledge: true });
+    return this.post('/api/garage/capture', { session: sessionForApi(session), situation, camera_rig: cameraRig, acknowledge: true });
   }
 
   cancelCapture(): Promise<CaptureState> {
@@ -340,7 +341,7 @@ export class OperatorApi {
   startSession(session: SessionConfig): Promise<DriveState> {
     return this.post<DriveState>('/api/session/start', {
       schema_version: '1.0',
-      session
+      session: sessionForApi(session)
     });
   }
 
@@ -367,7 +368,7 @@ export class OperatorApi {
     const startPath = '/api/garage/preview/configure/start';
     const accepted = await this.post<GaragePreviewOperation>(startPath, {
       schema_version: '1.0',
-      session
+      session: sessionForApi(session, true)
     }, false, 10_000);
     lifecycle?.(accepted);
 
@@ -485,7 +486,7 @@ export class OperatorApi {
   ): Promise<SituationSaveResponse> {
     return this.post<SituationSaveResponse>('/api/situations', {
       schema_version: '1.0',
-      session,
+      session: sessionForApi(session),
       situation
     });
   }

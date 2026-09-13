@@ -22,7 +22,20 @@
       });
       return;
     }
-    patchSessionSection('perception', { detector });
+    patchSessionSection('perception', { detector, signClassifier: null });
+  }
+
+  const defaultSignClassifier = {
+    checkpoint: 'models/deit64/deit64_stageB_blocks10_11_best.pt',
+    ontology: 'models/deit64/ontology_final_64.csv',
+    confidence: 0.7,
+    crop_scale: 4
+  };
+
+  function patchSignClassifier(patch: Partial<typeof defaultSignClassifier>): void {
+    patchSessionSection('perception', {
+      signClassifier: { ...defaultSignClassifier, ...$sessionConfig.perception.signClassifier, ...patch }
+    });
   }
 </script>
 
@@ -261,6 +274,49 @@
           <small>Hide detections below this score. Applies when the session starts.</small>
         </label>
       </div>
+      {#if $sessionConfig.perception.detector === 'm9-hierarchical'}
+        <label class="switch-field">
+          <input type="checkbox"
+            checked={Boolean($sessionConfig.perception.signClassifier)}
+            onchange={(event) => patchSessionSection('perception', {
+              signClassifier: fieldChecked(event) ? { ...defaultSignClassifier } : null
+            })}
+          />
+          <span><strong>Read traffic signs · DeiT-64</strong><small>Classify M9 sign crops on the front camera. Applies next session.</small></span>
+        </label>
+        {#if $sessionConfig.perception.signClassifier}
+          <div class="field-grid two-columns">
+            <label class="field confidence-field">
+              <span class="confidence-label">Minimum sign confidence
+                <output>{Math.round($sessionConfig.perception.signClassifier.confidence * 100)}%</output>
+              </span>
+              <input type="range" min="0" max="1" step="0.01" aria-label="Minimum sign confidence"
+                value={$sessionConfig.perception.signClassifier.confidence}
+                oninput={(event) => patchSignClassifier({ confidence: fieldNumber(event) })} />
+              <small>Lower scores show “unknown”. Separate from detection confidence.</small>
+            </label>
+          </div>
+          <details>
+            <summary>DeiT model files & crop context</summary>
+            <div class="field-grid two-columns">
+              <label class="field"><span>DeiT checkpoint</span>
+                <input value={$sessionConfig.perception.signClassifier.checkpoint}
+                  onchange={(event) => patchSignClassifier({ checkpoint: fieldValue(event) })} />
+              </label>
+              <label class="field"><span>64-class ontology CSV</span>
+                <input value={$sessionConfig.perception.signClassifier.ontology}
+                  onchange={(event) => patchSignClassifier({ ontology: fieldValue(event) })} />
+              </label>
+              <label class="field"><span>Crop width & height multiplier</span>
+                <input type="number" min="1" max="4" step="0.1"
+                  value={$sessionConfig.perception.signClassifier.crop_scale}
+                  onchange={(event) => patchSignClassifier({ crop_scale: fieldNumber(event) })} />
+                <small>4× matches the notebook. Uses the detector device.</small>
+              </label>
+            </div>
+          </details>
+        {/if}
+      {/if}
     </div>
   {/if}
 </section>

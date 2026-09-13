@@ -96,6 +96,12 @@ export interface SessionConfig {
     roadBackend: string;
     roadCheckpoint: string;
     roadDevice: string;
+    signClassifier?: {
+      checkpoint: string;
+      ontology: string;
+      confidence: number;
+      crop_scale: number;
+    } | null;
     detector: DetectorKind;
     weights: string;
     device: string;
@@ -212,6 +218,7 @@ export function defaultSessionConfig(): SessionConfig {
       roadBackend: 'segformer',
       roadCheckpoint: '',
       roadDevice: 'cpu',
+      signClassifier: null,
       detector: 'rtdetr',
       weights: '',
       device: 'cpu',
@@ -238,6 +245,14 @@ export function defaultSessionConfig(): SessionConfig {
       maxSteerRate: 2.5
     }
   };
+}
+
+export function sessionForApi(session: SessionConfig, preview = false): SessionConfig {
+  const perception = { ...session.perception };
+  // Preview owns the parked world, not inference. Omit disabled optional fields
+  // so a freshly rebuilt UI also works while the old Operator awaits restart.
+  if (preview || perception.signClassifier == null) delete perception.signClassifier;
+  return { ...session, perception };
 }
 
 export function mergeSessionDefaults(

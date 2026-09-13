@@ -34,6 +34,9 @@ def create_detector(config: DetectorConfig) -> Detector:
     """Create a detector without exposing backend-specific APIs to the runtime."""
 
     backend = config.backend.strip().lower().replace("_", "-")
+    sign_settings = config.options.get("sign_classifier")
+    if sign_settings is not None and backend not in {"m9-hierarchical", "m9-hierarchical-rtdetr"}:
+        raise ValueError("DeiT-64 sign recognition currently requires M9 Hierarchical RT-DETR")
     if backend in {"yolo", "ultralytics-yolo"}:
         return UltralyticsDetector(config, architecture="yolo")
     if backend in {"rtdetr", "rt-detr", "ultralytics-rtdetr"}:
@@ -41,7 +44,19 @@ def create_detector(config: DetectorConfig) -> Detector:
     if backend in {"m9-hierarchical", "m9-hierarchical-rtdetr"}:
         from .m9_hierarchical import M9HierarchicalDetector
 
-        return M9HierarchicalDetector(config)
+        if sign_settings is None:
+            return M9HierarchicalDetector(config)
+        from .deit64 import DeiT64Classifier, SignRecognitionDetector
+        from .sign_config import SignClassifierConfig
+
+        sign_config = SignClassifierConfig.from_mapping(sign_settings)
+        classifier = DeiT64Classifier(sign_config, device=config.device)
+        try:
+            detector = M9HierarchicalDetector(config)
+        except BaseException:
+            classifier.close()
+            raise
+        return SignRecognitionDetector(detector, classifier)
     if backend == "custom":
         if config.factory is None:
             raise ValueError("custom detector requires factory")

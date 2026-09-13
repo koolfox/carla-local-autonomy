@@ -107,7 +107,7 @@ _SECTION_KEYS = {
     "camera": frozenset({"resolution", "fps", "fov", "spectatorFollow"}),
     "perception": frozenset(
         {"enabled", "voxelEnabled", "detector", "weights", "device", "imageSize", "confidence",
-         "roadEnabled", "roadBackend", "roadCheckpoint", "roadDevice"}
+         "roadEnabled", "roadBackend", "roadCheckpoint", "roadDevice", "signClassifier"}
     ),
     "recording": frozenset({"video", "cameraRig", "cameraRigFps"}),
     "experiment": frozenset({"preset"}),
@@ -156,7 +156,7 @@ def _validated_session(raw: Any) -> dict[str, Mapping[str, Any]]:
             # Persisted pre-voxel sessions remain valid without mutating the
             # caller's configuration or enabling a model download implicitly.
             value = {"voxelEnabled": False, "roadEnabled": False, "roadBackend": "segformer",
-                     "roadCheckpoint": "", "roadDevice": "cpu", **value}
+                     "roadCheckpoint": "", "roadDevice": "cpu", "signClassifier": None, **value}
             if not isinstance(value["voxelEnabled"], bool):
                 raise TypeError("session.perception.voxelEnabled must be a boolean")
             if not isinstance(value["roadEnabled"], bool):
@@ -361,6 +361,7 @@ def session_defaults(
             "roadBackend": "segformer",
             "roadCheckpoint": "",
             "roadDevice": "cpu",
+            "signClassifier": None,
             "detector": "rtdetr",
             "weights": "",
             "device": "cpu",
@@ -517,6 +518,8 @@ def build_legacy_drive_request(
         "weather_preset": str(scene["weatherPreset"]).strip(),
         "prop_preset": str(scene["propPreset"]).strip(),
         "detector_enabled": perception["enabled"],
+        **({"sign_classifier": perception["signClassifier"]}
+           if perception["signClassifier"] is not None else {}),
         "voxel_enabled": perception["voxelEnabled"],
         "road_enabled": perception["roadEnabled"],
         "road_backend": str(perception["roadBackend"]).strip(),

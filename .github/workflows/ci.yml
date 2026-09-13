@@ -51,6 +51,7 @@ jobs:
           tests/test_camera_relay_teardown.py
           tests/test_discovery.py
           tests/test_drive_console.py
+          tests/test_deit64.py
           tests/test_external_model_drive.py
           tests/test_garage_acceptance.py
           tests/test_garage_capture.py

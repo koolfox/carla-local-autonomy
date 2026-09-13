@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import ts from 'typescript';
 
-const source = readFileSync(new URL('../src/lib/api/operator.ts', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../src/lib/api/operator.ts', import.meta.url), 'utf8')
+  .replaceAll("'$lib/domain/config'", JSON.stringify(new URL('../src/lib/domain/config.ts', import.meta.url).href));
 const { outputText } = ts.transpileModule(source, {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 }
 });

@@ -27,8 +27,16 @@ def detection_display_label(detection: Detection) -> str:
     if fine_label and {"coarse_confidence", "fine_confidence"} <= detection.attributes.keys():
         coarse = float(detection.attributes["coarse_confidence"])
         fine = float(detection.attributes["fine_confidence"])
-        return f"Coarse: {detection.label} {coarse:.0%} | Fine: {fine_label} {fine:.0%}"
-    return f"{detection.label} {detection.confidence:.0%}"
+        label = f"Coarse: {detection.label} {coarse:.0%} | Fine: {fine_label} {fine:.0%}"
+    else:
+        label = f"{detection.label} {detection.confidence:.0%}"
+    sign = detection.attributes.get("sign_classification")
+    if isinstance(sign, Mapping):
+        if sign.get("accepted"):
+            label += f"\nSign: {sign['label']} {float(sign['confidence']):.0%}"
+        else:
+            label += "\nSign: unknown"
+    return label
 
 
 class DisplayMode(str, Enum):
@@ -168,16 +176,17 @@ class OverlayRenderer:
         color: tuple[int, int, int],
     ) -> None:
         thickness = max(1, self.box_thickness - 1)
-        (text_width, text_height), baseline = cv2.getTextSize(
-            text,
-            cv2.FONT_HERSHEY_SIMPLEX,
-            self.font_scale,
-            thickness,
-        )
+        lines = text.splitlines()
+        sizes = [cv2.getTextSize(line, cv2.FONT_HERSHEY_SIMPLEX, self.font_scale, thickness)
+                 for line in lines]
+        text_width = max(size[0][0] for size in sizes)
+        text_height = max(size[0][1] for size in sizes)
+        baseline = max(size[1] for size in sizes)
+        line_height = text_height + baseline + 6
         image_height, image_width = image.shape[:2]
         text_x = min(max(0, x1), max(0, image_width - text_width - 4))
-        label_top = max(0, y1 - text_height - baseline - 6)
-        label_bottom = min(image_height - 1, label_top + text_height + baseline + 6)
+        label_top = max(0, y1 - line_height * len(lines))
+        label_bottom = min(image_height - 1, label_top + line_height * len(lines))
         label_right = min(image_width - 1, text_x + text_width + 4)
         cv2.rectangle(
             image,
@@ -186,16 +195,12 @@ class OverlayRenderer:
             color,
             -1,
         )
-        cv2.putText(
-            image,
-            text,
-            (text_x + 2, min(image_height - 2, label_bottom - baseline - 2)),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            self.font_scale,
-            (15, 15, 15),
-            thickness,
-            cv2.LINE_AA,
-        )
+        for index, line in enumerate(lines):
+            cv2.putText(
+                image, line,
+                (text_x + 2, min(image_height - 2, label_top + line_height * (index + 1) - baseline - 2)),
+                cv2.FONT_HERSHEY_SIMPLEX, self.font_scale, (15, 15, 15), thickness, cv2.LINE_AA,
+            )
 
     def _draw_hud(self, image: np.ndarray, lines: list[str]) -> None:
         if not lines:

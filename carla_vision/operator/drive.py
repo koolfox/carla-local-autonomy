@@ -54,8 +54,12 @@ from .world_worker_client import (
 )
 
 
-def overlay_identity(detector_name: str | None, road_name: str | None = None) -> dict[str, str]:
+def overlay_identity(
+    detector_name: str | None, road_name: str | None = None, *, sign_classifier: bool = False,
+) -> dict[str, str]:
     """Single identity source for detector-only and combined live/recorded overlays."""
+    if detector_name and sign_classifier:
+        detector_name += " + DeiT-64"
     return {"Author": "Marjan Shahchera at University of Kashan",
             "MODEL": " + ".join(name for name in (detector_name, road_name) if name)}
 
@@ -1342,6 +1346,7 @@ class DriveSession:
                         device=self.config.device,
                         image_size=self.config.image_size,
                         confidence=self.config.confidence,
+                        options={"sign_classifier": self.config.sign_classifier},
                     )
                 )
                 self._detector_name = detector.name
@@ -1507,7 +1512,10 @@ class DriveSession:
                         detector_overlay = renderer.render(
                             result,
                             now_monotonic=result.completed_monotonic,
-                            hud=overlay_identity(self.config.weights.name if self.config.weights else result.detector_name),
+                            hud=overlay_identity(
+                                self.config.weights.name if self.config.weights else result.detector_name,
+                                sign_classifier=self.config.sign_classifier is not None,
+                            ),
                         )
                         if self._road is not None and not road_failed:
                             try:
@@ -1547,6 +1555,7 @@ class DriveSession:
                                 hud=overlay_identity(
                                     self.config.weights.name if self.config.detector_enabled and self.config.weights else None,
                                     road_result.segmenter_name,
+                                    sign_classifier=self.config.sign_classifier is not None,
                                 ),
                             )
                             self._cache_frame("overlay", road_result.sequence, _jpeg(latest_overlay))
@@ -2003,6 +2012,7 @@ class DriveSession:
                         "label": item.label,
                         "confidence": item.confidence,
                         "xyxy": list(item.xyxy),
+                        "attributes": dict(item.attributes),
                     }
                     for item in result.detections
                 ],
