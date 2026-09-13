@@ -15,7 +15,7 @@ test('sign settings travel in the same perception session configuration', () => 
   const signClassifier = {
     checkpoint: 'models/deit64/deit64_stageB_blocks10_11_best.pt',
     ontology: 'models/deit64/ontology_final_64.csv',
-    confidence: 0.8, crop_scale: 4
+    confidence: 0.8, crop_scale: 4, show_rejection_status: true
   };
   config.perception.signClassifier = signClassifier;
   const restored = mergeSessionDefaults(defaultSessionConfig(), JSON.parse(JSON.stringify(config)));
@@ -32,4 +32,15 @@ test('preview omits inference stage; session start preserves enabled stage witho
   assert.equal('signClassifier' in sessionForApi(config, true).perception, false);
   assert.deepEqual(sessionForApi(config).perception.signClassifier, config.perception.signClassifier);
   assert.ok(config.perception.signClassifier);
+});
+
+test('sign rejection display is optional and does not rewrite the confidence threshold', () => {
+  for (const show_rejection_status of [false, true]) {
+    const config = defaultSessionConfig();
+    config.perception.signClassifier = { checkpoint: 'model.pt', ontology: 'labels.csv', confidence: .7, crop_scale: 4, show_rejection_status };
+    const sent = sessionForApi(config).perception.signClassifier;
+    assert.equal(sent.show_rejection_status, show_rejection_status);
+    assert.equal(sent.confidence, .7);
+    assert.equal(sessionForApi(config, true).perception.signClassifier, undefined);
+  }
 });

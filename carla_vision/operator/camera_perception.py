@@ -29,10 +29,12 @@ class CameraPerception:
         fps: float,
         publish: Any,
         hud: dict[str, str],
+        show_rejection_status: bool = False,
     ) -> None:
         self.worker, self.name = worker, name
         self.camera_id = f"rig:{name}"
         self.publish, self.hud = publish, {**hud, "CAMERA": name}
+        self.show_rejection_status = show_rejection_status
         self.video = root / f"{name}.overlay.mp4"
         self.index = root / f"{name}.detections.jsonl"
         self.error: str | None = None
@@ -53,7 +55,7 @@ class CameraPerception:
 
     def _run(self) -> None:
         sequence = -1
-        renderer = OverlayRenderer(stale_after_seconds=2)
+        renderer = OverlayRenderer(stale_after_seconds=2, show_rejection_status=self.show_rejection_status)
         try:
             with self.index.open("x", encoding="utf-8") as stream:
                 while not self.stop.is_set():

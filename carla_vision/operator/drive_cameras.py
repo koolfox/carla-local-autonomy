@@ -165,6 +165,8 @@ class DriveCameraRecording:
                         perception, name, self.root, width=config.width, height=config.height,
                         fps=config.recording_rig_fps, publish=publish,
                         hud=hud_factory(mode) if hud_factory else {},
+                        show_rejection_status=(getattr(config, "sign_classifier", None) or {}).get(
+                            "show_rejection_status", False),
                     )
                 except Exception as error:
                     self.perception_errors[name] = f"Overlay setup failed: {error}"

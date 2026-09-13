@@ -1482,7 +1482,8 @@ class DriveSession:
                 )
                 voxel_log = voxel_log_path.open("w", encoding="utf-8", buffering=1)
 
-            renderer = OverlayRenderer(stale_after_seconds=2.0)
+            renderer = OverlayRenderer(stale_after_seconds=2.0, show_rejection_status=(
+                self.config.sign_classifier or {}).get("show_rejection_status", False))
             while not self._stop_event.is_set():
                 if rig_recording is not None:
                     rig_recording.check_health()

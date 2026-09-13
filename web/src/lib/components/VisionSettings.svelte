@@ -29,7 +29,8 @@
     checkpoint: 'models/deit64/deit64_stageB_blocks10_11_best.pt',
     ontology: 'models/deit64/ontology_final_64.csv',
     confidence: 0.7,
-    crop_scale: 4
+    crop_scale: 4,
+    show_rejection_status: false
   };
 
   function patchSignClassifier(patch: Partial<typeof defaultSignClassifier>): void {
@@ -293,9 +294,15 @@
               <input type="range" min="0" max="1" step="0.01" aria-label="Minimum sign confidence"
                 value={$sessionConfig.perception.signClassifier.confidence}
                 oninput={(event) => patchSignClassifier({ confidence: fieldNumber(event) })} />
-              <small>Lower scores show “unknown”. Separate from detection confidence.</small>
+              <small>Sets the saved acceptance flag. Separate from detection confidence; applies next session.</small>
             </label>
           </div>
+          <label class="switch-field">
+            <input type="checkbox"
+              checked={$sessionConfig.perception.signClassifier.show_rejection_status ?? false}
+              onchange={(event) => patchSignClassifier({ show_rejection_status: fieldChecked(event) })} />
+            <span><strong>Show unknown / unaccepted statuses</strong><small>Off: show the predicted sign name and DeiT confidence, even below threshold. Display only; saved acceptance stays unchanged. Applies next session.</small></span>
+          </label>
           <details>
             <summary>DeiT model files & crop context</summary>
             <div class="field-grid two-columns">

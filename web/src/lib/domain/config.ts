@@ -101,6 +101,7 @@ export interface SessionConfig {
       ontology: string;
       confidence: number;
       crop_scale: number;
+      show_rejection_status?: boolean;
     } | null;
     detector: DetectorKind;
     weights: string;

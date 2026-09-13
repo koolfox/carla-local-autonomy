@@ -16,6 +16,7 @@ class SignClassifierConfig:
     ontology: Path
     confidence: float = 0.7
     crop_scale: float = 4.0
+    show_rejection_status: bool = False
 
     @classmethod
     def from_mapping(
@@ -23,8 +24,11 @@ class SignClassifierConfig:
     ) -> SignClassifierConfig:
         if not isinstance(raw, Mapping):
             raise ValueError("sign_classifier must be an object")
-        if set(raw) - {"checkpoint", "ontology", "confidence", "crop_scale"}:
+        if set(raw) - {"checkpoint", "ontology", "confidence", "crop_scale", "show_rejection_status"}:
             raise ValueError("Unknown sign_classifier settings")
+        show_status = raw.get("show_rejection_status", False)
+        if not isinstance(show_status, bool):
+            raise ValueError("sign_classifier.show_rejection_status must be boolean")
         paths: dict[str, Path] = {}
         for key, suffix in (("checkpoint", ".pt"), ("ontology", ".csv")):
             value = raw.get(key)
@@ -46,11 +50,12 @@ class SignClassifierConfig:
             if not math.isfinite(value) or not lower <= value <= upper:
                 raise ValueError(f"sign_classifier.{key} must be in [{lower}, {upper}]")
             numbers[key] = float(value)
-        return cls(**paths, **numbers)
+        return cls(**paths, **numbers, show_rejection_status=show_status)
 
     def as_dict(self) -> dict[str, Any]:
         return {"checkpoint": str(self.checkpoint), "ontology": str(self.ontology),
-                "confidence": self.confidence, "crop_scale": self.crop_scale}
+                "confidence": self.confidence, "crop_scale": self.crop_scale,
+                "show_rejection_status": self.show_rejection_status}
 
 
 def read_sign_ontology(path: Path) -> tuple[str, ...]:

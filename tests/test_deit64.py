@@ -14,12 +14,7 @@ from carla_vision.contracts import Detection, DetectorConfig, DetectorMetadata, 
 from carla_vision.detectors.deit64 import DeiT64Classifier, SignRecognitionDetector, sign_crop_box
 from carla_vision.detectors.factory import create_detector
 from carla_vision.detectors.sign_config import SignClassifierConfig, read_sign_ontology
-from carla_vision.display import (
-    OverlayRenderer,
-    best_sign_summary,
-    detection_display_label,
-    sign_summary_lines,
-)
+from carla_vision.display import OverlayRenderer, detection_display_label
 
 
 @pytest.fixture
@@ -36,6 +31,8 @@ def settings(tmp_path):
 def test_config_and_ontology(settings, tmp_path):
     config = SignClassifierConfig.from_mapping(settings, workspace=tmp_path)
     assert config.confidence == 0.7 and config.crop_scale == 4
+    assert config.show_rejection_status is False
+    assert SignClassifierConfig.from_mapping({**settings, "show_rejection_status": True}).as_dict()["show_rejection_status"] is True
     assert read_sign_ontology(config.ontology)[35] == "sign-35"
     assert SignClassifierConfig.from_mapping(config.as_dict()) == config
     with pytest.raises(ValueError):
@@ -46,6 +43,7 @@ def test_config_and_ontology(settings, tmp_path):
     {"confidence": float("nan")}, {"confidence": True}, {"confidence": 1.01},
     {"crop_scale": 0}, {"crop_scale": 5}, {"crop_scale": "4"},
     {"checkpoint": ""}, {"ontology": None}, {"runtime": "pickle"},
+    {"show_rejection_status": "false"}, {"show_rejection_status": 1},
 ])
 def test_invalid_config_rejected(settings, patch):
     with pytest.raises((ValueError, TypeError)):
@@ -99,7 +97,7 @@ def test_cascade_preserves_m9_scores_and_uses_source_rgb_crop():
     assert crop.shape == (40, 40, 3)
     assert crop[0, 0].tolist() == [255, 0, 0]
     assert np.array_equal(before, image)
-    assert detection_display_label(output[1]).endswith("\nSign: STOP 95%")
+    assert detection_display_label(output[1]).endswith("\nSign:STOP\nDeiT:0.95")
     assert "->" not in detection_display_label(output[1])
     assert model.metadata.extra["sign_classifier"]["name"] == "DeiT-64"
     model.close()
@@ -135,34 +133,42 @@ def test_detection_only_camera_skips_deit_even_when_sign_boxes_are_present():
         model.infer_without_signs(image)
 
 
-def test_notebook_summary_preserves_separate_scores_and_uses_highest_m9_score():
+def test_notebook_per_box_labels_preserve_each_detection_and_separate_scores():
     model, _, _ = _cascade((_sign(),))
     result = model.infer(np.zeros((80, 100, 3), np.uint8))[0]
-    # A higher DeiT confidence must not win over the best detector score.
     weaker = replace(result, confidence=.2, attributes={**result.attributes,
         "sign_classification": {"label": "OTHER", "confidence": .99, "accepted": True}})
-    summary = best_sign_summary((weaker, result))
-    assert summary == {"bbox": [30, 30, 40, 40], "F": "traffic_signs", "Pf": .8,
-        "C": "vehicles", "Pc": .6, "Q": .4, "S": .5, "sign": "STOP", "deit": .95, "accepted": True}
-    lines = "\n".join(sign_summary_lines(summary))
-    assert "Pf: 0.8000" in lines and "Pc: 0.6000" in lines
-    assert "Q: 0.4000" in lines and "S: 0.5000" in lines and "deit: 0.9500" in lines
-    assert "->" not in lines
-    assert best_sign_summary((weaker,))["S"] == .2  # No hidden 0.50 display gate.
-    assert best_sign_summary(()) is None
-    assert best_sign_summary((_sign(),)) is None  # Sign reading disabled.
-    rejected = {**summary, "accepted": False, "sign": "STOP", "deit": .1}
-    assert "unaccepted" in "\n".join(sign_summary_lines(rejected))
+    assert detection_display_label(result) == (
+        "F:traffic_signs\nPf:0.80 C:vehicles\nPc:0.60\nQ:0.40 S:0.50\nSign:STOP\nDeiT:0.95")
+    assert detection_display_label(weaker).endswith("S:0.20\nSign:OTHER\nDeiT:0.99")
+    assert "->" not in detection_display_label(result)
+    assert detection_display_label(_sign()) == (
+        "F:traffic_signs\nPf:0.80\nC:vehicles\nPc:0.60\nQ:0.40\nS:0.50")
 
 
-def test_best_sign_panel_is_frame_local_and_disappears_without_signs():
+def test_all_detections_get_local_notebook_labels_without_corner_summary(monkeypatch):
     model, _, _ = _cascade((_sign(),))
     image = np.zeros((720, 1280, 3), np.uint8)
-    frame = PerceptionResult(1, 2, 0, 0, 0, model.infer(image), image, model.name)
+    first = replace(model.infer(image)[0], xyxy=(100, 420, 140, 460))
+    second = replace(first, xyxy=(700, 420, 740, 460), confidence=.2)
+    car = replace(first, xyxy=(1050, 420, 1200, 600), attributes={
+        "fine_label": "car", "fine_confidence": .8, "coarse_confidence": .6, "quality": .4})
+    frame = PerceptionResult(1, 2, 0, 0, 0, (first, second, car), image, model.name)
     renderer = OverlayRenderer()
+    original = renderer._draw_detection_label
+    labels = []
+    def draw(image, text, **box):
+        labels.append((text, box))
+        original(image, text, **box)
+    monkeypatch.setattr(renderer, "_draw_detection_label", draw)
     with_sign = renderer.render(frame, stale=False)
     without_sign = renderer.render(replace(frame, detections=()), stale=False)
-    assert with_sign[:220, -500:].any()
+    assert len(labels) == 3 and [box["x1"] for _, box in labels] == [100, 700, 1050]
+    assert labels[1][0].endswith("S:0.20\nSign:STOP\nDeiT:0.95")
+    assert "F:car" in labels[2][0] and "DeiT" not in labels[2][0]
+    assert with_sign[420, 100].tolist() == [0, 255, 0]
+    assert with_sign[270:420, 100:340].any() and with_sign[270:420, 700:940].any()
+    assert not with_sign[:220, -500:].any()  # No separate Best sign panel.
     assert not without_sign[:220, -500:].any()
     assert not image.any()
 
@@ -172,8 +178,14 @@ def test_crop_bounds_and_low_confidence_overlay():
     assert sign_crop_box((1, 1, 1, 2), 20, 20, 4) is None
     sign = replace(_sign(), attributes={**_sign().attributes,
         "sign_classification": {"accepted": False, "label": "STOP", "confidence": 0.2}})
-    assert detection_display_label(sign).endswith("\nSign: unknown")
-    assert "STOP" not in detection_display_label(sign)
+    before = json.dumps(sign.attributes, sort_keys=True)
+    assert detection_display_label(sign).endswith("\nSign:STOP\nDeiT:0.20")
+    assert detection_display_label(sign, show_rejection_status=True).endswith("\nSign:unknown (unaccepted)\nDeiT:0.20")
+    assert "STOP" not in detection_display_label(sign, show_rejection_status=True)
+    assert json.dumps(sign.attributes, sort_keys=True) == before
+    invalid = replace(sign, attributes={**sign.attributes, "sign_classification": {"accepted": False, "reason": "invalid_or_tiny_crop"}})
+    assert "Sign:" not in detection_display_label(invalid)
+    assert detection_display_label(invalid, show_rejection_status=True).endswith("Sign:unknown\nDeiT:unavailable")
     result = PerceptionResult(1, 2, 0, 0, 0, (sign,), np.zeros((80, 100, 3), np.uint8), "M9 + DeiT")
     rendered = OverlayRenderer().render(result, stale=False)
     assert rendered.any() and not result.source_bgr.any()
@@ -208,12 +220,13 @@ def test_session_settings_reach_drive_and_old_sessions_still_work(settings, tmp_
     session["vehicle"]["blueprint"] = "vehicle.audi.tt"
     session["control"]["mode"] = "manual"
     session["perception"].update(detector="m9-hierarchical", imageSize=800,
-        weights=settings["checkpoint"], signClassifier=settings)
+        weights=settings["checkpoint"], signClassifier={**settings, "show_rejection_status": True})
     kwargs = dict(carla_host="127.0.0.1", carla_port=2000, worker_connected=True, capabilities={})
     request = build_legacy_drive_request(session, **kwargs)
     config = GarageDriveStartConfig.from_mapping(request, workspace=tmp_path,
         expected_host="127.0.0.1", expected_port=2000, world_worker_configured=True).base
     assert config.sign_classifier["crop_scale"] == 4.0
+    assert config.sign_classifier["show_rejection_status"] is True
     assert config.manifest_config()["sign_classifier"]["checkpoint"] == settings["checkpoint"]
     from test_drive_cameras import rig
 

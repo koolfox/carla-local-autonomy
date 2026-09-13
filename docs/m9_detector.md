@@ -117,21 +117,25 @@ running DeiT requires the updated backend process.
 - Ontology class IDs must be exactly 0–63. Names are mapped by `canonical_id`,
   not CSV row order. This cannot prove that a different CSV belongs to a
   checkpoint; keep the training ontology paired with its weights.
-- A second label line shows `Sign: STOP 95%`, or `Sign: unknown` when below
-  the separate sign-confidence threshold (default 0.70), or when the original
-  visible detection crop is smaller than 2 pixels in either dimension.
-- A compact **Best sign** panel shows the notebook's `bbox`, `F`, `Pf`, `C`,
-  `Pc`, `Q`, `S`, `sign` and `deit` fields, with scores to four decimal places.
-  It chooses the highest **M9 S** among this frame's displayed sign candidates,
-  not the highest DeiT probability. The existing confidence slider is the only
-  detection display threshold; the notebook's hard-coded 0.50 gate is not added.
-  Low-confidence recognition is marked **unaccepted** in this diagnostic panel
-  and remains **unknown** on the box label. No sign candidate means no panel;
-  nothing is carried over from an earlier frame or a different camera.
+- Every displayed M9 detection gets the notebook's per-box label: lime outline,
+  black caption and white multiline `F`, `Pf`, `C`, `Pc`, `Q`, `S` values,
+  plus `Sign` and `DeiT` when a sign prediction exists. Scores use two decimals
+  and the line grouping of `draw_prediction_with_deit`. Captions are attached
+  above/below the object, with edge-aware placement. There is no separate
+  **Best sign** panel. Coarse and fine heads remain independent, without arrows.
+  The existing detection confidence slider is still the only detection filter;
+  the notebook's hard-coded 0.50 gate is not added.
+- **Vision → Read traffic signs → Show unknown / unaccepted statuses** controls
+  display only and defaults **off**. Off shows the actual predicted sign name
+  and DeiT confidence even below the sign threshold. On substitutes
+  `unknown (unaccepted)` below that threshold. When a crop is invalid/too small
+  to classify, off omits the sign lines; on shows `unknown` / `unavailable`.
+  No invented label or confidence is produced. The setting applies next session
+  to both live and recorded overlays, including selected rig cameras.
 - `detections.jsonl` retains `attributes.sign_classification` (predicted ID,
   label, confidence, acceptance, crop coordinates) and both M9 head scores.
-  Rejected class predictions are retained for analysis, but not shown as
-  accepted sign labels. `detector-metadata.json` records file SHA-256 hashes,
+  The acceptance flag is unchanged by hiding UI statuses: displaying a predicted
+  name does **not** certify it as accepted. `detector-metadata.json` records file SHA-256 hashes,
   preprocessing, thresholds, device and library versions. Source boxes remain
   unchanged and raw RGB recording remains unannotated.
 
@@ -156,6 +160,8 @@ steer, or change Traffic Manager behavior.
 Choose a new output directory each time. It saves an exact-frame overlay,
 detections (including rejected sign predictions), model identity, and total
 cascade inference time. This single-image timing is not a throughput benchmark.
+Add `--show-sign-statuses` to opt into unknown/unaccepted captions; scripts can
+use `OverlayRenderer(show_rejection_status=True)` for the same behavior.
 
 For your own scripts, use the existing `create_detector(DetectorConfig(...))`
 contract and pass the stage through `options`:

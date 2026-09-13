@@ -63,6 +63,9 @@ and **Detections** toggle the selected camera's display immediately; choosing Ra
 does not disable inference or stop saving annotated evidence. A camera configured
 Off cannot enable inference midway through a run; select it in Vision before the
 next run. Road segmentation and Voxel remain on the main driving camera.
+The DeiT **Show unknown / unaccepted statuses** preference is shared by the main
+camera and selected rig cameras, including their saved overlays. It changes only
+captions, never the raw scores or acceptance flags retained in detection JSON.
 
 One detector instance (and one optional DeiT classifier) serves all selected
 cameras serially, with fair turns and at most one pending frame per camera.
