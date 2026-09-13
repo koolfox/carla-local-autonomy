@@ -71,6 +71,6 @@ def read_sign_ontology(path: Path) -> tuple[str, ...]:
             if index in labels or not name:
                 raise ValueError("DeiT ontology IDs must be unique and names nonempty")
             labels[index] = name
-    if set(labels) != set(range(64)):
-        raise ValueError("DeiT ontology must contain exactly canonical IDs 0 through 63")
-    return tuple(labels[index] for index in range(64))
+    if len(labels) not in {64, 68} or set(labels) != set(range(len(labels))):
+        raise ValueError("DeiT ontology must contain exactly canonical IDs 0–63 (64 classes) or 0–67 (68 classes)")
+    return tuple(labels[index] for index in range(len(labels)))

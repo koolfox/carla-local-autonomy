@@ -55,11 +55,11 @@ from .world_worker_client import (
 
 
 def overlay_identity(
-    detector_name: str | None, road_name: str | None = None, *, sign_classifier: bool = False,
+    detector_name: str | None, road_name: str | None = None, *, sign_classifier: str | None = None,
 ) -> dict[str, str]:
     """Single identity source for detector-only and combined live/recorded overlays."""
     if detector_name and sign_classifier:
-        detector_name += " + DeiT-64"
+        detector_name += f" + {sign_classifier}"
     return {"Author": "Marjan Shahchera at University of Kashan",
             "MODEL": " + ".join(name for name in (detector_name, road_name) if name)}
 
@@ -1365,6 +1365,8 @@ class DriveSession:
                 )
                 with self._actuation_lock:
                     self._local_actuator = actuator
+            sign_classifier_name = None
+            detector_display_name = None
             if self.config.detector_enabled:
                 detector = create_detector(
                     DetectorConfig(
@@ -1377,6 +1379,11 @@ class DriveSession:
                     )
                 )
                 self._detector_name = detector.name
+                sign_classifier_name = detector.metadata.extra.get("sign_classifier", {}).get("name")
+                detector_display_name = (
+                    self.config.weights.name if self.config.weights
+                    else getattr(detector, "detection_only_name", detector.name)
+                )
                 detector_metadata_path = tracker.artifact_path("detector-metadata.json")
                 _write_json(detector_metadata_path, detector.metadata.as_dict())
                 tracker.register_artifact(detector_metadata_path, role="detector_runtime_identity")
@@ -1425,8 +1432,8 @@ class DriveSession:
                     self._world_worker, worker_scene, self.config,
                     perception=perception, publish=self._cache_frame,
                     hud_factory=lambda mode: overlay_identity(
-                        self.config.weights.name if self.config.weights else self._detector_name,
-                        sign_classifier=mode == "signs",
+                        detector_display_name,
+                        sign_classifier=sign_classifier_name if mode == "signs" else None,
                     ),
                 )
 
@@ -1558,8 +1565,8 @@ class DriveSession:
                             result,
                             now_monotonic=result.completed_monotonic,
                             hud=overlay_identity(
-                                self.config.weights.name if self.config.weights else result.detector_name,
-                                sign_classifier=self.config.sign_classifier is not None,
+                                detector_display_name,
+                                sign_classifier=sign_classifier_name,
                             ),
                         )
                         if self._road is not None and not road_failed:
@@ -1598,9 +1605,9 @@ class DriveSession:
                             latest_overlay = renderer.render(
                                 replace(combined, source_bgr=road_image),
                                 hud=overlay_identity(
-                                    self.config.weights.name if self.config.detector_enabled and self.config.weights else None,
+                                    detector_display_name,
                                     road_result.segmenter_name,
-                                    sign_classifier=self.config.sign_classifier is not None,
+                                    sign_classifier=sign_classifier_name,
                                 ),
                             )
                             self._cache_frame("overlay", road_result.sequence, _jpeg(latest_overlay))

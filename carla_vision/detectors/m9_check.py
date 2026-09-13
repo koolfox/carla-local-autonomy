@@ -21,7 +21,7 @@ def main() -> int:
     parser.add_argument("--image", type=Path, required=True)
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--confidence", type=float, default=0.0)
-    parser.add_argument("--sign-checkpoint", type=Path, help="Optional DeiT-64 state_dict checkpoint")
+    parser.add_argument("--sign-checkpoint", type=Path, help="Optional DeiT-64/68 state_dict checkpoint")
     parser.add_argument("--sign-ontology", type=Path, help="DeiT canonical_id/canonical_name CSV")
     parser.add_argument("--sign-confidence", type=float, default=0.7)
     parser.add_argument("--sign-crop-scale", type=float, default=4.0)

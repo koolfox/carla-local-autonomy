@@ -124,7 +124,7 @@ def build_catalog(
     weights = sorted({path for suffix in ("pt", "pth", "onnx")
                       for pattern in (f"*.{suffix}", f"models/**/*.{suffix}")
                       for path in _files(root, pattern)
-                      if not path.startswith("models/deit64/")})
+                      if not path.startswith(("models/deit64/", "models/deit68/"))})
     model_packages = [row["path"] for row in objects if row["root_kind"] == "models"]
     datasets = [row["path"] for row in objects if row["root_kind"] == "datasets"]
     scenario_plans = [row["path"] for row in objects if _has_role(row, "scenario_plan_summary")]

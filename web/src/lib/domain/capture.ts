@@ -88,7 +88,7 @@ export function driveRecordingSettings(session: SessionConfig, settings: Capture
   if (perceptionError) throw new Error(perceptionError);
   if (Object.keys(modes).length && !session.perception?.enabled) throw new Error('Enable Detection overlay in Vision for rig camera perception.');
   if (Object.values(modes).includes('signs') && (!session.perception.signClassifier || session.perception.detector !== 'm9-hierarchical')) {
-    throw new Error('Camera sign reading requires M9 and Read traffic signs (DeiT-64) in Vision.');
+    throw new Error('Camera sign reading requires M9 and Read traffic signs (DeiT) in Vision.');
   }
   return { video: true, cameraRig: structuredClone(settings.rig), cameraRigFps: settings.captureFps,
     ...(Object.keys(modes).length ? { cameraPerception: { ...modes } } : {}) };

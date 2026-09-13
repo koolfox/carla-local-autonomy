@@ -1,4 +1,4 @@
-"""Notebook-compatible M9 -> RGB sign crops -> DeiT-64, without actuation.
+"""Notebook-compatible M9 -> RGB sign crops -> DeiT-64/68, without actuation.
 
 M9 boxes and both independent head scores are preserved. Sign confidence is a
 separate, uncalibrated softmax score, not a replacement detector confidence.
@@ -38,7 +38,11 @@ def sign_crop_box(
 
 
 class DeiT64Classifier:
-    """Fixed architecture; tensor-only load; no hub downloads or executable factory."""
+    """Stage B (64) or Stage C (68); retained class name for existing callers.
+
+    Both notebooks use the same fixed backbone and MLP head, changing only the
+    final class count. Never expand or randomly initialize a head at inference.
+    """
 
     def __init__(self, config: SignClassifierConfig, *, device: str) -> None:
         self.config = config
@@ -49,12 +53,43 @@ class DeiT64Classifier:
             from torch import nn
         except ImportError as error:
             raise RuntimeError(
-                "DeiT-64 needs the local deit64 extra: pip install -e '.[m9,deit64]'"
+                "DeiT needs the local deit64 extra: pip install -e '.[m9,deit64]'"
             ) from error
         self._torch = torch
         self.device = resolve_torch_device(device)
+        # Stage C stores training metrics/history alongside tensors. Depending
+        # on sklearn/NumPy versions these contain NumPy floating scalars. Allow
+        # only those data types (including the NumPy 1.x pickle path), never
+        # arbitrary checkpoint globals or a weights_only=False fallback.
+        try:
+            from numpy._core.multiarray import scalar
+        except ImportError:  # NumPy 1.x
+            from numpy.core.multiarray import scalar
+        with torch.serialization.safe_globals([
+            (scalar, "numpy.core.multiarray.scalar"),
+            (scalar, "numpy._core.multiarray.scalar"),
+            np.dtype, type(np.dtype(np.float32)), type(np.dtype(np.float64)),
+        ]):
+            checkpoint = torch.load(config.checkpoint, map_location="cpu", weights_only=True)
+        if not isinstance(checkpoint, dict) or not isinstance(checkpoint.get("model_state_dict"), dict):
+            raise ValueError("DeiT checkpoint must contain model_state_dict tensors")
+        state = checkpoint["model_state_dict"]
+        if not state or not all(isinstance(v, torch.Tensor) for v in state.values()):
+            raise ValueError("DeiT state_dict must contain only tensors")
+        output_weight, output_bias = state.get("head.3.weight"), state.get("head.3.bias")
+        if (output_weight is None or output_weight.ndim != 2
+                or output_weight.shape[0] not in {64, 68} or output_weight.shape[1] != 512
+                or output_bias is None or output_bias.shape != (output_weight.shape[0],)):
+            raise ValueError("DeiT state_dict requires a trained 512→64 or 512→68 output head (head.3)")
+        self.num_classes = int(output_weight.shape[0])
+        if len(self.labels) != self.num_classes:
+            raise ValueError(
+                f"DeiT checkpoint has {self.num_classes} classes but ontology has {len(self.labels)}; "
+                "select the matching training ontology CSV, not the other stage's labels"
+            )
         self.identity = {
-            "name": "DeiT-64", "architecture": "deit_small_patch16_224",
+            "name": f"DeiT-{self.num_classes}", "architecture": "deit_small_patch16_224",
+            "num_classes": self.num_classes,
             "checkpoint_sha256": _sha256(config.checkpoint),
             "ontology_sha256": _sha256(config.ontology),
             **config.as_dict(), "device": str(self.device),
@@ -62,14 +97,8 @@ class DeiT64Classifier:
             "preprocessing": "source RGB crop; PIL bilinear 224x224; ImageNet mean/std",
             "score": "softmax; independent of M9 confidence; not calibrated",
         }
-        checkpoint = torch.load(config.checkpoint, map_location="cpu", weights_only=True)
-        if not isinstance(checkpoint, dict) or not isinstance(checkpoint.get("model_state_dict"), dict):
-            raise ValueError("DeiT-64 checkpoint must contain model_state_dict tensors")
-        state = checkpoint["model_state_dict"]
-        if not state or not all(isinstance(v, torch.Tensor) for v in state.values()):
-            raise ValueError("DeiT-64 state_dict must contain only tensors")
-        model = timm.create_model("deit_small_patch16_224", pretrained=False, num_classes=64)
-        model.head = nn.Sequential(nn.Linear(384, 512), nn.SiLU(), nn.Dropout(0.3), nn.Linear(512, 64))
+        model = timm.create_model("deit_small_patch16_224", pretrained=False, num_classes=self.num_classes)
+        model.head = nn.Sequential(nn.Linear(384, 512), nn.SiLU(), nn.Dropout(0.3), nn.Linear(512, self.num_classes))
         model.load_state_dict(state, strict=True)
         self._model = model.eval().to(self.device)
 
@@ -92,8 +121,8 @@ class DeiT64Classifier:
                 tensors.append(torch.from_numpy(values))
             with torch.inference_mode():
                 logits = self._model(torch.stack(tensors).to(self.device))
-                if logits.shape != (len(tensors), 64) or not torch.isfinite(logits).all():
-                    raise ValueError("DeiT-64 returned invalid logits")
+                if logits.shape != (len(tensors), self.num_classes) or not torch.isfinite(logits).all():
+                    raise ValueError(f"DeiT-{self.num_classes} returned invalid logits")
                 scores, ids = logits.softmax(dim=1).max(dim=1)
             for score, index in zip(scores.cpu().tolist(), ids.cpu().tolist(), strict=True):
                 results.append({"class_id": index, "label": self.labels[index],
@@ -112,7 +141,7 @@ class SignRecognitionDetector:
         self._classifier = classifier
         self._lock = threading.Lock()
         self._closed = False
-        self.name = f"{detector.name} + DeiT-64"
+        self.name = f"{detector.name} + {classifier.identity['name']}"
         self.detection_only_name = detector.name
         self.metadata: DetectorMetadata = replace(
             detector.metadata, name=self.name,

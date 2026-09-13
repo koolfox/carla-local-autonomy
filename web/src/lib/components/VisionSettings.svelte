@@ -283,7 +283,7 @@
               signClassifier: fieldChecked(event) ? { ...defaultSignClassifier } : null
             })}
           />
-          <span><strong>Read traffic signs · DeiT-64</strong><small>Front-camera sign reading; also available to selected rig cameras. Applies next session.</small></span>
+          <span><strong>Read traffic signs · DeiT</strong><small>64-class Stage B or 68-class Stage C. Front camera and selected rig cameras; applies next session.</small></span>
         </label>
         {#if $sessionConfig.perception.signClassifier}
           <div class="field-grid two-columns">
@@ -310,7 +310,7 @@
                 <input value={$sessionConfig.perception.signClassifier.checkpoint}
                   onchange={(event) => patchSignClassifier({ checkpoint: fieldValue(event) })} />
               </label>
-              <label class="field"><span>64-class ontology CSV</span>
+              <label class="field"><span>Matching ontology CSV (64 or 68 classes)</span>
                 <input value={$sessionConfig.perception.signClassifier.ontology}
                   onchange={(event) => patchSignClassifier({ ontology: fieldValue(event) })} />
               </label>
@@ -318,7 +318,7 @@
                 <input type="number" min="1" max="4" step="0.1"
                   value={$sessionConfig.perception.signClassifier.crop_scale}
                   onchange={(event) => patchSignClassifier({ crop_scale: fieldNumber(event) })} />
-                <small>4× matches the notebook. Uses the detector device.</small>
+                <small>4× preserves the original cascade's crop context. Stage C still uses RGB, 224×224 and ImageNet normalization. Uses the detector device.</small>
               </label>
             </div>
           </details>

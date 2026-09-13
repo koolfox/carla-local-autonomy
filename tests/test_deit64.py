@@ -20,12 +20,17 @@ from carla_vision.display import OverlayRenderer, detection_display_label
 @pytest.fixture
 def settings(tmp_path):
     (tmp_path / "weights.pt").touch()
-    with (tmp_path / "labels.csv").open("w", newline="") as stream:
+    _write_ontology(tmp_path / "labels.csv")
+    return {"checkpoint": str(tmp_path / "weights.pt"), "ontology": str(tmp_path / "labels.csv")}
+
+
+def _write_ontology(path, num_classes=64):
+    stage_c = {64: "back", 65: "speed_limit_30", 66: "speed_limit_40", 67: "speed_limit_60"}
+    with path.open("w", newline="") as stream:
         writer = csv.writer(stream)
         writer.writerow(["canonical_id", "canonical_name"])
         # Deliberately reversed to catch accidental row-order mappings.
-        writer.writerows((i, f"sign-{i}") for i in reversed(range(64)))
-    return {"checkpoint": str(tmp_path / "weights.pt"), "ontology": str(tmp_path / "labels.csv")}
+        writer.writerows((i, stage_c.get(i, f"sign-{i}")) for i in reversed(range(num_classes)))
 
 
 def test_config_and_ontology(settings, tmp_path):
@@ -60,6 +65,22 @@ def test_invalid_ontology_rejected(tmp_path, rows):
     path = tmp_path / "bad.csv"
     path.write_text(rows)
     with pytest.raises(ValueError):
+        read_sign_ontology(path)
+
+
+def test_stage_c_ontology_keeps_all_four_new_classes(tmp_path):
+    path = tmp_path / "labels.csv"
+    _write_ontology(path, 68)
+    labels = read_sign_ontology(path)
+    assert labels[:64] == tuple(f"sign-{i}" for i in range(64))
+    assert labels[64:] == ("back", "speed_limit_30", "speed_limit_40", "speed_limit_60")
+
+
+@pytest.mark.parametrize("class_count", [63, 65, 67, 69])
+def test_other_class_counts_rejected(tmp_path, class_count):
+    path = tmp_path / "labels.csv"
+    _write_ontology(path, class_count)
+    with pytest.raises(ValueError, match="canonical IDs"):
         read_sign_ontology(path)
 
 
@@ -106,6 +127,17 @@ def test_cascade_preserves_m9_scores_and_uses_source_rgb_crop():
     classifier.close.assert_called_once()
     with pytest.raises(RuntimeError, match="closed"):
         model.infer(image)
+
+
+def test_stage_c_cascade_identity_and_back_are_real_model_outputs():
+    _, base, classifier = _cascade((_sign(),))
+    classifier.identity = {"name": "DeiT-68", "num_classes": 68}
+    classifier.predict.return_value = [{"class_id": 64, "label": "back", "confidence": .95, "accepted": True}]
+    model = SignRecognitionDetector(base, classifier)
+    assert model.name == model.metadata.name == "M9 + DeiT-68"
+    assert model.metadata.extra["sign_classifier"]["num_classes"] == 68
+    assert detection_display_label(model.infer(np.zeros((80, 100, 3), np.uint8))[0]).endswith(
+        "Sign:back\nDeiT:0.95")  # Never reinterpret back as unknown/unaccepted.
 
 
 def test_no_sign_does_not_run_classifier_and_invalid_crop_is_unknown():
@@ -240,7 +272,8 @@ def test_session_settings_reach_drive_and_old_sessions_still_work(settings, tmp_
     assert "sign_classifier" not in build_legacy_drive_request(session, **kwargs)
 
 
-def test_tensor_only_load_strict_head_and_preprocessing(settings, monkeypatch):
+@pytest.mark.parametrize("class_count", [64, 68])
+def test_tensor_only_load_strict_head_and_preprocessing(settings, monkeypatch, class_count):
     torch = pytest.importorskip("torch")
     timm = pytest.importorskip("timm")
     from PIL import Image
@@ -250,21 +283,35 @@ def test_tensor_only_load_strict_head_and_preprocessing(settings, monkeypatch):
     class SmallModel(nn.Module):
         def __init__(self):
             super().__init__()
-            self.head = nn.Sequential(nn.Linear(384, 512), nn.SiLU(), nn.Dropout(.3), nn.Linear(512, 64))
+            self.head = nn.Sequential(nn.Linear(384, 512), nn.SiLU(), nn.Dropout(.3), nn.Linear(512, class_count))
 
         def forward(self, inputs):
             self.inputs = inputs
             return self.head(torch.zeros((len(inputs), 384)))
 
     prototype = SmallModel()
-    torch.save({"model_state_dict": prototype.state_dict()}, settings["checkpoint"])
+    with torch.no_grad():
+        prototype.head[3].weight.zero_()
+        prototype.head[3].bias.zero_()
+        prototype.head[3].bias[-1] = 1
+    from pathlib import Path
+    _write_ontology(Path(settings["ontology"]), class_count)
+    # The Stage C training loop saves metrics and optimizer state too, not only
+    # weights. NumPy 1.x/2.x scalar metadata must not force unsafe pickle loading.
+    torch.save({"model_state_dict": prototype.state_dict(), "epoch": 13,
+                "carla_macro_f1": np.float64(.95), "history": [{"train_loss": np.float32(.1)}],
+                "optimizer_state_dict": {"state": {}}, "scaler_state_dict": {}}, settings["checkpoint"])
+    allowed_before = set(torch.serialization.get_safe_globals())
     load = Mock(wraps=torch.load)
     monkeypatch.setattr(torch, "load", load)
     create = Mock(side_effect=lambda *args, **kwargs: SmallModel())
     monkeypatch.setattr(timm, "create_model", create)
     model = DeiT64Classifier(SignClassifierConfig.from_mapping(settings), device="cpu")
-    create.assert_called_once_with("deit_small_patch16_224", pretrained=False, num_classes=64)
+    create.assert_called_once_with("deit_small_patch16_224", pretrained=False, num_classes=class_count)
     assert load.call_args.kwargs["weights_only"] is True
+    assert set(torch.serialization.get_safe_globals()) == allowed_before
+    assert model.identity["num_classes"] == class_count
+    assert model.identity["name"] == f"DeiT-{class_count}"
     assert len(model.identity["checkpoint_sha256"]) == 64
     crop = np.random.default_rng(7).integers(0, 255, (57, 91, 3), dtype=np.uint8)
     output = model.predict([crop] * 17)
@@ -273,10 +320,69 @@ def test_tensor_only_load_strict_head_and_preprocessing(settings, monkeypatch):
     torch.testing.assert_close(model._model.inputs[0], expected, rtol=0, atol=0)
     assert len(output) == 17 and model._model.inputs.shape[0] == 1
     assert all(row["accepted"] is False for row in output)
+    assert all(row["class_id"] == class_count - 1 for row in output)
+    assert output[0]["label"] == ("speed_limit_60" if class_count == 68 else "sign-63")
     assert model.predict([]) == []
     torch.save({"model_state_dict": {"head.weight": torch.zeros(2, 2)}}, settings["checkpoint"])
-    with pytest.raises(RuntimeError, match="state_dict"):
+    with pytest.raises(ValueError, match="state_dict"):
         DeiT64Classifier(SignClassifierConfig.from_mapping(settings), device="cpu")
+    incomplete = prototype.state_dict()
+    del incomplete["head.0.weight"]
+    torch.save({"model_state_dict": incomplete}, settings["checkpoint"])
+    with pytest.raises(RuntimeError, match="Missing key"):
+        DeiT64Classifier(SignClassifierConfig.from_mapping(settings), device="cpu")
+
+
+@pytest.mark.parametrize("class_count,ontology_count", [(64, 68), (68, 64)])
+def test_checkpoint_ontology_mismatch_fails_before_model_creation(settings, monkeypatch, class_count, ontology_count):
+    from pathlib import Path
+    torch = pytest.importorskip("torch")
+    timm = pytest.importorskip("timm")
+    _write_ontology(Path(settings["ontology"]), ontology_count)
+    torch.save({"model_state_dict": {"head.3.weight": torch.zeros(class_count, 512),
+                                    "head.3.bias": torch.zeros(class_count)}}, settings["checkpoint"])
+    create = Mock()
+    monkeypatch.setattr(timm, "create_model", create)
+    with pytest.raises(ValueError, match=f"checkpoint has {class_count} classes but ontology has {ontology_count}"):
+        DeiT64Classifier(SignClassifierConfig.from_mapping(settings), device="cpu")
+    create.assert_not_called()
+
+
+def test_numpy_metric_support_does_not_allow_arbitrary_pickle_globals(settings):
+    import pickle
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("timm")
+    allowed_before = set(torch.serialization.get_safe_globals())
+    torch.save({"model_state_dict": {}, "executable": eval}, settings["checkpoint"])
+    with pytest.raises(pickle.UnpicklingError, match="Unsupported global"):
+        DeiT64Classifier(SignClassifierConfig.from_mapping(settings), device="cpu")
+    assert set(torch.serialization.get_safe_globals()) == allowed_before
+
+
+def test_stage_c_real_timm_checkpoint_roundtrip(settings):
+    """Architecture/serialization smoke test, not accuracy evidence for trained Stage C."""
+    from pathlib import Path
+    torch = pytest.importorskip("torch")
+    timm = pytest.importorskip("timm")
+    nn = torch.nn
+    _write_ontology(Path(settings["ontology"]), 68)
+    prototype = timm.create_model("deit_small_patch16_224", pretrained=False, num_classes=68)
+    prototype.head = nn.Sequential(nn.Linear(384, 512), nn.SiLU(), nn.Dropout(.3), nn.Linear(512, 68))
+    with torch.no_grad():
+        prototype.head[3].weight.zero_()
+        prototype.head[3].bias.zero_()
+        prototype.head[3].bias[67] = 12
+    torch.save({"model_state_dict": prototype.state_dict(), "epoch": 13}, settings["checkpoint"])
+    del prototype
+    model = DeiT64Classifier(SignClassifierConfig.from_mapping(settings), device="cpu")
+    try:
+        prediction, = model.predict([np.zeros((48, 80, 3), np.uint8)])
+        assert prediction["class_id"] == 67
+        assert prediction["label"] == "speed_limit_60"
+        assert prediction["confidence"] > .99 and prediction["accepted"] is True
+        assert model._model.training is False
+    finally:
+        model.close()
 
 
 def test_no_unsafe_fallback_for_unknown_checkpoint(settings, monkeypatch):
@@ -305,11 +411,15 @@ def test_sign_checkpoint_not_offered_as_detector_and_single_hud_identity(tmp_pat
     from carla_vision.operator import catalog
     from carla_vision.operator.drive import overlay_identity
 
-    (tmp_path / "models" / "deit64").mkdir(parents=True)
-    (tmp_path / "models" / "deit64" / "sign.pt").touch()
+    for directory in ("deit64", "deit68"):
+        (tmp_path / "models" / directory).mkdir(parents=True)
+        (tmp_path / "models" / directory / "sign.pt").touch()
     (tmp_path / "models" / "m9.pt").touch()
     monkeypatch.setattr(catalog, "probe_endpoint", lambda *args, **kwargs: False)
     result = catalog.build_catalog(tmp_path, carla_host="127.0.0.1", carla_port=2000)
     assert result["weights"] == ["models/m9.pt"]
-    hud = overlay_identity("m9.pt", "YOLOPv2", sign_classifier=True)
-    assert hud == {"Author": "Marjan Shahchera at University of Kashan", "MODEL": "m9.pt + DeiT-64 + YOLOPv2"}
+    for name in ("DeiT-64", "DeiT-68"):
+        hud = overlay_identity("m9.pt", "YOLOPv2", sign_classifier=name)
+        assert hud == {"Author": "Marjan Shahchera at University of Kashan", "MODEL": f"m9.pt + {name} + YOLOPv2"}
+    assert overlay_identity("m9.pt")["MODEL"] == "m9.pt"
+    assert overlay_identity(None, "YOLOPv2", sign_classifier="DeiT-68")["MODEL"] == "YOLOPv2"

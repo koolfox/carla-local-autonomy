@@ -25,6 +25,22 @@ test('sign settings travel in the same perception session configuration', () => 
   assert.deepEqual(restored.control, config.control);
 });
 
+test('Stage C paths persist without resetting per-camera choices or adding API fields', () => {
+  const config = defaultSessionConfig();
+  config.perception.detector = 'm9-hierarchical';
+  config.perception.signClassifier = {
+    checkpoint: 'models/deit68/deit68_carla_stageC_best.pt',
+    ontology: 'models/deit68/ontology_final_68.csv',
+    confidence: .7, crop_scale: 4, show_rejection_status: false
+  };
+  config.recording.cameraPerception = { rear: 'signs', front: 'detections' };
+  const restored = mergeSessionDefaults(defaultSessionConfig(), JSON.parse(JSON.stringify(config)));
+  const request = sessionForApi(restored);
+  assert.deepEqual(request.perception.signClassifier, config.perception.signClassifier);
+  assert.deepEqual(request.recording.cameraPerception, config.recording.cameraPerception);
+  assert.equal(sessionForApi(restored, true).perception.signClassifier, undefined);
+});
+
 test('preview omits inference stage; session start preserves enabled stage without mutating selections', () => {
   const config = defaultSessionConfig();
   assert.equal('signClassifier' in sessionForApi(config).perception, false);

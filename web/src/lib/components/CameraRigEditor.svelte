@@ -70,7 +70,7 @@
         <option value="detections" disabled={!$sessionConfig.perception.enabled}>Detections</option>
         <option value="signs" disabled={!$sessionConfig.perception.enabled || !$sessionConfig.perception.signClassifier || $sessionConfig.perception.detector !== 'm9-hierarchical'}>Detections + sign reading</option>
       </select>
-      <small>Uses the model selected in Vision. Sign reading needs M9 + DeiT-64. Cameras share inference time; more selected cameras mean fewer overlay frames each.</small>
+      <small>Uses the model selected in Vision. Sign reading needs M9 + DeiT. Cameras share inference time; more selected cameras mean fewer overlay frames each.</small>
     </label>
   {/if}
   <div class="camera-tabs" aria-label="Select camera to edit">

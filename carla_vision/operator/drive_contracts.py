@@ -259,7 +259,7 @@ class DriveStartConfig:
         sign_classifier = None
         if detector_enabled and raw.get("sign_classifier") is not None:
             if not detector.startswith("m9-hierarchical"):
-                raise ValueError("DeiT-64 sign recognition requires M9 Hierarchical RT-DETR")
+                raise ValueError("DeiT sign recognition requires M9 Hierarchical RT-DETR")
             from ..detectors.sign_config import SignClassifierConfig, read_sign_ontology
 
             sign_config = SignClassifierConfig.from_mapping(raw["sign_classifier"], workspace=workspace)
@@ -392,7 +392,7 @@ class DriveStartConfig:
                 if name not in views or not isinstance(mode, str) or mode not in {"detections", "signs"}:
                     raise ValueError("Select an existing rig camera and detections or signs mode")
                 if mode == "signs" and sign_classifier is None:
-                    raise ValueError("Camera sign reading requires M9 and Read traffic signs (DeiT-64)")
+                    raise ValueError("Camera sign reading requires M9 and Read traffic signs (DeiT)")
             import copy
 
             rig = copy.deepcopy(rig)
