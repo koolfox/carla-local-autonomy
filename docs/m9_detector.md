@@ -63,10 +63,10 @@ No Windows World Worker update is needed. Restart the operator after updating.
 The recorded overlay includes small top-left name and model labels. Raw recordings
 remain untouched. Road-model identity is retained as `road-model-metadata.json`.
 
-## Optional traffic-sign recognition: M9 + DeiT-64
+## Optional traffic-sign recognition: M9 + DeiT-64 / DeiT-68
 
 In **Garage → Vision**, enable Detection overlay, select M9 and its detector
-checkpoint, then enable **Read traffic signs · DeiT-64**. Start a new session
+checkpoint, then enable **Read traffic signs · DeiT**. Start a new session
 and select the Detections view. Settings apply at session start, not by reloading
 models on every slider movement. The default is off; existing sessions still work.
 
@@ -78,7 +78,7 @@ models/deit64/ontology_final_64.csv
 ```
 
 The classifier checkpoint is not a detector: select it in the DeiT settings,
-not the main M9 Weights selector. Files inside `models/deit64/` are excluded from
+not the main M9 Weights selector. Files inside `models/deit64/` and `models/deit68/` are excluded from
 that detector dropdown. Model binaries and personal ontologies remain local,
 ignored assets; they are not included in Git commits.
 
@@ -99,6 +99,61 @@ Operator only** with your usual command and reload the page. Garage preview neve
 sends the sign stage, and disabled stages are omitted for compatibility; actually
 running DeiT requires the updated backend process.
 
+### Updated CARLA Stage C checkpoint (68 classes)
+
+`carla-on-deit-ptsd.ipynb` fine-tunes the same DeiT Small architecture, with
+**68 trained outputs**, and saves `deit68_carla_stageC_best.pt` plus per-epoch
+checkpoints. Both formats are supported, including the supplied
+`deit68_carla_stageC_epoch15.pt`. Keep the model
+paired with its **verified** 68-class ontology. In that notebook, after
+**BUILD VERIFIED 68-CLASS ONTOLOGY**, export:
+
+```python
+pd.DataFrame(
+    sorted(official_names.items()), columns=["canonical_id", "canonical_name"]
+).to_csv("ontology_final_68.csv", index=False)
+```
+
+Use `official_names`, which preserves IDs 0–63 from the original CSV. Do **not**
+use the earlier handwritten `CLASS_NAMES_68` dictionary: several original names
+there differ from the training ontology. The four added classes are:
+
+| ID | Label |
+| --- | --- |
+| 64 | `back` |
+| 65 | `speed_limit_30` |
+| 66 | `speed_limit_40` |
+| 67 | `speed_limit_60` |
+
+`back` is a real sign-back class, not an unknown/unaccepted UI status. Existing
+`Maximum Speed 30/60/90` and `STOP` classes retain IDs 10/13/16/35; we do not merge
+or rename any class at inference.
+
+Place the exported files on the Operator computer:
+
+```text
+models/deit68/deit68_carla_stageC_epoch15.pt
+models/deit68/ontology_final_68.csv
+```
+
+Under **Vision → Read traffic signs → DeiT model files & crop context**, set
+**both** paths to these files, then start a new session. The same two paths work
+with `--sign-checkpoint` / `--sign-ontology` in the image-check command below.
+The detector dropdown still selects **M9**, not DeiT. Existing DeiT-64 paths
+remain the default so updating the app does not break working installations.
+Select the actual checkpoint you want to evaluate; epoch 15 is not automatically
+treated as the notebook's best-validation checkpoint.
+Model metadata and live/recorded HUDs identify the loaded variant as `DeiT-68`.
+Selected rig cameras share that same classifier; no Windows Worker update is needed.
+
+Class count is checked against `head.3.weight` and `head.3.bias` before building
+the model. Pairing 64-class labels with a 68-class checkpoint (or vice versa)
+fails clearly; no outputs are dropped and no head is expanded/randomly initialized.
+The notebook's training checkpoint envelope (`model_state_dict`, optimizer,
+history, etc.) is supported. Loading remains `weights_only=True`; only NumPy
+floating scalar/dtype metadata is explicitly allowlisted for sklearn metrics.
+Unknown executable globals still fail, without an unsafe retry.
+
 ### What is preserved and what is added
 
 - Existing M9 inference, fine gate, weighted score, boxes, and independent
@@ -111,19 +166,35 @@ running DeiT requires the updated backend process.
   include roughly 16× the box area; this is configurable, not a claim that
   this context is optimal for CARLA.
 - The fixed model is `deit_small_patch16_224` with a
-  `384 → 512 → SiLU → Dropout(0.3) → 64` head. Loading uses
+  `384 → 512 → SiLU → Dropout(0.3) → 64 or 68` head. Loading uses
   `pretrained=False`, `weights_only=True`, and strict state-dict validation.
   No hub weights are downloaded and no unsafe load fallback is allowed.
-- Ontology class IDs must be exactly 0–63. Names are mapped by `canonical_id`,
+- Ontology class IDs must be exactly 0–63 or 0–67, matching the checkpoint. Names are mapped by `canonical_id`,
   not CSV row order. This cannot prove that a different CSV belongs to a
-  checkpoint; keep the training ontology paired with its weights.
-- A second label line shows `Sign: STOP 95%`, or `Sign: unknown` when below
-  the separate sign-confidence threshold (default 0.70), or when the original
-  visible detection crop is smaller than 2 pixels in either dimension.
+  checkpoint; keep the training ontology paired with its weights. Both notebooks
+  use RGB → bilinear 224×224 → ImageNet normalization at validation. Stage C's
+  training-only horizontal flips and color jitter are never used for inference;
+  that notebook does not specify a new M9 crop multiplier, so the existing
+  configurable context is preserved.
+- Every displayed M9 detection gets the notebook's per-box label: lime outline,
+  black caption and white multiline `F`, `Pf`, `C`, `Pc`, `Q`, `S` values,
+  plus `Sign` and `DeiT` when a sign prediction exists. Scores use two decimals
+  and the line grouping of `draw_prediction_with_deit`. Captions are attached
+  above/below the object, with edge-aware placement. There is no separate
+  **Best sign** panel. Coarse and fine heads remain independent, without arrows.
+  The existing detection confidence slider is still the only detection filter;
+  the notebook's hard-coded 0.50 gate is not added.
+- **Vision → Read traffic signs → Show unknown / unaccepted statuses** controls
+  display only and defaults **off**. Off shows the actual predicted sign name
+  and DeiT confidence even below the sign threshold. On substitutes
+  `unknown (unaccepted)` below that threshold. When a crop is invalid/too small
+  to classify, off omits the sign lines; on shows `unknown` / `unavailable`.
+  No invented label or confidence is produced. The setting applies next session
+  to both live and recorded overlays, including selected rig cameras.
 - `detections.jsonl` retains `attributes.sign_classification` (predicted ID,
   label, confidence, acceptance, crop coordinates) and both M9 head scores.
-  Rejected class predictions are retained for analysis, but not shown as
-  accepted sign labels. `detector-metadata.json` records file SHA-256 hashes,
+  The acceptance flag is unchanged by hiding UI statuses: displaying a predicted
+  name does **not** certify it as accepted. `detector-metadata.json` records file SHA-256 hashes,
   preprocessing, thresholds, device and library versions. Source boxes remain
   unchanged and raw RGB recording remains unannotated.
 
@@ -148,6 +219,8 @@ steer, or change Traffic Manager behavior.
 Choose a new output directory each time. It saves an exact-frame overlay,
 detections (including rejected sign predictions), model identity, and total
 cascade inference time. This single-image timing is not a throughput benchmark.
+Add `--show-sign-statuses` to opt into unknown/unaccepted captions; scripts can
+use `OverlayRenderer(show_rejection_status=True)` for the same behavior.
 
 For your own scripts, use the existing `create_detector(DetectorConfig(...))`
 contract and pass the stage through `options`:
@@ -181,9 +254,9 @@ finally:
 Implementation: `detectors/sign_config.py` validates configuration and labels;
 `detectors/deit64.py` owns classifier loading, crops and enrichment. The existing
 factory, session configuration and renderer remain the integration boundaries.
-This first integration applies to the existing **front-camera perception feed**.
-Additional Drive cameras still record raw video; per-camera inference scheduling
-and cross-camera object fusion are separate future work. The cascade serializes
-calls because M9's hook capture is mutable, and batches at most 16 sign crops at
-a time. Raw streaming is independent of inference; more models do not guarantee
-real-time overlay FPS.
+The front feed and [selected Drive rig cameras](native_research_jobs.md#detections-and-sign-reading-on-selected-cameras)
+use this same renderer and cascade. Select Detections or Detections + sign reading
+per camera; all selected cameras share one serial model scheduler. The cascade
+serializes calls because M9's hook capture is mutable, and batches at most 16 sign
+crops at a time. Raw streaming is independent of inference; more cameras do not
+guarantee real-time overlay FPS. Cross-camera object fusion remains separate work.

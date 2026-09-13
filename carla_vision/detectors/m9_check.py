@@ -21,10 +21,12 @@ def main() -> int:
     parser.add_argument("--image", type=Path, required=True)
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--confidence", type=float, default=0.0)
-    parser.add_argument("--sign-checkpoint", type=Path, help="Optional DeiT-64 state_dict checkpoint")
+    parser.add_argument("--sign-checkpoint", type=Path, help="Optional DeiT-64/68 state_dict checkpoint")
     parser.add_argument("--sign-ontology", type=Path, help="DeiT canonical_id/canonical_name CSV")
     parser.add_argument("--sign-confidence", type=float, default=0.7)
     parser.add_argument("--sign-crop-scale", type=float, default=4.0)
+    parser.add_argument("--show-sign-statuses", action="store_true",
+                        help="Show unknown/unaccepted instead of low-confidence sign names")
     parser.add_argument("--output", type=Path, required=True,
                         help="New output directory for overlay and detections")
     args = parser.parse_args()
@@ -35,6 +37,7 @@ def main() -> int:
         options["sign_classifier"] = {
             "checkpoint": str(args.sign_checkpoint), "ontology": str(args.sign_ontology),
             "confidence": args.sign_confidence, "crop_scale": args.sign_crop_scale,
+            "show_rejection_status": args.show_sign_statuses,
         }
     source = cv2.imread(str(args.image))
     if source is None:
@@ -49,7 +52,7 @@ def main() -> int:
         started = time.monotonic()
         detections = model.infer(source)
         elapsed = time.monotonic() - started
-        overlay = OverlayRenderer().render(PerceptionResult(
+        overlay = OverlayRenderer(show_rejection_status=args.show_sign_statuses).render(PerceptionResult(
             sequence=0, carla_frame=0, source_timestamp=0.0,
             source_received_monotonic=started, completed_monotonic=started + elapsed,
             detections=detections, source_bgr=source, detector_name=model.name,

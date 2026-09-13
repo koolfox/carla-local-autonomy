@@ -36,7 +36,7 @@ def create_detector(config: DetectorConfig) -> Detector:
     backend = config.backend.strip().lower().replace("_", "-")
     sign_settings = config.options.get("sign_classifier")
     if sign_settings is not None and backend not in {"m9-hierarchical", "m9-hierarchical-rtdetr"}:
-        raise ValueError("DeiT-64 sign recognition currently requires M9 Hierarchical RT-DETR")
+        raise ValueError("DeiT sign recognition currently requires M9 Hierarchical RT-DETR")
     if backend in {"yolo", "ultralytics-yolo"}:
         return UltralyticsDetector(config, architecture="yolo")
     if backend in {"rtdetr", "rt-detr", "ultralytics-rtdetr"}:

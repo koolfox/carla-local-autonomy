@@ -44,7 +44,7 @@ from ..segmentation.overlay import render_segmentation_overlay
 from ..segmentation.worker import AsyncSegmentationRuntime, SegmentationFrameInput
 from ..voxel.live_view import VoxelViewWorker
 from ..watchdog import SafeActuator
-from .drive_cameras import DriveCameraRecording
+from .drive_cameras import DriveCameraRecording, recording_views
 from .drive_contracts import DriveInput, DriveStartConfig, weather_payload
 from .situations import PROP_PRESETS, WEATHER_PRESETS
 from .world_worker_client import (
@@ -55,11 +55,11 @@ from .world_worker_client import (
 
 
 def overlay_identity(
-    detector_name: str | None, road_name: str | None = None, *, sign_classifier: bool = False,
+    detector_name: str | None, road_name: str | None = None, *, sign_classifier: str | None = None,
 ) -> dict[str, str]:
     """Single identity source for detector-only and combined live/recorded overlays."""
     if detector_name and sign_classifier:
-        detector_name += " + DeiT-64"
+        detector_name += f" + {sign_classifier}"
     return {"Author": "Marjan Shahchera at University of Kashan",
             "MODEL": " + ".join(name for name in (detector_name, road_name) if name)}
 
@@ -448,6 +448,15 @@ class DriveSession:
         self._worker_heartbeat_thread: threading.Thread | None = None
         self._worker_heartbeat_error: BaseException | None = None
         self._raw_jpeg: bytes | None = None
+        self._rig_recording: DriveCameraRecording | None = None
+        self._rig_frames: dict[str, tuple[int, bytes] | None] = {}
+        if config.recording_rig is not None:
+            names = recording_views(config.recording_rig, width=config.width, height=config.height,
+                                    fps=config.recording_rig_fps, fov=config.camera_fov)
+            for name in names:
+                self._rig_frames[f"rig:{name}:raw"] = None
+                if name in (config.recording_perception or {}):
+                    self._rig_frames[f"rig:{name}:overlay"] = None
         self._overlay_jpeg: bytes | None = None
         self._voxel_jpeg: bytes | None = None
         self._voxel_overlay_jpeg: bytes | None = None
@@ -469,6 +478,9 @@ class DriveSession:
             "voxel_overlay": deque(maxlen=180),
         }
         self._camera_transport = "pending"
+        for key in self._rig_frames:
+            self._frame_received_monotonic[key] = None
+            self._frame_arrivals[key] = deque(maxlen=180)
         self._telemetry = {
             "speed": 0.0,
             "gear": 0,
@@ -558,6 +570,13 @@ class DriveSession:
                     **(self._road.snapshot() if getattr(self, "_road", None) else {}),
                 },
                 "recording": self._recording,
+                "rig_cameras": {
+                    name: {**info,
+                           "raw": self._stream_metrics(f"rig:{name}:raw", now),
+                           "overlay": self._stream_metrics(f"rig:{name}:overlay", now)
+                           if f"rig:{name}:overlay" in self._rig_frames else None}
+                    for name, info in (self._rig_recording.snapshot() if self._rig_recording else {}).items()
+                },
                 "weather_preset": self._weather_preset,
                 "output_path": self._output_path,
                 "error": self._error,
@@ -744,6 +763,9 @@ class DriveSession:
                     self._voxel_overlay_frame_sequence,
                     self._voxel_overlay_jpeg,
                 )
+            elif view in self._rig_frames:
+                cached = self._rig_frames[view]
+                sequence, payload = cached if cached is not None else (-1, None)
             else:
                 raise ValueError(
                     "drive frame view must be raw, overlay, voxel or voxel_overlay"
@@ -758,7 +780,7 @@ class DriveSession:
         after_sequence: int = -1,
         timeout: float = 5.0,
     ) -> tuple[int, bytes]:
-        if view not in {"raw", "overlay", "voxel", "voxel_overlay"}:
+        if view not in {"raw", "overlay", "voxel", "voxel_overlay"} and view not in self._rig_frames:
             raise ValueError(
                 "drive frame view must be raw, overlay, voxel or voxel_overlay"
             )
@@ -771,11 +793,14 @@ class DriveSession:
                     sequence, payload = self._overlay_frame_sequence, self._overlay_jpeg
                 elif view == "voxel":
                     sequence, payload = self._voxel_frame_sequence, self._voxel_jpeg
-                else:
+                elif view == "voxel_overlay":
                     sequence, payload = (
                         self._voxel_overlay_frame_sequence,
                         self._voxel_overlay_jpeg,
                     )
+                else:
+                    cached = self._rig_frames[view]
+                    sequence, payload = cached if cached is not None else (-1, None)
                 if payload is not None and sequence > after_sequence:
                     return sequence, payload
                 if self._status in _TERMINAL:
@@ -840,6 +865,8 @@ class DriveSession:
             elif view == "voxel_overlay":
                 self._voxel_overlay_frame_sequence = sequence
                 self._voxel_overlay_jpeg = payload
+            elif view in self._rig_frames:
+                self._rig_frames[view] = (sequence, payload)
             else:
                 raise ValueError(
                     "drive frame view must be raw, overlay, voxel or voxel_overlay"
@@ -1338,6 +1365,8 @@ class DriveSession:
                 )
                 with self._actuation_lock:
                     self._local_actuator = actuator
+            sign_classifier_name = None
+            detector_display_name = None
             if self.config.detector_enabled:
                 detector = create_detector(
                     DetectorConfig(
@@ -1350,10 +1379,24 @@ class DriveSession:
                     )
                 )
                 self._detector_name = detector.name
+                sign_classifier_name = detector.metadata.extra.get("sign_classifier", {}).get("name")
+                detector_display_name = (
+                    self.config.weights.name if self.config.weights
+                    else getattr(detector, "detection_only_name", detector.name)
+                )
                 detector_metadata_path = tracker.artifact_path("detector-metadata.json")
                 _write_json(detector_metadata_path, detector.metadata.as_dict())
                 tracker.register_artifact(detector_metadata_path, role="detector_runtime_identity")
-                perception = PerceptionWorker(detector)
+                if self.config.recording_perception:
+                    modes = self.config.recording_perception
+                    sign_cameras = {"front"} if self.config.sign_classifier is not None else set()
+                    sign_cameras.update(f"rig:{name}" for name, mode in modes.items() if mode == "signs")
+                    perception = PerceptionWorker(
+                        detector, camera_ids=("front", *(f"rig:{name}" for name in modes)),
+                        sign_cameras=frozenset(sign_cameras),
+                    )
+                else:
+                    perception = PerceptionWorker(detector)
 
             if self.config.road_enabled:
                 self._road = AsyncSegmentationRuntime(lambda: create_segmenter(
@@ -1384,7 +1427,15 @@ class DriveSession:
                 if self._world_worker is None or worker_scene is None:
                     raise RuntimeError("Drive recording cameras require the World Worker")
                 rig_recording = DriveCameraRecording(tracker.artifact_path("cameras"))
-                rig_recording.start(self._world_worker, worker_scene, self.config)
+                self._rig_recording = rig_recording
+                rig_recording.start(
+                    self._world_worker, worker_scene, self.config,
+                    perception=perception, publish=self._cache_frame,
+                    hud_factory=lambda mode: overlay_identity(
+                        detector_display_name,
+                        sign_classifier=sign_classifier_name if mode == "signs" else None,
+                    ),
+                )
 
             if self.config.spectator_follow:
                 try:
@@ -1438,7 +1489,8 @@ class DriveSession:
                 )
                 voxel_log = voxel_log_path.open("w", encoding="utf-8", buffering=1)
 
-            renderer = OverlayRenderer(stale_after_seconds=2.0)
+            renderer = OverlayRenderer(stale_after_seconds=2.0, show_rejection_status=(
+                self.config.sign_classifier or {}).get("show_rejection_status", False))
             while not self._stop_event.is_set():
                 if rig_recording is not None:
                     rig_recording.check_health()
@@ -1513,8 +1565,8 @@ class DriveSession:
                             result,
                             now_monotonic=result.completed_monotonic,
                             hud=overlay_identity(
-                                self.config.weights.name if self.config.weights else result.detector_name,
-                                sign_classifier=self.config.sign_classifier is not None,
+                                detector_display_name,
+                                sign_classifier=sign_classifier_name,
                             ),
                         )
                         if self._road is not None and not road_failed:
@@ -1553,9 +1605,9 @@ class DriveSession:
                             latest_overlay = renderer.render(
                                 replace(combined, source_bgr=road_image),
                                 hud=overlay_identity(
-                                    self.config.weights.name if self.config.detector_enabled and self.config.weights else None,
+                                    detector_display_name,
                                     road_result.segmenter_name,
-                                    sign_classifier=self.config.sign_classifier is not None,
+                                    sign_classifier=sign_classifier_name,
                                 ),
                             )
                             self._cache_frame("overlay", road_result.sequence, _jpeg(latest_overlay))

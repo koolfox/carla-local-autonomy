@@ -109,7 +109,7 @@ _SECTION_KEYS = {
         {"enabled", "voxelEnabled", "detector", "weights", "device", "imageSize", "confidence",
          "roadEnabled", "roadBackend", "roadCheckpoint", "roadDevice", "signClassifier"}
     ),
-    "recording": frozenset({"video", "cameraRig", "cameraRigFps"}),
+    "recording": frozenset({"video", "cameraRig", "cameraRigFps", "cameraPerception"}),
     "experiment": frozenset({"preset"}),
     "policy": frozenset(
         {
@@ -151,7 +151,7 @@ def _validated_session(raw: Any) -> dict[str, Mapping[str, Any]]:
     for section, keys in _SECTION_KEYS.items():
         value = _mapping(session[section], f"session.{section}")
         if section == "recording":
-            value = {"cameraRig": None, "cameraRigFps": 5, **value}
+            value = {"cameraRig": None, "cameraRigFps": 5, "cameraPerception": None, **value}
         if section == "perception":
             # Persisted pre-voxel sessions remain valid without mutating the
             # caller's configuration or enabling a model download implicitly.
@@ -534,6 +534,8 @@ def build_legacy_drive_request(
         "camera_fps": camera["fps"],
         "camera_fov": camera["fov"],
         "record_video": recording["video"],
+        **({"recording_perception": recording["cameraPerception"]}
+           if recording.get("cameraPerception") is not None else {}),
         **({"recording_rig": recording["cameraRig"],
             "recording_rig_fps": recording.get("cameraRigFps", 5)}
            if recording.get("cameraRig") is not None else {}),

@@ -17,7 +17,8 @@ before a long run. This is configuration, not a live placement preview.
 
 The shared layout is kept in the browser. Changes affect the **next** capture
 or drive recording. They do not respawn the car or change the current live/model
-camera. Drive's front-monocular perception contract stays unchanged.
+camera. The main driving camera stays unchanged; optional rig perception uses
+only each selected camera's RGB image and never controls the vehicle.
 
 ### Record during a normal drive
 
@@ -44,6 +45,53 @@ dataset. Latest-frame streaming can skip frames; video playback uses the selecte
 fixed FPS, so consult timestamps rather than inferring simulation time from the
 playback clock. Do not assume frame N from different videos is synchronized.
 Use the Research workflow below for synchronized, lossless images and labels.
+
+### Detections and sign reading on selected cameras
+
+In **Vision**, enable **Detection overlay** and choose your detector. For sign
+recognition, select **M9 hierarchical** and enable **Read traffic signs (DeiT-64)**
+with its checkpoint and ontology. Enable **Record video** and **Record camera rig
+during Drive**. Select each camera in the rig editor and choose its **Perception**:
+
+- **Off**: raw video only (the default).
+- **Detections**: your selected detector, without DeiT sign classification.
+- **Detections + sign reading**: M9 detections and DeiT-64 sign classification.
+
+These selections apply to the **next Start session**. In Drive, the camera picker
+switches between the main driving camera and the configured rig views. **Raw**
+and **Detections** toggle the selected camera's display immediately; choosing Raw
+does not disable inference or stop saving annotated evidence. A camera configured
+Off cannot enable inference midway through a run; select it in Vision before the
+next run. Road segmentation and Voxel remain on the main driving camera.
+The DeiT **Show unknown / unaccepted statuses** preference is shared by the main
+camera and selected rig cameras, including their saved overlays. It changes only
+captions, never the raw scores or acceptance flags retained in detection JSON.
+
+One detector instance (and one optional DeiT classifier) serves all selected
+cameras serially, with fair turns and at most one pending frame per camera.
+More selected cameras reduce per-camera overlay FPS. Raw recording is independent
+of inference; a failed rig inference/overlay reports its error without stopping
+the other cameras or raw recording. This is not cross-camera tracking, 3D fusion,
+or a claim of complete 360-degree scene understanding.
+
+For selected cameras, the same run also saves:
+
+- `cameras/<camera>.overlay.mp4`: annotated H.264 review video.
+- `cameras/<camera>.detections.jsonl`: every written overlay frame's camera ID,
+  CARLA frame, sequence, timestamp, pose/FOV, detections and sign attributes.
+- `cameras/rig.json`: selected modes, completion/errors and scheduler counts.
+
+In **Recordings**, choose **Detections · rear**, etc. for annotated video or
+**Camera · rear** for untouched RGB. Annotation always uses the exact image
+inferred by that camera, not a newer raw frame. Overlay videos contain sampled
+inference frames at the configured rig video FPS and may be shorter/faster than
+raw footage; use the JSON timestamps for timing, not the playback clock. All
+videos and JSON files are registered in the existing run manifest. Detector and
+classifier identity/hashes remain in the shared `detector-metadata.json`.
+
+This feature needs the updated **Mac/operator backend and built WebUI**, not a
+new Windows Worker API. Restart the Mac web process after updating; a previously
+running process does not reload Python code when frontend files change.
 
 ### Record a teacher dataset
 
@@ -142,6 +190,8 @@ runs, capture handoff/cancellation/import, and actual H.264 encoding/decoding.
 another, verify the returned dataset/video, then start a normal Garage drive.
 
 Developer owners: `operator/drive_cameras.py` records optional Drive camera rigs;
+`perception.py` schedules the shared model, and `operator/camera_perception.py`
+renders/saves per-camera results without owning models or vehicle controls.
 `native/world_worker.py:recording_cameras` attaches their sensors and the existing
 camera endpoints accept `X-Camera-View` to select a rig stream. Old requests
 without that header continue to use the live front camera. The capability

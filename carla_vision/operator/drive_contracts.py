@@ -140,6 +140,7 @@ class DriveStartConfig:
     recording_rig: dict[str, Any] | None = None
     recording_rig_fps: float = 5.0
     sign_classifier: dict[str, Any] | None = None
+    recording_perception: dict[str, str] | None = None
 
     @classmethod
     def from_mapping(
@@ -174,6 +175,7 @@ class DriveStartConfig:
             "camera_fov",
             "record_video",
             "recording_rig", "recording_rig_fps",
+            "recording_perception",
             "spectator_follow",
             "experiment_preset",
             *_WORKER_FIELDS,
@@ -181,7 +183,8 @@ class DriveStartConfig:
         _strict_keys(raw, allowed, "drive start request")
         required = allowed - {"color", "experiment_preset", "voxel_enabled", "road_enabled",
                               "road_backend", "road_checkpoint", "road_device",
-                              "recording_rig", "recording_rig_fps", "sign_classifier"} - _WORKER_FIELDS
+                              "recording_rig", "recording_rig_fps", "sign_classifier",
+                              "recording_perception"} - _WORKER_FIELDS
         missing = sorted(key for key in required if key not in raw)
         if missing:
             raise ValueError(f"drive start request is missing fields: {', '.join(missing)}")
@@ -256,7 +259,7 @@ class DriveStartConfig:
         sign_classifier = None
         if detector_enabled and raw.get("sign_classifier") is not None:
             if not detector.startswith("m9-hierarchical"):
-                raise ValueError("DeiT-64 sign recognition requires M9 Hierarchical RT-DETR")
+                raise ValueError("DeiT sign recognition requires M9 Hierarchical RT-DETR")
             from ..detectors.sign_config import SignClassifierConfig, read_sign_ontology
 
             sign_config = SignClassifierConfig.from_mapping(raw["sign_classifier"], workspace=workspace)
@@ -370,18 +373,31 @@ class DriveStartConfig:
                 )
 
         rig = raw.get("recording_rig")
+        perception_views = raw.get("recording_perception")
+        if perception_views is None:
+            perception_views = {}
+        if not isinstance(perception_views, dict):
+            raise ValueError("recording_perception must map camera IDs to detections or signs")
+        if perception_views and (rig is None or not detector_enabled):
+            raise ValueError("Camera perception requires Drive rig recording and Detection overlay enabled")
         rig_fps = _number(raw.get("recording_rig_fps", 5.0), "recording_rig_fps", 1, 10)
         if rig is not None:
             if not world_worker_configured or raw["record_video"] is not True:
                 raise ValueError("Drive camera rig requires the World Worker and Record video enabled")
             from .drive_cameras import recording_views
 
-            recording_views(rig, width=width, height=height, fps=rig_fps,
-                            fov=_number(raw["camera_fov"], "camera_fov", 30, 150))
+            views = recording_views(rig, width=width, height=height, fps=rig_fps,
+                                    fov=_number(raw["camera_fov"], "camera_fov", 30, 150))
+            for name, mode in perception_views.items():
+                if name not in views or not isinstance(mode, str) or mode not in {"detections", "signs"}:
+                    raise ValueError("Select an existing rig camera and detections or signs mode")
+                if mode == "signs" and sign_classifier is None:
+                    raise ValueError("Camera sign reading requires M9 and Read traffic signs (DeiT)")
             import copy
 
             rig = copy.deepcopy(rig)
         return cls(
+            recording_perception=dict(perception_views) or None,
             sign_classifier=sign_classifier,
             recording_rig=rig,
             recording_rig_fps=rig_fps,
@@ -427,7 +443,9 @@ class DriveStartConfig:
     def manifest_config(self) -> dict[str, Any]:
         return {
             "object_type": "interactive_drive_session",
-            "runtime_sensor_contract": "front_monocular_rgb_only",
+            "runtime_sensor_contract": (
+                "rgb_only_selected_cameras" if self.recording_perception else "front_monocular_rgb_only"
+            ),
             "control_mode": (
                 f"world_worker_{self.initial_control_mode}"
                 if self.world_worker_enabled
@@ -438,6 +456,7 @@ class DriveStartConfig:
             "run_id": self.run_id,
             "recording_rig": self.recording_rig,
             "recording_rig_fps": self.recording_rig_fps,
+            "recording_perception": self.recording_perception,
             "host": self.host,
             "port": self.port,
             "vehicle_blueprint": self.vehicle_blueprint,

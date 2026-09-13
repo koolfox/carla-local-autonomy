@@ -29,7 +29,8 @@
     checkpoint: 'models/deit64/deit64_stageB_blocks10_11_best.pt',
     ontology: 'models/deit64/ontology_final_64.csv',
     confidence: 0.7,
-    crop_scale: 4
+    crop_scale: 4,
+    show_rejection_status: false
   };
 
   function patchSignClassifier(patch: Partial<typeof defaultSignClassifier>): void {
@@ -94,7 +95,7 @@
       <span><strong>Record camera rig during Drive</strong><small>Same car and session · separate RGB videos · no world reload</small></span>
     </label>
     {#if $captureSettings.recordDuringDrive}
-      <CameraRigEditor disabled={isDriveActive($garageRuntime.drive)} />
+      <CameraRigEditor showPerception disabled={isDriveActive($garageRuntime.drive)} />
       <label class="field"><span>Rig recording FPS</span>
         <select value={$captureSettings.captureFps} disabled={isDriveActive($garageRuntime.drive)}
           onchange={(event) => { $captureSettings = { ...$captureSettings, captureFps: fieldNumber(event) as 1 | 2 | 5 | 10 }; }}>
@@ -282,7 +283,7 @@
               signClassifier: fieldChecked(event) ? { ...defaultSignClassifier } : null
             })}
           />
-          <span><strong>Read traffic signs · DeiT-64</strong><small>Classify M9 sign crops on the front camera. Applies next session.</small></span>
+          <span><strong>Read traffic signs · DeiT</strong><small>64-class Stage B or 68-class Stage C. Front camera and selected rig cameras; applies next session.</small></span>
         </label>
         {#if $sessionConfig.perception.signClassifier}
           <div class="field-grid two-columns">
@@ -293,9 +294,15 @@
               <input type="range" min="0" max="1" step="0.01" aria-label="Minimum sign confidence"
                 value={$sessionConfig.perception.signClassifier.confidence}
                 oninput={(event) => patchSignClassifier({ confidence: fieldNumber(event) })} />
-              <small>Lower scores show “unknown”. Separate from detection confidence.</small>
+              <small>Sets the saved acceptance flag. Separate from detection confidence; applies next session.</small>
             </label>
           </div>
+          <label class="switch-field">
+            <input type="checkbox"
+              checked={$sessionConfig.perception.signClassifier.show_rejection_status ?? false}
+              onchange={(event) => patchSignClassifier({ show_rejection_status: fieldChecked(event) })} />
+            <span><strong>Show unknown / unaccepted statuses</strong><small>Off: show the predicted sign name and DeiT confidence, even below threshold. Display only; saved acceptance stays unchanged. Applies next session.</small></span>
+          </label>
           <details>
             <summary>DeiT model files & crop context</summary>
             <div class="field-grid two-columns">
@@ -303,7 +310,7 @@
                 <input value={$sessionConfig.perception.signClassifier.checkpoint}
                   onchange={(event) => patchSignClassifier({ checkpoint: fieldValue(event) })} />
               </label>
-              <label class="field"><span>64-class ontology CSV</span>
+              <label class="field"><span>Matching ontology CSV (64 or 68 classes)</span>
                 <input value={$sessionConfig.perception.signClassifier.ontology}
                   onchange={(event) => patchSignClassifier({ ontology: fieldValue(event) })} />
               </label>
@@ -311,7 +318,7 @@
                 <input type="number" min="1" max="4" step="0.1"
                   value={$sessionConfig.perception.signClassifier.crop_scale}
                   onchange={(event) => patchSignClassifier({ crop_scale: fieldNumber(event) })} />
-                <small>4× matches the notebook. Uses the detector device.</small>
+                <small>4× preserves the original cascade's crop context. Stage C still uses RGB, 224×224 and ImageNet normalization. Uses the detector device.</small>
               </label>
             </div>
           </details>

@@ -9,12 +9,14 @@ export interface CaptureRig {
   additional_views: AdditionalCamera[];
 }
 export type RigSelection = 'front' | 'front-three' | CaptureRig;
+export type CameraPerceptionMode = 'detections' | 'signs';
 export interface CaptureSettings {
   rig: CaptureRig;
   durationSeconds: number;
   captureFps: 1 | 2 | 5 | 10;
   repetitions: number;
   recordDuringDrive?: boolean;
+  perceptionViews?: Record<string, CameraPerceptionMode>;
 }
 
 export function frontCamera(fov: number): CameraView {
@@ -62,7 +64,17 @@ export function captureSettingsError(settings: CaptureSettings): string | null {
   if (!settings || !Number.isInteger(settings.durationSeconds) || settings.durationSeconds < 5 || settings.durationSeconds > 3600) return 'Capture duration must be 5–3600 whole seconds.';
   if (![1, 2, 5, 10].includes(settings.captureFps)) return 'Choose 1, 2, 5 or 10 capture FPS.';
   if (!Number.isInteger(settings.repetitions) || settings.repetitions < 1 || settings.repetitions > 32) return 'Choose 1–32 episodes.';
-  return cameraRigError(settings.rig);
+  return cameraRigError(settings.rig) ?? cameraPerceptionError(settings.rig, settings.perceptionViews);
+}
+
+export function cameraPerceptionError(rig: CaptureRig, modes?: Record<string, CameraPerceptionMode>): string | null {
+  if (modes === undefined) return null;
+  if (!modes || typeof modes !== 'object' || Array.isArray(modes)) return 'Invalid camera perception selection.';
+  const ids = new Set(['front', ...rig.additional_views.map((view) => view.id)]);
+  if (Object.entries(modes).some(([id, mode]) => !ids.has(id) || !['detections', 'signs'].includes(mode))) {
+    return 'Choose detection modes for existing rig cameras only.';
+  }
+  return null;
 }
 
 /** Snapshot the shared rig into this run; never mutate Garage or Research drafts. */
@@ -71,7 +83,15 @@ export function driveRecordingSettings(session: SessionConfig, settings: Capture
   const error = cameraRigError(settings.rig);
   if (error) throw new Error(error);
   if (![1, 2, 5, 10].includes(settings.captureFps)) throw new Error('Choose 1, 2, 5 or 10 rig FPS.');
-  return { video: true, cameraRig: structuredClone(settings.rig), cameraRigFps: settings.captureFps };
+  const modes = settings.perceptionViews ?? {};
+  const perceptionError = cameraPerceptionError(settings.rig, modes);
+  if (perceptionError) throw new Error(perceptionError);
+  if (Object.keys(modes).length && !session.perception?.enabled) throw new Error('Enable Detection overlay in Vision for rig camera perception.');
+  if (Object.values(modes).includes('signs') && (!session.perception.signClassifier || session.perception.detector !== 'm9-hierarchical')) {
+    throw new Error('Camera sign reading requires M9 and Read traffic signs (DeiT) in Vision.');
+  }
+  return { video: true, cameraRig: structuredClone(settings.rig), cameraRigFps: settings.captureFps,
+    ...(Object.keys(modes).length ? { cameraPerception: { ...modes } } : {}) };
 }
 
 export function captureSituation(session: SessionConfig, settings: CaptureSettings) {

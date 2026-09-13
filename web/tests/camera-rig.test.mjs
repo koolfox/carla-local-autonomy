@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { presetRig, cameraRigError, driveRecordingSettings } from '../src/lib/domain/capture.ts';
+import { sessionForApi } from '../src/lib/domain/config.ts';
 
 test('rear preset faces backwards and customized angles persist in Drive request', () => {
   const rig = presetRig('front-rear', 90);
@@ -27,4 +28,28 @@ test('duplicate camera IDs and invalid angles cannot reach Start session', () =>
   rig.additional_views.pop();
   rig.additional_views[0].mount.yaw = NaN;
   assert.ok(cameraRigError(rig));
+});
+
+test('camera perception is opt-in, validated and snapshotted independently of camera geometry', () => {
+  const session = { recording: { video: true }, perception: { enabled: true, detector: 'm9-hierarchical', signClassifier: { checkpoint: 'sign.pt' } } };
+  const settings = { recordDuringDrive: true, rig: presetRig('front-rear', 90), captureFps: 5,
+    perceptionViews: { rear: 'signs', front: 'detections' } };
+  const recording = driveRecordingSettings(session, settings);
+  assert.deepEqual(recording.cameraPerception, settings.perceptionViews);
+  assert.equal(recording.cameraRig.additional_views[0].perception, undefined);
+  settings.perceptionViews.rear = 'detections';
+  assert.equal(recording.cameraPerception.rear, 'signs');
+  assert.throws(() => driveRecordingSettings(session, { ...settings, perceptionViews: { missing: 'detections' } }), /existing rig cameras/);
+  assert.throws(() => driveRecordingSettings(session, { ...settings, perceptionViews: { rear: 'invalid' } }));
+  assert.throws(() => driveRecordingSettings({ ...session, perception: { enabled: false } }, settings), /Enable Detection/);
+  assert.throws(() => driveRecordingSettings({ ...session, perception: { enabled: true, detector: 'yolo' } },
+    { ...settings, perceptionViews: { rear: 'signs' } }), /M9/);
+  assert.equal(driveRecordingSettings(session, { ...settings, perceptionViews: {} }).cameraPerception, undefined);
+});
+
+test('per-camera inference settings go to session start, never to parked Garage preview', () => {
+  const session = { perception: { enabled: true }, recording: { video: true, cameraPerception: { rear: 'detections' } } };
+  assert.deepEqual(sessionForApi(session).recording.cameraPerception, { rear: 'detections' });
+  assert.equal(sessionForApi(session, true).recording.cameraPerception, undefined);
+  assert.deepEqual(session.recording.cameraPerception, { rear: 'detections' });
 });

@@ -118,6 +118,13 @@ export interface DriveState {
   walker_count_actual?: number;
   raw_frame_sequence?: number;
   overlay_frame_sequence?: number;
+  rig_cameras?: Record<string, {
+    mode: 'off' | 'detections' | 'signs';
+    raw_error?: string | null;
+    perception_error?: string | null;
+    raw?: { fps?: number; age_seconds?: number | null; stale?: boolean };
+    overlay?: { fps?: number; age_seconds?: number | null; stale?: boolean } | null;
+  }>;
   input_age_seconds?: number | null;
   [key: string]: unknown;
 }

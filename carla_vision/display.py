@@ -21,21 +21,29 @@ from .contracts import Detection, PerceptionResult
 from .risk import RiskAssessment
 
 
-def detection_display_label(detection: Detection) -> str:
-    """Show independent head scores, not a parent-child relation or fused score."""
+def detection_display_label(detection: Detection, *, show_rejection_status: bool = False) -> str:
+    """Notebook per-box fields; display preferences never alter model scores."""
     fine_label = detection.attributes.get("fine_label")
+    sign = detection.attributes.get("sign_classification")
+    has_prediction = isinstance(sign, Mapping) and sign.get("label") is not None and sign.get("confidence") is not None
     if fine_label and {"coarse_confidence", "fine_confidence"} <= detection.attributes.keys():
         coarse = float(detection.attributes["coarse_confidence"])
         fine = float(detection.attributes["fine_confidence"])
-        label = f"Coarse: {detection.label} {coarse:.0%} | Fine: {fine_label} {fine:.0%}"
+        quality = detection.attributes.get("quality")
+        quality_text = f"{float(quality):.2f}" if quality is not None else "n/a"
+        # Same line grouping as draw_prediction_with_deit in the notebook.
+        label = (f"F:{fine_label}\nPf:{fine:.2f} C:{detection.label}\nPc:{coarse:.2f}\n"
+                 f"Q:{quality_text} S:{detection.confidence:.2f}") if has_prediction else (
+                     f"F:{fine_label}\nPf:{fine:.2f}\nC:{detection.label}\nPc:{coarse:.2f}\n"
+                     f"Q:{quality_text}\nS:{detection.confidence:.2f}")
     else:
         label = f"{detection.label} {detection.confidence:.0%}"
-    sign = detection.attributes.get("sign_classification")
     if isinstance(sign, Mapping):
-        if sign.get("accepted"):
-            label += f"\nSign: {sign['label']} {float(sign['confidence']):.0%}"
-        else:
-            label += "\nSign: unknown"
+        if has_prediction:
+            name = "unknown (unaccepted)" if show_rejection_status and not sign.get("accepted") else sign["label"]
+            label += f"\nSign:{name}\nDeiT:{float(sign['confidence']):.2f}"
+        elif show_rejection_status:
+            label += "\nSign:unknown\nDeiT:unavailable"
     return label
 
 
@@ -70,6 +78,7 @@ class OverlayRenderer:
         stale_after_seconds: float = 0.5,
         font_scale: float = 0.5,
         box_thickness: int = 2,
+        show_rejection_status: bool = False,
     ) -> None:
         if stale_after_seconds <= 0.0:
             raise ValueError("stale_after_seconds must be positive")
@@ -80,6 +89,7 @@ class OverlayRenderer:
         self.stale_after_seconds = float(stale_after_seconds)
         self.font_scale = float(font_scale)
         self.box_thickness = int(box_thickness)
+        self.show_rejection_status = show_rejection_status
 
     def render(
         self,
@@ -111,6 +121,7 @@ class OverlayRenderer:
         risk_by_index = (
             {item.detection_index: item for item in risk.items} if risk is not None else {}
         )
+        label_regions: list[tuple[int, int, int, int]] = []
         for index, detection in enumerate(result.detections):
             x1, y1, x2, y2 = _clipped_box(detection.xyxy, width=width, height=height)
             if x2 <= x1 or y2 <= y1:
@@ -120,6 +131,8 @@ class OverlayRenderer:
                 color = (0, 0, 255)
             elif item_risk is not None and item_risk.in_driving_corridor:
                 color = (0, 200, 255)
+            elif detection.attributes.get("fine_label"):
+                color = (0, 255, 0)  # Notebook M9 boxes are lime, not class-colored labels.
             else:
                 color = self._PALETTE[int(detection.class_id) % len(self._PALETTE)]
             cv2.rectangle(
@@ -127,11 +140,12 @@ class OverlayRenderer:
                 (x1, y1),
                 (x2, y2),
                 color,
-                self.box_thickness,
+                3 if detection.attributes.get("fine_label") else self.box_thickness,
                 cv2.LINE_AA,
             )
-            label = detection_display_label(detection)
-            self._draw_detection_label(image, label, x1=x1, y1=y1, color=color)
+            label = detection_display_label(detection, show_rejection_status=self.show_rejection_status)
+            self._draw_detection_label(image, label, x1=x1, y1=y1, x2=x2, y2=y2,
+                                       occupied=label_regions)
 
         if risk is not None:
             left, top, right, bottom = risk.corridor_xyxy
@@ -173,33 +187,55 @@ class OverlayRenderer:
         *,
         x1: int,
         y1: int,
-        color: tuple[int, int, int],
+        x2: int,
+        y2: int,
+        occupied: list[tuple[int, int, int, int]] | None = None,
     ) -> None:
-        thickness = max(1, self.box_thickness - 1)
+        """Black/white notebook captions anchored to each object's bounding box."""
+        thickness = 1
         lines = text.splitlines()
-        sizes = [cv2.getTextSize(line, cv2.FONT_HERSHEY_SIMPLEX, self.font_scale, thickness)
+        scale = self.font_scale
+        sizes = [cv2.getTextSize(line, cv2.FONT_HERSHEY_SIMPLEX, scale, thickness)
                  for line in lines]
         text_width = max(size[0][0] for size in sizes)
-        text_height = max(size[0][1] for size in sizes)
-        baseline = max(size[1] for size in sizes)
-        line_height = text_height + baseline + 6
         image_height, image_width = image.shape[:2]
-        text_x = min(max(0, x1), max(0, image_width - text_width - 4))
-        label_top = max(0, y1 - line_height * len(lines))
-        label_bottom = min(image_height - 1, label_top + line_height * len(lines))
-        label_right = min(image_width - 1, text_x + text_width + 4)
-        cv2.rectangle(
-            image,
-            (text_x, label_top),
-            (label_right, label_bottom),
-            color,
-            -1,
-        )
+        scale *= min(1.0, (image_width - 12) / max(1, text_width),
+                     (image_height - 12) / max(1, len(lines) * (max(size[0][1] + size[1] for size in sizes) + 2)))
+        if scale < .2:
+            return
+        sizes = [cv2.getTextSize(line, cv2.FONT_HERSHEY_SIMPLEX, scale, thickness) for line in lines]
+        baseline = max(size[1] for size in sizes)
+        line_height = max(size[0][1] for size in sizes) + baseline + 2
+        panel_width = max(size[0][0] for size in sizes) + 10
+        panel_height = line_height * len(lines) + 10
+        # Above, below, then alongside the object as in the notebook helper;
+        # clamp the final fallback so edge detections keep readable labels.
+        left = min(x1, max(0, image_width - panel_width))
+        positions = [(left, y1 - panel_height - 5), (left, y2 + 5),
+                     (x2 + 5, y1), (x1 - panel_width - 5, y1)]
+        positions = [(x, y) for x, y in positions if x >= 0 and y >= 0 and
+                     x + panel_width <= image_width and y + panel_height <= image_height]
+        positions.append((left, min(y1, max(0, image_height - panel_height))))
+        def overlap(position: tuple[int, int]) -> int:
+            x, y = position
+            return sum(max(0, min(x + panel_width, right) - max(x, left)) *
+                       max(0, min(y + panel_height, bottom) - max(y, top))
+                       for left, top, right, bottom in (occupied or []))
+        left, top = min(positions, key=overlap)
+        right, bottom = left + panel_width - 1, top + panel_height - 1
+        if occupied is not None:
+            occupied.append((left, top, right + 1, bottom + 1))
+        radius = 3
+        cv2.rectangle(image, (left + radius, top), (right - radius, bottom), (0, 0, 0), -1)
+        cv2.rectangle(image, (left, top + radius), (right, bottom - radius), (0, 0, 0), -1)
+        for x, y in ((left + radius, top + radius), (right - radius, top + radius),
+                     (left + radius, bottom - radius), (right - radius, bottom - radius)):
+            cv2.circle(image, (x, y), radius, (0, 0, 0), -1, cv2.LINE_AA)
         for index, line in enumerate(lines):
             cv2.putText(
                 image, line,
-                (text_x + 2, min(image_height - 2, label_top + line_height * (index + 1) - baseline - 2)),
-                cv2.FONT_HERSHEY_SIMPLEX, self.font_scale, (15, 15, 15), thickness, cv2.LINE_AA,
+                (left + 5, top + 5 + line_height * (index + 1) - baseline - 2),
+                cv2.FONT_HERSHEY_SIMPLEX, scale, (255, 255, 255), thickness, cv2.LINE_AA,
             )
 
     def _draw_hud(self, image: np.ndarray, lines: list[str]) -> None:
