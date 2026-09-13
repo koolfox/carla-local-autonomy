@@ -25,7 +25,8 @@ def main() -> int:
             required.update(
                 {
                     "carla": "matching CARLA wheel",
-                    "agents.navigation.behavior_agent": "matching CARLA agents",
+                    "networkx": "networkx",
+                    "shapely": "shapely",
                 }
             )
         for module, package in required.items():
@@ -36,6 +37,12 @@ def main() -> int:
                     f"The Worker's Python is missing {module}: {error}. "
                     f"Add {package} to that same environment; no second environment is needed."
                 ) from error
+        if not request["parameters"].get("dry_run", False):
+            from carla_vision.native.agent_support import load_navigation_module
+
+            load_navigation_module(
+                "behavior_agent", carla_version=request["endpoint"]["expected_carla_version"]
+            )
         from carla_vision.native.tasks.teacher_capture import execute
     except Exception as error:
         result = {

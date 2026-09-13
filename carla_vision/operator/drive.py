@@ -44,6 +44,7 @@ from ..segmentation.overlay import render_segmentation_overlay
 from ..segmentation.worker import AsyncSegmentationRuntime, SegmentationFrameInput
 from ..voxel.live_view import VoxelViewWorker
 from ..watchdog import SafeActuator
+from .drive_cameras import DriveCameraRecording
 from .drive_contracts import DriveInput, DriveStartConfig, weather_payload
 from .situations import PROP_PRESETS, WEATHER_PRESETS
 from .world_worker_client import (
@@ -53,8 +54,12 @@ from .world_worker_client import (
 )
 
 
-def overlay_identity(detector_name: str | None, road_name: str | None = None) -> dict[str, str]:
+def overlay_identity(
+    detector_name: str | None, road_name: str | None = None, *, sign_classifier: bool = False,
+) -> dict[str, str]:
     """Single identity source for detector-only and combined live/recorded overlays."""
+    if detector_name and sign_classifier:
+        detector_name += " + DeiT-64"
     return {"Author": "Marjan Shahchera at University of Kashan",
             "MODEL": " + ".join(name for name in (detector_name, road_name) if name)}
 
@@ -1138,6 +1143,7 @@ class DriveSession:
         raw_recorder: AsyncVideoRecorder | None = None
         overlay_recorder: AsyncVideoRecorder | None = None
         voxel_recorder: AsyncVideoRecorder | None = None
+        rig_recording: DriveCameraRecording | None = None
         voxel_log: TextIO | None = None
         latest_voxel: Any = None
         last_voxel_sequence = -1
@@ -1340,6 +1346,7 @@ class DriveSession:
                         device=self.config.device,
                         image_size=self.config.image_size,
                         confidence=self.config.confidence,
+                        options={"sign_classifier": self.config.sign_classifier},
                     )
                 )
                 self._detector_name = detector.name
@@ -1372,6 +1379,12 @@ class DriveSession:
                         frame_size=(self.config.width, self.config.height),
                         fps=self.config.camera_fps,
                     )
+
+            if self.config.recording_rig is not None:
+                if self._world_worker is None or worker_scene is None:
+                    raise RuntimeError("Drive recording cameras require the World Worker")
+                rig_recording = DriveCameraRecording(tracker.artifact_path("cameras"))
+                rig_recording.start(self._world_worker, worker_scene, self.config)
 
             if self.config.spectator_follow:
                 try:
@@ -1427,6 +1440,8 @@ class DriveSession:
 
             renderer = OverlayRenderer(stale_after_seconds=2.0)
             while not self._stop_event.is_set():
+                if rig_recording is not None:
+                    rig_recording.check_health()
                 self._drain_pending_events(events_stream)
                 now = time.monotonic()
                 frame = stream.latest()
@@ -1497,7 +1512,10 @@ class DriveSession:
                         detector_overlay = renderer.render(
                             result,
                             now_monotonic=result.completed_monotonic,
-                            hud=overlay_identity(self.config.weights.name if self.config.weights else result.detector_name),
+                            hud=overlay_identity(
+                                self.config.weights.name if self.config.weights else result.detector_name,
+                                sign_classifier=self.config.sign_classifier is not None,
+                            ),
                         )
                         if self._road is not None and not road_failed:
                             try:
@@ -1537,6 +1555,7 @@ class DriveSession:
                                 hud=overlay_identity(
                                     self.config.weights.name if self.config.detector_enabled and self.config.weights else None,
                                     road_result.segmenter_name,
+                                    sign_classifier=self.config.sign_classifier is not None,
                                 ),
                             )
                             self._cache_frame("overlay", road_result.sequence, _jpeg(latest_overlay))
@@ -1704,6 +1723,8 @@ class DriveSession:
         finally:
             self._set_status("stopping")
             self._drain_pending_events(events_stream)
+            if rig_recording is not None:
+                rig_recording.request_stop()
             if self._world_worker is not None:
                 try:
                     # The worker owns the ego/world. Stop that lease first; the
@@ -1719,6 +1740,11 @@ class DriveSession:
                     actuator.stop()
                 except Exception as error:
                     self._cleanup_errors.append(f"actuator stop: {error}")
+            if rig_recording is not None:
+                try:
+                    self._cleanup_errors.extend(rig_recording.close(tracker))
+                except Exception as error:
+                    self._cleanup_errors.append(f"camera rig recording: {error}")
             if stream is not None:
                 try:
                     stream.close()
@@ -1986,6 +2012,7 @@ class DriveSession:
                         "label": item.label,
                         "confidence": item.confidence,
                         "xyxy": list(item.xyxy),
+                        "attributes": dict(item.attributes),
                     }
                     for item in result.detections
                 ],

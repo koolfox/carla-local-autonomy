@@ -51,6 +51,7 @@ jobs:
           tests/test_camera_relay_teardown.py
           tests/test_discovery.py
           tests/test_drive_console.py
+          tests/test_deit64.py
           tests/test_external_model_drive.py
           tests/test_garage_acceptance.py
           tests/test_garage_capture.py
@@ -70,6 +71,7 @@ jobs:
           tests/test_model_registry.py
           tests/test_multicamera_dataset.py
           tests/test_multicamera_teacher.py
+          tests/test_drive_cameras.py
           tests/test_native_research_jobs.py
           tests/test_observable_world_worker.py
           tests/test_prepare_cancellation.py

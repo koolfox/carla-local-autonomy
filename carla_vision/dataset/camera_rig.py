@@ -22,7 +22,7 @@ _CAMERA_ID = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 def resolve_camera_rig(
     primary: CameraRecipe, *, preset: str = "front", config: Mapping[str, Any] | None = None
 ) -> dict[str, CameraRecipe]:
-    """Keep the scene's front camera; additional RGB views inherit its timing/size."""
+    """RGB views inherit scene timing/size; custom mounts/FOV are explicit."""
     if preset not in {"front", "front-three"}:
         raise ValueError("camera rig preset must be front or front-three")
     result = {"front": primary}
@@ -35,13 +35,21 @@ def resolve_camera_rig(
         return result
     if preset != "front":
         raise ValueError("choose either a camera rig preset or a custom rig")
-    if set(config) != {"schema_version", "additional_views"}:
-        raise ValueError("rig requires only schema_version and additional_views")
+    if not isinstance(config, Mapping) or (
+        set(config) - {"schema_version", "additional_views", "primary_view"}
+        or not {"schema_version", "additional_views"} <= set(config)
+    ):
+        raise ValueError("rig requires schema_version, additional_views and optional primary_view")
     if config["schema_version"] != RIG_SCHEMA_VERSION:
         raise ValueError("unsupported camera rig schema_version")
     views = config["additional_views"]
-    if not isinstance(views, list) or not 1 <= len(views) <= 7:
-        raise ValueError("rig additional_views must contain 1 to 7 RGB cameras")
+    if not isinstance(views, list) or not 0 <= len(views) <= 7:
+        raise ValueError("rig additional_views must contain 0 to 7 RGB cameras")
+    if "primary_view" in config:
+        view = config["primary_view"]
+        if not isinstance(view, Mapping) or set(view) != {"mount", "fov_degrees"}:
+            raise ValueError("primary_view requires mount and fov_degrees")
+        result["front"] = CameraRecipe.from_mapping({**primary.as_dict(), **view})
     for view in views:
         if not isinstance(view, Mapping) or set(view) != {"id", "mount", "fov_degrees"}:
             raise ValueError("each additional view requires id, mount and fov_degrees")

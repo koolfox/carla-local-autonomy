@@ -137,13 +137,49 @@ def test_cancel_during_preparation_never_submits_and_does_not_block_request(capt
     client.submit.assert_not_called()
 
 
-def test_failed_cleanup_keeps_world_guard_and_does_not_import(capture):
+def test_failed_cleanup_does_not_import_or_lock_garage(capture):
     owner, client = capture
     client.status.return_value = {"status": "failed", "cleanup_confirmed": False}
     owner.start(request())
     state = finish(owner)
-    assert state["phase"] == "failed" and state["holds_world"]
+    assert state["phase"] == "failed" and not state["holds_world"]
     owner._receive.assert_not_called()
+    owner.require_world_available()
+    client.status.return_value = {"status": "succeeded", "cleanup_confirmed": True}
+    owner.start(request())
+    assert finish(owner)["phase"] == "saved"
+
+
+def test_old_failed_capture_state_does_not_block_garage_on_restart(capture):
+    owner, client = capture
+    owner._update(phase="failed", holds_world=True, job_id="failed-job")
+    restarted = GarageCapture(owner.application, threading.RLock())
+    assert restarted.state()["phase"] == "failed"
+    assert restarted.state()["job_id"] == "failed-job"
+    restarted.require_world_available()
+    client.submit.assert_not_called()
+
+
+def test_webui_restart_observes_interrupted_capture_and_releases_garage(capture):
+    owner, client = capture
+    owner._update(phase="running", holds_world=True, active=True, job_id="failed-job")
+    client.status.return_value = {
+        "status": "interrupted", "cleanup_confirmed": False, "task_error": "Worker restarted"
+    }
+    owner.resume()
+    assert finish(owner)["phase"] == "failed"
+    assert not owner.state()["holds_world"]
+    owner._receive.assert_not_called()
+
+
+def test_unconfirmed_cleanup_displays_original_failure(capture):
+    owner, client = capture
+    client.status.return_value = {
+        "status": "failed", "cleanup_confirmed": False,
+        "result": {"error": "map reload timed out"},
+    }
+    owner.start(request())
+    assert "map reload timed out" in finish(owner)["error"]
 
 
 @pytest.mark.parametrize(

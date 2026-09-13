@@ -10,8 +10,8 @@ from pathlib import Path
 
 import cv2
 
-from ..contracts import DetectorConfig
-from ..display import detection_display_label
+from ..contracts import DetectorConfig, PerceptionResult
+from ..display import OverlayRenderer
 from .factory import create_detector
 
 
@@ -21,9 +21,21 @@ def main() -> int:
     parser.add_argument("--image", type=Path, required=True)
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--confidence", type=float, default=0.0)
+    parser.add_argument("--sign-checkpoint", type=Path, help="Optional DeiT-64 state_dict checkpoint")
+    parser.add_argument("--sign-ontology", type=Path, help="DeiT canonical_id/canonical_name CSV")
+    parser.add_argument("--sign-confidence", type=float, default=0.7)
+    parser.add_argument("--sign-crop-scale", type=float, default=4.0)
     parser.add_argument("--output", type=Path, required=True,
                         help="New output directory for overlay and detections")
     args = parser.parse_args()
+    if bool(args.sign_checkpoint) != bool(args.sign_ontology):
+        parser.error("--sign-checkpoint and --sign-ontology must be supplied together")
+    options = {}
+    if args.sign_checkpoint:
+        options["sign_classifier"] = {
+            "checkpoint": str(args.sign_checkpoint), "ontology": str(args.sign_ontology),
+            "confidence": args.sign_confidence, "crop_scale": args.sign_crop_scale,
+        }
     source = cv2.imread(str(args.image))
     if source is None:
         parser.error(f"cannot read image: {args.image}")
@@ -31,19 +43,17 @@ def main() -> int:
         parser.error("output directory already exists; choose a new directory")
     model = create_detector(DetectorConfig(
         backend="m9-hierarchical", weights=args.weights, device=args.device,
-        image_size=800, confidence=args.confidence,
+        image_size=800, confidence=args.confidence, options=options,
     ))
     try:
         started = time.monotonic()
         detections = model.infer(source)
         elapsed = time.monotonic() - started
-        overlay = source.copy()
-        for detection in detections:
-            x1, y1, x2, y2 = (round(value) for value in detection.xyxy)
-            cv2.rectangle(overlay, (x1, y1), (x2, y2), (50, 210, 240), 2)
-            cv2.putText(overlay, detection_display_label(detection),
-                        (x1, max(16, y1 - 5)), cv2.FONT_HERSHEY_SIMPLEX,
-                        0.45, (50, 210, 240), 1, cv2.LINE_AA)
+        overlay = OverlayRenderer().render(PerceptionResult(
+            sequence=0, carla_frame=0, source_timestamp=0.0,
+            source_received_monotonic=started, completed_monotonic=started + elapsed,
+            detections=detections, source_bgr=source, detector_name=model.name,
+        ), stale=False, hud={"MODEL": model.name})
         args.output.mkdir(parents=True, exist_ok=False)
         if not cv2.imwrite(str(args.output / "overlay.jpg"), overlay):
             raise RuntimeError("could not save overlay")

@@ -62,3 +62,128 @@ Install on the operator/ML computer with `uv sync --extra vision --extra m9 --ex
 No Windows World Worker update is needed. Restart the operator after updating.
 The recorded overlay includes small top-left name and model labels. Raw recordings
 remain untouched. Road-model identity is retained as `road-model-metadata.json`.
+
+## Optional traffic-sign recognition: M9 + DeiT-64
+
+In **Garage → Vision**, enable Detection overlay, select M9 and its detector
+checkpoint, then enable **Read traffic signs · DeiT-64**. Start a new session
+and select the Detections view. Settings apply at session start, not by reloading
+models on every slider movement. The default is off; existing sessions still work.
+
+Keep these files on the **Operator/ML computer**, not the Windows Worker:
+
+```text
+models/deit64/deit64_stageB_blocks10_11_best.pt
+models/deit64/ontology_final_64.csv
+```
+
+The classifier checkpoint is not a detector: select it in the DeiT settings,
+not the main M9 Weights selector. Files inside `models/deit64/` are excluded from
+that detector dropdown. Model binaries and personal ontologies remain local,
+ignored assets; they are not included in Git commits.
+
+Install the optional dependency into your **existing** environment:
+
+```sh
+uv pip install --python .venv/bin/python -e '.[m9,deit64]'
+```
+
+Restart the Operator afterward. When using `uv sync`, append `--extra deit64`
+to your existing extras so other enabled model runtimes stay installed. The
+lockfile records the tested timm version. No Worker update or CARLA API change
+is needed for this classifier.
+
+If a running Operator says `session.perception has unknown fields: signClassifier`,
+its old Python process is serving the new static UI. Stop/restart the **Mac/ML
+Operator only** with your usual command and reload the page. Garage preview never
+sends the sign stage, and disabled stages are omitted for compatibility; actually
+running DeiT requires the updated backend process.
+
+### What is preserved and what is added
+
+- Existing M9 inference, fine gate, weighted score, boxes, and independent
+  coarse/fine confidences are unchanged. Only `fine_label == traffic_signs`
+  detections are classified, even when the coarse head disagrees.
+- Crops come from the exact original RGB source frame. Defaults follow the
+  final integration cells of `thesis-m9-rtdetr-to-deit64.ipynb`: expand width
+  and height by 4, round and clip to image bounds, resize with PIL bilinear
+  to 224×224, and apply ImageNet normalization. 4× in each dimension can
+  include roughly 16× the box area; this is configurable, not a claim that
+  this context is optimal for CARLA.
+- The fixed model is `deit_small_patch16_224` with a
+  `384 → 512 → SiLU → Dropout(0.3) → 64` head. Loading uses
+  `pretrained=False`, `weights_only=True`, and strict state-dict validation.
+  No hub weights are downloaded and no unsafe load fallback is allowed.
+- Ontology class IDs must be exactly 0–63. Names are mapped by `canonical_id`,
+  not CSV row order. This cannot prove that a different CSV belongs to a
+  checkpoint; keep the training ontology paired with its weights.
+- A second label line shows `Sign: STOP 95%`, or `Sign: unknown` when below
+  the separate sign-confidence threshold (default 0.70), or when the original
+  visible detection crop is smaller than 2 pixels in either dimension.
+- `detections.jsonl` retains `attributes.sign_classification` (predicted ID,
+  label, confidence, acceptance, crop coordinates) and both M9 head scores.
+  Rejected class predictions are retained for analysis, but not shown as
+  accepted sign labels. `detector-metadata.json` records file SHA-256 hashes,
+  preprocessing, thresholds, device and library versions. Source boxes remain
+  unchanged and raw RGB recording remains unannotated.
+
+Sign confidence is an **uncalibrated classifier softmax**, not a joint
+detection-and-recognition probability. Confident classifications of false M9
+detections are still possible; measure recognition on labelled sign crops and
+the complete cascade separately. This stage is advisory and cannot brake,
+steer, or change Traffic Manager behavior.
+
+### Test a saved image without CARLA
+
+```sh
+.venv/bin/python -m carla_vision.detectors.m9_check \
+  --weights models/hierarchical_rtdetr_m9_precal_m6_query_film_img800.pt \
+  --image /absolute/path/to/camera-image.jpg \
+  --sign-checkpoint models/deit64/deit64_stageB_blocks10_11_best.pt \
+  --sign-ontology models/deit64/ontology_final_64.csv \
+  --sign-confidence 0.7 --sign-crop-scale 4 \
+  --device cpu --output runs/m9-deit-image-check
+```
+
+Choose a new output directory each time. It saves an exact-frame overlay,
+detections (including rejected sign predictions), model identity, and total
+cascade inference time. This single-image timing is not a throughput benchmark.
+
+For your own scripts, use the existing `create_detector(DetectorConfig(...))`
+contract and pass the stage through `options`:
+
+```python
+from pathlib import Path
+import cv2
+from carla_vision.contracts import DetectorConfig
+from carla_vision.detectors import create_detector
+
+detector = create_detector(DetectorConfig(
+    backend="m9-hierarchical",
+    weights=Path("models/hierarchical_rtdetr_m9_precal_m6_query_film_img800.pt"),
+    image_size=800, confidence=0.25, device="cpu",
+    options={"sign_classifier": {
+        "checkpoint": "models/deit64/deit64_stageB_blocks10_11_best.pt",
+        "ontology": "models/deit64/ontology_final_64.csv",
+        "confidence": 0.7, "crop_scale": 4,
+    }},
+))
+try:
+    image = cv2.imread("camera-image.jpg")  # full-resolution BGR uint8
+    if image is None:
+        raise ValueError("Cannot read camera-image.jpg")
+    for detection in detector.infer(image):
+        print(detection.label, detection.attributes.get("sign_classification"))
+finally:
+    detector.close()
+```
+
+Implementation: `detectors/sign_config.py` validates configuration and labels;
+`detectors/deit64.py` owns classifier loading, crops and enrichment. The existing
+factory, session configuration and renderer remain the integration boundaries.
+This first integration applies to the existing **front-camera perception feed**.
+Additional Drive cameras still record raw video; per-camera inference scheduling
+and cross-camera object fusion are separate future work. The cascade serializes
+calls because M9's hook capture is mutable, and batches at most 16 sign crops at
+a time. Raw streaming is independent of inference; more models do not guarantee
+real-time overlay FPS.

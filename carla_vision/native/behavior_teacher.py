@@ -8,12 +8,12 @@ CARLA and its ``agents`` package are imported only for a real collection run.
 from __future__ import annotations
 
 import argparse
-import importlib
 import json
 import math
 import time
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +23,7 @@ from ..dataset.writer import DATASET_PARTITIONS, DatasetWriter
 from ..scenarios.planner import EpisodePlan
 from ..scenarios.splits import canonical_map_family
 from ..scenarios.verified_plan import VerifiedScenarioPlan, load_verified_scenario_plan
+from .agent_support import load_navigation_module
 from .camera_rig import TeacherCameraRig, read_frame_bundle
 from .synchronization import SensorFrameError, image_to_bridge_frame
 from .teacher_routes import (
@@ -52,11 +53,11 @@ BEHAVIOR_TEACHER_WORKER_SCHEMA_VERSION = "1.0"
 
 def _load_behavior_agent() -> type[Any]:
     try:
-        module = importlib.import_module("agents.navigation.behavior_agent")
+        module = load_navigation_module("behavior_agent")
     except ImportError as error:
         raise RuntimeError(
-            "BehaviorAgent is unavailable. Add CARLA/PythonAPI/carla to PYTHONPATH; "
-            "installing only the carla wheel may not include the agents package."
+            f"BehaviorAgent is unavailable: {error}. Its existing Worker environment "
+            "needs the matching carla wheel, numpy, networkx and shapely."
         ) from error
     agent_type = getattr(module, "BehaviorAgent", None)
     if agent_type is None:
@@ -256,9 +257,16 @@ class BehaviorTeacherSession(NativeCarlaSession):
         result: dict[str, Any] | None = None
         cleanup: dict[str, Any] = {}
         try:
+            recipes = resolve_camera_rig(
+                episode.recipe.camera, preset=self.camera_rig, config=self.camera_rig_config
+            )
+            # Keep RGB, privileged label camera and recorded recipe co-located,
+            # including a front-only rig with a custom mount/FOV.
+            episode = replace(episode, recipe=replace(episode.recipe, camera=recipes["front"]))
             world, _ = self._configure_world(episode)
             blueprint_library = world.get_blueprint_library()
             spawn_points = list(world.get_map().get_spawn_points())
+            print("Spawning teacher vehicle and scene population", flush=True)
             ego = self._spawn_ego(episode, actors, spawn_points, blueprint_library)
             ego_start = _transform_recipe(ego.get_transform())
             prop_placements = self._spawn_props(
@@ -276,10 +284,8 @@ class BehaviorTeacherSession(NativeCarlaSession):
             spawn_failures.extend(
                 self._spawn_walkers(episode, actors, blueprint_library)
             )
-            recipes = resolve_camera_rig(
-                episode.recipe.camera, preset=self.camera_rig, config=self.camera_rig_config
-            )
             rig = TeacherCameraRig(recipes) if len(recipes) > 1 else None
+            print(f"Spawning RGB cameras: {', '.join(recipes)}", flush=True)
             if rig is None:
                 rgb_sensor, teacher_sensor, rgb_queue, teacher_queue = self._spawn_cameras(
                     episode, actors, blueprint_library,
@@ -288,6 +294,7 @@ class BehaviorTeacherSession(NativeCarlaSession):
             else:
                 rig.spawn(self, episode, actors, sensors)
                 rgb_queue, teacher_queue = rig.queues["front"], rig.queues["front_teacher"]
+            print("Preparing BehaviorAgent route", flush=True)
             controller = BehaviorRouteController(
                 ego,
                 spawn_points,
@@ -327,6 +334,7 @@ class BehaviorTeacherSession(NativeCarlaSession):
 
             for _ in range(sensor_tick_multiple):
                 controlled_tick()
+            print("Waiting for first synchronized camera frames", flush=True)
             first_rgb = rgb_queue.get_next(self.sensor_timeout)
             first_teacher = teacher_queue.get_next(self.sensor_timeout)
             first_rgb_frame = int(first_rgb.image.frame)
@@ -802,10 +810,14 @@ def collect_behavior_teacher(
                     restored = True
                 except BaseException as restore_error:
                     error.add_note(
-                        f"CARLA asynchronous-mode restore also failed: {restore_error}"
+                        "CARLA world restoration failed after episode cleanup. "
+                        "Actor/sensor cleanup status remains authoritative. "
+                        f"Restore error: {restore_error}"
                     )
+            cleanup_confirmed = getattr(error, "native_cleanup_confirmed", False)
+
             if cleanup_report is not None:
-                cleanup_report(restored and getattr(error, "native_cleanup_confirmed", False))
+                cleanup_report(bool(cleanup_confirmed))
             raise
 
     dataset_dir = (Path(args.datasets_root) / args.dataset_id).resolve()

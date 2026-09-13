@@ -323,6 +323,7 @@ class NativeCarlaSession:
 
     def _configure_world(self, episode: EpisodePlan) -> tuple[Any, Any]:
         recipe = episode.recipe
+        print(f"Loading CARLA map {recipe.map_name}", flush=True)
         world = self.client.load_world(recipe.map_name, reset_settings=True)
         settings = world.get_settings()
         settings.synchronous_mode = True
@@ -335,6 +336,7 @@ class NativeCarlaSession:
             math.ceil(recipe.fixed_delta_seconds / settings.max_substep_delta_time),
         )
         world.apply_settings(settings)
+        print("Reloading map with synchronous capture settings", flush=True)
         world = self.client.reload_world(False)
         self.world = world
         actual_map = _map_basename(world.get_map().name)
@@ -364,6 +366,7 @@ class NativeCarlaSession:
         world.set_pedestrians_seed(episode.seeds.values["walkers"])
         world.set_pedestrians_cross_factor(recipe.traffic.pedestrian_crossing_factor)
         self._set_weather(recipe)
+        print("CARLA map, Traffic Manager and weather ready", flush=True)
         return world, traffic_manager
 
     def _set_weather(self, recipe: ScenarioRecipe) -> None:

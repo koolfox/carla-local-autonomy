@@ -111,10 +111,12 @@ class WorldWorkerCameraStream:
         scene: "WorldWorkerScene",
         *,
         timeout: float = 5.0,
+        view: str | None = None,
     ) -> None:
         self.client = client
         self.scene = scene
         self.timeout = float(timeout)
+        self._view_options = {} if view is None else {"view": view}
         self._condition = threading.Condition()
         self._latest: WorldWorkerCameraFrame | None = None
         self._error: BaseException | None = None
@@ -173,6 +175,7 @@ class WorldWorkerCameraStream:
                     try:
                         for frame in self.client.camera_frames(
                             self.scene,
+                            **self._view_options,
                             timeout=self.timeout,
                         ):
                             if self._closed:
@@ -221,6 +224,7 @@ class WorldWorkerCameraStream:
             while not self._closed:
                 frame = self.client.camera_frame(
                     self.scene,
+                    **self._view_options,
                     after_sequence=sequence,
                     timeout=self.timeout,
                 )
@@ -602,6 +606,15 @@ class WorldWorkerClient:
     def start_scene(self, scene: WorldWorkerScene) -> WorldWorkerScene:
         return self._scene_request(scene, "start", {"lease_token": scene.lease_token})
 
+    def start_recording_cameras(self, scene: WorldWorkerScene, *, views: dict,
+                                width: int, height: int, fps: float) -> dict[str, Any]:
+        if not scene.capabilities.get("drive_recording_cameras"):
+            raise WorldWorkerError("Update and restart the normal Windows World Worker for Drive camera rigs")
+        return self._request("POST", f"/v1/scenes/{quote(scene.scene_id, safe='')}/recording_cameras",
+                             {"lease_token": scene.lease_token, "views": views,
+                              "width": width, "height": height, "fps": fps},
+                             timeout=max(self.timeout, 30.0))
+
     def configure_scene(
         self, scene: WorldWorkerScene, payload: Mapping[str, Any]
     ) -> WorldWorkerScene:
@@ -855,6 +868,7 @@ class WorldWorkerClient:
         *,
         after_sequence: int,
         timeout: float,
+        view: str | None = None,
     ) -> WorldWorkerCameraFrame:
         scene_id = quote(scene.scene_id, safe="")
         request = Request(
@@ -865,6 +879,7 @@ class WorldWorkerClient:
                 "X-Scene-Lease": scene.lease_token,
                 "X-Camera-After": str(int(after_sequence)),
                 "X-Camera-Timeout": str(float(timeout)),
+                **({"X-Camera-View": view} if view is not None else {}),
             },
             method="GET",
         )
@@ -895,6 +910,7 @@ class WorldWorkerClient:
         scene: WorldWorkerScene,
         *,
         timeout: float,
+        view: str | None = None,
     ) -> Iterator[WorldWorkerCameraFrame]:
         """Yield authenticated newest-only frames from one MJPEG response."""
 
@@ -903,6 +919,7 @@ class WorldWorkerClient:
             f"{self.base_url}/v1/scenes/{scene_id}/camera/stream.mjpg",
             headers={
                 "Accept": "multipart/x-mixed-replace",
+                **({"X-Camera-View": view} if view is not None else {}),
                 "Authorization": f"Bearer {self._bearer_token}",
                 "X-Scene-Lease": scene.lease_token,
             },

@@ -166,7 +166,7 @@ def test_http_submit_status_idempotence_logs_and_verified_download(host, tmp_pat
     assert client.status("sample")["status"] == "succeeded"
     assert "task-started" in client.log("sample")["text"]
     assert client._request("POST", "/v1/research/jobs", raw)["pid"] == final["pid"]
-    assert worker._research_owner is None and not worker.research_recovery_required
+    assert worker._research_owner is None and not worker.research_reset_pending
     path = client.fetch("sample", tmp_path / "received.zip")
     assert path.read_bytes() == b"fixture-archive"
     with pytest.raises(FileExistsError):
@@ -181,7 +181,7 @@ def test_active_world_ownership_and_cooperative_cancel(host):
     worker, jobs, client, raw = host
     jobs.submit({**raw, "parameters": {"wait": True}})
     assert worker.health()["status"] == "research_running"
-    with pytest.raises(WorkerError, match="Native research owns"):
+    with pytest.raises(WorkerError, match="Native capture is running"):
         worker._ensure_client()
     with pytest.raises(ResearchJobError, match="another native job"):
         jobs.submit({**raw, "job_id": "second"})
@@ -227,15 +227,17 @@ def test_busy_world_lock_rejects_without_waiting(host):
         thread.join()
 
 
-def test_native_crash_leaves_listener_alive_and_requires_recovery(host):
+def test_native_crash_preserves_failure_but_allows_the_next_capture(host):
     worker, jobs, client, raw = host
     jobs.submit({**raw, "parameters": {"crash": True}})
     status = wait_done(jobs)
     assert status["status"] == "failed" and not status["cleanup_confirmed"]
-    assert client.health()["status"] == "recovery_required"
-    assert client.tasks()["recovery_required"]
-    with pytest.raises(WorkerError):
-        jobs.submit({**raw, "job_id": "unsafe-retry"})
+    assert client.health()["status"] != "recovery_required"
+    assert not client.tasks()["recovery_required"]
+    assert worker.research_reset_pending
+    assert not (jobs.root / "recovery-required.json").exists()
+    jobs.submit({**raw, "job_id": "next-capture"})
+    assert wait_done(jobs, "next-capture")["status"] == "succeeded"
 
 
 def test_timeout_forces_process_without_trusting_early_cleanup_receipt(host, monkeypatch):
@@ -248,7 +250,8 @@ def test_timeout_forces_process_without_trusting_early_cleanup_receipt(host, mon
     jobs.submit({**raw, "task_sha256": digest(task_path), "parameters": {"ignore_cancel": True}})
     status = wait_done(jobs)
     assert status["status"] == "timed_out" and not status["cleanup_confirmed"]
-    assert worker.research_recovery_required
+    assert worker.research_reset_pending
+    worker._require_no_research_owner()  # A timed-out task is not a permanent lock.
 
 
 def test_registry_refresh_and_checksum_rejection(host):
@@ -286,7 +289,7 @@ def test_unauthenticated_and_remote_code_routes_are_rejected(host):
     assert missing.value.status == 404
 
 
-def test_restart_marks_unfinished_job_and_fails_closed(tmp_path):
+def test_restart_records_interruption_without_a_permanent_world_lock(tmp_path):
     install(tmp_path / "tasks")
     path = tmp_path / "jobs/lost"
     path.mkdir(parents=True)
@@ -294,13 +297,14 @@ def test_restart_marks_unfinished_job_and_fails_closed(tmp_path):
     worker = WorldWorker(start_monitor=False)
     jobs = ResearchJobs(tmp_path / "tasks", tmp_path / "jobs", worker)
     assert jobs.get("lost")["status"] == "interrupted"
-    assert worker.research_recovery_required
-    assert (jobs.root / "recovery-required.json").is_file()
+    assert worker.research_reset_pending
+    worker._require_no_research_owner()
+    assert not (jobs.root / "recovery-required.json").exists()
     jobs.close()
     worker.close()
 
 
-def test_corrupt_status_keeps_host_running_but_requires_recovery(tmp_path):
+def test_corrupt_status_does_not_disable_the_worker(tmp_path):
     install(tmp_path / "tasks")
     path = tmp_path / "jobs/lost"
     path.mkdir(parents=True)
@@ -308,8 +312,27 @@ def test_corrupt_status_keeps_host_running_but_requires_recovery(tmp_path):
     worker = WorldWorker(start_monitor=False)
     jobs = ResearchJobs(tmp_path / "tasks", tmp_path / "jobs", worker)
     try:
-        assert worker.health()["status"] == "recovery_required"
+        assert worker.health()["status"] != "recovery_required"
+        worker._require_no_research_owner()
         assert jobs.catalog()["tasks"][0]["id"] == "fixture"
+    finally:
+        jobs.close()
+        worker.close()
+
+
+def test_legacy_recovery_marker_is_ignored_and_retained_as_evidence(tmp_path):
+    root = tmp_path / "jobs"
+    root.mkdir()
+    marker = root / "recovery-required.json"
+    write_json(marker, {"job_id": "old-capture", "reason": "bridge restarted"})
+    before = marker.read_bytes()
+    worker = WorldWorker(start_monitor=False)
+    jobs = ResearchJobs(None, root, worker)
+    try:
+        worker._require_no_research_owner()
+        assert not jobs.catalog()["recovery_required"]
+        assert marker.read_bytes() == before
+        assert worker.research_reset_pending
     finally:
         jobs.close()
         worker.close()

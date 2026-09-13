@@ -137,6 +137,9 @@ class DriveStartConfig:
     road_backend: str = "segformer"
     road_checkpoint: Path | None = None
     road_device: str = "cpu"
+    recording_rig: dict[str, Any] | None = None
+    recording_rig_fps: float = 5.0
+    sign_classifier: dict[str, Any] | None = None
 
     @classmethod
     def from_mapping(
@@ -161,6 +164,7 @@ class DriveStartConfig:
             "voxel_enabled",
             "road_enabled", "road_backend", "road_checkpoint", "road_device",
             "detector",
+            "sign_classifier",
             "weights",
             "device",
             "image_size",
@@ -169,13 +173,15 @@ class DriveStartConfig:
             "camera_fps",
             "camera_fov",
             "record_video",
+            "recording_rig", "recording_rig_fps",
             "spectator_follow",
             "experiment_preset",
             *_WORKER_FIELDS,
         }
         _strict_keys(raw, allowed, "drive start request")
         required = allowed - {"color", "experiment_preset", "voxel_enabled", "road_enabled",
-                              "road_backend", "road_checkpoint", "road_device"} - _WORKER_FIELDS
+                              "road_backend", "road_checkpoint", "road_device",
+                              "recording_rig", "recording_rig_fps", "sign_classifier"} - _WORKER_FIELDS
         missing = sorted(key for key in required if key not in raw)
         if missing:
             raise ValueError(f"drive start request is missing fields: {', '.join(missing)}")
@@ -246,6 +252,16 @@ class DriveStartConfig:
             "hierarchical_rtdetr_m9_precal_m6_query_film_img800.pt"
         ):
             raise ValueError("Select M9 Hierarchical RT-DETR in Vision for this checkpoint")
+
+        sign_classifier = None
+        if detector_enabled and raw.get("sign_classifier") is not None:
+            if not detector.startswith("m9-hierarchical"):
+                raise ValueError("DeiT-64 sign recognition requires M9 Hierarchical RT-DETR")
+            from ..detectors.sign_config import SignClassifierConfig, read_sign_ontology
+
+            sign_config = SignClassifierConfig.from_mapping(raw["sign_classifier"], workspace=workspace)
+            read_sign_ontology(sign_config.ontology)
+            sign_classifier = sign_config.as_dict()
 
         road_enabled = _boolean(raw.get("road_enabled", False), "road_enabled")
         road_backend = str(raw.get("road_backend", "segformer")).strip().lower()
@@ -353,7 +369,22 @@ class DriveStartConfig:
                     "configured World Worker is required for: " + ", ".join(unsupported)
                 )
 
+        rig = raw.get("recording_rig")
+        rig_fps = _number(raw.get("recording_rig_fps", 5.0), "recording_rig_fps", 1, 10)
+        if rig is not None:
+            if not world_worker_configured or raw["record_video"] is not True:
+                raise ValueError("Drive camera rig requires the World Worker and Record video enabled")
+            from .drive_cameras import recording_views
+
+            recording_views(rig, width=width, height=height, fps=rig_fps,
+                            fov=_number(raw["camera_fov"], "camera_fov", 30, 150))
+            import copy
+
+            rig = copy.deepcopy(rig)
         return cls(
+            sign_classifier=sign_classifier,
+            recording_rig=rig,
+            recording_rig_fps=rig_fps,
             run_id=run_id,
             host=host,
             port=port,
@@ -405,6 +436,8 @@ class DriveStartConfig:
             "world_owner": "world_worker" if self.world_worker_enabled else "raw_bridge_session",
             "model_output_actuated": False,
             "run_id": self.run_id,
+            "recording_rig": self.recording_rig,
+            "recording_rig_fps": self.recording_rig_fps,
             "host": self.host,
             "port": self.port,
             "vehicle_blueprint": self.vehicle_blueprint,
@@ -413,6 +446,7 @@ class DriveStartConfig:
             "weather_preset": self.weather_preset,
             "prop_preset": self.prop_preset,
             "detector_enabled": self.detector_enabled,
+            "sign_classifier": self.sign_classifier,
             "voxel_enabled": self.voxel_enabled,
             "road_enabled": self.road_enabled,
             "road_backend": self.road_backend,

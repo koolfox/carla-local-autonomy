@@ -114,8 +114,12 @@ def execute(request: dict[str, Any], output: Path) -> dict[str, Any]:
         if parameters.get("dry_run", False):
             result = {"dry_run": True, "plan": preview}
         else:
-            for module in ("carla", "agents.navigation.behavior_agent"):
-                importlib.import_module(module)
+            importlib.import_module("carla")
+            from ..agent_support import load_navigation_module
+
+            load_navigation_module(
+                "behavior_agent", carla_version=endpoint["expected_carla_version"]
+            )
             cancel_path = Path(request["cancel_file"])
             if cancel_path.exists():
                 raise InterruptedError("native collection cancelled before capture")

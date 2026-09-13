@@ -86,9 +86,10 @@ class ResearchJobs:
         self._active: dict[str, Any] | None = None
         self._thread: threading.Thread | None = None
         self._closed = False
-        # A bridge restart cannot establish that a former child has stopped or
-        # restored CARLA. Fail closed until the host operator has reconciled it.
-        self._recovery = self.root / "recovery-required.json"
+        # Failed capture receipts are evidence, not permanent world locks.
+        # A legacy recovery marker must not disable an otherwise healthy Worker.
+        if (self.root / "recovery-required.json").exists():
+            self.worker.research_reset_pending = True
         for path in self.root.glob("*/status.json"):
             if path.is_symlink() or path.parent.is_symlink():
                 continue
@@ -97,18 +98,17 @@ class ResearchJobs:
                 if not isinstance(status, dict):
                     raise ValueError("invalid status object")
             except (ValueError, OSError):
-                write_json(
-                    self._recovery, {"job_id": path.parent.name, "reason": "unreadable job status"}
-                )
+                self.worker.research_reset_pending = True
                 continue
+            if not status.get("cleanup_confirmed", True):
+                self.worker.research_reset_pending = True
             if status.get("status") in _ACTIVE:
-                status.update(status="interrupted", cleanup_confirmed=False)
-                write_json(path, status)
-                write_json(
-                    self._recovery, {"job_id": path.parent.name, "reason": "bridge restarted"}
+                status.update(
+                    status="interrupted", cleanup_confirmed=False,
+                    task_error="World Worker restarted while capture was active; recording interrupted",
                 )
-        if self._recovery.exists():
-            self.worker.research_recovery_required = True
+                write_json(path, status)
+                self.worker.research_reset_pending = True
 
     def _task(self, task_id: str, *, verify: bool = False) -> tuple[Path, dict[str, Any]]:
         identifier(task_id)
@@ -200,7 +200,7 @@ class ResearchJobs:
             "schema_version": SCHEMA_VERSION,
             "tasks": tasks,
             "invalid": invalid,
-            "recovery_required": self.worker.research_recovery_required,
+            "recovery_required": False,  # Retained for older clients; never a persistent lock.
         }
 
     def submit(self, raw: dict[str, Any]) -> dict[str, Any]:
@@ -393,12 +393,9 @@ class ResearchJobs:
                     finished_at=time.time(),
                 )
                 try:
-                    if not clean:
-                        write_json(self._recovery, {"job_id": directory.name, "reason": final})
                     write_json(directory / "status.json", self._active)
                 except OSError:
-                    # A missing terminal record must never unlock the world as
-                    # safe. The previous active record also gates the next boot.
+                    # Retain uncertainty in the receipt without disabling Garage.
                     clean = False
                 finally:
                     self.worker.release_research(directory.name, cleanup_confirmed=clean)

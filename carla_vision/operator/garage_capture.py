@@ -16,6 +16,7 @@ import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from ..dataset.camera_rig import resolve_camera_rig
 from .configuration import build_situation_request
 from .jobs import _atomic_json
 from .situations import SituationSpec, build_scenario_suite
@@ -68,9 +69,12 @@ class GarageCapture:
             except (OSError, ValueError, TypeError):
                 self._state.update(
                     phase="failed",
-                    holds_world=True,
-                    error="Capture state is unreadable; reconcile the Worker before capture",
+                    active=False,
+                    holds_world=False,
+                    error="Previous capture state is unreadable; Garage remains available",
                 )
+        if not self._state["active"]:
+            self._state["holds_world"] = False
 
     def resume(self) -> None:
         if self._state["active"] and self.application.world_worker is not None:
@@ -103,8 +107,6 @@ class GarageCapture:
             raise ValueError(
                 "capture reloads the scene and moves the teacher vehicle; acknowledgement required"
             )
-        if raw["camera_rig"] not in {"front", "front-three"}:
-            raise ValueError("unsupported capture camera rig")
         if self.application.world_worker is None:
             raise ValueError("connect the normal World Worker before capturing")
         spec = SituationSpec.from_mapping(
@@ -116,8 +118,18 @@ class GarageCapture:
         )
         if spec.repetitions > 32:
             raise ValueError("one native capture supports at most 32 episodes")
+        suite = build_scenario_suite(spec)
+        rig = raw["camera_rig"]
+        if isinstance(rig, str):
+            resolve_camera_rig(suite.recipes[0].camera, preset=rig)
+            rig_parameter = {"camera_rig": rig}
+        elif isinstance(rig, dict):
+            resolve_camera_rig(suite.recipes[0].camera, config=rig)
+            rig_parameter = {"camera_rig_config": json.loads(json.dumps(rig, allow_nan=False))}
+        else:
+            raise ValueError("camera_rig must be a preset name or a camera rig object")
         parameters = {
-            "scenario_suite": build_scenario_suite(spec).as_dict(),
+            "scenario_suite": suite.as_dict(),
             "split_plan": {
                 "schema_version": "1.0",
                 "plan_id": "garage-capture",
@@ -126,7 +138,7 @@ class GarageCapture:
                 "validation_map_families": [],
                 "validation_weather_ids": [],
             },
-            "camera_rig": raw["camera_rig"],
+            **rig_parameter,
             "max_episodes": spec.repetitions,
             "behavior": "cautious",
             "target_speed_kmh": 20,
@@ -161,7 +173,6 @@ class GarageCapture:
 
     def _run(self, parameters: dict | None) -> None:
         job_id = self.state()["job_id"]
-        submitted = parameters is None
         try:
             client = self.application.world_worker.research()
             if parameters is not None:
@@ -182,9 +193,6 @@ class GarageCapture:
                 if self.state().get("cancel_requested") or self._stop.is_set():
                     self._update(phase="cancelled", active=False, holds_world=False)
                     return
-                # Set before POST: a lost response must not be treated as a
-                # failed submission and unlock a running native collector.
-                submitted = True
                 try:
                     client.submit(
                         task_id="teacher_capture",
@@ -195,7 +203,6 @@ class GarageCapture:
                     )
                 except WorldWorkerError as error:
                     if error.status is not None and 400 <= error.status < 500:
-                        submitted = False
                         raise
                     self._update(phase="reconnecting", error=str(error))
             while not self._stop.is_set():
@@ -208,17 +215,17 @@ class GarageCapture:
                     self._update(phase=remote["status"], error=None, log=client.log(job_id)["text"])
                 except WorldWorkerError as error:
                     if error.status == 404:
-                        submitted = False
                         raise ValueError("capture was not accepted; it is safe to retry") from error
                     self._update(phase="reconnecting", error=str(error))
                 self._stop.wait(1)
             else:
                 return  # Retain state so a WebUI restart can resume observation.
+            self._update(holds_world=False)
             if not remote.get("cleanup_confirmed"):
                 raise RuntimeError(
-                    "Worker reports unconfirmed cleanup; reconcile CARLA before continuing"
+                    f"{(remote.get('result') or {}).get('error') or remote.get('task_error') or remote['status']}. "
+                    "Capture did not confirm cleanup; no dataset was imported. Garage remains available."
                 )
-            self._update(holds_world=False)
             if remote["status"] == "cancelled":
                 self._update(phase="cancelled", active=False, error=None)
                 return
@@ -236,7 +243,7 @@ class GarageCapture:
                 phase="failed",
                 active=False,
                 error=str(error),
-                holds_world=self.state()["holds_world"] if submitted else False,
+                holds_world=False,
             )
 
     def _receive(self, client, job_id: str) -> list[str]:
