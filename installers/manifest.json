@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "source_commit": "5f4b914182215d0c8976e36efb709bae8796c9c3",
+  "source_commit": "17cbc30832f6d828f7d4220bce2b98eb6888a657",
   "preview": true,
   "native_validation": "deferred",
   "model_source_commit": "2c600765e34862becc4f236d99291b295604f973",
@@ -10,13 +10,13 @@
   "artifacts": [
     {
       "path": "CARLA-Vision-setup-preview.zip",
-      "sha256": "7ce8c68d75e4c5ff97ba61a1c3d659b8e8c68cce2ed6f284a17225de8ba7915b",
-      "size_bytes": 11025895
+      "sha256": "a723b726cb51a80c5264e40c358f4a3e9fa0cb7d33912019eacaba494a4bd8d3",
+      "size_bytes": 11025918
     },
     {
       "path": "CARLA-Vision-setup-preview.tar.gz",
-      "sha256": "e27cd77551dd2395a55becd5d045572a0d477d9dd510a8de63b1fa59b59b1454",
-      "size_bytes": 10761232
+      "sha256": "c48e88c2a9a3044e0fb2e22cc98c763a749e938a1bbe4797f19665f01066f476",
+      "size_bytes": 10761252
     }
   ]
 }
