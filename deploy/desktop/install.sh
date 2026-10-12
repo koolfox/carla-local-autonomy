@@ -1,8 +1,25 @@
 #!/bin/sh
 set -eu
 case "$(uname -s):$(uname -m)" in
+    Darwin:arm64|Darwin:x86_64)
+        MacScriptDir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+        MacRoot=$(CDPATH= cd -- "$MacScriptDir/../.." && pwd)
+        # Reuse the pinned, checksum-verified bootstrap for macOS, then install
+        # only the launcher. Full dependency repair is an explicit TUI action.
+        NoLaunch=false
+        while [ "$#" -gt 0 ]; do
+            case "$1" in
+                --in-place) ;;
+                --no-launch) NoLaunch=true ;;
+                *) printf '%s\n' 'macOS setup: [--in-place] [--no-launch]' >&2; exit 1 ;;
+            esac
+            shift
+        done
+        sh "$MacRoot/restore.sh" --launcher-only "$MacRoot"
+        if [ "$NoLaunch" = false ]; then exec sh "$MacScriptDir/launch.sh"; fi
+        exit 0 ;;
     Linux:x86_64) ;;
-    *) printf '%s\n' 'Same-computer setup supports Linux x86-64 (Windows has Install.cmd).' >&2; exit 1 ;;
+    *) printf '%s\n' 'Setup supports macOS arm64/x86-64 and Linux x86-64 (Windows has Install.cmd).' >&2; exit 1 ;;
 esac
 DesktopScriptDir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 SourceRoot=$(CDPATH= cd -- "$DesktopScriptDir/../.." && pwd)

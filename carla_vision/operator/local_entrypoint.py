@@ -175,6 +175,9 @@ def prepare_launch(
     file_values = load_local_env(env_path)
     process_env = os.environ if environ is None else environ
     prefix: list[str] = []
+    user_argv = list(sys.argv[1:] if argv is None else argv)
+    without_worker = "--no-world-worker" in user_argv
+    user_argv = [item for item in user_argv if item != "--no-world-worker"]
 
     option_specs = (
         ("CARLA_HOST", "--carla-host", lambda value: _nonempty(value, "CARLA_HOST")),
@@ -203,6 +206,8 @@ def prepare_launch(
         ),
     )
     for key, option, validator in option_specs:
+        if without_worker and key in {"CARLA_WORLD_WORKER_URL", "CARLA_WORLD_WORKER_PORT"}:
+            continue
         raw = _effective(file_values, process_env, key)
         if raw is not None:
             prefix.extend((option, str(validator(raw))))
@@ -223,7 +228,6 @@ def prepare_launch(
         if raw_experimental is None
         else _bool_value(raw_experimental, "CARLA_ENABLE_EXPERIMENTAL")
     )
-    user_argv = list(sys.argv[1:] if argv is None else argv)
     explicit_disable_experimental = "--no-enable-experimental" in user_argv
     user_argv = [item for item in user_argv if item != "--no-enable-experimental"]
     if experimental_enabled and not explicit_disable_experimental:
@@ -231,7 +235,7 @@ def prepare_launch(
 
     env_updates: dict[str, str] = {}
     token = _effective(file_values, process_env, "CARLA_WORLD_WORKER_TOKEN")
-    if token is not None:
+    if token is not None and not without_worker:
         token = _nonempty(token, "CARLA_WORLD_WORKER_TOKEN")
         if "CARLA_WORLD_WORKER_TOKEN" not in process_env:
             env_updates["CARLA_WORLD_WORKER_TOKEN"] = token

@@ -7,7 +7,8 @@
 web
 
 The established product is a browser console. Its requested launch surface is a
-full-screen terminal application for Windows first and Linux alongside it.
+full-screen terminal application for Windows first, with Linux local/server and
+macOS/Linux/Windows web-only modes.
 
 ## Users
 
@@ -17,7 +18,8 @@ the console without manually coordinating Python environments and processes.
 ## Product Purpose
 
 Run the CARLA server, authenticated World Worker and existing browser console on
-one computer, with a self-installing launcher, model assets and clear readiness.
+one computer, or manage a remote web client through the same TUI, with automated
+private dependency setup, model assets, connection pairing and clear readiness.
 
 ## Operating Context
 
@@ -28,7 +30,8 @@ The terminal manages installation, local service lifecycle and diagnostics.
 ## Capabilities and Constraints
 
 - Full-screen TUI requested by the maintainer on 2026-10-12.
-- Native same-host setup targets Windows and Linux; existing remote topology remains supported.
+- Native same-host setup targets Windows and Linux; web-only TUI runs on macOS, Linux and Windows.
+- End users install, configure, pair and start/stop from the TUI; manual Python/Worker commands belong in developer documentation.
 - Retain the existing web UI, Worker API, actor ownership and model contracts.
 - Prefer installed CARLA; support deliberate official-package download when missing.
 - Loopback connections and generated local credentials for single-host operation.

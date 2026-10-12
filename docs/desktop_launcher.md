@@ -1,16 +1,96 @@
-# Same-computer installer and full-screen launcher
+# Install and control CARLA Vision through the TUI
 
 The launcher preview runs CARLA 0.9.16, its World Worker and the existing web app
 on one machine. Windows x86-64 is the primary target; Linux x86-64 is supported
-by the same Python controller and its own bootstrap. The `main` branch includes
+by the same Python controller and its own bootstrap. The same TUI also runs the
+web app alone on macOS, Linux and Windows, connected to a separate CARLA host.
+The `main` branch includes
 the launcher, published models, historical samples and [recovery tools](restore_project.md).
 
 **Validation status:** source review and package integrity, plus offline recovery
 checks. CI exercises the existing regression suite and recovery file-preservation
-contracts without CARLA. Native installer/TUI execution, Windows/Linux full
-installation, inference, visual and live acceptance remain tomorrow's work.
+contracts without CARLA. Headless TUI and launcher contracts also run without
+CARLA. Native Windows/Linux installer/TUI execution, full fresh-machine
+installation, inference and live acceptance remain pending.
+
+For a current installation, use the [curl bootstrap](../README.md#quick-start-with-curl).
+The rebuilt ZIP/TAR previews below include the cross-platform TUI and pairing.
+Each archive retains the exact source revision recorded in its manifest; use
+the curl bootstrap for the latest main after updates.
+
+## macOS and web-only Linux/Windows
+
+Restore with `--role web`, then open `CARLA-Vision.command` on macOS,
+`deploy/desktop/launch.sh` on Linux, or `deploy\desktop\CARLA-Vision.cmd` on Windows.
+A checkout's macOS entry point prepares private Python and the TUI if missing;
+choose **Install / Repair** to prepare the selected application's packages.
+No Python commands, virtual-environment activation or hand-editing `.env.local`
+are needed for ordinary use. Intel macOS defaults to **Web / recording** because
+the locked vision wheels target Apple Silicon; choose that profile on Intel.
+
+In **Setup**, choose **Web app**, then **Import connection** using a file exported
+by the CARLA host TUI. Alternatively enter its CARLA host, Worker URL and matching
+token. **Check connection** saves the settings and verifies authenticated health
+and CARLA 0.9.16 without changing the world. Use **Run → Start web app**, **Open
+web app** and **Stop owned services** for daily use. With URL/token both empty,
+the web server can open for saved recordings while the simulator is unavailable.
+The launcher supplies FFmpeg's PATH automatically.
+
+Stopping this profile cleans up its local scene owners and stops only its own
+web process. It never terminates the remote Worker or CARLA server. Quit also
+performs this cleanup; if cleanup cannot be confirmed, services are preserved
+and the error explains how to recover.
+
+## Share a Windows/Linux Worker with another web computer
+
+1. In the host TUI choose **CARLA + Worker + web app** and select its CARLA folder.
+   **Install / Repair** installs the matching official SDK, NumPy, OpenCV,
+   application dependencies, encoder and model files.
+2. Enable **Share Worker with another computer on this LAN**. The TUI selects
+   an available private IPv4 address; confirm the network you want to use.
+   Worker binds to that address instead of loopback. Wildcard/public bindings
+   are rejected. Stop owned services before changing host settings.
+3. On Windows use **Allow LAN in Windows Firewall…** when required and accept
+   UAC. The rule allows the selected Worker port and, when found, the CARLA
+   executable's RPC/streaming ports from the local subnet on **Private** networks.
+   It does not open the Public profile. On Linux, the distribution's firewall
+   must permit these same ports; see its administrator's network policy.
+4. Enter a new connection-file path and choose **Export connection**, then
+   **Run → Start all**. Transfer the file privately to the web computer and import
+   it in that computer's TUI. The file includes a credential; never commit it.
+5. Use **Check connection** on the client and **Start web app**. Keep one Worker
+   per port. When the LAN address changes, stop the host services, select the new
+   address, update the firewall and export/import a fresh file.
+
+Sharing is opt-in. Same-computer use keeps generated credentials and loopback
+defaults without firewall changes.
+
+## Prerequisites and recovery in the TUI
+
+- Missing application packages, SDK or camera dependencies: **Install / Repair**.
+  Setup checks that NumPy/OpenCV and, in local mode, the CARLA SDK can load.
+- Windows native-library/runtime errors: select the official CARLA folder and
+  use **Install CARLA prerequisites…**. This runs
+  `Engine/Extras/Redist/en-us/UE4PrereqSetup_x64.exe` from that package with UAC,
+  without requesting an automatic reboot. If Windows reports a restart is needed,
+  restart and retry **Install / Repair**. A stripped package may lack this installer.
+- Worker authentication failed: import a new host connection file or paste the
+  matching token; it stays masked and is omitted from public status/command lines.
+- Connection refused/timed out: check the host **Run** ledger, LAN address,
+  network profile and scoped firewall rule. Connection checks do not change CARLA.
+- Port occupied: choose a free app/Worker port in **Setup**. The TUI preserves
+  services it did not start.
+- Linux native imports failed: install the OS libraries required by CARLA/OpenCV
+  (commonly `libgl1` and `libglib2.0-0` on Ubuntu), then retry repair. GPU drivers,
+  host OS libraries and administrator-owned network policy remain OS prerequisites.
+
+Manual SDK/Worker commands remain available in the [developer guide](manual_setup.md).
 
 ## Install on Windows
+
+For a Mac web client, extract the current ZIP completely and open its top-level
+`CARLA-Vision.command`. It prepares private Python/TUI; finish through Setup.
+
 
 1. Download [CARLA-Vision-setup-preview.zip](../installers/CARLA-Vision-setup-preview.zip)
    and extract the complete archive to a writable local folder.
@@ -85,8 +165,8 @@ See [model notices and licenses](../models/README.md) before reusing or distribu
 Internet is required for the initial setup. Later startup uses the installed
 environment and local model snapshots, including `HF_HUB_OFFLINE=1` for the
 pinned Hugging Face caches. Native targets use managed Python 3.12 and the
-official Windows/Linux CARLA 0.9.16 wheel. The current macOS remote-console
-workflow remains available through the established entry point.
+official Windows/Linux CARLA 0.9.16 wheel. macOS uses the same TUI in web-only
+mode; manual entry points remain available for developers.
 
 ## Daily use
 

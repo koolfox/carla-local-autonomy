@@ -40,13 +40,14 @@ If CARLA 0.9.16 is already installed, replace `--download-carla` with
 curl -fsSL https://raw.githubusercontent.com/koolfox/carla-local-autonomy/refs/heads/main/restore.sh -o restore.sh
 sh restore.sh --destination "$HOME/CARLA-Vision" --role web
 cd "$HOME/CARLA-Vision"
-# Configure the remote Worker URL and matching token in .env.local first.
-PATH="$PWD/.launcher/bin:$PATH" .venv/bin/carla-operator-ui --open-browser
+./CARLA-Vision.command
 ```
 
 macOS runs the web app; the CARLA server and Worker run on Windows/Linux. A
 remote Worker must listen on its LAN address; the same-computer TUI defaults
-to loopback. See the [LAN Worker setup](#run-the-windows-world-worker).
+to loopback. In the host TUI enable Worker sharing, then export a private connection
+file. Import it in the Mac TUI, use **Check connection**, then **Start web app**.
+See the [TUI setup guide](docs/desktop_launcher.md).
 
 ### Linux x86-64 (Terminal)
 
@@ -65,8 +66,9 @@ optional profiles and importing a private backup. Keep private backups outside
 the checkout: GitHub does not contain local credentials or private sessions.
 
 These are installer previews. Source, payload and recovery-contract checks pass;
-full fresh-machine installation, native TUI rendering, inference and live CARLA
-acceptance remain pending.
+full fresh-machine installation, native Windows/Linux terminal rendering,
+inference and live CARLA acceptance remain pending. Headless TUI interaction
+checks cover web-only mode without CARLA.
 
 ## Run everything on the CARLA computer
 
@@ -196,113 +198,40 @@ Run commands from the repository root so the default workspace resolves the
 bundled `models/` directory. The [new-environment guide](docs/clone_setup.md)
 covers dependencies, local connection settings and the separate CARLA host.
 
-## Install profiles
+## Daily use through the TUI
 
-For manual installation, Python 3.11–3.13 and [uv](https://docs.astral.sh/uv/)
-are required. The bootstrap manages Python 3.12 itself; the native launcher
-uses that version for the matching CARLA SDK.
+Open **CARLA Vision** on Windows, `CARLA-Vision.command` on macOS, or the
+applications-menu entry / `deploy/desktop/launch.sh` on Linux. The same TUI has
+**Run**, **Setup** and **Logs** tabs on all three systems.
 
-Lean Garage and Operator:
-
-```bash
-uv sync --frozen --group dev
-```
-
-Garage with RT-DETR/YOLO inference:
-
-```bash
-uv sync --frozen --extra vision --group dev
-```
-
-Dataset, training, evaluation, plotting, and model release workflows:
-
-```bash
-uv sync --frozen --extra research --group dev
-```
-
-Everything, including experimental modules:
-
-```bash
-uv sync --frozen --all-extras --all-groups
-```
-
-The installed package already contains the production Svelte console. Node.js
-is needed only when changing the frontend; contributors rebuild the reviewed
-bundle with `npm ci && npm run build` from `web/`.
+- **Windows / Linux local mode:** Setup → Install / Repair prepares the SDK,
+  camera dependencies, models and encoder. Run → Start all starts CARLA,
+  authenticated Worker and web app. Stop cleans up the scene and stops owned
+  processes; a CARLA server started externally is preserved.
+- **macOS / Linux / Windows web-only mode:** choose Web app in Setup, import
+  the host's connection file or enter the host/URL/token, then Check connection.
+  Run → Start web app / Stop manages the local web server. A remote CARLA server
+  and Worker are preserved. Saved recordings can be browsed with no connection.
 
 ## Run the Windows World Worker
 
-The same-computer TUI starts this Worker automatically on loopback. For a
-separate research computer, use the following LAN command. Use an environment
-that imports the official CARLA 0.9.16 PythonAPI matching the server. The local
-bootstrap prepares `.venv` with that SDK and the camera dependencies; a separately
-prepared lean Worker environment can be used by replacing the Python path.
+For same-computer use, the TUI installs and starts the Worker automatically;
+no Python commands or environment activation are required. A remote Mac/Linux
+client needs the host's **Share Worker with another computer on this LAN** option.
+Select the host's LAN address, then **Allow LAN in Windows Firewall…** if needed
+(Windows asks for administrator permission). The rule is scoped to the local
+subnet on Private networks. Export the connection file and import it in the
+client TUI. The file contains a credential; keep it private.
 
-From the cloned repository in PowerShell:
+If native libraries cannot load, use **Install CARLA prerequisites…** to run the
+runtime installer bundled with the selected Windows CARLA package, then retry
+**Install / Repair**. Windows may require a restart. Initial setup needs internet;
+CARLA still needs suitable graphics hardware/drivers. See the
+[full setup and troubleshooting guide](docs/desktop_launcher.md).
 
-```powershell
-$env:CARLA_WORLD_WORKER_TOKEN = "replace-with-a-new-random-secret"
-$WorkerBind = "192.168.1.100" # Replace with this CARLA computer's LAN address.
-
-.\.venv\Scripts\python.exe .\carla_vision\native\observable_world_worker.py `
-  --bind $WorkerBind `
-  --port 8766 `
-  --allow-lan `
-  --carla-host 127.0.0.1 `
-  --carla-port 2000 `
-  --traffic-manager-port 8000
-```
-
-The Worker file is standalone. Map/control operations import only the standard
-library plus the official `carla` module. Live camera encoding lazily requires
-two camera-only runtime packages in the same Worker interpreter. These are
-already installed by the local bootstrap. For a manually prepared Worker:
-
-```powershell
-.\.worker-venv\Scripts\python.exe -m pip install numpy opencv-python-headless
-```
-
-Running the Worker by file path allows a dedicated lean Worker deployment
-without installing the full application on that host. Keep one Worker per port;
-do not start a second LAN Worker over the TUI's existing listener.
-
-Restrict inbound TCP 8766 in Windows Firewall to the research computer's LAN
-address. Never expose the Worker to the public internet.
-
-## Run the research console
-
-For a manual checkout, copy the full environment template, then edit the CARLA
-host, Worker URL and matching token in `.env.local`. The bootstrap creates this
-file automatically. The console loads it directly; it is not a shell script.
-
-```bash
-cp .env.local.example .env.local
-```
-
-Start with automatic CARLA and colocated-Worker resolution:
-
-```bash
-uv run --no-sync carla-operator-ui \
-  --carla-host auto \
-  --world-worker-url auto \
-  --open-browser
-```
-
-`--carla-host auto` validates CARLA RPC on directly connected private LANs.
-`--world-worker-url auto` uses port 8766 on that same discovered host, avoiding
-stale Worker addresses after changing networks.
-If `.env.local` contains `CARLA_WORLD_WORKER_TOKEN` and no Worker URL is given,
-the packaged entrypoint selects this colocated `auto` behavior automatically.
-
-If only CARLA is running and the Worker is unavailable, omit
-`--world-worker-url`. Manual raw-bridge driving and vision remain available;
-map reload, traffic, pedestrians, props, and TM autopilot stay unavailable.
-
-The console opens at:
-
-```text
-http://127.0.0.1:8765/
-```
+Manual package commands, `.env.local` setup and standalone Worker commands are
+in the [developer/manual guide](docs/manual_setup.md). No manual Python command
+is part of the ordinary TUI workflow.
 
 ## Remote camera performance
 

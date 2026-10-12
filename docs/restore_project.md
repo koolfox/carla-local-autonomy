@@ -52,8 +52,7 @@ On Apple Silicon with macOS 14 or newer:
 ```bash
 sh restore.sh --destination "$HOME/CARLA-Vision" --role web
 cd "$HOME/CARLA-Vision"
-# Set the Windows/LAN Worker URL and matching secret in .env.local first.
-PATH="$PWD/.launcher/bin:$PATH" .venv/bin/carla-operator-ui --open-browser
+./CARLA-Vision.command
 ```
 
 This restores all published models and installs the locked vision/recording
@@ -63,22 +62,18 @@ and ONNX Runtime wheels target Apple Silicon. Its model files are still restored
 local ML inference needs a supported vision host. `--lean --role web` selects
 that dependency profile explicitly on other supported computers.
 
-The `PATH` prefix makes the bundled recording encoder available to the web app.
-For a Windows web-only installation, add it before starting the console:
+The same full-screen TUI now runs on macOS and on Windows/Linux in web-only
+mode. In **Setup**, import a private connection file exported by the CARLA host
+TUI, or enter the CARLA host, Worker URL and token. **Check connection** verifies
+the authenticated Worker health and CARLA version without changing its world.
+Use **Run → Start web app / Stop** for daily use; the remote server and Worker
+remain externally managed. The launcher supplies the recording encoder's PATH.
 
-```powershell
-$env:PATH = "$PWD\.launcher\bin;$env:PATH"
-.\.venv\Scripts\carla-operator-ui.exe --open-browser
-```
-
-The native TUI coordinates a same-computer stack only on Windows/Linux x86-64.
-For the Mac workflow, run CARLA and the Worker on Windows/Linux. The same-host
-TUI binds the Worker to loopback by default; a Mac cannot connect to that address.
-Use the existing [LAN Worker command](../README.md#run-the-windows-world-worker)
-with `--bind <host-LAN-address> --allow-lan`, a shared Worker token and the
-appropriate firewall rule. Keep one Worker owner per port and configure the
-Mac's `.env.local` with that URL/token. Restoration does not alter firewall or
-Worker exposure automatically.
+On the Windows/Linux host, enable **Share Worker with another computer on this
+LAN**, select its LAN address, and export the connection file. Windows also has
+an explicit **Allow LAN in Windows Firewall…** button with a UAC prompt.
+See the [TUI guide](desktop_launcher.md) for prerequisites and troubleshooting.
+Manual commands are retained in the [developer guide](manual_setup.md).
 
 ## Linux: CARLA and the web app together
 
@@ -179,4 +174,6 @@ Source/static checks, CLI help/plan and existing payload integrity were checked.
 Recovery tests exercise archive rejection, private-file preservation, corrupt
 downloads, process locks and published assets; CI runs these on Windows, Linux
 and macOS without installing the ML/native runtime. Full fresh-machine restoration,
-native installer/TUI execution, inference and live CARLA acceptance remain deferred.
+native Windows/Linux installer/TUI execution, inference and live CARLA acceptance
+remain deferred. Headless TUI interaction and launcher lifecycle contracts run
+without CARLA; these do not establish fresh-machine native acceptance.

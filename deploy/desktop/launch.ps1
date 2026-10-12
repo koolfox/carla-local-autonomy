@@ -2,7 +2,12 @@ param()
 $ErrorActionPreference = "Stop"
 $ApplicationRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))
 $Python = Join-Path $ApplicationRoot ".venv\Scripts\python.exe"
-if (-not (Test-Path -LiteralPath $Python)) {
+$LauncherReady = $false
+if (Test-Path -LiteralPath $Python) {
+    & $Python -c "import textual" 2>$null
+    $LauncherReady = ($LASTEXITCODE -eq 0)
+}
+if (-not $LauncherReady) {
     & (Join-Path $PSScriptRoot "install.ps1") -InPlace -NoLaunch
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }

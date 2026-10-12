@@ -1,15 +1,18 @@
-# Same-computer setup preview
+# Cross-platform TUI setup preview
 
 The [Windows ZIP](CARLA-Vision-setup-preview.zip) and
-[Linux archive](CARLA-Vision-setup-preview.tar.gz) contain a self-bootstrapping
+[Linux/macOS archive](CARLA-Vision-setup-preview.tar.gz) contain a self-bootstrapping
 full-screen launcher and the existing compiled web app, configurations, model
 metadata and historical samples. Extract the entire archive; run **Install.cmd**
-on Windows or **sh install.sh** on Linux. See [the installation guide](../docs/desktop_launcher.md).
+on Windows, **sh install.sh** on Linux, or **CARLA-Vision.command** on macOS. See [the installation guide](../docs/desktop_launcher.md).
 
 Python, Git and Node do not need to be preinstalled for these bundles. Setup
 installs private managed Python and the TUI; **Setup → Install / Repair** installs
 the locked runtime and hydrates all ten model weights with SHA-256 verification.
-An optional checkbox downloads the official CARLA server. A desktop/menu
+The TUI selects local CARLA/Worker/web mode on Windows/Linux or web-only mode
+on macOS/Linux/Windows. Connection-file export/import pairs a remote client
+without hand-editing environment files. Windows prerequisite and scoped firewall
+setup are explicit TUI actions with UAC. An optional checkbox downloads CARLA. A desktop/menu
 shortcut opens the launcher for future sessions.
 
 Reinstallation preserves edited configuration files and puts incoming defaults

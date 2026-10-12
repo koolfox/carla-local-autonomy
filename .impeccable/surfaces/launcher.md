@@ -84,3 +84,22 @@ resolved. This is a fix-list
 verdict, not visual or runtime acceptance. See
 `docs/audit/launcher_static_review_2026-10-12.md` for evidence and the remaining
 Windows/Linux installation, process lifecycle, terminal and live-CARLA gates.
+
+## Cross-platform operation — 2026-10-12
+
+The maintainer requested one end-user TUI for local CARLA/Worker/web on Windows
+and for web-only clients on macOS/Linux (also available on Windows). Run/Setup/Logs
+and the incumbent console identity are preserved. New installations open Setup;
+existing installations open Run. Web-only setup leads with connection-file import,
+with optional manual host/URL/masked-token fields. Host setup offers LAN sharing,
+private connection export and explicit Windows prerequisite/firewall UAC actions.
+The light widget theme matches the existing light surface; footer component colors
+are explicit. Start/Open/Stop fit an 80-column terminal without clipping Stop.
+
+Headless interaction checks cover 80x24 and 120x40 web-mode terminals; batched
+SVG renders were inspected for web 80x24 and local 120x40. The first render exposed
+child-widget theme contrast and short-terminal clipping; the correction uses the
+light widget theme, smaller service ledger and one-row controls. These are
+headless observations, not native Windows/Linux runtime or CARLA acceptance.
+Native installation, prerequisite executables, firewall/UAC, GPU inference and
+live-CARLA lifecycle remain unverified.
