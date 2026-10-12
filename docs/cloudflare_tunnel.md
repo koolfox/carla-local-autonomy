@@ -27,7 +27,12 @@ Keep the Operator on loopback:
 ```dotenv
 CARLA_OPERATOR_BIND='127.0.0.1'
 CARLA_OPERATOR_PORT='8765'
+CARLA_OPERATOR_ALLOWED_HOSTS='garage.example.com'
 ```
+
+Replace `garage.example.com` with the public hostname. The Operator rejects
+requests whose `Host` is an unlisted public DNS name (DNS-rebinding protection),
+so without this line the tunnel returns `403 Host ... is not allowed`.
 
 Cloudflare Access is required for the public hostname. The Operator's existing browser bootstrap token is an application request token, not a WAN identity boundary.
 
