@@ -8,6 +8,66 @@ Python for every session.
 This repository is a LAN research tool, not an internet-facing or multi-user
 service. The browser server deliberately binds to loopback only.
 
+## Quick start with curl
+
+The bootstrap on `main` restores the application, compiled web console, all ten
+model weights and historical samples, then prepares a private Python environment
+and recording encoder. Preinstalled Python, Node, Git and Git LFS are not needed
+for this source-archive installation.
+
+| Computer | Installation profile |
+| --- | --- |
+| Windows / Linux x86-64 | CARLA server, Worker, web app and full-screen TUI on the same computer |
+| Apple Silicon, macOS 14+ | Web app, recording and vision connected to a Windows/Linux CARLA host |
+| Intel Mac, macOS 14+ | Web app and recording; model files are restored, inference needs a supported vision host |
+
+### Windows (PowerShell)
+
+```powershell
+curl.exe -fL https://raw.githubusercontent.com/koolfox/carla-local-autonomy/refs/heads/main/deploy/restore/restore.ps1 -o restore.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\restore.ps1 --destination "C:\CARLA-Vision" --role local --download-carla
+cd C:\CARLA-Vision
+.\deploy\desktop\CARLA-Vision.cmd
+```
+
+If CARLA 0.9.16 is already installed, replace `--download-carla` with
+`--carla-root "C:\CARLA_0.9.16"`. In the TUI, inspect **Setup**, then choose
+**Run → Start all** to start CARLA, the Worker and the web app.
+
+### macOS (Terminal)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/koolfox/carla-local-autonomy/refs/heads/main/restore.sh -o restore.sh
+sh restore.sh --destination "$HOME/CARLA-Vision" --role web
+cd "$HOME/CARLA-Vision"
+# Configure the remote Worker URL and matching token in .env.local first.
+PATH="$PWD/.launcher/bin:$PATH" .venv/bin/carla-operator-ui --open-browser
+```
+
+macOS runs the web app; the CARLA server and Worker run on Windows/Linux. A
+remote Worker must listen on its LAN address; the same-computer TUI defaults
+to loopback. See the [LAN Worker setup](#run-the-windows-world-worker).
+
+### Linux x86-64 (Terminal)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/koolfox/carla-local-autonomy/refs/heads/main/restore.sh -o restore.sh
+sh restore.sh --destination "$HOME/CARLA-Vision" --role local --download-carla
+cd "$HOME/CARLA-Vision"
+sh deploy/desktop/launch.sh
+```
+
+Use a new/empty destination. A partial restore can be retried with `--resume`.
+Setup does not start services automatically or install graphics drivers; CARLA
+requires suitable graphics hardware/drivers and enough disk space. The
+[recovery guide](docs/restore_project.md) explains existing-server paths,
+optional profiles and importing a private backup. Keep private backups outside
+the checkout: GitHub does not contain local credentials or private sessions.
+
+These are installer previews. Source, payload and recovery-contract checks pass;
+full fresh-machine installation, native TUI rendering, inference and live CARLA
+acceptance remain pending.
+
 ## Run everything on the CARLA computer
 
 The new **full-screen launcher preview** targets Windows x86-64 first and Linux
@@ -25,10 +85,9 @@ A desktop/applications-menu shortcut provides daily startup.
 From a clone, run `deploy\desktop\Install.cmd` on Windows, or
 `sh deploy/desktop/install.sh` on Linux. No Node build is needed for normal use.
 See the [same-computer setup guide](docs/desktop_launcher.md) for paths, CLI
-commands and recovery. The installer preview is available on
-`main`; Windows/Linux installation, terminal rendering and
-live-CARLA acceptance remain deferred. Source review and archive integrity do
-not establish runtime acceptance.
+commands and recovery. The setup archives retain their recorded source revision;
+use the curl bootstrap above for the latest `main`. Archive integrity does not
+establish runtime acceptance.
 
 New contributors should start with the
 [`developer navigation hub`](docs/README.md): find a feature, its owner, and
@@ -64,14 +123,16 @@ seeking, five-second skip buttons, playback speed, and fullscreen. Expand **Run
 files** to download the original artifacts; browsing does not verify their integrity.
 
 New recordings (raw, overlays, voxel, and dataset replay) are encoded directly as
-**H.264 MP4** with `yuv420p` and fast-start indexing. Install FFmpeg with `libx264`
-on the recording/WebUI computer (`brew install ffmpeg` on macOS), then restart
-the WebUI. No subsequent conversion is needed. Lossless dataset images and the
-live MJPEG feed are unchanged.
+**H.264 MP4** with `yuv420p` and fast-start indexing. The bootstrap installs a
+private FFmpeg encoder: the TUI adds it to `PATH`, and the macOS command above
+does the same for direct web-app startup. For a manual installation, install
+FFmpeg with `libx264` on the recording/WebUI computer (`brew install ffmpeg`
+on macOS), then restart the WebUI. No subsequent conversion is needed.
+Lossless dataset images and the live MJPEG feed are unchanged.
 
 Some older MP4 files use a codec browsers cannot decode. **Prepare playable copy**
-creates a temporary H.264 version using FFmpeg on the WebUI computer (on macOS,
-`brew install ffmpeg` if needed). Conversion runs in the background, one at a time;
+creates a temporary H.264 version using that FFmpeg encoder on the WebUI computer.
+Conversion runs in the background, one at a time;
 long recordings can take longer. Copies are reused until the WebUI stops and never
 replace the original recording or change its evidence hashes. No CARLA or Windows
 World Worker update is required for playback.
@@ -98,8 +159,9 @@ official PythonAPI                         RT-DETR / YOLO / recorder
 
 The Windows World Worker is intentionally thin. It owns official-PythonAPI
 operations such as map reload, weather, Traffic Manager, pedestrians, props,
-and the persistent in-memory MJPEG relay. It does not install Torch,
-Ultralytics, or the research environment.
+and the persistent in-memory MJPEG relay. A dedicated split-host Worker can use
+a lean environment. The same-computer installer instead shares the prepared
+vision environment with the web app.
 
 The research computer owns the UI, detector inference, video recording,
 artifacts, datasets, and reports.
@@ -136,30 +198,32 @@ covers dependencies, local connection settings and the separate CARLA host.
 
 ## Install profiles
 
-Python 3.11–3.13 and [uv](https://docs.astral.sh/uv/) are required.
+For manual installation, Python 3.11–3.13 and [uv](https://docs.astral.sh/uv/)
+are required. The bootstrap manages Python 3.12 itself; the native launcher
+uses that version for the matching CARLA SDK.
 
 Lean Garage and Operator:
 
 ```bash
-uv sync --group dev
+uv sync --frozen --group dev
 ```
 
 Garage with RT-DETR/YOLO inference:
 
 ```bash
-uv sync --extra vision --group dev
+uv sync --frozen --extra vision --group dev
 ```
 
 Dataset, training, evaluation, plotting, and model release workflows:
 
 ```bash
-uv sync --extra research --group dev
+uv sync --frozen --extra research --group dev
 ```
 
 Everything, including experimental modules:
 
 ```bash
-uv sync --all-extras --all-groups
+uv sync --frozen --all-extras --all-groups
 ```
 
 The installed package already contains the production Svelte console. Node.js
@@ -168,17 +232,20 @@ bundle with `npm ci && npm run build` from `web/`.
 
 ## Run the Windows World Worker
 
-Use the Python environment in which the matching CARLA 0.9.16 PythonAPI can be
-imported. The `ue5-dev` PythonAPI currently targets a newer CARLA generation;
-do not load its binary extension into a 0.9.16 server process.
+The same-computer TUI starts this Worker automatically on loopback. For a
+separate research computer, use the following LAN command. Use an environment
+that imports the official CARLA 0.9.16 PythonAPI matching the server. The local
+bootstrap prepares `.venv` with that SDK and the camera dependencies; a separately
+prepared lean Worker environment can be used by replacing the Python path.
 
 From the cloned repository in PowerShell:
 
 ```powershell
 $env:CARLA_WORLD_WORKER_TOKEN = "replace-with-a-new-random-secret"
+$WorkerBind = "192.168.1.100" # Replace with this CARLA computer's LAN address.
 
-.\.worker-venv\Scripts\python.exe .\carla_vision\native\observable_world_worker.py `
-  --bind 172.20.10.7 `
+.\.venv\Scripts\python.exe .\carla_vision\native\observable_world_worker.py `
+  --bind $WorkerBind `
   --port 8766 `
   --allow-lan `
   --carla-host 127.0.0.1 `
@@ -188,33 +255,34 @@ $env:CARLA_WORLD_WORKER_TOKEN = "replace-with-a-new-random-secret"
 
 The Worker file is standalone. Map/control operations import only the standard
 library plus the official `carla` module. Live camera encoding lazily requires
-two camera-only runtime packages in the same Worker interpreter:
+two camera-only runtime packages in the same Worker interpreter. These are
+already installed by the local bootstrap. For a manually prepared Worker:
 
 ```powershell
 .\.worker-venv\Scripts\python.exe -m pip install numpy opencv-python-headless
 ```
 
-Running the Worker by file path still avoids installing this project, Torch,
-Ultralytics, or the research environment on the CARLA computer.
+Running the Worker by file path allows a dedicated lean Worker deployment
+without installing the full application on that host. Keep one Worker per port;
+do not start a second LAN Worker over the TUI's existing listener.
 
 Restrict inbound TCP 8766 in Windows Firewall to the research computer's LAN
 address. Never expose the Worker to the public internet.
 
 ## Run the research console
 
-Copy the environment template and place a fresh Worker token in `.env.local`:
+For a manual checkout, copy the full environment template, then edit the CARLA
+host, Worker URL and matching token in `.env.local`. The bootstrap creates this
+file automatically. The console loads it directly; it is not a shell script.
 
 ```bash
-cp .env.example .env.local
-set -a
-source .env.local
-set +a
+cp .env.local.example .env.local
 ```
 
 Start with automatic CARLA and colocated-Worker resolution:
 
 ```bash
-uv run carla-operator-ui \
+uv run --no-sync carla-operator-ui \
   --carla-host auto \
   --world-worker-url auto \
   --open-browser
@@ -333,7 +401,7 @@ run.
 To expose the retained BehaviorAgent/imitation/voxel/closed-loop endpoints:
 
 ```bash
-uv run carla-operator-ui \
+uv run --no-sync carla-operator-ui \
   --carla-host auto \
   --world-worker-url auto \
   --enable-experimental \
@@ -356,20 +424,24 @@ detector.
 Run the production checks:
 
 ```bash
-uv run ruff check carla_vision tests
+uv run ruff check carla_vision tests restore_project.py
+python3 -B restore_project.py --plan --role web
 node --check carla_vision/operator/static/app.js
 uv run pytest -q
 cd web
 npm ci --no-audit --no-fund
 npm run check
+npm test
 npm run build
 cd ..
 git status --porcelain --untracked-files=all -- carla_vision/operator/console_static
 ```
 
 The final `git status` command must be empty when the committed Svelte source
-and deployable bundle are synchronized. CI has three jobs: a lean Operator
-profile, the SvelteKit console, and the complete research/experimental suite.
+and deployable bundle are synchronized. CI has six checks: the lean Operator
+profile, the SvelteKit console, the complete research/experimental suite, and
+recovery contracts on Windows, Linux and macOS. The merged integration passed
+[main CI](https://github.com/koolfox/carla-local-autonomy/actions/runs/38260870609).
 Live CARLA acceptance remains a separate manual gate because unit tests use
 fake RPC/PythonAPI objects and do not prove simulator behavior.
 
