@@ -297,6 +297,7 @@ def test_tui_modes_and_private_token_at_terminal_sizes(tmp_path, monkeypatch):
 
     monkeypatch.setattr(config.platform, "system", lambda: "Darwin")
     monkeypatch.setattr(config.platform, "machine", lambda: "arm64")
+    monkeypatch.setattr("carla_vision.launcher.tui.default_mode", lambda: "local")
     monkeypatch.setattr(
         services.LocalStack,
         "snapshot",
@@ -330,6 +331,14 @@ def test_tui_modes_and_private_token_at_terminal_sizes(tmp_path, monkeypatch):
             app._set_busy(True)
             assert app.query_one("#start").disabled
             app._set_busy(False)
+            # A failed save must retain the editor's selected mode, even when
+            # the persisted configuration still has the previous mode.
+            app.query_one("#mode", Select).value = "local"
+            await pilot.pause()
+            app._set_busy(True)
+            app._set_busy(False)
+            assert app.query_one("#local-settings").display
+            assert not app.query_one("#remote-settings").display
 
     for size in [(80, 24), (120, 40)]:
         asyncio.run(exercise(size))

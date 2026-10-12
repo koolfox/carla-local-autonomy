@@ -347,7 +347,9 @@ class LauncherApp(App):
             self.query_one(selector, Button).disabled = value
         self.query_one("#progress", ProgressBar).update(total=None if value else 100, progress=0)
         if not value:
-            self._show_mode(config=self.stack.config)
+            selected = self.query_one("#mode", Select).value
+            if selected in {"local", "web"}:
+                self._show_mode(mode=str(selected))
             self.refresh_status()
 
     def _render_status(self, snapshot: dict) -> None:
