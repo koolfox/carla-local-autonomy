@@ -1,0 +1,397 @@
+{
+  "artifacts": [
+    {
+      "metadata": {
+        "report_id": "rpt-framework-validation-20260726-v003",
+        "source_count": 7
+      },
+      "mime_type": "application/octet-stream",
+      "path": "checksums.sha256",
+      "registered_at": "2026-07-26T19:31:16.986661Z",
+      "role": "report_checksum_index",
+      "sha256": "e034d33961ddcc6e534f3787e15577416539d9f1b2f24eda1334ab81be5cd83b",
+      "size_bytes": 890
+    },
+    {
+      "metadata": {
+        "report_id": "rpt-framework-validation-20260726-v003",
+        "source_count": 7
+      },
+      "mime_type": "image/png",
+      "path": "plots/runtime_performance.png",
+      "registered_at": "2026-07-26T19:31:16.988922Z",
+      "role": "report_plot",
+      "sha256": "ff0439743fe929c5481eabb4b1ff54893e626dcc03f6c954ca1db0fb0ffa9a31",
+      "size_bytes": 100294
+    },
+    {
+      "metadata": {
+        "report_id": "rpt-framework-validation-20260726-v003",
+        "source_count": 7
+      },
+      "mime_type": "image/svg+xml",
+      "path": "plots/runtime_performance.svg",
+      "registered_at": "2026-07-26T19:31:16.989783Z",
+      "role": "report_plot",
+      "sha256": "a73ecabad97d319a4f45e4db6fe1312f79c68c8e3e161d5f11763242901540e3",
+      "size_bytes": 58143
+    },
+    {
+      "metadata": {
+        "report_id": "rpt-framework-validation-20260726-v003",
+        "source_count": 7
+      },
+      "mime_type": "image/png",
+      "path": "plots/source_inventory.png",
+      "registered_at": "2026-07-26T19:31:16.987412Z",
+      "role": "report_plot",
+      "sha256": "6a09ae1b1f021e2c2f7154975371f919c6a0f76b90cd56bf8904e7e8a4fc603c",
+      "size_bytes": 112347
+    },
+    {
+      "metadata": {
+        "report_id": "rpt-framework-validation-20260726-v003",
+        "source_count": 7
+      },
+      "mime_type": "image/svg+xml",
+      "path": "plots/source_inventory.svg",
+      "registered_at": "2026-07-26T19:31:16.988159Z",
+      "role": "report_plot",
+      "sha256": "6cc6e70cae37747affd109e03d55e08116864b9970fc7a4bd675a85c22fcd5ff",
+      "size_bytes": 78420
+    },
+    {
+      "metadata": {
+        "report_id": "rpt-framework-validation-20260726-v003",
+        "source_count": 7
+      },
+      "mime_type": "application/json",
+      "path": "report.json",
+      "registered_at": "2026-07-26T19:31:16.983096Z",
+      "role": "report_release_manifest",
+      "sha256": "d4b96868a293e32f76eaebf8c162345764d463d4197a126d07154dd187cd6509",
+      "size_bytes": 12147
+    },
+    {
+      "metadata": {
+        "report_id": "rpt-framework-validation-20260726-v003",
+        "source_count": 7
+      },
+      "mime_type": "text/markdown",
+      "path": "report.md",
+      "registered_at": "2026-07-26T19:31:16.983829Z",
+      "role": "report_document",
+      "sha256": "aa6b585909c67b5afb17c36c6622a58e41bc5d40792628af2328d4634c9522ed",
+      "size_bytes": 9604
+    },
+    {
+      "metadata": {
+        "report_id": "rpt-framework-validation-20260726-v003",
+        "source_count": 7
+      },
+      "mime_type": "application/json",
+      "path": "report_config.json",
+      "registered_at": "2026-07-26T19:31:16.982391Z",
+      "role": "report_configuration",
+      "sha256": "d5a3ae016b814a2ba036202029b752e0121f82655917ba5c527f20bcfcca7c06",
+      "size_bytes": 4025
+    },
+    {
+      "metadata": {
+        "report_id": "rpt-framework-validation-20260726-v003",
+        "source_count": 7
+      },
+      "mime_type": "text/csv",
+      "path": "tables/metrics.csv",
+      "registered_at": "2026-07-26T19:31:16.985280Z",
+      "role": "report_metric_table",
+      "sha256": "2f311b42c952c09d0dcf35784d50c69533601fbbd17c71fb9365a0bb062cd9d4",
+      "size_bytes": 7532
+    },
+    {
+      "metadata": {
+        "report_id": "rpt-framework-validation-20260726-v003",
+        "source_count": 7
+      },
+      "mime_type": "text/csv",
+      "path": "tables/source_artifacts.csv",
+      "registered_at": "2026-07-26T19:31:16.985978Z",
+      "role": "report_source_artifact_table",
+      "sha256": "6aee6e6a97cde31b8759d29ba6e60b843bf4685ad8f5c6d6c5af4514b74d0417",
+      "size_bytes": 15348
+    },
+    {
+      "metadata": {
+        "report_id": "rpt-framework-validation-20260726-v003",
+        "source_count": 7
+      },
+      "mime_type": "text/csv",
+      "path": "tables/source_inventory.csv",
+      "registered_at": "2026-07-26T19:31:16.984572Z",
+      "role": "report_source_inventory",
+      "sha256": "9f4a8e1aa1bf476924123f2127d8817d8e6b92da79ca3304db29236e6ef3bceb",
+      "size_bytes": 1404
+    }
+  ],
+  "carla": {
+    "endpoint": null,
+    "map": null,
+    "version": null
+  },
+  "environment": {
+    "packages": {
+      "carla": null,
+      "numpy": "2.5.1",
+      "opencv-python": "5.0.0.93",
+      "torch": "2.13.0",
+      "torchvision": "0.28.0",
+      "ultralytics": "8.4.106"
+    },
+    "platform": {
+      "machine": "arm64",
+      "release": "25.5.0",
+      "system": "Darwin"
+    },
+    "python": {
+      "implementation": "CPython",
+      "version": "3.12.11"
+    }
+  },
+  "experiment": null,
+  "failure": null,
+  "git": {
+    "available": true,
+    "commit": null,
+    "dirty": true
+  },
+  "invocation": {
+    "cli_args": {
+      "config": "configs/reports/framework_validation_v3.json",
+      "reports_root": "reports"
+    },
+    "config": {
+      "object_type": "research_report",
+      "report": {
+        "authors": [
+          "Hesam",
+          "CARLA Vision Research Project"
+        ],
+        "claims": [
+          "The live shadow matrix and both child runs pass registered SHA-256, external-reference, unregistered-file, and object-specific semantic verification.",
+          "RT-DETR-L and YOLO26n executed sequentially against the configured CARLA 0.9.16 Town10HD_Opt vehicle and front RGB camera while the privileged teacher was the only actuation source.",
+          "Every logged policy observation passed the front-monocular-RGB structural input audit, direct CARLA objects were not exposed, and vision-policy actuation authorization remained false.",
+          "The two twelve-second child runs produced checksum-tracked overlay videos, terminal overlays, detections, policy proposals, summaries, and immutable source-linked post-hoc analyses.",
+          "Observed throughput and latency are extracted from verified frame logs without manual metric transcription and are explicitly reported as systems measurements rather than detector-accuracy comparisons."
+        ],
+        "include_plots": true,
+        "limitations": [
+          "All sources were created from a dirty, uncommitted workspace and are development evidence rather than confirmatory thesis experiments.",
+          "The two live runs were sequential and observed different route positions and transient scenes, so detection counts and class frequencies must not be used to rank model accuracy.",
+          "The detectors use pretrained COCO weights and different development confidence thresholds rather than checkpoints and thresholds selected on a released CARLA validation partition.",
+          "The hazard-stop policy is a deliberately simple non-learned shadow baseline; it proposed no braking events in these short runs and has not demonstrated safe driving behavior.",
+          "Teacher motion uses privileged simulator pose and speed, remains outside the runtime sensor contract, and cannot be presented as vision-only driving.",
+          "Structural observation isolation prevents accidental privileged inputs but does not sandbox malicious custom policy code.",
+          "Each child ran for only twelve seconds on one map, weather state, vehicle, route segment, and hardware configuration.",
+          "The native synchronous collector and real multi-seed training protocol remain gated on a compatible official CARLA 0.9.16 PythonAPI host and a released dataset."
+        ],
+        "purpose": "development",
+        "report_id": "rpt-framework-validation-20260726-v003",
+        "schema_version": "1.0",
+        "sources": [
+          {
+            "kind": "report",
+            "label": "Framework validation report v0.4",
+            "path": "../../reports/rpt-framework-validation-20260726-v002"
+          },
+          {
+            "kind": "reproduction_bundle",
+            "label": "Framework reproduction bundle v0.4",
+            "path": "../../bundles/bundle-framework-development-20260726-v002"
+          },
+          {
+            "kind": "shadow_matrix",
+            "label": "RT-DETR and YOLO26 live shadow matrix",
+            "path": "../../runs/shadow-rtdetr-yolo26-live-v1"
+          },
+          {
+            "kind": "vision_shadow",
+            "label": "RT-DETR-L RGB policy shadow run",
+            "path": "../../runs/shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00"
+          },
+          {
+            "kind": "vision_shadow",
+            "label": "YOLO26n RGB policy shadow run",
+            "path": "../../runs/shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00"
+          },
+          {
+            "kind": "runtime_analysis",
+            "label": "RT-DETR-L live systems analysis",
+            "path": "../../runs/shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00-analysis"
+          },
+          {
+            "kind": "runtime_analysis",
+            "label": "YOLO26n live systems analysis",
+            "path": "../../runs/shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00-analysis"
+          }
+        ],
+        "thesis_context": "Traceable framework validation after adding a modular vision-policy contract, non-actuating live shadow execution, sequential multi-model orchestration, semantic safety verification, live videos, and source-linked latency and throughput analyses.",
+        "title": "CARLA Vision Framework Development Validation v0.5"
+      },
+      "schema_version": "1.0"
+    }
+  },
+  "references": {
+    "datasets": [],
+    "inputs": [
+      {
+        "kind": "report_source",
+        "label": "Framework validation report v0.4",
+        "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v002/manifest.json",
+        "root": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v002",
+        "run_id": "rpt-framework-validation-20260726-v002",
+        "sha256": "e1ca8f4de8d8fd319a6c0602917bde14636fe6caa63a4ffe4bbf6081f2b68a94",
+        "size_bytes": 14986,
+        "source_kind": "report"
+      },
+      {
+        "kind": "report_source",
+        "label": "Framework reproduction bundle v0.4",
+        "path": "/Users/hesam/Documents/CARLA PY/bundles/bundle-framework-development-20260726-v002/manifest.json",
+        "root": "/Users/hesam/Documents/CARLA PY/bundles/bundle-framework-development-20260726-v002",
+        "run_id": "bundle-framework-development-20260726-v002",
+        "sha256": "e8864662f3df0a4893dfcf58d6d0b78b3a3e8e88221469f513f2f170e9302f24",
+        "size_bytes": 22193,
+        "source_kind": "reproduction_bundle"
+      },
+      {
+        "kind": "report_source",
+        "label": "RT-DETR and YOLO26 live shadow matrix",
+        "path": "/Users/hesam/Documents/CARLA PY/runs/shadow-rtdetr-yolo26-live-v1/manifest.json",
+        "root": "/Users/hesam/Documents/CARLA PY/runs/shadow-rtdetr-yolo26-live-v1",
+        "run_id": "shadow-rtdetr-yolo26-live-v1",
+        "sha256": "e0f1351856ea7c1d3b735de2e4c413718977cf17e882d1cc86f522cfb4816f73",
+        "size_bytes": 12405,
+        "source_kind": "shadow_matrix"
+      },
+      {
+        "kind": "report_source",
+        "label": "RT-DETR-L RGB policy shadow run",
+        "path": "/Users/hesam/Documents/CARLA PY/runs/shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00/manifest.json",
+        "root": "/Users/hesam/Documents/CARLA PY/runs/shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00",
+        "run_id": "shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00",
+        "sha256": "1d30b86aa4b27f207ecd9273e0346352047ac854bd06402f3e58d6aabc4b91b3",
+        "size_bytes": 9113,
+        "source_kind": "vision_shadow"
+      },
+      {
+        "kind": "report_source",
+        "label": "YOLO26n RGB policy shadow run",
+        "path": "/Users/hesam/Documents/CARLA PY/runs/shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00/manifest.json",
+        "root": "/Users/hesam/Documents/CARLA PY/runs/shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00",
+        "run_id": "shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00",
+        "sha256": "db70ebf8b919380eeb352fbaf9582cf5f7d037313ea3c7d8b9ec8e393a4e292e",
+        "size_bytes": 9100,
+        "source_kind": "vision_shadow"
+      },
+      {
+        "kind": "report_source",
+        "label": "RT-DETR-L live systems analysis",
+        "path": "/Users/hesam/Documents/CARLA PY/runs/shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00-analysis/manifest.json",
+        "root": "/Users/hesam/Documents/CARLA PY/runs/shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00-analysis",
+        "run_id": "shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00-analysis",
+        "sha256": "745c207f2f229620e628e3d85b3b2817f6602cccefe53defa2c754473d536a2e",
+        "size_bytes": 8145,
+        "source_kind": "runtime_analysis"
+      },
+      {
+        "kind": "report_source",
+        "label": "YOLO26n live systems analysis",
+        "path": "/Users/hesam/Documents/CARLA PY/runs/shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00-analysis/manifest.json",
+        "root": "/Users/hesam/Documents/CARLA PY/runs/shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00-analysis",
+        "run_id": "shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00-analysis",
+        "sha256": "f423b915d7d0ea4be4eece0c3cbb62323c7f4ba88907f4b5fc9f02d1a97b7135",
+        "size_bytes": 8133,
+        "source_kind": "runtime_analysis"
+      }
+    ],
+    "models": []
+  },
+  "reproducibility": {
+    "configuration": {
+      "canonicalization": "json-sort-keys-utf8-v1",
+      "identity_excluded_top_level_keys": [
+        "created_at",
+        "output_dir",
+        "output_path",
+        "run_id",
+        "runs_root",
+        "started_at"
+      ],
+      "identity_sha256": "c16b08a8d83028ada30b9c507f05b6ac05c02c06801e7428402990d4bcbf17c7",
+      "identity_size_bytes": 3724,
+      "resolved_sha256": "c16b08a8d83028ada30b9c507f05b6ac05c02c06801e7428402990d4bcbf17c7",
+      "resolved_size_bytes": 3724,
+      "sensitive_values_redacted_before_hashing": true
+    },
+    "dependency_locks": [
+      {
+        "relative_path": "uv.lock",
+        "sha256": "a2377ea1eb77f0d310237bb3c7e9aa757cd23fae6fa1bd059d5646fc3d306f61",
+        "size_bytes": 218427
+      }
+    ],
+    "hardware": {
+      "accelerators": {
+        "available": true,
+        "cuda": {
+          "available": false,
+          "device_count": 0,
+          "devices": [],
+          "runtime_version": null
+        },
+        "cudnn": {
+          "available": false,
+          "version": null
+        },
+        "determinism": {
+          "cudnn_benchmark": false,
+          "cudnn_deterministic": false,
+          "deterministic_algorithms": false
+        },
+        "mps": {
+          "available": true,
+          "built": true
+        },
+        "rocm_version": null,
+        "version": "2.13.0"
+      },
+      "container": {
+        "detected": false,
+        "image_digest": null
+      },
+      "cpu": {
+        "architecture": "arm64",
+        "logical_count": 8,
+        "model": "Apple M1"
+      },
+      "memory": {
+        "total_bytes": 8589934592
+      },
+      "tools": {
+        "git": "git version 2.50.1 (Apple Git-155)",
+        "python_compiler": "Clang 17.0.0 (clang-1700.0.13.3)",
+        "uv": "uv 0.11.2 (02036a8ba 2026-03-26 aarch64-apple-darwin)"
+      }
+    },
+    "schema_version": "1.0"
+  },
+  "run_id": "rpt-framework-validation-20260726-v003",
+  "schema_version": "1.0",
+  "status": "success",
+  "timestamps": {
+    "created_at": "2026-07-26T19:31:15.620583Z",
+    "finished_at": "2026-07-26T19:31:16.990418Z",
+    "started_at": "2026-07-26T19:31:16.650566Z",
+    "updated_at": "2026-07-26T19:31:16.990418Z"
+  }
+}

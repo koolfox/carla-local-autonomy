@@ -92,6 +92,10 @@ pull request is merged; Git history retains the commit.
 Do not commit `.env.local`, checkpoints, datasets, runs, reports, browser build
 caches, Python caches, or operator session output. Keep shareable examples
 small and add them deliberately through a release or sample-data decision.
+The maintainer-approved archive under [`samples/`](samples/README.md) is one
+such decision: its original payloads are retained without modification and
+indexed by size and SHA-256. Do not extend it by copying an entire runtime root
+without reviewing the new material and recording its provenance and limitations.
 
 The final removal of legacy code belongs to #58. Until feature parity is
 verified, cleanup means removing proven duplication, not deleting the only

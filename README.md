@@ -239,9 +239,12 @@ manifest.json
 ```
 
 Generated datasets, runs, models, reports, bundles, native kits, and operator
-sessions are ignored by Git. Publish frozen artifacts through a release or
-external artifact store rather than committing generated ZIPs and videos to
-the source repository.
+sessions are ignored by Git. The explicitly curated [historical samples](samples/README.md)
+contain five short recordings, camera images, a three-frame labelled dataset,
+report snapshots and DeiT class tables, with a byte-size and SHA-256 inventory.
+These are historical development examples; fresh live-CARLA acceptance is pending.
+Keep new runtime output in the ignored roots and use releases or an external
+artifact store for large datasets, model weights and generated bundles.
 
 ## Research workflows
 

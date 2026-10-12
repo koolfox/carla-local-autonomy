@@ -1,0 +1,175 @@
+{
+  "carla_version": "0.9.16",
+  "detector_categories": [
+    {
+      "id": 0,
+      "name": "traffic_light",
+      "semantic_tag": 7
+    },
+    {
+      "id": 1,
+      "name": "traffic_sign",
+      "semantic_tag": 8
+    },
+    {
+      "id": 2,
+      "name": "pedestrian",
+      "semantic_tag": 12
+    },
+    {
+      "id": 3,
+      "name": "rider",
+      "semantic_tag": 13
+    },
+    {
+      "id": 4,
+      "name": "car",
+      "semantic_tag": 14
+    },
+    {
+      "id": 5,
+      "name": "truck",
+      "semantic_tag": 15
+    },
+    {
+      "id": 6,
+      "name": "bus",
+      "semantic_tag": 16
+    },
+    {
+      "id": 7,
+      "name": "train",
+      "semantic_tag": 17
+    },
+    {
+      "id": 8,
+      "name": "motorcycle",
+      "semantic_tag": 18
+    },
+    {
+      "id": 9,
+      "name": "bicycle",
+      "semantic_tag": 19
+    }
+  ],
+  "policy": "Official CARLA thing tags form the v0 detector ontology; dense scene classes remain in the privileged mask.",
+  "schema_version": "1.0",
+  "semantic_tags": [
+    {
+      "id": 0,
+      "name": "none"
+    },
+    {
+      "id": 1,
+      "name": "roads"
+    },
+    {
+      "id": 2,
+      "name": "sidewalks"
+    },
+    {
+      "id": 3,
+      "name": "buildings"
+    },
+    {
+      "id": 4,
+      "name": "walls"
+    },
+    {
+      "id": 5,
+      "name": "fences"
+    },
+    {
+      "id": 6,
+      "name": "poles"
+    },
+    {
+      "id": 7,
+      "name": "traffic_light"
+    },
+    {
+      "id": 8,
+      "name": "traffic_sign"
+    },
+    {
+      "id": 9,
+      "name": "vegetation"
+    },
+    {
+      "id": 10,
+      "name": "terrain"
+    },
+    {
+      "id": 11,
+      "name": "sky"
+    },
+    {
+      "id": 12,
+      "name": "pedestrian"
+    },
+    {
+      "id": 13,
+      "name": "rider"
+    },
+    {
+      "id": 14,
+      "name": "car"
+    },
+    {
+      "id": 15,
+      "name": "truck"
+    },
+    {
+      "id": 16,
+      "name": "bus"
+    },
+    {
+      "id": 17,
+      "name": "train"
+    },
+    {
+      "id": 18,
+      "name": "motorcycle"
+    },
+    {
+      "id": 19,
+      "name": "bicycle"
+    },
+    {
+      "id": 20,
+      "name": "static"
+    },
+    {
+      "id": 21,
+      "name": "dynamic"
+    },
+    {
+      "id": 22,
+      "name": "other"
+    },
+    {
+      "id": 23,
+      "name": "water"
+    },
+    {
+      "id": 24,
+      "name": "road_lines"
+    },
+    {
+      "id": 25,
+      "name": "ground"
+    },
+    {
+      "id": 26,
+      "name": "bridge"
+    },
+    {
+      "id": 27,
+      "name": "rail_track"
+    },
+    {
+      "id": 28,
+      "name": "guard_rail"
+    }
+  ]
+}

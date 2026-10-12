@@ -1,0 +1,64 @@
+{
+  "authors": [
+    "CARLA Vision Research Project"
+  ],
+  "claims": [
+    "All included source objects pass registered SHA-256, source-reference, unregistered-file, and object-specific semantic verification.",
+    "The runtime, data factory, scenario planner, evaluator, paired replay, and reporting layers retain machine-readable lineage without manually transcribed metrics.",
+    "RT-DETR and YOLO26 adapters can be replayed over the identical checksum-locked RGB order while preserving independent child evaluations.",
+    "New run manifests retain canonical resolved and experiment-identity configuration hashes, dependency-lock digests, CPU and memory identity, accelerator backend state, deterministic backend flags, and tool versions.",
+    "The standalone development reproduction bundle verifies without access to the ten original source-object directories."
+  ],
+  "include_plots": true,
+  "limitations": [
+    "All empirical sources were created from a dirty, uncommitted workspace and are development evidence rather than confirmatory thesis experiments.",
+    "The retained dataset has only three images from one unassigned episode and cannot support training, threshold selection, or statistical generalization claims.",
+    "RT-DETR and YOLO26 use pretrained COCO weights rather than checkpoints trained on a released CARLA thesis dataset.",
+    "The shared development confidence floor suppresses all YOLO26 predictions on the pilot frames, so the replay must not be interpreted as a model ranking.",
+    "The native synchronous collector has not run against a compatible official CARLA 0.9.16 PythonAPI host.",
+    "No learned vision-only driving policy has been implemented or evaluated.",
+    "The development reproduction bundle excludes CARLA binaries, Unreal assets, model weights, datasets, and videos; their immutable fingerprints remain in source manifests."
+  ],
+  "purpose": "development",
+  "report_id": "rpt-framework-validation-20260726-v002",
+  "schema_version": "1.0",
+  "sources": [
+    {
+      "kind": "dataset",
+      "label": "Exact-frame dataset pilot",
+      "path": "../../datasets/ds-carla0916-town10-pilot-v001"
+    },
+    {
+      "kind": "dataset_qa",
+      "label": "Dataset semantic QA",
+      "path": "../../runs/ds-carla0916-town10-pilot-v001-qa"
+    },
+    {
+      "kind": "scenario_plan",
+      "label": "Deterministic scenario plan",
+      "path": "../../runs/scenario-plan-thesis-pilot-v1"
+    },
+    {
+      "kind": "runtime_analysis",
+      "label": "Live RT-DETR drive analysis",
+      "path": "../../runs/framework-v0-rtdetr-live-drive-analysis"
+    },
+    {
+      "kind": "evaluation",
+      "label": "Pretrained RT-DETR development evaluation",
+      "path": "../../runs/eval-rtdetr-pretrained-pilot-v1"
+    },
+    {
+      "kind": "paired_replay",
+      "label": "Paired RT-DETR and YOLO26 replay",
+      "path": "../../runs/replay-rtdetr-yolo26-pilot-v1"
+    },
+    {
+      "kind": "reproduction_bundle",
+      "label": "Standalone development reproduction bundle",
+      "path": "../../bundles/bundle-framework-development-20260726-v001"
+    }
+  ],
+  "thesis_context": "Traceable framework validation after adding paired replay, validation-only threshold and failure workflows, canonical experiment identities, hardware and lockfile provenance, and standalone source reproduction bundles.",
+  "title": "CARLA Vision Framework Development Validation v0.4"
+}

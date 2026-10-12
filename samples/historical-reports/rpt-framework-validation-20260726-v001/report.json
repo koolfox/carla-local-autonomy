@@ -1,0 +1,180 @@
+{
+  "artifact_inventory_row_count": 40,
+  "authors": [
+    "CARLA Vision Research Project"
+  ],
+  "canonical_tables": {
+    "metrics": {
+      "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v001/tables/metrics.csv",
+      "sha256": "bcdc2d84d7f24e9b4a0945ed07fd2aa5156d0a60a5e3a192f6b2f2d3a53b43cf",
+      "size_bytes": 4682
+    },
+    "source_artifacts": {
+      "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v001/tables/source_artifacts.csv",
+      "sha256": "44ff74c90b987308938dc91dd6c0e9e0866ae58e2c7f4bbd33a406c902adba1b",
+      "size_bytes": 7773
+    },
+    "source_inventory": {
+      "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v001/tables/source_inventory.csv",
+      "sha256": "2fc6c08b418d0d18354290d327bd33d72c76cd0124fdf57a5e7a054a9e571989",
+      "size_bytes": 904
+    }
+  },
+  "claims": [
+    "The retained development artifacts pass their registered SHA-256 and semantic verification checks.",
+    "The live perception overlay and analysis preserve exact detector-frame provenance.",
+    "The pilot dataset preserves exact RGB and privileged instance-frame pairing and reproducible labels.",
+    "The scenario plan is reproducible from its frozen suite, split plan, and hierarchical seed protocol.",
+    "The common evaluator produces canonical predictions, metrics, uncertainty, plots, and qualitative evidence for RT-DETR."
+  ],
+  "generation": {
+    "all_sources_verified_before_generation": true,
+    "confirmatory_clean_git_gate": false,
+    "manual_metric_transcription": false
+  },
+  "limitations": [
+    "All sources were created from a dirty, uncommitted workspace and are not publishable thesis experiments.",
+    "The dataset has only three images from one unassigned episode and cannot support training or statistical accuracy claims.",
+    "The reported RT-DETR weights are pretrained rather than trained on this CARLA ontology.",
+    "The episode bootstrap is degenerate because the evaluation contains one episode.",
+    "The native synchronous collector has not yet been executed against a compatible official CARLA 0.9.16 PythonAPI host.",
+    "No vision-only driving policy has been implemented or evaluated."
+  ],
+  "metric_row_count": 43,
+  "object_type": "research_report_release",
+  "plots": [
+    {
+      "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v001/plots/source_inventory.png",
+      "sha256": "fcc6da29d262153e18d74c239396f6eb0784a6f6f7ec7d40b670cfd259c2d09c",
+      "size_bytes": 77027
+    },
+    {
+      "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v001/plots/source_inventory.svg",
+      "sha256": "10215806814dc53a6407e74dc2d407d75c63e249805cba9c0ae727d4fe6e35cb",
+      "size_bytes": 57716
+    },
+    {
+      "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v001/plots/evaluation_summary.png",
+      "sha256": "22848d20756f584053f4d3df70f8a15f29532a6184b0f9b8db2d04e86057c466",
+      "size_bytes": 51843
+    },
+    {
+      "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v001/plots/evaluation_summary.svg",
+      "sha256": "b795601af5ddd17f83eb04915686154e9240ee3ac0514802515a33cac920b36f",
+      "size_bytes": 32550
+    }
+  ],
+  "purpose": "development",
+  "report_document": {
+    "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v001/report.md",
+    "sha256": "d0c8e691d379f6edfef669fd57fd2929282fd5b6d9c239a8f3352dfcab365c74",
+    "size_bytes": 6491
+  },
+  "report_id": "rpt-framework-validation-20260726-v001",
+  "schema_version": "1.0",
+  "source_count": 5,
+  "sources": [
+    {
+      "deep_verification": {
+        "annotation_count": 27,
+        "dataset_id": "ds-carla0916-town10-pilot-v001",
+        "kind": "dataset",
+        "partitions": {
+          "unassigned": 3
+        },
+        "sample_count": 3
+      },
+      "kind": "report_source",
+      "label": "Exact-frame dataset pilot",
+      "path": "/Users/hesam/Documents/CARLA PY/datasets/ds-carla0916-town10-pilot-v001/manifest.json",
+      "root": "/Users/hesam/Documents/CARLA PY/datasets/ds-carla0916-town10-pilot-v001",
+      "run_id": "ds-carla0916-town10-pilot-v001",
+      "sha256": "0b744356ab2b2d10f4efcb5cc7c60d8e460dec5998d501b6427ca076782409db",
+      "size_bytes": 4909,
+      "source_kind": "dataset",
+      "summary": {
+        "path": "/Users/hesam/Documents/CARLA PY/datasets/ds-carla0916-town10-pilot-v001/dataset.json",
+        "sha256": "af2b814ba39e7c02bf066a579ebac6fb2a42d1fe725ff453177fccb66a073a4b",
+        "size_bytes": 4382
+      }
+    },
+    {
+      "deep_verification": {
+        "kind": "tracked_run"
+      },
+      "kind": "report_source",
+      "label": "Dataset QA",
+      "path": "/Users/hesam/Documents/CARLA PY/runs/ds-carla0916-town10-pilot-v001-qa/manifest.json",
+      "root": "/Users/hesam/Documents/CARLA PY/runs/ds-carla0916-town10-pilot-v001-qa",
+      "run_id": "ds-carla0916-town10-pilot-v001-qa",
+      "sha256": "de09c8e83b46054bcd4ecec1004281cc64078830cd36ed5b9dde7cb386111afd",
+      "size_bytes": 5994,
+      "source_kind": "dataset_qa",
+      "summary": {
+        "path": "/Users/hesam/Documents/CARLA PY/runs/ds-carla0916-town10-pilot-v001-qa/summary_dataset_qa.json",
+        "sha256": "98e65ad64af1c107b21b92e20d9ea89d6925298091bc5f5fcfcb1e734468f36a",
+        "size_bytes": 2124
+      }
+    },
+    {
+      "deep_verification": {
+        "episode_count": 23,
+        "kind": "scenario_plan",
+        "planned_capture_count": 3450,
+        "suite_id": "suite-thesis-pilot-v1"
+      },
+      "kind": "report_source",
+      "label": "Deterministic scenario plan",
+      "path": "/Users/hesam/Documents/CARLA PY/runs/scenario-plan-thesis-pilot-v1/manifest.json",
+      "root": "/Users/hesam/Documents/CARLA PY/runs/scenario-plan-thesis-pilot-v1",
+      "run_id": "scenario-plan-thesis-pilot-v1",
+      "sha256": "e78c5f6fc84e7675b0ba5d82aafee196e2c449bd7e84f4f88f507d0898cf73f2",
+      "size_bytes": 3609,
+      "source_kind": "scenario_plan",
+      "summary": {
+        "path": "/Users/hesam/Documents/CARLA PY/runs/scenario-plan-thesis-pilot-v1/summary.json",
+        "sha256": "a99418a9c61d8333a610ce85ad57f54b5b558e9746d942f3fe2e23505402678b",
+        "size_bytes": 1246
+      }
+    },
+    {
+      "deep_verification": {
+        "kind": "tracked_run"
+      },
+      "kind": "report_source",
+      "label": "Live RT-DETR runtime analysis",
+      "path": "/Users/hesam/Documents/CARLA PY/runs/framework-v0.2-rtdetr-smoke-analysis/manifest.json",
+      "root": "/Users/hesam/Documents/CARLA PY/runs/framework-v0.2-rtdetr-smoke-analysis",
+      "run_id": "framework-v0.2-rtdetr-smoke-analysis",
+      "sha256": "af4dc7a8bcf7be9ceb3be3edad37ec32ebea05dee0415df88ca42387e2b4f745",
+      "size_bytes": 5839,
+      "source_kind": "runtime_analysis",
+      "summary": {
+        "path": "/Users/hesam/Documents/CARLA PY/runs/framework-v0.2-rtdetr-smoke-analysis/summary_metrics.json",
+        "sha256": "d00e9958d95bb8853ba5a5a7c1cda19db1ab8b3cb6ff5484bc66fd52e62d531a",
+        "size_bytes": 4018
+      }
+    },
+    {
+      "deep_verification": {
+        "kind": "tracked_run"
+      },
+      "kind": "report_source",
+      "label": "Pretrained RT-DETR development evaluation",
+      "path": "/Users/hesam/Documents/CARLA PY/runs/eval-rtdetr-pretrained-pilot-v1/manifest.json",
+      "root": "/Users/hesam/Documents/CARLA PY/runs/eval-rtdetr-pretrained-pilot-v1",
+      "run_id": "eval-rtdetr-pretrained-pilot-v1",
+      "sha256": "cc4834a372b833e21b14d0c0206c49a66e94c0a3f97dec142ff863e93d1038db",
+      "size_bytes": 12921,
+      "source_kind": "evaluation",
+      "summary": {
+        "path": "/Users/hesam/Documents/CARLA PY/runs/eval-rtdetr-pretrained-pilot-v1/summary_metrics.json",
+        "sha256": "02409d7646917c63e323ef8e2f0089e5eb8e30ae24fe43c9350416ec2ac0aa53",
+        "size_bytes": 5080
+      }
+    }
+  ],
+  "status": "complete",
+  "thesis_context": "Traceable validation of the monocular-RGB research framework before native dataset scaling, detector training, and locked testing.",
+  "title": "CARLA Vision Framework Development Validation"
+}

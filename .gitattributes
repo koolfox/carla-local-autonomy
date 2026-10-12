@@ -1,1 +1,7 @@
 carla_vision/operator/console_static/** -whitespace linguist-generated=true
+# Historical payloads and their checksums must retain exact original bytes.
+samples/** -text
+samples/data/** -whitespace
+samples/historical-reports/** -whitespace
+samples/model-labels/** -whitespace
+samples/recordings/** -whitespace

@@ -77,10 +77,17 @@ models/deit64/deit64_stageB_blocks10_11_best.pt
 models/deit64/ontology_final_64.csv
 ```
 
+The retained 64- and 68-class CSV files are available in
+[`samples/model-labels/`](../samples/model-labels/). They can be copied to the
+local paths shown here or selected directly as the ontology file. Checkpoints
+remain local and are not part of the sample archive; a matching checkpoint and
+ontology are both required.
+
 The classifier checkpoint is not a detector: select it in the DeiT settings,
 not the main M9 Weights selector. Files inside `models/deit64/` and `models/deit68/` are excluded from
-that detector dropdown. Model binaries and personal ontologies remain local,
-ignored assets; they are not included in Git commits.
+that detector dropdown. Model binaries and additional personal ontologies remain
+local, ignored assets; only the explicitly curated class tables above are archived
+in this repository.
 
 Install the optional dependency into your **existing** environment:
 

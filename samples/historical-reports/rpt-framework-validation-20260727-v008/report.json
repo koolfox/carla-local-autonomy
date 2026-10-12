@@ -1,0 +1,166 @@
+{
+  "artifact_inventory_row_count": 45,
+  "authors": [
+    "Hesam",
+    "CARLA Vision Research Project"
+  ],
+  "canonical_tables": {
+    "metrics": {
+      "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260727-v008/tables/metrics.csv",
+      "sha256": "1ecf64e82ec3f2b0293f354a3dfb7ead30c2453f822823caf052f4a7d1511acb",
+      "size_bytes": 4217
+    },
+    "source_artifacts": {
+      "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260727-v008/tables/source_artifacts.csv",
+      "sha256": "c3a9d9462a4e5c211f24bafd4012caf179336056f739f21275f877bfb83f9518",
+      "size_bytes": 9914
+    },
+    "source_inventory": {
+      "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260727-v008/tables/source_inventory.csv",
+      "sha256": "fc921586716ee688db2f15dca54bef4ee9c40fb0dd57700e0d6332a631af02c9",
+      "size_bytes": 831
+    }
+  },
+  "claims": [
+    "The framework now creates a deterministic point-in-time evidence index across the seven canonical research roots without contacting CARLA, mutating the simulator, or modifying source research objects.",
+    "Every discovered immediate-child source is retained even when strict deep verification fails; the release includes normalized failures, registered-artifact inventory, canonical JSON/CSV/Markdown, PNG/SVG plots, checksums, and source-manifest fingerprints.",
+    "Dedicated semantic verification reconstructs the recorded source set, rejects registry tampering and recorded-source drift, excludes evidence registries to prevent recursive snapshots, and intentionally ignores objects created after the snapshot.",
+    "The loopback operator UI now provides a searchable manifest-driven Evidence Explorer for every canonical root, exposes only registered contained artifacts, labels catalogue data as not checked, and hands selected objects to the existing verifier without guessing artifact paths.",
+    "Evidence-registry sources are accepted by the report and standalone-reproduction contracts, so registry counts and safety booleans can flow into thesis evidence without manual metric transcription.",
+    "The v0.9 source snapshot, tests, documentation, retained report, and reproduction commands preserve the distinction between development infrastructure and unperformed real CARLA collection or vision-only driving."
+  ],
+  "generation": {
+    "all_sources_verified_before_generation": true,
+    "confirmatory_clean_git_gate": false,
+    "manual_metric_transcription": false
+  },
+  "limitations": [
+    "All sources were created from a dirty, uncommitted workspace and are development evidence rather than confirmatory thesis experiments.",
+    "The evidence index is workspace-bound: its canonical absolute workspace path and recorded source objects must remain available for semantic verification.",
+    "The registry inventories source manifests and failed-source fingerprints rather than embedding every source payload; portable archival remains the responsibility of the standalone reproduction bundle.",
+    "The live Evidence Explorer reports manifest declarations and current file availability only; operators must run the separate verifier before relying on hashes or semantics.",
+    "Previously retained invalid historical objects remain visible as failures and are not rewritten or silently omitted.",
+    "A mutable database, cross-object cycle graph, signed release, supersession policy, PDF/LaTeX thesis renderer, and independent release signoff are not introduced by this MVP milestone.",
+    "No native CARLA episode, new dataset, real training run, locked-test benchmark, or vision-only closed-loop control result is introduced by this milestone."
+  ],
+  "metric_row_count": 33,
+  "object_type": "research_report_release",
+  "plots": [
+    {
+      "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260727-v008/plots/source_inventory.png",
+      "sha256": "1b5a7619616a188d0fc75d96b534cb955a66dc2c59852c45728789a68a9d0655",
+      "size_bytes": 80400
+    },
+    {
+      "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260727-v008/plots/source_inventory.svg",
+      "sha256": "e9347c4768f3f9c9187dd17d759a0b3fe0c8f9f4d7fd703e8220f37912e400d3",
+      "size_bytes": 61422
+    }
+  ],
+  "purpose": "development",
+  "report_document": {
+    "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260727-v008/report.md",
+    "sha256": "64a4344a80016226d6e842bda3bcf9ca09d5dcaee4a708c2a87fabc5a0cbe304",
+    "size_bytes": 7599
+  },
+  "report_id": "rpt-framework-validation-20260727-v008",
+  "schema_version": "1.0",
+  "source_count": 4,
+  "sources": [
+    {
+      "deep_verification": {
+        "kind": "report",
+        "metric_row_count": 43,
+        "purpose": "development",
+        "report_id": "rpt-framework-validation-20260727-v007",
+        "source_count": 5
+      },
+      "kind": "report_source",
+      "label": "Final framework validation report v0.8",
+      "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260727-v007/manifest.json",
+      "root": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260727-v007",
+      "run_id": "rpt-framework-validation-20260727-v007",
+      "sha256": "01bef3ae1389f673f432dc55838e453657e31c655b4d8c26690ae6140a6f9c09",
+      "size_bytes": 13527,
+      "source_kind": "report",
+      "summary": {
+        "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260727-v007/report.json",
+        "sha256": "07471f9d926d0e9b4f62b77e120e42cc2a87afea7b73ecbd447b5205d6fb99c4",
+        "size_bytes": 9758
+      }
+    },
+    {
+      "deep_verification": {
+        "bundle_id": "bundle-framework-development-20260727-v007",
+        "dependency_lock_count": 1,
+        "kind": "reproduction_bundle",
+        "purpose": "development",
+        "source_count": 5,
+        "source_file_count": 217
+      },
+      "kind": "report_source",
+      "label": "Final framework reproduction bundle v0.8",
+      "path": "/Users/hesam/Documents/CARLA PY/bundles/bundle-framework-development-20260727-v007/manifest.json",
+      "root": "/Users/hesam/Documents/CARLA PY/bundles/bundle-framework-development-20260727-v007",
+      "run_id": "bundle-framework-development-20260727-v007",
+      "sha256": "b6de8f460da1c4dab4020a48c5beed086ea58d2062c42216e387c46837a34cb0",
+      "size_bytes": 17878,
+      "source_kind": "reproduction_bundle",
+      "summary": {
+        "path": "/Users/hesam/Documents/CARLA PY/bundles/bundle-framework-development-20260727-v007/bundle.json",
+        "sha256": "b1b53162d59ee3f042a5d945a3632cfbc7361367a8729d999120d9d42b1a9c1d",
+        "size_bytes": 3885
+      }
+    },
+    {
+      "deep_verification": {
+        "kind": "evidence_registry",
+        "registered_artifact_count": 437,
+        "registry_id": "evidence-index-workspace-20260727-v001",
+        "source_count": 47,
+        "verification_failed_count": 1,
+        "verified_count": 46
+      },
+      "kind": "report_source",
+      "label": "Sealed workspace evidence index v0.9",
+      "path": "/Users/hesam/Documents/CARLA PY/runs/evidence-index-workspace-20260727-v001/manifest.json",
+      "root": "/Users/hesam/Documents/CARLA PY/runs/evidence-index-workspace-20260727-v001",
+      "run_id": "evidence-index-workspace-20260727-v001",
+      "sha256": "8a8426b70e182651c81d5959465d5ffc76b906c2dfaae3a5216b456f8f7b0738",
+      "size_bytes": 33769,
+      "source_kind": "evidence_registry",
+      "summary": {
+        "path": "/Users/hesam/Documents/CARLA PY/runs/evidence-index-workspace-20260727-v001/registry.json",
+        "sha256": "d2dff55dc3671717c1449f04dbe653ce61924dbbeb6b0705cd8d8f7dd9da51cd",
+        "size_bytes": 33650
+      }
+    },
+    {
+      "deep_verification": {
+        "dataset_id": "ds-carla0916-native-pilot-v001",
+        "kind": "native_host_kit",
+        "kit_id": "native-host-kit-pilot-20260727-v003",
+        "payload_file_count": 114,
+        "payload_source_file_count": 95,
+        "planned_capture_count": 50,
+        "simulator_mutated": false
+      },
+      "kind": "report_source",
+      "label": "Portable native 50-frame pilot host kit",
+      "path": "/Users/hesam/Documents/CARLA PY/native_kits/native-host-kit-pilot-20260727-v003/manifest.json",
+      "root": "/Users/hesam/Documents/CARLA PY/native_kits/native-host-kit-pilot-20260727-v003",
+      "run_id": "native-host-kit-pilot-20260727-v003",
+      "sha256": "ec0b81358d93aa2edf71e58c6b272d7f3fcb696121356bb1ba8526c01e939165",
+      "size_bytes": 7785,
+      "source_kind": "native_host_kit",
+      "summary": {
+        "path": "/Users/hesam/Documents/CARLA PY/native_kits/native-host-kit-pilot-20260727-v003/kit.json",
+        "sha256": "0f4f5a52ea081ace49132cbd1948473613321bf14b086c1595d00a562f566fc5",
+        "size_bytes": 3279
+      }
+    }
+  ],
+  "status": "complete",
+  "thesis_context": "Traceable v0.9 thesis-framework handoff after implementing repository-wide point-in-time evidence discovery, deterministic semantic reconstruction, secure manifest-only operator browsing, and report/reproduction integration while preserving the simulator and scientific claim boundaries.",
+  "title": "CARLA Vision Framework Development Validation v0.9"
+}

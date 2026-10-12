@@ -1,0 +1,55 @@
+{
+  "authors": [
+    "Hesam",
+    "CARLA Vision Research Project"
+  ],
+  "claims": [
+    "The local operator workflow launched a real read-only verification job and a real offline scenario-planning job, and both operator sessions completed successfully with registered requests, tokenized command plans, status records, logs, and SHA-256 manifests.",
+    "The situation builder produced a strict CARLA 0.9.16 Town10HD_Opt recipe with 50 vehicles, 40 walkers, soft-rain sunset weather, construction props, and one forward-facing monocular RGB camera.",
+    "The generated scenario plan contains one deterministic training episode and 75 planned captures while preserving the front-monocular-RGB runtime input contract and the privileged-teacher disclosure.",
+    "The scenario-planning operator session recorded motion_authorized and destructive as false and fingerprinted the successful child scenario-plan manifest as an external input.",
+    "All newly reported operator and scenario objects pass registered SHA-256, external-reference, unregistered-file, and applicable object-specific semantic verification."
+  ],
+  "include_plots": true,
+  "limitations": [
+    "All sources were created from a dirty, uncommitted workspace and are development evidence rather than confirmatory thesis experiments.",
+    "The operator panel is a loopback-only proof of concept; it launches the existing research CLIs and opens the existing OpenCV live viewer rather than streaming simulator video into the browser.",
+    "The planned crowded scenario was not executed because the compatible native CARLA PythonAPI is not installed on this host and native collection can mutate the simulator world.",
+    "Scenario planning validates configuration, seed allocation, split assignment, capture counts, and provenance but does not demonstrate that every requested CARLA blueprint will spawn successfully at runtime.",
+    "An earlier retained UI smoke session exposed an internal module-invocation defect and exited without performing verification; it is superseded by the successful real verification session included here and is not used as positive evidence.",
+    "No detector training, locked-test evaluation, or vision-only closed-loop driving result is introduced by this operator-console validation.",
+    "The live shadow evidence inherited through the prior report remains sequential systems evidence and cannot be used to rank detector accuracy."
+  ],
+  "purpose": "development",
+  "report_id": "rpt-framework-validation-20260726-v004",
+  "schema_version": "1.0",
+  "sources": [
+    {
+      "kind": "report",
+      "label": "Framework validation report v0.5",
+      "path": "../../reports/rpt-framework-validation-20260726-v003"
+    },
+    {
+      "kind": "reproduction_bundle",
+      "label": "Framework reproduction bundle v0.5",
+      "path": "../../bundles/bundle-framework-development-20260726-v003"
+    },
+    {
+      "kind": "operator_session",
+      "label": "Operator real verification session",
+      "path": "../../operator_sessions/op-20260726T194948Z-verify-e6436e1d"
+    },
+    {
+      "kind": "scenario_plan",
+      "label": "Operator crowded-situation scenario plan",
+      "path": "../../runs/scenario-plan-operator-poc-v1"
+    },
+    {
+      "kind": "operator_session",
+      "label": "Operator scenario-planning session",
+      "path": "../../operator_sessions/op-20260726T195126Z-scenario_plan-e715b442"
+    }
+  ],
+  "thesis_context": "Traceable framework validation after adding a loopback-only operator console, compact situation and crowdedness controls, safe allow-listed workflow launch, persistent operator sessions, and an API-driven deterministic scenario-planning smoke test.",
+  "title": "CARLA Vision Framework Development Validation v0.6"
+}

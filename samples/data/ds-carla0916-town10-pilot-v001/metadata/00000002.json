@@ -1,0 +1,194 @@
+{
+  "annotations": [
+    {
+      "actor_id": 11,
+      "bbox_area_pixels": 16,
+      "bbox_xyxy": [
+        305,
+        176,
+        307,
+        184
+      ],
+      "category_id": 0,
+      "category_name": "traffic_light",
+      "fill_ratio": 0.6875,
+      "semantic_tag": 7,
+      "truncated": false,
+      "visible_area_pixels": 11
+    },
+    {
+      "actor_id": 23,
+      "bbox_area_pixels": 253,
+      "bbox_xyxy": [
+        334,
+        178,
+        357,
+        189
+      ],
+      "category_id": 0,
+      "category_name": "traffic_light",
+      "fill_ratio": 0.08300395256916997,
+      "semantic_tag": 7,
+      "truncated": false,
+      "visible_area_pixels": 21
+    },
+    {
+      "actor_id": 5,
+      "bbox_area_pixels": 35,
+      "bbox_xyxy": [
+        479,
+        180,
+        484,
+        187
+      ],
+      "category_id": 1,
+      "category_name": "traffic_sign",
+      "fill_ratio": 0.6285714285714286,
+      "semantic_tag": 8,
+      "truncated": false,
+      "visible_area_pixels": 22
+    },
+    {
+      "actor_id": 12,
+      "bbox_area_pixels": 45,
+      "bbox_xyxy": [
+        299,
+        177,
+        304,
+        186
+      ],
+      "category_id": 1,
+      "category_name": "traffic_sign",
+      "fill_ratio": 0.13333333333333333,
+      "semantic_tag": 8,
+      "truncated": false,
+      "visible_area_pixels": 6
+    },
+    {
+      "actor_id": 23,
+      "bbox_area_pixels": 208,
+      "bbox_xyxy": [
+        329,
+        177,
+        355,
+        185
+      ],
+      "category_id": 1,
+      "category_name": "traffic_sign",
+      "fill_ratio": 0.052884615384615384,
+      "semantic_tag": 8,
+      "truncated": false,
+      "visible_area_pixels": 11
+    },
+    {
+      "actor_id": 29924,
+      "bbox_area_pixels": 20,
+      "bbox_xyxy": [
+        479,
+        190,
+        484,
+        194
+      ],
+      "category_id": 1,
+      "category_name": "traffic_sign",
+      "fill_ratio": 0.6,
+      "semantic_tag": 8,
+      "truncated": false,
+      "visible_area_pixels": 12
+    },
+    {
+      "actor_id": 46198,
+      "bbox_area_pixels": 20,
+      "bbox_xyxy": [
+        182,
+        177,
+        184,
+        187
+      ],
+      "category_id": 1,
+      "category_name": "traffic_sign",
+      "fill_ratio": 0.9,
+      "semantic_tag": 8,
+      "truncated": false,
+      "visible_area_pixels": 18
+    },
+    {
+      "actor_id": 46220,
+      "bbox_area_pixels": 180,
+      "bbox_xyxy": [
+        45,
+        162,
+        54,
+        182
+      ],
+      "category_id": 1,
+      "category_name": "traffic_sign",
+      "fill_ratio": 0.7833333333333333,
+      "semantic_tag": 8,
+      "truncated": false,
+      "visible_area_pixels": 141
+    },
+    {
+      "actor_id": 42700,
+      "bbox_area_pixels": 481,
+      "bbox_xyxy": [
+        3,
+        193,
+        40,
+        206
+      ],
+      "category_id": 4,
+      "category_name": "car",
+      "fill_ratio": 0.6340956340956341,
+      "semantic_tag": 14,
+      "truncated": false,
+      "visible_area_pixels": 305
+    }
+  ],
+  "camera": {
+    "fov_degrees": 90.0,
+    "height": 384,
+    "width": 640,
+    "world_transform": [
+      22.66092872619629,
+      24.74885368347168,
+      1.7017735242843628,
+      -0.011447396129369736,
+      0.3336303234100342,
+      -6.103514533606358e-05
+    ]
+  },
+  "carla_frame": 1159067,
+  "context": {
+    "control_mode": "none",
+    "map": "Carla/Maps/Town10HD_Opt",
+    "rgb_camera_actor_id": 25,
+    "route_progress": "-",
+    "teacher_camera_actor_id": 26
+  },
+  "dataset_id": "ds-carla0916-town10-pilot-v001",
+  "episode_id": "ep-static-r00",
+  "image_id": 2,
+  "sample_id": "00000002",
+  "scenario_id": "scn-town10-static-clear",
+  "schema_version": "1.0",
+  "simulation_timestamp_seconds": 12271.553889233619,
+  "split": "unassigned",
+  "synchronization": {
+    "exact_carla_frame_match": true,
+    "rgb_sequence": 9,
+    "rgb_skipped_before_pair": 1,
+    "teacher_sequence": 7,
+    "teacher_skipped_before_pair": 1
+  },
+  "teacher": {
+    "encoding": {
+      "actor_id_high_byte": "B",
+      "actor_id_low_byte": "G",
+      "pixel_order": "BGRA",
+      "semantic_tag": "R"
+    },
+    "privileged": true,
+    "sensor_type": "sensor.camera.instance_segmentation"
+  }
+}

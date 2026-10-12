@@ -1,0 +1,119 @@
+# CARLA Vision Framework Development Validation v0.4
+
+Report ID: `rpt-framework-validation-20260726-v002`  
+Purpose: `development`  
+Authors: CARLA Vision Research Project
+
+## Thesis context
+
+Traceable framework validation after adding paired replay, validation-only threshold and failure workflows, canonical experiment identities, hardware and lockfile provenance, and standalone source reproduction bundles.
+
+## Registered claims
+
+- All included source objects pass registered SHA-256, source-reference, unregistered-file, and object-specific semantic verification.
+- The runtime, data factory, scenario planner, evaluator, paired replay, and reporting layers retain machine-readable lineage without manually transcribed metrics.
+- RT-DETR and YOLO26 adapters can be replayed over the identical checksum-locked RGB order while preserving independent child evaluations.
+- New run manifests retain canonical resolved and experiment-identity configuration hashes, dependency-lock digests, CPU and memory identity, accelerator backend state, deterministic backend flags, and tool versions.
+- The standalone development reproduction bundle verifies without access to the ten original source-object directories.
+
+## Verified source inventory
+
+| source_id | label | kind | status | artifact_count | artifact_bytes | git_commit | git_dirty |
+|---|---|---|---|---|---|---|---|
+| ds-carla0916-town10-pilot-v001 | Exact-frame dataset pilot | dataset | success | 5 | 24027 |  | True |
+| ds-carla0916-town10-pilot-v001-qa | Dataset semantic QA | dataset_qa | success | 5 | 2166498 |  | True |
+| scenario-plan-thesis-pilot-v1 | Deterministic scenario plan | scenario_plan | success | 4 | 82279 |  | True |
+| framework-v0-rtdetr-live-drive-analysis | Live RT-DETR drive analysis | runtime_analysis | success | 6 | 333743 |  | True |
+| eval-rtdetr-pretrained-pilot-v1 | Pretrained RT-DETR development evaluation | evaluation | success | 20 | 1719231 |  | True |
+| replay-rtdetr-yolo26-pilot-v1 | Paired RT-DETR and YOLO26 replay | paired_replay | success | 20 | 2632843 |  | True |
+| bundle-framework-development-20260726-v001 | Standalone development reproduction bundle | reproduction_bundle | success | 22 | 1877722 |  | True |
+
+## Machine-readable metrics
+
+| label | kind | metric | value | unit | support | note |
+|---|---|---|---|---|---|---|
+| Exact-frame dataset pilot | dataset | samples | 3 | images |  |  |
+| Exact-frame dataset pilot | dataset | annotations | 27 | objects |  |  |
+| Exact-frame dataset pilot | dataset | split_count.unassigned | 3 | images |  |  |
+| Dataset semantic QA | dataset_qa | samples | 3 | images |  |  |
+| Dataset semantic QA | dataset_qa | annotations | 27 | objects |  |  |
+| Dataset semantic QA | dataset_qa | class_count.car | 3 | objects |  |  |
+| Dataset semantic QA | dataset_qa | class_count.traffic_light | 6 | objects |  |  |
+| Dataset semantic QA | dataset_qa | class_count.traffic_sign | 18 | objects |  |  |
+| Dataset semantic QA | dataset_qa | check.checksum_entries_verified | 15 |  |  |  |
+| Dataset semantic QA | dataset_qa | check.episode_split_leakage | 0 |  |  |  |
+| Dataset semantic QA | dataset_qa | check.montage_samples | 3 |  |  |  |
+| Dataset semantic QA | dataset_qa | check.teacher_masks_reproduced | 3 |  |  |  |
+| Dataset semantic QA | dataset_qa | check.yolo_exports_reproduced | 3 |  |  |  |
+| Deterministic scenario plan | scenario_plan | recipes | 7 | recipes |  |  |
+| Deterministic scenario plan | scenario_plan | episodes | 23 | episodes |  |  |
+| Deterministic scenario plan | scenario_plan | planned_captures | 3450 | images |  |  |
+| Deterministic scenario plan | scenario_plan | partition_count.test_map_ood | 4 | episodes |  |  |
+| Deterministic scenario plan | scenario_plan | partition_count.test_seen | 1 | episodes |  |  |
+| Deterministic scenario plan | scenario_plan | partition_count.test_weather_ood | 2 | episodes |  |  |
+| Deterministic scenario plan | scenario_plan | partition_count.train | 11 | episodes |  |  |
+| Deterministic scenario plan | scenario_plan | partition_count.val_map_ood | 2 | episodes |  |  |
+| Deterministic scenario plan | scenario_plan | partition_count.val_seen | 1 | episodes |  |  |
+| Deterministic scenario plan | scenario_plan | partition_count.val_weather_ood | 2 | episodes |  |  |
+| Live RT-DETR drive analysis | runtime_analysis | frames | 74 | frames |  |  |
+| Live RT-DETR drive analysis | runtime_analysis | effective_source_fps | 6.186482672883651 | fps |  |  |
+| Live RT-DETR drive analysis | runtime_analysis | detections | 552 | objects |  |  |
+| Live RT-DETR drive analysis | runtime_analysis | hazard_frame_rate | 0.0 | fraction |  |  |
+| Live RT-DETR drive analysis | runtime_analysis | pipeline_latency_median | 215.90187450055964 | ms |  |  |
+| Live RT-DETR drive analysis | runtime_analysis | pipeline_latency_p95 | 270.82459770535934 | ms |  |  |
+| Live RT-DETR drive analysis | runtime_analysis | estimated_distance | 16.387283026383283 | m |  |  |
+| Pretrained RT-DETR development evaluation | evaluation | coco_ap_50_95 | 0.2722772277227723 |  | 3 |  |
+| Pretrained RT-DETR development evaluation | evaluation | coco_ap_50 | 0.3333333333333333 |  | 3 |  |
+| Pretrained RT-DETR development evaluation | evaluation | coco_ap_75 | 0.3333333333333333 |  | 3 |  |
+| Pretrained RT-DETR development evaluation | evaluation | precision | 1.0 |  | 3 |  |
+| Pretrained RT-DETR development evaluation | evaluation | recall | 0.1111111111111111 |  | 3 |  |
+| Pretrained RT-DETR development evaluation | evaluation | false_negative_rate | 0.8888888888888888 |  | 3 |  |
+| Pretrained RT-DETR development evaluation | evaluation | f1 | 0.19999999999999998 |  | 3 |  |
+| Pretrained RT-DETR development evaluation | evaluation | images | 3 | images |  |  |
+| Pretrained RT-DETR development evaluation | evaluation | ground_truth_annotations | 27 | objects |  |  |
+| Pretrained RT-DETR development evaluation | evaluation | episodes | 1 | episodes |  |  |
+| Pretrained RT-DETR development evaluation | evaluation | inference_median | 317.74393749947194 | ms |  |  |
+| Pretrained RT-DETR development evaluation | evaluation | inference_p95 | 325.5225812565186 | ms |  |  |
+| Paired RT-DETR and YOLO26 replay | paired_replay | models | 2 | models |  |  |
+| Paired RT-DETR and YOLO26 replay | paired_replay | images | 3 | images |  |  |
+| Paired RT-DETR and YOLO26 replay | paired_replay | outcome_disagreements | 3 | images |  |  |
+| Paired RT-DETR and YOLO26 replay | paired_replay | disagreement_rows | 3 | rows |  |  |
+| Paired RT-DETR and YOLO26 replay | paired_replay | paired_comparisons | 7 | comparisons |  |  |
+| Paired RT-DETR and YOLO26 replay | paired_replay | bootstrap_replicates | 1000 | replicates |  |  |
+| Paired RT-DETR and YOLO26 replay | paired_replay | rtdetr-l-coco.coco_ap_50_95 | 0.2722772277227723 |  | 3 |  |
+| Paired RT-DETR and YOLO26 replay | paired_replay | rtdetr-l-coco.operating_precision | 1.0 |  | 3 |  |
+| Paired RT-DETR and YOLO26 replay | paired_replay | rtdetr-l-coco.operating_recall | 0.1111111111111111 |  | 3 |  |
+| Paired RT-DETR and YOLO26 replay | paired_replay | rtdetr-l-coco.operating_f1 | 0.19999999999999998 |  | 3 |  |
+| Paired RT-DETR and YOLO26 replay | paired_replay | rtdetr-l-coco.latency_median_ms | 555.6639374917722 | ms | 3 |  |
+| Paired RT-DETR and YOLO26 replay | paired_replay | rtdetr-l-coco.latency_p95_ms | 556.2311062451045 | ms | 3 |  |
+| Paired RT-DETR and YOLO26 replay | paired_replay | yolo26n-coco.coco_ap_50_95 | 0.0 |  | 3 |  |
+| Paired RT-DETR and YOLO26 replay | paired_replay | yolo26n-coco.operating_precision | 0.0 |  | 3 |  |
+| Paired RT-DETR and YOLO26 replay | paired_replay | yolo26n-coco.operating_recall | 0.0 |  | 3 |  |
+| Paired RT-DETR and YOLO26 replay | paired_replay | yolo26n-coco.operating_f1 | 0.0 |  | 3 |  |
+| Paired RT-DETR and YOLO26 replay | paired_replay | yolo26n-coco.latency_median_ms | 30.654666494228877 | ms | 3 |  |
+| Paired RT-DETR and YOLO26 replay | paired_replay | yolo26n-coco.latency_p95_ms | 31.506966946471948 | ms | 3 |  |
+| Standalone development reproduction bundle | reproduction_bundle | sources | 10 | objects |  |  |
+| Standalone development reproduction bundle | reproduction_bundle | source_files | 143 | files |  |  |
+| Standalone development reproduction bundle | reproduction_bundle | source_bytes | 1477172 | bytes |  |  |
+| Standalone development reproduction bundle | reproduction_bundle | dependency_locks | 1 | lockfiles |  |  |
+| Standalone development reproduction bundle | reproduction_bundle | commands | 4 | commands |  |  |
+
+## Limitations
+
+- All empirical sources were created from a dirty, uncommitted workspace and are development evidence rather than confirmatory thesis experiments.
+- The retained dataset has only three images from one unassigned episode and cannot support training, threshold selection, or statistical generalization claims.
+- RT-DETR and YOLO26 use pretrained COCO weights rather than checkpoints trained on a released CARLA thesis dataset.
+- The shared development confidence floor suppresses all YOLO26 predictions on the pilot frames, so the replay must not be interpreted as a model ranking.
+- The native synchronous collector has not run against a compatible official CARLA 0.9.16 PythonAPI host.
+- No learned vision-only driving policy has been implemented or evaluated.
+- The development reproduction bundle excludes CARLA binaries, Unreal assets, model weights, datasets, and videos; their immutable fingerprints remain in source manifests.
+
+## Reproducibility
+
+Every source object was verified read-only before this report was created.
+The CSV tables are canonical; this Markdown document and all plots are derived
+from them. Verify the sealed report with:
+
+```bash
+uv run carla-verify reports/rpt-framework-validation-20260726-v002 --reject-unregistered
+```

@@ -1,0 +1,202 @@
+{
+  "artifact_inventory_row_count": 43,
+  "authors": [
+    "Hesam",
+    "CARLA Vision Research Project"
+  ],
+  "canonical_tables": {
+    "metrics": {
+      "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v005/tables/metrics.csv",
+      "sha256": "29c3fb9e7c66d477f3784a3f83b9457c00edf4581db08688197098a203ff2e0b",
+      "size_bytes": 7089
+    },
+    "source_artifacts": {
+      "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v005/tables/source_artifacts.csv",
+      "sha256": "2dfea7be3819213e7e0e56f5890bb5fb9b737bf24baf655d99437983b0331946",
+      "size_bytes": 9052
+    },
+    "source_inventory": {
+      "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v005/tables/source_inventory.csv",
+      "sha256": "ae56645cddf7332188c2b3bc60b204448b5906bc17f220e348550bf836ccc4a8",
+      "size_bytes": 1185
+    }
+  },
+  "claims": [
+    "The framework now creates a dedicated read-only native-collection preflight artifact that separates successful assessment from readiness to execute and records automated, advisory, and manual gates.",
+    "Two real preflight assessments contacted only the CARLA read-only version and map RPCs, observed server version 0.9.16 and Town10HD_Opt, selected checksum-verified train episodes, and recorded simulator_mutated as false.",
+    "The current Apple arm64 host is correctly classified as not ready because the official version-matched CARLA PythonAPI is not importable and the destructive world-reload and exclusive-tick-owner confirmations remain pending.",
+    "A deliberately small native integration scenario plan contains one Town10HD train episode, moderate traffic, two construction props, and 50 planned exact-frame RGB/instance captures instead of using the 3,450-capture thesis plan for the first destructive test.",
+    "The operator HTTP workflow launched a real native preflight as a non-destructive, non-actuating job and retained both the operator session and verified child manifest.",
+    "The multi-episode dataset verifier now permits repeated native episode provenance while semantically checking episode IDs, partitions, sample and annotation counts, cleanup success, and asynchronous-world restoration."
+  ],
+  "generation": {
+    "all_sources_verified_before_generation": true,
+    "confirmatory_clean_git_gate": false,
+    "manual_metric_transcription": false
+  },
+  "limitations": [
+    "All sources were created from a dirty, uncommitted workspace and are development evidence rather than confirmatory thesis experiments.",
+    "No native dataset episode was executed because this Apple arm64 host has no compatible official CARLA 0.9.16 PythonAPI and SSH access to the simulator host is unavailable.",
+    "The read-only raw RPC confirms endpoint, version, and current map but cannot substitute for the official PythonAPI checks required for Traffic Manager, synchronous world ownership, actor spawning, sensors, and cleanup.",
+    "The two manual readiness gates are deliberately pending; no authority to reload the current world or claim exclusive world.tick ownership is inferred from a read-only preflight.",
+    "The 50-frame native pilot is a plan, not a collected dataset; actor and prop availability, sensor phase, labels, cleanup, and QA remain unverified against the real simulator.",
+    "The scenario-to-dataset-to-QA-to-training handoff is covered by a fake-native integration test and does not prove behavior of CARLA actor spawning or sensor delivery.",
+    "No trained CARLA-specific checkpoint, locked-test detector result, or vision-only closed-loop driving result is introduced by this milestone."
+  ],
+  "metric_row_count": 54,
+  "object_type": "research_report_release",
+  "plots": [
+    {
+      "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v005/plots/source_inventory.png",
+      "sha256": "10d3118c807c906271d604268309bcea693b097def1e6c42b36b63250b7c49b1",
+      "size_bytes": 99985
+    },
+    {
+      "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v005/plots/source_inventory.svg",
+      "sha256": "285994f2941dfd907734dec866185209646df4b3a70b83ac05ff37c2b213d724",
+      "size_bytes": 72748
+    }
+  ],
+  "purpose": "development",
+  "report_document": {
+    "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v005/report.md",
+    "sha256": "a12a1225dde5a7829725aac470c37efb39a323691d0766c134f6412054fe1a6a",
+    "size_bytes": 10243
+  },
+  "report_id": "rpt-framework-validation-20260726-v005",
+  "schema_version": "1.0",
+  "source_count": 6,
+  "sources": [
+    {
+      "deep_verification": {
+        "kind": "report",
+        "metric_row_count": 23,
+        "purpose": "development",
+        "report_id": "rpt-framework-validation-20260726-v004",
+        "source_count": 5
+      },
+      "kind": "report_source",
+      "label": "Framework validation report v0.6",
+      "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v004/manifest.json",
+      "root": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v004",
+      "run_id": "rpt-framework-validation-20260726-v004",
+      "sha256": "ce149284941dd190175001f0f7d48679edde384821f140bd869b144867dd373b",
+      "size_bytes": 13598,
+      "source_kind": "report",
+      "summary": {
+        "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v004/report.json",
+        "sha256": "697bf9839afc3d7b4609253880296d1a111eccbfd381fa7a12c3693bd6322877",
+        "size_bytes": 9416
+      }
+    },
+    {
+      "deep_verification": {
+        "bundle_id": "bundle-framework-development-20260726-v004",
+        "dependency_lock_count": 1,
+        "kind": "reproduction_bundle",
+        "purpose": "development",
+        "source_count": 3,
+        "source_file_count": 186
+      },
+      "kind": "report_source",
+      "label": "Framework reproduction bundle v0.6",
+      "path": "/Users/hesam/Documents/CARLA PY/bundles/bundle-framework-development-20260726-v004/manifest.json",
+      "root": "/Users/hesam/Documents/CARLA PY/bundles/bundle-framework-development-20260726-v004",
+      "run_id": "bundle-framework-development-20260726-v004",
+      "sha256": "4adf0bcbadcaf4d3a6e55f834b03b6d97c0e3218152464c15b3424e17e4ad3cd",
+      "size_bytes": 14711,
+      "source_kind": "reproduction_bundle",
+      "summary": {
+        "path": "/Users/hesam/Documents/CARLA PY/bundles/bundle-framework-development-20260726-v004/bundle.json",
+        "sha256": "8c56d8a8d2d712bdf190e9b8ad74b1df92f001ff7a212f941d4383b93026eadf",
+        "size_bytes": 3678
+      }
+    },
+    {
+      "deep_verification": {
+        "episode_count": 1,
+        "kind": "scenario_plan",
+        "planned_capture_count": 50,
+        "suite_id": "suite-native-integration-pilot-v1"
+      },
+      "kind": "report_source",
+      "label": "Minimal native integration scenario plan",
+      "path": "/Users/hesam/Documents/CARLA PY/runs/scenario-plan-native-integration-pilot-v1/manifest.json",
+      "root": "/Users/hesam/Documents/CARLA PY/runs/scenario-plan-native-integration-pilot-v1",
+      "run_id": "scenario-plan-native-integration-pilot-v1",
+      "sha256": "4b1b7414f8083c53f48261bab2d14b5fff97cd602d83c09c826ec22a21712d5e",
+      "size_bytes": 5720,
+      "source_kind": "scenario_plan",
+      "summary": {
+        "path": "/Users/hesam/Documents/CARLA PY/runs/scenario-plan-native-integration-pilot-v1/summary.json",
+        "sha256": "db7568de8653b1f9dfa122bf34898eca4b29e2d21bd883b23b5d2078fc5d90de",
+        "size_bytes": 954
+      }
+    },
+    {
+      "deep_verification": {
+        "kind": "native_collection_preflight",
+        "planned_capture_count": 50,
+        "ready_for_native_execution": false,
+        "run_id": "native-preflight-pilot-20260726-v1",
+        "selected_episode_count": 1
+      },
+      "kind": "report_source",
+      "label": "Minimal 50-frame native pilot preflight",
+      "path": "/Users/hesam/Documents/CARLA PY/runs/native-preflight-pilot-20260726-v1/manifest.json",
+      "root": "/Users/hesam/Documents/CARLA PY/runs/native-preflight-pilot-20260726-v1",
+      "run_id": "native-preflight-pilot-20260726-v1",
+      "sha256": "2bf0ad29ba006760b3fbaced137a9df2e35f9cf140d6fc497c10573d789b9bdf",
+      "size_bytes": 6737,
+      "source_kind": "native_preflight",
+      "summary": {
+        "path": "/Users/hesam/Documents/CARLA PY/runs/native-preflight-pilot-20260726-v1/summary.json",
+        "sha256": "b001a62fcf19570db109642923f663328aec041cfb6e1a387154f2152f5b331e",
+        "size_bytes": 2460
+      }
+    },
+    {
+      "deep_verification": {
+        "kind": "native_collection_preflight",
+        "planned_capture_count": 150,
+        "ready_for_native_execution": false,
+        "run_id": "native-preflight-ui-20260726-v1",
+        "selected_episode_count": 1
+      },
+      "kind": "report_source",
+      "label": "Operator-launched thesis-plan native preflight",
+      "path": "/Users/hesam/Documents/CARLA PY/runs/native-preflight-ui-20260726-v1/manifest.json",
+      "root": "/Users/hesam/Documents/CARLA PY/runs/native-preflight-ui-20260726-v1",
+      "run_id": "native-preflight-ui-20260726-v1",
+      "sha256": "3b4202f87d229069a5b7256c4cf686553d53d2a52085638636edb5e02a321123",
+      "size_bytes": 6796,
+      "source_kind": "native_preflight",
+      "summary": {
+        "path": "/Users/hesam/Documents/CARLA PY/runs/native-preflight-ui-20260726-v1/summary.json",
+        "sha256": "ab59cf0e9876a99e8bd535370e867f0a73c24a4170c2e1171dd40027b17962b8",
+        "size_bytes": 2434
+      }
+    },
+    {
+      "deep_verification": {
+        "kind": "tracked_run"
+      },
+      "kind": "report_source",
+      "label": "Operator native-preflight session",
+      "path": "/Users/hesam/Documents/CARLA PY/operator_sessions/op-20260726t203533z-native-preflight-34a7877d/manifest.json",
+      "root": "/Users/hesam/Documents/CARLA PY/operator_sessions/op-20260726t203533z-native-preflight-34a7877d",
+      "run_id": "op-20260726t203533z-native-preflight-34a7877d",
+      "sha256": "6be2eef2ab87aa278d2e20b972d5211b8fe48f250b924d784cdc2254d905a217",
+      "size_bytes": 7353,
+      "source_kind": "operator_session",
+      "summary": {
+        "path": "/Users/hesam/Documents/CARLA PY/operator_sessions/op-20260726t203533z-native-preflight-34a7877d/status.json",
+        "sha256": "45b8c92fd976f8082b05ef53f4841579f1a4961fb064e4a63f24ce5e834d43b9",
+        "size_bytes": 798
+      }
+    }
+  ],
+  "status": "complete",
+  "thesis_context": "Traceable framework validation after adding a read-only native readiness artifact, operator preflight control, a deliberately small first native dataset plan, stronger multi-episode dataset provenance verification, and a non-destructive scenario-to-training integration test.",
+  "title": "CARLA Vision Framework Development Validation v0.7"
+}

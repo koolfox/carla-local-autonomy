@@ -1,5 +1,14 @@
 # Release-readiness assessment
 
+Current repository check, 2026-10-12: GitHub `main` and the local source agree at
+`ad8e00b7`; PR #120 and its successors through #124 have merged. GitHub now
+reports a public repository, with no published releases or open pull requests.
+The [historical sample archive](../samples/README.md) fills the missing retained
+sample/demo material, but does not satisfy the live release gates below.
+See the [repository audit](repository_audit_2026-10-12.md) for scope and deferred work.
+
+The assessment below is a historical review:
+
 Reviewed 2026-09-10 at `b1460157` (recordings branch including the latest fetched
 `main`, `73b5707d`). PR #120 was open at review time; its newer player is not
 assumed released. This is a targeted architecture/product review, not a
@@ -31,7 +40,7 @@ they need separate labels for model estimates, privileged truth, and actuation.
 | CI has lean Operator, Svelte build/test, full research-suite and wheel-content checks | A useful engineering foundation. CI still does not demonstrate real network/renderer/actor performance. |
 | Local lint passed; focused configuration, console, perception, labels, segmentation, recordings/API tests: 63 passed + 23 subtests | Current focused regression evidence only; no fresh full-suite or trained-model accuracy claim. |
 | 28 frontend tests, Svelte type-checking and 100 documentation links/file references passed | Useful maintenance checks; these do not replace a newcomer exercise or browser/live-CARLA acceptance. |
-| GitHub reports private repository, no release, no license metadata, no security policy; no tracked LICENSE/CITATION.cff/SECURITY.md found | Public/OSS release work is not finished. CONTRIBUTING and developer docs already exist. |
+| At the historical review, GitHub reported a private repository, no release, no license metadata, no security policy; no tracked LICENSE/CITATION.cff/SECURITY.md was found | The repository is now public; release, licensing and other hygiene gates remain open. CONTRIBUTING and developer docs already exist. |
 | `.env.local` and runtime roots are not tracked in the current tree | Good, but not a secrets-history audit. Previously shared credentials must be reviewed/rotated before publication. |
 
 Methods: `git ls-files` plus `wc -l` for source counts; `git log -100

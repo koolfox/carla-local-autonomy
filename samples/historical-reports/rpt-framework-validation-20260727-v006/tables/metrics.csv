@@ -1,0 +1,44 @@
+source_id,label,kind,metric,value,unit,support,note
+rpt-framework-validation-20260726-v005,Framework validation report v0.7,report,sources,6,objects,,
+rpt-framework-validation-20260726-v005,Framework validation report v0.7,report,metric_rows,54,rows,,
+rpt-framework-validation-20260726-v005,Framework validation report v0.7,report,artifact_inventory_rows,43,rows,,
+bundle-framework-development-20260726-v005,Framework reproduction bundle v0.7,reproduction_bundle,sources,6,objects,,
+bundle-framework-development-20260726-v005,Framework reproduction bundle v0.7,reproduction_bundle,source_files,196,files,,
+bundle-framework-development-20260726-v005,Framework reproduction bundle v0.7,reproduction_bundle,source_bytes,1945230,bytes,,
+bundle-framework-development-20260726-v005,Framework reproduction bundle v0.7,reproduction_bundle,dependency_locks,1,lockfiles,,
+bundle-framework-development-20260726-v005,Framework reproduction bundle v0.7,reproduction_bundle,commands,7,commands,,
+native-host-kit-pilot-20260727-v002,Portable native 50-frame pilot host kit,native_host_kit,payload_files,114,files,,
+native-host-kit-pilot-20260727-v002,Portable native 50-frame pilot host kit,native_host_kit,payload_source_files,95,files,,
+native-host-kit-pilot-20260727-v002,Portable native 50-frame pilot host kit,native_host_kit,payload_bytes,1322010,bytes,,
+native-host-kit-pilot-20260727-v002,Portable native 50-frame pilot host kit,native_host_kit,selected_episodes,1,episodes,,
+native-host-kit-pilot-20260727-v002,Portable native 50-frame pilot host kit,native_host_kit,planned_captures,50,images,,
+native-host-kit-pilot-20260727-v002,Portable native 50-frame pilot host kit,native_host_kit,requirements_packages,14,packages,,
+native-host-kit-pilot-20260727-v002,Portable native 50-frame pilot host kit,native_host_kit,carla_wheel_hashes,6,hashes,,
+native-host-kit-pilot-20260727-v002,Portable native 50-frame pilot host kit,native_host_kit,requirements_hash_pinned,1,boolean,,
+native-host-kit-pilot-20260727-v002,Portable native 50-frame pilot host kit,native_host_kit,preflight_read_only,1,boolean,,
+native-host-kit-pilot-20260727-v002,Portable native 50-frame pilot host kit,native_host_kit,ready_preflight_required,1,boolean,,
+native-host-kit-pilot-20260727-v002,Portable native 50-frame pilot host kit,native_host_kit,confirmation_token_required,1,boolean,,
+native-host-kit-pilot-20260727-v002,Portable native 50-frame pilot host kit,native_host_kit,build_contacted_simulator,0,boolean,,
+native-host-kit-pilot-20260727-v002,Portable native 50-frame pilot host kit,native_host_kit,build_mutated_simulator,0,boolean,,
+scenario-plan-native-integration-pilot-v1,Minimal native integration scenario plan,scenario_plan,recipes,1,recipes,,
+scenario-plan-native-integration-pilot-v1,Minimal native integration scenario plan,scenario_plan,episodes,1,episodes,,
+scenario-plan-native-integration-pilot-v1,Minimal native integration scenario plan,scenario_plan,planned_captures,50,images,,
+scenario-plan-native-integration-pilot-v1,Minimal native integration scenario plan,scenario_plan,partition_count.train,1,episodes,,
+native-preflight-pilot-20260726-v1,Real endpoint read-only native preflight,native_preflight,selected_episodes,1,episodes,,
+native-preflight-pilot-20260726-v1,Real endpoint read-only native preflight,native_preflight,planned_captures,50,images,,
+native-preflight-pilot-20260726-v1,Real endpoint read-only native preflight,native_preflight,checks,14,checks,,
+native-preflight-pilot-20260726-v1,Real endpoint read-only native preflight,native_preflight,checks_passed,7,checks,,
+native-preflight-pilot-20260726-v1,Real endpoint read-only native preflight,native_preflight,checks_failed,1,checks,,
+native-preflight-pilot-20260726-v1,Real endpoint read-only native preflight,native_preflight,checks_pending,2,checks,,
+native-preflight-pilot-20260726-v1,Real endpoint read-only native preflight,native_preflight,checks_skipped,3,checks,,
+native-preflight-pilot-20260726-v1,Real endpoint read-only native preflight,native_preflight,checks_warnings,1,checks,,
+native-preflight-pilot-20260726-v1,Real endpoint read-only native preflight,native_preflight,socket_latency,7.508499998948537,ms,,
+native-preflight-pilot-20260726-v1,Real endpoint read-only native preflight,native_preflight,read_only_rpc_latency,22.15020899893716,ms,,
+native-preflight-pilot-20260726-v1,Real endpoint read-only native preflight,native_preflight,read_only,1,boolean,,"0=false, 1=true"
+native-preflight-pilot-20260726-v1,Real endpoint read-only native preflight,native_preflight,simulator_contacted,1,boolean,,"0=false, 1=true"
+native-preflight-pilot-20260726-v1,Real endpoint read-only native preflight,native_preflight,simulator_mutated,0,boolean,,"0=false, 1=true"
+native-preflight-pilot-20260726-v1,Real endpoint read-only native preflight,native_preflight,automated_ready,0,boolean,,"0=false, 1=true"
+native-preflight-pilot-20260726-v1,Real endpoint read-only native preflight,native_preflight,manual_ready,0,boolean,,"0=false, 1=true"
+native-preflight-pilot-20260726-v1,Real endpoint read-only native preflight,native_preflight,ready_for_native_execution,0,boolean,,"0=false, 1=true"
+native-preflight-pilot-20260726-v1,Real endpoint read-only native preflight,native_preflight,rpc_reachable,1,boolean,,"0=false, 1=true"
+native-preflight-pilot-20260726-v1,Real endpoint read-only native preflight,native_preflight,native_pythonapi_importable,0,boolean,,"0=false, 1=true"

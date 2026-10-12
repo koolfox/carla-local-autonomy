@@ -1,0 +1,18 @@
+{
+  "host": "172.20.10.7",
+  "vehicle_id": 24,
+  "drive": true,
+  "duration_requested": 12.0,
+  "camera_id": 25,
+  "camera_was_spawned": false,
+  "elapsed": 18.34678691600857,
+  "distance_travelled": 28.427380756244258,
+  "max_speed": 5.122687339782715,
+  "final_speed": 1.4128457292983398e-09,
+  "final_position": [
+    3.7124221324920654,
+    37.10660171508789
+  ],
+  "video": "/Users/hesam/Documents/CARLA PY/output/yolo26_autopilot.mp4",
+  "latest_frame": "/Users/hesam/Documents/CARLA PY/output/live_yolo26.png"
+}

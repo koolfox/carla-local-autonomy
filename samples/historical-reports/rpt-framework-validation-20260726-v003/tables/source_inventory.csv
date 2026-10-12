@@ -1,0 +1,8 @@
+source_id,label,kind,status,artifact_count,artifact_bytes,git_commit,git_dirty,manifest_sha256
+rpt-framework-validation-20260726-v002,Framework validation report v0.4,report,success,11,313853,,True,e1ca8f4de8d8fd319a6c0602917bde14636fe6caa63a4ffe4bbf6081f2b68a94
+bundle-framework-development-20260726-v002,Framework reproduction bundle v0.4,reproduction_bundle,success,23,1936814,,True,e8864662f3df0a4893dfcf58d6d0b78b3a3e8e88221469f513f2f170e9302f24
+shadow-rtdetr-yolo26-live-v1,RT-DETR and YOLO26 live shadow matrix,shadow_matrix,success,11,41992,,True,e0f1351856ea7c1d3b735de2e4c413718977cf17e882d1cc86f522cfb4816f73
+shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00,RT-DETR-L RGB policy shadow run,vision_shadow,success,6,2895291,,True,1d30b86aa4b27f207ecd9273e0346352047ac854bd06402f3e58d6aabc4b91b3
+shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00,YOLO26n RGB policy shadow run,vision_shadow,success,6,3416913,,True,db70ebf8b919380eeb352fbaf9582cf5f7d037313ea3c7d8b9ec8e393a4e292e
+shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00-analysis,RT-DETR-L live systems analysis,runtime_analysis,success,6,317250,,True,745c207f2f229620e628e3d85b3b2817f6602cccefe53defa2c754473d536a2e
+shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00-analysis,YOLO26n live systems analysis,runtime_analysis,success,6,349371,,True,f423b915d7d0ea4be4eece0c3cbb62323c7f4ba88907f4b5fc9f02d1a97b7135
