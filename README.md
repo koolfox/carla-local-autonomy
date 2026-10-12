@@ -8,6 +8,28 @@ Python for every session.
 This repository is a LAN research tool, not an internet-facing or multi-user
 service. The browser server deliberately binds to loopback only.
 
+## Run everything on the CARLA computer
+
+The new **full-screen launcher preview** targets Windows x86-64 first and Linux
+x86-64 alongside it. It prepares a private Python 3.12 environment, installs
+locked vision dependencies and a recording encoder, verifies/downloads the
+bundled models, and coordinates CARLA, Worker and the existing web console.
+
+Download the [Windows setup ZIP](installers/CARLA-Vision-setup-preview.zip) or
+[Linux setup archive](installers/CARLA-Vision-setup-preview.tar.gz), extract it,
+and run `Install.cmd` or `sh install.sh`. In the TUI's **Setup** tab, choose the
+installed CARLA 0.9.16 folder and **Install / Repair**, then **Start all** from
+**Run**. Setup can also download the official CARLA package when requested.
+A desktop/applications-menu shortcut provides daily startup.
+
+From a clone, run `deploy\desktop\Install.cmd` on Windows, or
+`sh deploy/desktop/install.sh` on Linux. No Node build is needed for normal use.
+See the [same-computer setup guide](docs/desktop_launcher.md) for paths, CLI
+commands and recovery. The installer preview is available on
+`codex/single-host-launcher`; Windows/Linux installation, terminal rendering and
+live-CARLA acceptance remain deferred. Source review and archive integrity do
+not establish runtime acceptance.
+
 New contributors should start with the
 [`developer navigation hub`](docs/README.md): find a feature, its owner, and
 its first test without reading the whole codebase. Branch/PR rules and the current
@@ -56,6 +78,16 @@ World Worker update is required for playback.
 
 ## Architecture
 
+Same-computer operation uses this local topology:
+
+```text
+Full-screen TUI → CARLA 0.9.16 :2000
+                → World Worker :8766
+                → web console :8765 → local browser
+```
+
+The established two-computer topology is also supported:
+
 ```text
 Windows CARLA host                         Research computer
 ------------------                        -----------------
@@ -85,8 +117,8 @@ cd carla-local-autonomy
 git lfs pull
 ```
 
-Until `codex/repository-audit-samples` is merged, use
-`git clone --branch codex/repository-audit-samples https://github.com/koolfox/carla-local-autonomy.git`
+Until `codex/single-host-launcher` is merged, use
+`git clone --branch codex/single-host-launcher https://github.com/koolfox/carla-local-autonomy.git`
 instead of the clone command above. Existing checkouts can switch to that branch
 and run `git lfs pull`.
 

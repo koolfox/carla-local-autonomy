@@ -4,6 +4,8 @@
 /.pytest_cache/
 /.ruff_cache/
 /:memory:.ses
+/.launcher/
+/simulator/
 __pycache__/
 *.py[cod]
 *.pt

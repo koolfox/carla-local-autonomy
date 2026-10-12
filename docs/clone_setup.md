@@ -3,8 +3,13 @@
 This guide brings together the source, retained models, dependency lock and
 local connection settings. It does not run tests or claim new simulator or
 model acceptance. Until the maintainer merges this delivery, use the
-`codex/repository-audit-samples` branch; default-branch clones do not yet contain
+`codex/single-host-launcher` branch; default-branch clones do not yet contain
 its models or historical samples.
+
+For Windows/Linux users who want CARLA and the web app on one computer, use the
+[full-screen installer/launcher](desktop_launcher.md). Its source bundles do not
+need preinstalled Git, Python or Node; they install the private environment and
+hydrate model weights from their fixed GitHub source.
 
 ## 1. Get the full source and models
 
@@ -13,7 +18,7 @@ Python 3.11–3.13 and [uv](https://docs.astral.sh/uv/). Then:
 
 ```bash
 git lfs install
-git clone --branch codex/repository-audit-samples https://github.com/koolfox/carla-local-autonomy.git
+git clone --branch codex/single-host-launcher https://github.com/koolfox/carla-local-autonomy.git
 cd carla-local-autonomy
 git lfs pull
 ```
@@ -43,7 +48,8 @@ and saved-video conversion. The reviewed production Svelte bundle is already
 tracked and packaged; Node/npm is needed for frontend development, not normal
 Operator use.
 
-The exact CUDA/GPU runtime depends on the new machine; model availability does
+The same-computer launcher selects managed Python 3.12 and installs a matching
+official PythonAPI automatically. The exact CUDA/GPU runtime depends on the new machine; model availability does
 not establish GPU compatibility. The CARLA-host Worker has its own lighter
 environment and matching official CARLA 0.9.16 PythonAPI, described in
 [`native_host_runbook.md`](native_host_runbook.md).
@@ -78,6 +84,8 @@ This starts the console using the existing entry point. Real preview or driving
 still needs the separate CARLA server and authenticated World Worker. The
 repository supplies their source/configuration and Operator-side model assets;
 it does not embed a CARLA server installation or a machine-specific environment.
+The same-computer launcher can prepare these services and optionally download
+the official CARLA package through its Setup tab.
 
 ## 4. Find the retained examples
 
