@@ -113,12 +113,12 @@
 </script>
 
 <section aria-label="Saved runs and recordings">
-  <header><div><h3>Recordings</h3><small>{runs.length} saved runs · This workspace</small></div><button type="button" disabled={loading} onclick={refresh}>{loading ? 'Loading…' : 'Refresh'}</button></header>
+  <header><div><small>{runs.length} saved runs · This workspace</small></div><button type="button" disabled={loading} onclick={refresh}>{loading ? 'Loading…' : 'Refresh'}</button></header>
   {#if error}<p role="alert">{error}</p>{/if}
   {#if !loading && runs.length === 0}<p>No saved runs with manifests yet. Stop &amp; Save a session, then refresh.</p>{/if}
   <div class="library">
     <aside aria-label="Saved run library">
-      <input type="search" aria-label="Search saved runs" placeholder="Search by date, name or status…" bind:value={search} />
+      <input type="search" aria-label="Search saved runs" placeholder="Search runs…" bind:value={search} />
       <label class="filter"><input type="checkbox" bind:checked={onlyVideo} /> With recordings only</label>
       <ul>
         {#each filtered as run (run.path)}
@@ -173,42 +173,56 @@
 </section>
 
 <style>
-  section { padding: .5rem 0; }
-  button, input, a { font: inherit; }
-  button { cursor: pointer; }
-  button:disabled { cursor: wait; opacity: .65; }
-  header button, .detail > button, .recording-options button, .recording-options a {
-    min-height: 40px; box-sizing: border-box; padding: .55rem .8rem;
-    border: 1px solid #cececa; border-radius: 4px; background: #fff;
-    color: #282d30; text-decoration: none;
-  }
-  button:hover:not(:disabled), .recording-options a:hover { background: #f0f0ec; }
-  button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid #343a3d; outline-offset: 2px; }
-  header, .artifact { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
+  section { display: grid; gap: 12px; }
+  header, .artifact { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
   header { justify-content: space-between; }
-  h3, h4 { margin: 0; }
-  h4 { margin-top: .8rem; overflow-wrap: anywhere; }
-  .library { display: grid; grid-template-columns: minmax(160px, 1fr) minmax(0, 2fr); gap: 1rem; margin-top: 1rem; }
+  header small { display: block; margin-top: 2px; }
+  h4 { margin: 0; font-size: var(--text-md); font-weight: 600; }
+  h4 { overflow-wrap: anywhere; }
+  header button, .detail > button, .recording-options button, .recording-options a {
+    display: inline-flex; align-items: center; min-height: var(--control-h); padding: 0 12px;
+    border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--panel);
+    color: var(--text); font-size: var(--text-sm); text-decoration: none; cursor: pointer;
+  }
+  button:hover:not(:disabled), .recording-options a:hover { background: var(--panel-2); }
+  button:disabled { cursor: progress; opacity: .55; }
+  .library { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(0, 2fr); gap: 16px; }
   aside, .detail { min-width: 0; }
-  input[type='search'] { width: 100%; box-sizing: border-box; min-height: 40px; padding: .6rem; border: 1px solid #cececa; border-radius: 4px; background: #fff; }
-  .filter { display: flex; align-items: center; gap: .5rem; font-size: .85rem; margin: .75rem 0; }
-  .badge { font-size: .75rem; }
-  ul { list-style: none; padding: 0; margin: .5rem 0; max-height: 55vh; overflow-y: auto; }
-  li button { width: 100%; text-align: left; padding: .75rem; display: grid; gap: .3rem; border: 0; border-bottom: 1px solid #dededb; border-radius: 0; background: transparent; }
-  small { color: #656563; }
-  .chosen { background: #eaeae6; box-shadow: inset 3px 0 #343a3d; }
+  .detail { display: grid; align-content: start; gap: 8px; }
+  input[type='search'] {
+    width: 100%; min-height: var(--control-h); padding: 0 10px; border: 1px solid var(--line-strong);
+    border-radius: var(--radius); background: var(--panel); color: var(--text);
+  }
+  .filter { display: flex; align-items: center; gap: 8px; margin: 10px 0 6px; color: var(--text-2); font-size: var(--text-sm); }
+  ul { list-style: none; padding: 0; margin: 0; max-height: 55vh; overflow-y: auto; border-top: 1px solid var(--line); }
+  li button {
+    display: grid; gap: 2px; width: 100%; padding: 9px 10px; border: 0; border-bottom: 1px solid var(--line);
+    background: transparent; color: var(--text); text-align: left; cursor: pointer;
+  }
+  li button strong { font-size: var(--text-sm); font-weight: 600; }
+  li button span { color: var(--text-2); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+  .badge { color: var(--text-2); font-size: var(--text-xs); }
+  small { color: var(--text-2); font-size: var(--text-xs); }
+  .chosen { background: var(--accent-soft); box-shadow: inset 2px 0 var(--accent); }
+  .recording-options .chosen { border-color: var(--accent); color: var(--accent-ink); box-shadow: none; }
   span, strong { overflow-wrap: anywhere; }
-  .artifact { padding: .5rem 0; }
+  .artifact { padding: 8px 0; border-bottom: 1px solid var(--line); font-size: var(--text-sm); }
   .artifact > span:first-child { flex: 1; min-width: 10rem; }
   .artifact small { display: block; }
-  .player { background: #15191b; color: #eee; aspect-ratio: 16 / 9; display: grid; place-items: center; }
-  .player p { padding: 1rem; text-align: center; }
-  .recording-options { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin: 1rem 0; }
-  details { margin-top: 1rem; border-top: 1px solid #dededb; padding-top: .8rem; }
-  summary { cursor: pointer; }
-  .note { font-size: .8rem; color: #656563; }
-  @media (max-width: 640px) {
+  .artifact a { color: var(--accent-ink); }
+  .player {
+    display: grid; place-items: center; aspect-ratio: 16 / 9; overflow: hidden;
+    border-radius: var(--radius-artboard); background: var(--stage); color: var(--on-stage-2);
+    box-shadow: var(--shadow-artboard); font-size: var(--text-sm);
+  }
+  .player p { padding: 16px; text-align: center; }
+  .recording-options { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  details { border-top: 1px solid var(--line); padding-top: 10px; }
+  summary { cursor: pointer; font-size: var(--text-sm); font-weight: 600; }
+  p { margin: 0; font-size: var(--text-sm); }
+  .note { color: var(--text-2); font-size: var(--text-xs); line-height: 1.5; }
+  @container inspector (max-width: 560px) {
     .library { grid-template-columns: 1fr; }
-    ul { max-height: 10rem; }
+    ul { max-height: 14rem; }
   }
 </style>

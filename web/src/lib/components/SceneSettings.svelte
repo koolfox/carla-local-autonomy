@@ -6,7 +6,6 @@
 <section id="scene" class="config-card scroll-section">
   <div class="section-heading">
     <div>
-      <span class="eyebrow">02 · Scene</span>
       <h2>World & population</h2>
     </div>
     {#if $systemSettings?.workerConfigured}

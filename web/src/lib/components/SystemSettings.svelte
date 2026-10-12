@@ -6,7 +6,6 @@
   <section class="builder-section">
     <div class="section-heading">
       <div>
-        <span class="eyebrow">System</span>
         <h3>Connection and runtime</h3>
       </div>
       <span class="section-note">Machine-level facts only. Scene and traffic live in Scene.</span>

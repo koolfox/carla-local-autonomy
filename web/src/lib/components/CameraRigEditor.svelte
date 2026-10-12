@@ -97,11 +97,14 @@
 </fieldset>
 
 <style>
-  .camera-editor { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 12px; }
-  legend { font-weight: 600; margin-bottom: 12px; }
-  .camera-toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; justify-content: space-between; }
-  .camera-toolbar small { flex: 1 1 240px; }
-  .camera-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+  .camera-editor { display: grid; gap: 12px; min-width: 0; margin: 0; padding: 0; border: 0; }
+  legend { margin-bottom: 12px; padding: 0; font-size: var(--text-sm); font-weight: 600; }
+  .camera-toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; justify-content: space-between; }
+  .camera-toolbar .field { flex: 1 1 180px; }
+  .camera-toolbar small { flex: 1 1 220px; }
+  .camera-tabs { display: flex; flex-wrap: wrap; gap: 4px; }
   .camera-tabs button { text-transform: capitalize; }
-  .camera-tabs button[aria-pressed='true'] { outline: 2px solid currentColor; outline-offset: -2px; }
+  .camera-tabs button[aria-pressed='true'] {
+    border-color: var(--accent); background: var(--accent-soft); color: var(--accent-ink);
+  }
 </style>

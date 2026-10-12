@@ -5,7 +5,6 @@
 <section class="config-card">
   <div class="section-heading">
     <div>
-      <span class="eyebrow">Models</span>
       <h2>Registered model library</h2>
     </div>
     <span class="section-note">Only manifest-backed packages are runnable</span>

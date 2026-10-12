@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/components/Icon.svelte';
   import { patchSessionSection, sessionConfig, workspaceOptions } from '$lib/stores/configuration';
   import { fieldValue } from '$lib/ui/events';
   import { paintLabel } from '$lib/ui/paint';
@@ -25,7 +26,7 @@
 
 {#if compact}
   <div class="vehicle-carousel" aria-label="Garage vehicle selector">
-    <button type="button" aria-label="Previous vehicle" disabled={!vehicles.length} onclick={() => stepVehicle(-1)}>‹</button>
+    <button type="button" aria-label="Previous vehicle" disabled={!vehicles.length} onclick={() => stepVehicle(-1)}><Icon name="chevron-left" /></button>
     <label>
       <span>Vehicle</span>
       <select
@@ -38,7 +39,7 @@
         {/each}
       </select>
     </label>
-    <button type="button" aria-label="Next vehicle" disabled={!vehicles.length} onclick={() => stepVehicle(1)}>›</button>
+    <button type="button" aria-label="Next vehicle" disabled={!vehicles.length} onclick={() => stepVehicle(1)}><Icon name="chevron-right" /></button>
     <label class="paint-picker">
       <span>Paint</span>
       <select

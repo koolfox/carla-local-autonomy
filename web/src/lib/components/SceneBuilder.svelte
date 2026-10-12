@@ -143,7 +143,6 @@
   <section class="builder-section">
     <div class="section-heading">
       <div>
-        <span class="eyebrow">Shared scene</span>
         <h3>World and population</h3>
       </div>
       <span class="section-note">These are the same values used by Garage preview and Drive.</span>
@@ -154,7 +153,6 @@
   <section class="builder-section">
     <div class="section-heading">
       <div>
-        <span class="eyebrow">Dataset</span>
         <h3>Capture plan</h3>
       </div>
       <span class="section-note">Save a recipe or record it with the connected World Worker.</span>
@@ -187,7 +185,7 @@
       <label class="field">
         <span>Dataset capture rate</span>
         <select
-          value={$captureSettings.captureFps}
+          value={String($captureSettings.captureFps)}
           onchange={(event) =>
             ($captureSettings.captureFps = Number(fieldValue(event)) as SituationSettings['captureFps'])}
         >
@@ -262,7 +260,6 @@
   <section class="builder-section plan-section">
     <div class="section-heading">
       <div>
-        <span class="eyebrow">Deterministic plan</span>
         <h3>Build scenario plan</h3>
       </div>
       <span class="section-note">Planning is offline and does not mutate CARLA.</span>

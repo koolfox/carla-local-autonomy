@@ -56,8 +56,8 @@
   />
 </svelte:head>
 
-<div class="app-shell">
-  <StatusHeader compact={showCockpit} />
+<div class="app-shell" class:driving={showCockpit}>
+  <StatusHeader />
 
   {#if loading}
     <main class="loading-shell" aria-busy="true">
@@ -73,13 +73,15 @@
     </main>
   {:else}
     <main class="garage-workspace" class:driving={showCockpit}>
+      <div class="canvas">
+        {#if showCockpit}
+          <DriveCockpit />
+          <div class="drive-toolbar"><SessionLaunchBar compact={true} /></div>
+        {:else}
+          <GaragePreview />
+        {/if}
+      </div>
       <GarageMenu locked={sessionLocked} />
-      {#if showCockpit}
-        <DriveCockpit />
-        <SessionLaunchBar compact={true} />
-      {:else}
-        <GaragePreview />
-      {/if}
     </main>
   {/if}
 </div>

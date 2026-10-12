@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/components/Icon.svelte';
   import { newRunId } from '$lib/domain/config';
   import { isDriveActive } from '$lib/domain/runtime';
   import { blockingIssues, validateSession } from '$lib/domain/sessionValidation';
@@ -74,7 +75,6 @@
 
 <section class:compact class="launch-bar" aria-label={`Session actions. ${hint}`} title={hint}>
   {#if !compact}<div class="launch-copy">
-    <span class="launch-kicker">Session control</span>
     {#if $garageRuntime.error}
       <strong class="launch-error" role="alert">{$garageRuntime.error}</strong>
     {:else if blockers.length}
@@ -104,7 +104,7 @@
         disabled={$garageRuntime.action !== null}
         onclick={emergency}
       >
-        {$garageRuntime.action === 'emergency' ? 'Applying brake…' : 'Emergency Brake'}
+        <Icon name="brake" /><span>{$garageRuntime.action === 'emergency' ? 'Applying brake…' : 'Emergency Brake'}</span>
       </button>
       <button
         type="button"
@@ -113,11 +113,11 @@
         disabled={$garageRuntime.action !== null}
         onclick={stop}
       >
-        {$garageRuntime.action === 'stop' ? 'Saving…' : 'Stop & Save'}
+        <Icon name="stop" /><span>{$garageRuntime.action === 'stop' ? 'Saving…' : 'Stop & Save'}</span>
       </button>
     {:else}
       <button type="button" class="button primary-button" title={hint} disabled={disabled} onclick={launch}>
-        {$garageRuntime.action === 'start' ? 'Starting Garage…' : terminal ? 'Start next run' : 'Start session'}
+        <Icon name="play" />{$garageRuntime.action === 'start' ? 'Starting Garage…' : terminal ? 'Start next run' : 'Start session'}
       </button>
     {/if}
   </div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/components/Icon.svelte';
   import { onMount } from 'svelte';
 
   import { isDriveRunning, speedMetresPerSecond } from '$lib/domain/runtime';
@@ -286,6 +287,8 @@
       releaseControl(false);
     };
   });
+  const coarsePointer = typeof window !== 'undefined'
+    && window.matchMedia('(hover: none), (pointer: coarse)').matches;
 </script>
 
 <section class="manual-control-panel" class:armed={focused} class:disabled={!manualAvailable}>
@@ -297,7 +300,7 @@
           ? 'Traffic Manager'
           : focused
             ? 'Keyboard active'
-            : 'Click camera to drive'}
+            : coarsePointer ? 'Touch controls ready' : 'Click camera to drive'}
     </span>
     {#if autopilot}
       <button
@@ -319,10 +322,10 @@
     </div>
 
     <div class="control-keys" aria-label="touch driving controls">
-      <button class="touch-left" class:active={combined.left} aria-label="Steer left" onpointerdown={(event) => pointerDown(event, 'left')} onpointerup={pointerUp} onpointercancel={pointerUp} onlostpointercapture={pointerUp} oncontextmenu={preventContextMenu}><strong>←</strong><small>Left</small></button>
-      <button class="touch-right" class:active={combined.right} aria-label="Steer right" onpointerdown={(event) => pointerDown(event, 'right')} onpointerup={pointerUp} onpointercancel={pointerUp} onlostpointercapture={pointerUp} oncontextmenu={preventContextMenu}><strong>→</strong><small>Right</small></button>
-      <button class="touch-brake" class:active={combined.brake} aria-label="Brake" onpointerdown={(event) => pointerDown(event, 'brake')} onpointerup={pointerUp} onpointercancel={pointerUp} onlostpointercapture={pointerUp} oncontextmenu={preventContextMenu}><strong>■</strong><small>Brake</small></button>
-      <button class="touch-throttle" class:active={combined.forward} aria-label="Throttle" onpointerdown={(event) => pointerDown(event, 'forward')} onpointerup={pointerUp} onpointercancel={pointerUp} onlostpointercapture={pointerUp} oncontextmenu={preventContextMenu}><strong>▲</strong><small>Go</small></button>
+      <button class="touch-left" class:active={combined.left} aria-label="Steer left" onpointerdown={(event) => pointerDown(event, 'left')} onpointerup={pointerUp} onpointercancel={pointerUp} onlostpointercapture={pointerUp} oncontextmenu={preventContextMenu}><strong><Icon name="arrow-left" size={22} /></strong><small>Left</small></button>
+      <button class="touch-right" class:active={combined.right} aria-label="Steer right" onpointerdown={(event) => pointerDown(event, 'right')} onpointerup={pointerUp} onpointercancel={pointerUp} onlostpointercapture={pointerUp} oncontextmenu={preventContextMenu}><strong><Icon name="arrow-right" size={22} /></strong><small>Right</small></button>
+      <button class="touch-brake" class:active={combined.brake} aria-label="Brake" onpointerdown={(event) => pointerDown(event, 'brake')} onpointerup={pointerUp} onpointercancel={pointerUp} onlostpointercapture={pointerUp} oncontextmenu={preventContextMenu}><strong><Icon name="stop" size={20} /></strong><small>Brake</small></button>
+      <button class="touch-throttle" class:active={combined.forward} aria-label="Throttle" onpointerdown={(event) => pointerDown(event, 'forward')} onpointerup={pointerUp} onpointercancel={pointerUp} onlostpointercapture={pointerUp} oncontextmenu={preventContextMenu}><strong><Icon name="arrow-up" size={22} /></strong><small>Go</small></button>
       <button class="touch-reverse" class:active={combined.reverseModifier} aria-label="Hold for reverse" onpointerdown={(event) => pointerDown(event, 'reverseModifier')} onpointerup={pointerUp} onpointercancel={pointerUp} onlostpointercapture={pointerUp} oncontextmenu={preventContextMenu}><strong>R</strong><small>Reverse</small></button>
       <button class="touch-handbrake" class:active={combined.handBrake} aria-label="Handbrake" onpointerdown={(event) => pointerDown(event, 'handBrake')} onpointerup={pointerUp} onpointercancel={pointerUp} onlostpointercapture={pointerUp} oncontextmenu={preventContextMenu}><strong>P</strong><small>Brake</small></button>
     </div>

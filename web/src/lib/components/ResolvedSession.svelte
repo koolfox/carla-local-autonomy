@@ -21,7 +21,6 @@
 <aside class="resolved-panel">
   <div class="resolved-header">
     <div>
-      <span class="eyebrow">Session brief</span>
       <h2>What will run</h2>
     </div>
     <button type="button" class="ghost-button" disabled={runtimeActive} onclick={resetSession}>Reset</button>

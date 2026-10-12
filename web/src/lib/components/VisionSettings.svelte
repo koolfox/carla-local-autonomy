@@ -43,10 +43,9 @@
 <section id="vision" class="config-card scroll-section">
   <div class="section-heading">
     <div>
-      <span class="eyebrow">04 · Vision</span>
       <h2>Camera, perception & evidence</h2>
     </div>
-    <span class:ok-text={$systemSettings?.visionRuntimeAvailable} class="capability">
+    <span class:ok-text={$systemSettings?.visionRuntimeAvailable} class:off={!$systemSettings?.visionRuntimeAvailable} class="capability">
       {$systemSettings?.visionRuntimeAvailable ? 'Vision runtime ready' : 'Vision runtime unavailable'}
     </span>
   </div>
@@ -181,7 +180,7 @@
     <label class="field">
       <span>Camera FPS</span>
       <select
-        value={$sessionConfig.camera.fps}
+        value={String($sessionConfig.camera.fps)}
         onchange={(event) => patchSessionSection('camera', { fps: fieldNumber(event) })}
       >
         <option value="10">10 FPS</option>
