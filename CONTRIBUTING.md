@@ -29,6 +29,21 @@ vertical-slice workflow, and live-CARLA evidence boundary.
 Never push feature work directly to `main`. Never rewrite or force-push a
 branch another contributor is using.
 
+## Verified AI authorship
+
+The maintainer requested account-level credit for actual AI contributions.
+For original changes written by Codex, use `Codex <codex@openai.com>` as the
+primary commit author, retain the maintainer's existing committer identity,
+and record their contribution with a verified human `Co-authored-by` trailer.
+The [agent instructions](AGENTS.md) define when this attribution applies.
+
+Prefer **Create a merge commit** for these PRs so the authored commit reaches
+`main` intact. A squash creates a new commit; verify its primary author if
+using that method. GitHub identifies repository contributors by the
+[author's associated email](https://docs.github.com/en/rest/repos/repos#list-repository-contributors).
+This is attribution metadata, not a repository access grant or a signature
+made with the Codex account's credentials. Existing history is preserved.
+
 ## Parallel work
 
 Do not copy a fixed ownership list into long-lived documentation. The active
