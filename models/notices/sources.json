@@ -1,0 +1,61 @@
+{
+  "schema_version": "1.0",
+  "sources": [
+    {
+      "path": "YOLOP-LICENSE",
+      "source_url": "https://raw.githubusercontent.com/hustvl/YOLOP/8d8f68df318c71f01d6f813c024df646c7d1978f/LICENSE",
+      "retrieved_on": "2026-10-12",
+      "sha256": "97acb244135bb2ed8ca578990bc91b670d61d0c5c37fc67b17bdc252d865cd9d",
+      "size_bytes": 1082,
+      "modified": false
+    },
+    {
+      "path": "YOLOPv2-LICENSE",
+      "source_url": "https://raw.githubusercontent.com/CAIC-AD/YOLOPv2/main/LICENSE",
+      "retrieved_on": "2026-10-12",
+      "sha256": "efb0c258639b94b84e344b1ab0ff55249a8dd115914b195d63602aa24fbb8c60",
+      "size_bytes": 1064,
+      "modified": false
+    },
+    {
+      "path": "Ultralytics-LICENSE",
+      "source_url": "https://raw.githubusercontent.com/ultralytics/ultralytics/v8.4.137/LICENSE",
+      "retrieved_on": "2026-10-12",
+      "sha256": "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0",
+      "size_bytes": 34523,
+      "modified": false
+    },
+    {
+      "path": "SegFormer-LICENSE",
+      "source_url": "https://raw.githubusercontent.com/NVlabs/SegFormer/master/LICENSE",
+      "retrieved_on": "2026-10-12",
+      "sha256": "f549820c06519e3105e5174a2fd7285224ffd2268a7f879a843b1a255fd04a61",
+      "size_bytes": 4065,
+      "modified": false
+    },
+    {
+      "path": "DepthAnythingV2-LICENSE",
+      "source_url": "https://raw.githubusercontent.com/DepthAnything/Depth-Anything-V2/main/LICENSE",
+      "retrieved_on": "2026-10-12",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "size_bytes": 11357,
+      "modified": false
+    },
+    {
+      "path": "SegFormer-MODEL-CARD.md",
+      "source_url": "https://huggingface.co/nvidia/segformer-b0-finetuned-cityscapes-1024-1024/raw/a8df754056355c08d3d8c9c4f5b5988e4bd2f676/README.md",
+      "retrieved_on": "2026-10-12",
+      "sha256": "18368aca55f8673835edd57521a353b31365f576a145c6b040bd24753dff8cf6",
+      "size_bytes": 3136,
+      "modified": false
+    },
+    {
+      "path": "DepthAnythingV2-MODEL-CARD.md",
+      "source_url": "https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-Outdoor-Small-hf/raw/fd2c22027eaf20374204f14099b8341e1925ad39/README.md",
+      "retrieved_on": "2026-10-12",
+      "sha256": "77acb892732b6b7cb30798f85f985be7af26d420d93d06923cd7229b6176f7ac",
+      "size_bytes": 4969,
+      "modified": false
+    }
+  ]
+}

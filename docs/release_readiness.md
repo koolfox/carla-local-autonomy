@@ -5,7 +5,9 @@ Current repository check, 2026-10-12: GitHub `main` and the local source agree a
 reports a public repository, with no published releases or open pull requests.
 The [historical sample archive](../samples/README.md) fills the missing retained
 sample/demo material, but does not satisfy the live release gates below.
-See the [repository audit](repository_audit_2026-10-12.md) for scope and deferred work.
+The [bundled models](../models/README.md) are also retained through Git LFS for
+new checkouts. See the [repository audit](repository_audit_2026-10-12.md) for
+scope and deferred work; asset availability is not a fresh inference or live acceptance result.
 
 The assessment below is a historical review:
 

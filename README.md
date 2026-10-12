@@ -72,6 +72,31 @@ Ultralytics, or the research environment.
 The research computer owns the UI, detector inference, video recording,
 artifacts, datasets, and reports.
 
+## Clone with the bundled models
+
+Install [Git LFS](https://docs.github.com/en/repositories/working-with-files/managing-large-files/installing-git-large-file-storage)
+before cloning. The checkout includes ten model-weight files (about 699 MiB),
+matching DeiT class tables and pinned Hugging Face processor/configuration files:
+
+```bash
+git lfs install
+git clone https://github.com/koolfox/carla-local-autonomy.git
+cd carla-local-autonomy
+git lfs pull
+```
+
+Until `codex/repository-audit-samples` is merged, use
+`git clone --branch codex/repository-audit-samples https://github.com/koolfox/carla-local-autonomy.git`
+instead of the clone command above. Existing checkouts can switch to that branch
+and run `git lfs pull`.
+
+See [the bundled-model inventory](models/README.md) for exact paths, hashes,
+upstream notices and offline model-cache settings. A clone without Git LFS, or
+with LFS downloads disabled, leaves small pointer files in place of weights.
+Run commands from the repository root so the default workspace resolves the
+bundled `models/` directory. The [new-environment guide](docs/clone_setup.md)
+covers dependencies, local connection settings and the separate CARLA host.
+
 ## Install profiles
 
 Python 3.11–3.13 and [uv](https://docs.astral.sh/uv/) are required.
@@ -238,13 +263,15 @@ summary.json
 manifest.json
 ```
 
-Generated datasets, runs, models, reports, bundles, native kits, and operator
+Generated datasets, runs, new model downloads, reports, bundles, native kits, and operator
 sessions are ignored by Git. The explicitly curated [historical samples](samples/README.md)
 contain five short recordings, camera images, a three-frame labelled dataset,
 report snapshots and DeiT class tables, with a byte-size and SHA-256 inventory.
 These are historical development examples; fresh live-CARLA acceptance is pending.
-Keep new runtime output in the ignored roots and use releases or an external
-artifact store for large datasets, model weights and generated bundles.
+The [bundled models](models/README.md) are a separate, deliberately published
+Git LFS asset set. Keep new runtime output in the ignored roots; additions to
+the model bundle require an explicit ignore-rule and inventory update. Use
+releases or an external artifact store for large datasets and generated bundles.
 
 ## Research workflows
 

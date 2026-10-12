@@ -42,4 +42,7 @@ Operator downloads belong to its configured workspace, not the home cache:
 Standalone adapters use the current working directory as workspace unless one
 is supplied. Explicit checkpoint paths still take precedence. Existing bare
 detector filenames saved by the UI resolve under `models/` when absent from the
-workspace root. Model binaries remain ignored by Git and are not pushed.
+workspace root. The current YOLOP, YOLOPv2, SegFormer and depth snapshots are
+included in the [Git LFS model bundle](../models/README.md); `git lfs pull`
+restores their full bytes in a new checkout. New downloads and training outputs
+remain ignored until deliberately added to that bundle.

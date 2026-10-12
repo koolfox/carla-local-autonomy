@@ -26,6 +26,7 @@ For a concrete bug or feature, start with the [feature-to-test map](README.md).
 | `tests/` | Contract, component, workflow, and fake-runtime regression tests |
 | `docs/` | Architecture, operator runbooks, protocols, and evidence boundaries |
 | `samples/` | Deliberately retained historical clips, labelled frames, reports and model class tables with provenance and checksums |
+| Allow-listed files under `models/` | Bundled Git LFS weights, pinned processor/configuration files, class tables and upstream notices |
 
 Multi-camera research capture extends `native/behavior_teacher.py` using
 `native/camera_rig.py`. Rig contracts, additional-image verification and offline
@@ -137,7 +138,10 @@ web/node_modules/
 web/.svelte-kit/
 ```
 
-These paths are ignored by Git. A public sample artifact must be introduced
+These runtime paths are ignored by Git except for the explicit
+[bundled-model allow-list](../models/README.md). The bundle contains the existing
+weights and matching metadata required by the current adapters; new downloads,
+training outputs and redundant Hugging Face cache blobs remain local. A public sample artifact must be introduced
 explicitly and must include provenance, size, license, and verification data.
 The [historical sample archive](../samples/README.md) records that no project or
 sample license has yet been declared; publication does not settle that decision.

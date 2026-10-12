@@ -6,6 +6,13 @@ work. After the initial inventory, the maintainer deferred further tests and new
 scripts until 2026-10-13 because the CARLA server is unavailable. No runtime
 source change, simulator mutation or new test script belongs to this delivery.
 
+Follow-up publication decision: the maintainer subsequently requested the
+model files needed by a new clone as well. The same unmerged delivery branch
+now also carries the [Git LFS model bundle](../models/README.md), matching class
+tables and pinned Hugging Face snapshots. The historical archive and findings
+below retain their original scope; its weight exclusion is superseded by this
+separate model bundle. Further tests, model execution and new scripts remain deferred.
+
 ## Repository state
 
 - Fetched GitHub `main`: `ad8e00b7b57dc264f582e475d236d7320c6ff617`.

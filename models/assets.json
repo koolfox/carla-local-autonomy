@@ -1,0 +1,381 @@
+{
+  "schema_version": "1.0",
+  "object_type": "bundled_model_asset_inventory",
+  "published_on": "2026-10-12",
+  "publication_baseline_commit": "e506f188351a18d3e1c3943e676fa7b019a8269e",
+  "publication_authorization": "maintainer explicitly requested models for new-clone setup",
+  "weight_file_count": 10,
+  "weight_size_bytes": 732845619,
+  "regular_snapshot_files": true,
+  "runtime_behavior_changed": false,
+  "models_deserialized": false,
+  "fresh_inference_or_live_carla_validation": false,
+  "limitations": [
+    "Hashes identify the retained local files; no new model accuracy or autonomy claim is made.",
+    "Custom checkpoint training and licence provenance is retained only to the extent already supplied by the maintainer.",
+    "Project licence selection and runtime validation remain separate work.",
+    "Git LFS must hydrate the weight files before model loading."
+  ],
+  "files": [
+    {
+      "path": "README.md",
+      "model_group": "bundle-metadata",
+      "role": "notice_or_documentation",
+      "storage": "git",
+      "size_bytes": 6482,
+      "sha256": "7b24a3ec2cba4e1edca80b92fbc7474500a6ceedfc164c799bd4e28a436ea244",
+      "source": {
+        "kind": "retained_notice_or_bundle_documentation"
+      }
+    },
+    {
+      "path": "deit64/deit64_stageB_blocks10_11_best.pt",
+      "model_group": "deit64-stage-b",
+      "role": "model_weights",
+      "storage": "git-lfs",
+      "size_bytes": 87646059,
+      "sha256": "33208b9621fbef53c91f63a8155ab39138a7277ab633fca976038a61518c9169",
+      "source": {
+        "kind": "maintainer_local_checkpoint_or_ontology"
+      }
+    },
+    {
+      "path": "deit64/ontology_final_64.csv",
+      "model_group": "deit64-stage-b",
+      "role": "class_ontology",
+      "storage": "git",
+      "size_bytes": 2138,
+      "sha256": "d0022dcea5762ca28e9a8376bbf7f8c88d3ee3dca6095a873f0e3a5c07dc1d6c",
+      "source": {
+        "kind": "maintainer_local_checkpoint_or_ontology"
+      }
+    },
+    {
+      "path": "deit68/deit68_carla_stageC_epoch15.pt",
+      "model_group": "deit68-stage-c",
+      "role": "model_weights",
+      "storage": "git-lfs",
+      "size_bytes": 117938015,
+      "sha256": "26b507e3f256090de903a98d008d9e7a76bfb06a28397d056f5df413c1e69b3d",
+      "source": {
+        "kind": "maintainer_local_checkpoint_or_ontology"
+      }
+    },
+    {
+      "path": "deit68/ontology_final_68.csv",
+      "model_group": "deit68-stage-c",
+      "role": "class_ontology",
+      "storage": "git",
+      "size_bytes": 2244,
+      "sha256": "877d561461cdab6f121d9fe97185f648d3f7c896affc8d7363db027f22fa5649",
+      "source": {
+        "kind": "maintainer_local_checkpoint_or_ontology"
+      }
+    },
+    {
+      "path": "hierarchical_rtdetr_m9_precal_m6_query_film_img800.pt",
+      "model_group": "m9-hierarchical",
+      "role": "model_weights",
+      "storage": "git-lfs",
+      "size_bytes": 133889371,
+      "sha256": "8cd8db62a9a77257294a3e145839d94438e516d6225e03e20fdb7599f7df5d09",
+      "source": {
+        "kind": "maintainer_local_checkpoint"
+      }
+    },
+    {
+      "path": "huggingface/models--depth-anything--Depth-Anything-V2-Metric-Outdoor-Small-hf/snapshots/fd2c22027eaf20374204f14099b8341e1925ad39/config.json",
+      "model_group": "depth-anything-v2-metric-outdoor-small",
+      "role": "model_configuration",
+      "storage": "git",
+      "size_bytes": 1063,
+      "sha256": "3417ccb9df6fafe7e03c46583db7185d15e8ad4f5bbbdd28295bb06cfb132b48",
+      "source": {
+        "kind": "retained_huggingface_snapshot",
+        "model_id": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Small-hf",
+        "revision": "fd2c22027eaf20374204f14099b8341e1925ad39",
+        "upstream_url": "https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-Outdoor-Small-hf/tree/fd2c22027eaf20374204f14099b8341e1925ad39"
+      }
+    },
+    {
+      "path": "huggingface/models--depth-anything--Depth-Anything-V2-Metric-Outdoor-Small-hf/snapshots/fd2c22027eaf20374204f14099b8341e1925ad39/model.safetensors",
+      "model_group": "depth-anything-v2-metric-outdoor-small",
+      "role": "model_weights",
+      "storage": "git-lfs",
+      "size_bytes": 99173660,
+      "sha256": "ad065c77a7421ca55159a1f0db9433397a607690f2d76bb8a6fc54b1be7a3124",
+      "source": {
+        "kind": "retained_huggingface_snapshot",
+        "model_id": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Small-hf",
+        "revision": "fd2c22027eaf20374204f14099b8341e1925ad39",
+        "upstream_url": "https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-Outdoor-Small-hf/tree/fd2c22027eaf20374204f14099b8341e1925ad39"
+      }
+    },
+    {
+      "path": "huggingface/models--depth-anything--Depth-Anything-V2-Metric-Outdoor-Small-hf/snapshots/fd2c22027eaf20374204f14099b8341e1925ad39/preprocessor_config.json",
+      "model_group": "depth-anything-v2-metric-outdoor-small",
+      "role": "model_configuration",
+      "storage": "git",
+      "size_bytes": 437,
+      "sha256": "533b16a60445d7cab5086d39b45f92be45624b977972c62d5984d93e98366063",
+      "source": {
+        "kind": "retained_huggingface_snapshot",
+        "model_id": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Small-hf",
+        "revision": "fd2c22027eaf20374204f14099b8341e1925ad39",
+        "upstream_url": "https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-Outdoor-Small-hf/tree/fd2c22027eaf20374204f14099b8341e1925ad39"
+      }
+    },
+    {
+      "path": "huggingface/models--nvidia--segformer-b0-finetuned-cityscapes-1024-1024/refs/main",
+      "model_group": "segformer-b0",
+      "role": "revision_alias",
+      "storage": "git",
+      "size_bytes": 40,
+      "sha256": "7cb47de3f427760067d8388b34fbb8d96766775a53fd329757af3751d0514600",
+      "source": {
+        "kind": "retained_huggingface_snapshot_or_revision_alias",
+        "model_id": "nvidia/segformer-b0-finetuned-cityscapes-1024-1024",
+        "revision": null,
+        "upstream_url": "https://huggingface.co/nvidia/segformer-b0-finetuned-cityscapes-1024-1024"
+      }
+    },
+    {
+      "path": "huggingface/models--nvidia--segformer-b0-finetuned-cityscapes-1024-1024/refs/refs/pr/4",
+      "model_group": "segformer-b0",
+      "role": "revision_alias",
+      "storage": "git",
+      "size_bytes": 40,
+      "sha256": "c17556b2470cbdb986c8015de576c30c678998b26ab836817867a310035c1905",
+      "source": {
+        "kind": "retained_huggingface_snapshot_or_revision_alias",
+        "model_id": "nvidia/segformer-b0-finetuned-cityscapes-1024-1024",
+        "revision": null,
+        "upstream_url": "https://huggingface.co/nvidia/segformer-b0-finetuned-cityscapes-1024-1024"
+      }
+    },
+    {
+      "path": "huggingface/models--nvidia--segformer-b0-finetuned-cityscapes-1024-1024/snapshots/21b3847fae21ddee674abd31129307b6a1235bd9/config.json",
+      "model_group": "segformer-b0",
+      "role": "model_configuration",
+      "storage": "git",
+      "size_bytes": 1680,
+      "sha256": "649ba4afbaa11ee730b14ad5e31bd50f2e2d5be661a291e31a91512510dba8d9",
+      "source": {
+        "kind": "retained_huggingface_snapshot_or_revision_alias",
+        "model_id": "nvidia/segformer-b0-finetuned-cityscapes-1024-1024",
+        "revision": "21b3847fae21ddee674abd31129307b6a1235bd9",
+        "upstream_url": "https://huggingface.co/nvidia/segformer-b0-finetuned-cityscapes-1024-1024"
+      }
+    },
+    {
+      "path": "huggingface/models--nvidia--segformer-b0-finetuned-cityscapes-1024-1024/snapshots/21b3847fae21ddee674abd31129307b6a1235bd9/preprocessor_config.json",
+      "model_group": "segformer-b0",
+      "role": "model_configuration",
+      "storage": "git",
+      "size_bytes": 272,
+      "sha256": "d96ab2cb112985c19d5ea32f1d1f2369104fc78b1379f5ce26e33ca8646202a7",
+      "source": {
+        "kind": "retained_huggingface_snapshot_or_revision_alias",
+        "model_id": "nvidia/segformer-b0-finetuned-cityscapes-1024-1024",
+        "revision": "21b3847fae21ddee674abd31129307b6a1235bd9",
+        "upstream_url": "https://huggingface.co/nvidia/segformer-b0-finetuned-cityscapes-1024-1024"
+      }
+    },
+    {
+      "path": "huggingface/models--nvidia--segformer-b0-finetuned-cityscapes-1024-1024/snapshots/21b3847fae21ddee674abd31129307b6a1235bd9/pytorch_model.bin",
+      "model_group": "segformer-b0",
+      "role": "model_weights",
+      "storage": "git-lfs",
+      "size_bytes": 14957601,
+      "sha256": "027ed78d8ff9c535df5a66361c92b9673cca3cb923cbeb8c5802385b6b93194c",
+      "source": {
+        "kind": "retained_huggingface_snapshot_or_revision_alias",
+        "model_id": "nvidia/segformer-b0-finetuned-cityscapes-1024-1024",
+        "revision": "21b3847fae21ddee674abd31129307b6a1235bd9",
+        "upstream_url": "https://huggingface.co/nvidia/segformer-b0-finetuned-cityscapes-1024-1024"
+      }
+    },
+    {
+      "path": "huggingface/models--nvidia--segformer-b0-finetuned-cityscapes-1024-1024/snapshots/a8df754056355c08d3d8c9c4f5b5988e4bd2f676/config.json",
+      "model_group": "segformer-b0",
+      "role": "model_configuration",
+      "storage": "git",
+      "size_bytes": 1680,
+      "sha256": "649ba4afbaa11ee730b14ad5e31bd50f2e2d5be661a291e31a91512510dba8d9",
+      "source": {
+        "kind": "retained_huggingface_snapshot_or_revision_alias",
+        "model_id": "nvidia/segformer-b0-finetuned-cityscapes-1024-1024",
+        "revision": "a8df754056355c08d3d8c9c4f5b5988e4bd2f676",
+        "upstream_url": "https://huggingface.co/nvidia/segformer-b0-finetuned-cityscapes-1024-1024"
+      }
+    },
+    {
+      "path": "huggingface/models--nvidia--segformer-b0-finetuned-cityscapes-1024-1024/snapshots/a8df754056355c08d3d8c9c4f5b5988e4bd2f676/model.safetensors",
+      "model_group": "segformer-b0",
+      "role": "model_weights",
+      "storage": "git-lfs",
+      "size_bytes": 14902260,
+      "sha256": "1ed65f56d8c76fc7e11988ed5b7b4302e1c78706ea86583a54c1c9e07133c1d5",
+      "source": {
+        "kind": "retained_huggingface_snapshot_or_revision_alias",
+        "model_id": "nvidia/segformer-b0-finetuned-cityscapes-1024-1024",
+        "revision": "a8df754056355c08d3d8c9c4f5b5988e4bd2f676",
+        "upstream_url": "https://huggingface.co/nvidia/segformer-b0-finetuned-cityscapes-1024-1024"
+      }
+    },
+    {
+      "path": "huggingface/models--nvidia--segformer-b0-finetuned-cityscapes-1024-1024/snapshots/a8df754056355c08d3d8c9c4f5b5988e4bd2f676/preprocessor_config.json",
+      "model_group": "segformer-b0",
+      "role": "model_configuration",
+      "storage": "git",
+      "size_bytes": 272,
+      "sha256": "d96ab2cb112985c19d5ea32f1d1f2369104fc78b1379f5ce26e33ca8646202a7",
+      "source": {
+        "kind": "retained_huggingface_snapshot_or_revision_alias",
+        "model_id": "nvidia/segformer-b0-finetuned-cityscapes-1024-1024",
+        "revision": "a8df754056355c08d3d8c9c4f5b5988e4bd2f676",
+        "upstream_url": "https://huggingface.co/nvidia/segformer-b0-finetuned-cityscapes-1024-1024"
+      }
+    },
+    {
+      "path": "notices/DepthAnythingV2-LICENSE",
+      "model_group": "bundle-metadata",
+      "role": "notice_or_documentation",
+      "storage": "git",
+      "size_bytes": 11357,
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "source": {
+        "kind": "retained_notice_or_bundle_documentation"
+      }
+    },
+    {
+      "path": "notices/DepthAnythingV2-MODEL-CARD.md",
+      "model_group": "bundle-metadata",
+      "role": "notice_or_documentation",
+      "storage": "git",
+      "size_bytes": 4969,
+      "sha256": "77acb892732b6b7cb30798f85f985be7af26d420d93d06923cd7229b6176f7ac",
+      "source": {
+        "kind": "retained_notice_or_bundle_documentation"
+      }
+    },
+    {
+      "path": "notices/SegFormer-LICENSE",
+      "model_group": "bundle-metadata",
+      "role": "notice_or_documentation",
+      "storage": "git",
+      "size_bytes": 4065,
+      "sha256": "f549820c06519e3105e5174a2fd7285224ffd2268a7f879a843b1a255fd04a61",
+      "source": {
+        "kind": "retained_notice_or_bundle_documentation"
+      }
+    },
+    {
+      "path": "notices/SegFormer-MODEL-CARD.md",
+      "model_group": "bundle-metadata",
+      "role": "notice_or_documentation",
+      "storage": "git",
+      "size_bytes": 3136,
+      "sha256": "18368aca55f8673835edd57521a353b31365f576a145c6b040bd24753dff8cf6",
+      "source": {
+        "kind": "retained_notice_or_bundle_documentation"
+      }
+    },
+    {
+      "path": "notices/Ultralytics-LICENSE",
+      "model_group": "bundle-metadata",
+      "role": "notice_or_documentation",
+      "storage": "git",
+      "size_bytes": 34523,
+      "sha256": "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0",
+      "source": {
+        "kind": "retained_notice_or_bundle_documentation"
+      }
+    },
+    {
+      "path": "notices/YOLOP-LICENSE",
+      "model_group": "bundle-metadata",
+      "role": "notice_or_documentation",
+      "storage": "git",
+      "size_bytes": 1082,
+      "sha256": "97acb244135bb2ed8ca578990bc91b670d61d0c5c37fc67b17bdc252d865cd9d",
+      "source": {
+        "kind": "retained_notice_or_bundle_documentation"
+      }
+    },
+    {
+      "path": "notices/YOLOPv2-LICENSE",
+      "model_group": "bundle-metadata",
+      "role": "notice_or_documentation",
+      "storage": "git",
+      "size_bytes": 1064,
+      "sha256": "efb0c258639b94b84e344b1ab0ff55249a8dd115914b195d63602aa24fbb8c60",
+      "source": {
+        "kind": "retained_notice_or_bundle_documentation"
+      }
+    },
+    {
+      "path": "notices/sources.json",
+      "model_group": "bundle-metadata",
+      "role": "notice_or_documentation",
+      "storage": "git",
+      "size_bytes": 2401,
+      "sha256": "22c86d716ab3513fbb05c9e646360ee4e2aaf94ab48cd1e222fe1aa9c5acbcbf",
+      "source": {
+        "kind": "retained_notice_or_bundle_documentation"
+      }
+    },
+    {
+      "path": "rtdetr-l.pt",
+      "model_group": "rtdetr-l",
+      "role": "model_weights",
+      "storage": "git-lfs",
+      "size_bytes": 66511432,
+      "sha256": "6de60b10d4bc566f00cda0f5b4d64afe4b66d48dc9695d2171effb7859d8e73f",
+      "source": {
+        "kind": "maintainer_local_copy_of_named_ultralytics_asset",
+        "filename_only_upstream_identity": true,
+        "upstream_url": "https://github.com/ultralytics/ultralytics/tree/v8.4.137"
+      }
+    },
+    {
+      "path": "yolo26n.pt",
+      "model_group": "yolo26n",
+      "role": "model_weights",
+      "storage": "git-lfs",
+      "size_bytes": 5544453,
+      "sha256": "9b09cc8bf347f0fc8a5f7657480587f25db09b34bf33b0652110fb03a8ad4fef",
+      "source": {
+        "kind": "maintainer_local_copy_of_named_ultralytics_asset",
+        "filename_only_upstream_identity": true,
+        "upstream_url": "https://github.com/ultralytics/ultralytics/tree/v8.4.137"
+      }
+    },
+    {
+      "path": "yolop/yolop-640-640.onnx",
+      "model_group": "yolop",
+      "role": "model_weights",
+      "storage": "git-lfs",
+      "size_bytes": 35902568,
+      "sha256": "cd66a3e0087a7258ae07768cc02cb742eed93865727ae4c9baf969b8fa190696",
+      "source": {
+        "kind": "local_copy_matches_adapter_pinned_sha256",
+        "upstream_url": "https://github.com/hustvl/YOLOP/tree/8d8f68df318c71f01d6f813c024df646c7d1978f",
+        "expected_sha256": "cd66a3e0087a7258ae07768cc02cb742eed93865727ae4c9baf969b8fa190696"
+      }
+    },
+    {
+      "path": "yolopv2/yolopv2.pt",
+      "model_group": "yolopv2",
+      "role": "model_weights",
+      "storage": "git-lfs",
+      "size_bytes": 156380200,
+      "sha256": "f2a8c8374203ae3e67ff9c184e931f763957de92a993b23269e4e721627f1f8c",
+      "source": {
+        "kind": "local_copy_matches_adapter_pinned_sha256",
+        "upstream_url": "https://github.com/CAIC-AD/YOLOPv2/releases/tag/V0.0.1",
+        "expected_sha256": "f2a8c8374203ae3e67ff9c184e931f763957de92a993b23269e4e721627f1f8c"
+      }
+    }
+  ]
+}
