@@ -9,6 +9,7 @@ For a concrete bug or feature, start with the [feature-to-test map](README.md).
 
 | Path | Responsibility |
 | --- | --- |
+| `restore_project.py`, `restore.sh`, `Restore.cmd`, `deploy/restore/` | Standalone GitHub recovery and private runtime bootstrapping; [recovery guide](restore_project.md) |
 | `carla_vision/native/` | Thin CARLA-host processes, Worker protocol, preflight, and native capture |
 | `carla_vision/operator/` | Browser transport, Operator application/session ownership, jobs, and Worker/model adapters |
 | `carla_vision/detectors/` | Model-neutral detector adapters and canonical detections |

@@ -5,6 +5,7 @@
 /.ruff_cache/
 /:memory:.ses
 /.launcher/
+/.restore-state.json
 /simulator/
 __pycache__/
 *.py[cod]

@@ -9,6 +9,7 @@ with one user action, its owner, and its test. This page is the navigation hub;
 | I want to… | Read |
 | --- | --- |
 | Install and use the product | [Main README](../README.md) |
+| Restore on a new computer or recover private local state | [Recovery guide](restore_project.md) |
 | Make my first change | The walkthrough below, then [contribution rules](../CONTRIBUTING.md) |
 | Find a feature or trace a bug | The feature map below, then [developer guide](development.md) |
 | Understand directories | [Structure and ownership](project_structure.md) |

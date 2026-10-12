@@ -18,11 +18,12 @@ from .downloads import model_entries
 
 PREFIX = "CARLA-Vision-setup"
 SOURCE_DIRECTORIES = (
-    "carla_vision/", "configs/", "operator_configs/", "deploy/desktop/",
+    "carla_vision/", "configs/", "operator_configs/", "deploy/desktop/", "deploy/restore/",
     "models/", "samples/", "docs/",
 )
 SOURCE_FILES = {
     "pyproject.toml", "uv.lock", "README.md", "CONTRIBUTING.md", "PRODUCT.md", "DESIGN.md",
+    "restore_project.py", "restore.sh", "Restore.cmd",
 }
 WINDOWS_ENTRY = (
     '@echo off\r\n'
@@ -111,7 +112,7 @@ def payload(root: Path) -> tuple[dict[str, tuple[bytes, int]], dict]:
             ).encode()
         else:
             data = original
-            if relative.startswith("deploy/desktop/") and relative.endswith((".cmd", ".ps1")):
+            if relative.endswith((".cmd", ".ps1")) and (relative.startswith("deploy/") or relative == "Restore.cmd"):
                 data = data.replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
         permissions = 0o755 if mode & 0o111 else 0o644
         members["app/" + relative] = data, permissions

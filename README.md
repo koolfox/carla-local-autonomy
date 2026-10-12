@@ -26,7 +26,7 @@ From a clone, run `deploy\desktop\Install.cmd` on Windows, or
 `sh deploy/desktop/install.sh` on Linux. No Node build is needed for normal use.
 See the [same-computer setup guide](docs/desktop_launcher.md) for paths, CLI
 commands and recovery. The installer preview is available on
-`codex/single-host-launcher`; Windows/Linux installation, terminal rendering and
+`codex/project-restore-cleanup`; Windows/Linux installation, terminal rendering and
 live-CARLA acceptance remain deferred. Source review and archive integrity do
 not establish runtime acceptance.
 
@@ -106,21 +106,27 @@ artifacts, datasets, and reports.
 
 ## Clone with the bundled models
 
+For automatic restoration and dependency setup, use `Restore.cmd` on Windows
+or `sh restore.sh` on macOS/Linux. The [recovery guide](docs/restore_project.md)
+covers same-computer CARLA on Windows/Linux, the Mac web-app profile and importing
+the private backup saved outside this checkout. Restoration includes all
+published model weights and historical sample files. macOS does not run a local
+CARLA server through this tool.
+
 Install [Git LFS](https://docs.github.com/en/repositories/working-with-files/managing-large-files/installing-git-large-file-storage)
 before cloning. The checkout includes ten model-weight files (about 699 MiB),
 matching DeiT class tables and pinned Hugging Face processor/configuration files:
 
 ```bash
 git lfs install
-git clone https://github.com/koolfox/carla-local-autonomy.git
+git clone --branch codex/project-restore-cleanup https://github.com/koolfox/carla-local-autonomy.git
 cd carla-local-autonomy
 git lfs pull
 ```
 
-Until `codex/single-host-launcher` is merged, use
-`git clone --branch codex/single-host-launcher https://github.com/koolfox/carla-local-autonomy.git`
-instead of the clone command above. Existing checkouts can switch to that branch
-and run `git lfs pull`.
+This delivery branch includes the model/sample, launcher and recovery work.
+After it is merged, use `--branch main` instead. Existing checkouts can switch
+to the delivery branch and run `git lfs pull`.
 
 See [the bundled-model inventory](models/README.md) for exact paths, hashes,
 upstream notices and offline model-cache settings. A clone without Git LFS, or
