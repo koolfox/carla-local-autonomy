@@ -20,6 +20,17 @@ restore = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(restore)
 
 
+def test_launcher_only_bootstrap_does_not_restore_or_overwrite_source(tmp_path: Path, monkeypatch) -> None:
+    for name in ("pyproject.toml", "uv.lock"):
+        (tmp_path / name).write_text("retained source")
+    calls = []
+    monkeypatch.setattr(restore, "install_environment", lambda root, role, args: calls.append((root, role, args.lean)))
+    monkeypatch.setattr(restore, "obtain_source", lambda *_: pytest.fail("existing source restoration attempted"))
+    assert restore.main(["--launcher-only", str(tmp_path)]) == 0
+    assert calls == [(tmp_path, "web", True)]
+    assert (tmp_path / "pyproject.toml").read_text() == "retained source"
+
+
 def _backup(path: Path, payloads: dict[str, bytes], corrupt: str | None = None) -> None:
     files = [
         {

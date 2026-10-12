@@ -24,6 +24,7 @@ SOURCE_DIRECTORIES = (
 SOURCE_FILES = {
     "pyproject.toml", "uv.lock", "README.md", "CONTRIBUTING.md", "PRODUCT.md", "DESIGN.md",
     "restore_project.py", "restore.sh", "Restore.cmd",
+    "CARLA-Vision.command",
 }
 WINDOWS_ENTRY = (
     '@echo off\r\n'
@@ -44,24 +45,34 @@ INSTALL_README = """CARLA Vision - setup preview
 
 Windows x86-64: Extract the ZIP completely, then double-click Install.cmd.
 Linux x86-64: Extract the archive, then run: sh install.sh
+macOS 14+ arm64/x86-64: Extract completely, then open CARLA-Vision.command.
 
 No preinstalled Python, Node or Git is required by these setup bundles.
 Setup creates a private Python 3.12 environment and the full-screen launcher.
-In its Setup tab, choose your installed CARLA 0.9.16 folder and Install / Repair.
+In Setup choose local CARLA + Worker + web app (Windows/Linux) or web-only mode
+(macOS/Linux/Windows). Choose Install / Repair to prepare packages and models.
+For local mode, choose your installed CARLA 0.9.16 folder.
 That installs the locked vision dependencies and downloads all ten model weights
 (about 699 MiB) from a fixed GitHub source, checking each SHA-256.
 An optional checkbox downloads the official CARLA server when it is missing.
 The server download/extraction needs at least 35 GiB free.
 Then use Start all. The existing web app opens after actual API readiness.
 
-Desktop/application-menu shortcuts provide daily startup.
+For a remote web client, enable LAN Worker sharing on the host, export its
+private connection file, then import it in the client TUI and Check connection.
+Windows host prerequisite/firewall actions are explicit TUI buttons with UAC.
+Web-only Run starts/stops only the local web server, preserving the remote host.
+
+Windows/Linux desktop/application-menu shortcuts provide daily startup.
+On macOS, open CARLA-Vision.command.
 Setup preserves local recordings, settings and hydrated model files on upgrade.
 Close the installed launcher and its services before reinstalling.
 
 This is a preview pending Windows/Linux installation, visual and live-CARLA
 acceptance. Do not interpret package integrity as runtime acceptance.
 Linux needs curl, tar, coreutils and the OS libraries required by CARLA/OpenCV.
-Both platforms need compatible graphics hardware and installed graphics drivers.
+Local CARLA hosts need compatible graphics hardware and installed graphics drivers.
+Intel macOS supports the lean Web / recording profile; ML needs a supported host.
 Internet is needed for the first dependency/model installation.
 See app/docs/desktop_launcher.md for details, CLI usage and tomorrow's gates.
 """
@@ -138,6 +149,11 @@ def payload(root: Path) -> tuple[dict[str, tuple[bytes, int]], dict]:
     members["app/installer-files.json"] = (json.dumps(manifest, indent=2) + "\n").encode(), 0o644
     members["Install.cmd"] = WINDOWS_ENTRY.encode(), 0o644
     members["install.sh"] = LINUX_ENTRY.encode(), 0o755
+    members["CARLA-Vision.command"] = (
+        '#!/bin/sh\nset -eu\n'
+        'InstallerDirectory=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)\n'
+        'exec sh "$InstallerDirectory/app/deploy/desktop/launch.sh"\n'
+    ).encode(), 0o755
     members["README.txt"] = INSTALL_README.encode(), 0o644
     return members, manifest
 

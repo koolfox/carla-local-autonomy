@@ -29,6 +29,10 @@ jobs:
       - name: Check recovery and published payload integrity without CARLA
         # Match the test runner recorded in uv.lock, without installing ML profiles.
         run: uv run --no-project --python 3.12 --with pytest==9.1.1 python -B -m pytest -q -p no:cacheprovider tests/test_project_restore.py
+      - name: Install lean TUI dependencies without CARLA or ML
+        run: uv sync --extra launcher --group dev --frozen
+      - name: Check launcher and headless TUI contracts on this OS
+        run: uv run python -B -m pytest -q -p no:cacheprovider tests/test_launcher.py tests/test_operator_local_config.py
       - name: Check Unix bootstrap syntax
         if: runner.os != 'Windows'
         run: sh -n restore.sh && sh -n deploy/desktop/install.sh && sh -n deploy/desktop/launch.sh
@@ -76,6 +80,7 @@ jobs:
         run: >-
           uv run pytest -q
           tests/test_bridge.py
+          tests/test_launcher.py
           tests/test_browser_video.py
           tests/test_camera_pause_acceptance.py
           tests/test_camera_relay_teardown.py

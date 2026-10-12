@@ -30,6 +30,8 @@ from .config import (
     native_platform,
     operation_lock,
     read_json,
+    remote_token,
+    save_remote_token,
     worker_token,
 )
 from .downloads import Report, model_status
@@ -68,8 +70,12 @@ def _local_opener():
 
 
 def http_json(
-    url: str, *, token: str | None = None, body: dict | None = None,
-    operator_token: str | None = None, timeout: float = 2,
+    url: str,
+    *,
+    token: str | None = None,
+    body: dict | None = None,
+    operator_token: str | None = None,
+    timeout: float = 2,
 ) -> dict:
     headers = {"Accept": "application/json"}
     if token:
@@ -92,7 +98,9 @@ def web_ready(config: LauncherConfig) -> None:
     http_json(config.web_url + "api/bootstrap")
     with _local_opener().open(config.web_url, timeout=2) as response:
         if response.headers.get_content_type() != "text/html" or not response.read(4096):
-            raise LauncherError("The web console entrypoint is unavailable; repair the installation.")
+            raise LauncherError(
+                "The web console entrypoint is unavailable; repair the installation."
+            )
 
 
 class LocalStack:
@@ -110,7 +118,9 @@ class LocalStack:
     def state(self) -> dict:
         state = read_json(self.state_path, {"schema_version": 1, "services": {}})
         if not isinstance(state, dict) or not isinstance(state.get("services"), dict):
-            raise LauncherError("Launcher service receipt is malformed; inspect its private state file.")
+            raise LauncherError(
+                "Launcher service receipt is malformed; inspect its private state file."
+            )
         return state
 
     def active(self) -> bool:
@@ -119,11 +129,51 @@ class LocalStack:
             for entry in self.state()["services"].values()
         )
 
-    def configure(self, config: LauncherConfig) -> None:
+    def configure(self, config: LauncherConfig, *, token: str | None = None) -> None:
         with operation_lock(self.root):
             if self.active():
+                if config == self.config and (token is None or token == self.credential(config)):
+                    return
                 raise LauncherError("Stop launcher-owned services before changing configuration.")
+            if config.mode == "local":
+                native_platform()
+            if token is not None:
+                save_remote_token(self.root, token)
             config.save(self.root)
+
+    def credential(self, config: LauncherConfig | None = None) -> str | None:
+        config = config or self.config
+        return remote_token(self.root) if config.mode == "web" else worker_token(self.root)
+
+    def check_connection(self, *, report: bool = True) -> dict:
+        config = self.config
+        if not config.worker_url or not self.credential(config):
+            raise LauncherError(
+                "Enter the Worker URL and token in Setup, or import its connection file."
+            )
+        try:
+            health = http_json(config.worker_url + "/v1/health", token=self.credential(config))
+        except urllib.error.HTTPError as error:
+            if error.code in {401, 403}:
+                raise LauncherError(
+                    "Worker rejected the token. Import a fresh connection file from its host."
+                ) from error
+            raise LauncherError(
+                f"Worker returned HTTP {error.code}; inspect its host's Logs."
+            ) from error
+        except (OSError, ValueError) as error:
+            raise LauncherError(
+                "Worker is unreachable. Check its host's Run tab, LAN address and firewall."
+            ) from error
+        if health.get("ready") is not True:
+            raise LauncherError(
+                "Worker responded but CARLA is not ready. Inspect the host's Run tab."
+            )
+        if health.get("carla", {}).get("server_version") != CARLA_VERSION:
+            raise LauncherError(f"Worker must connect to CARLA {CARLA_VERSION}.")
+        if report:
+            self.report("Authenticated Worker connection and CARLA version verified (read-only).")
+        return health
 
     def _server_facts(self, config: LauncherConfig) -> dict:
         # The official client supplies genuine read-only version/world/map facts.
@@ -145,25 +195,46 @@ class LocalStack:
         receipt = self.state()
         rows: dict[str, dict] = {}
         server = {"status": "stopped", "detail": f"127.0.0.1:{config.carla_port}"}
-        if port_open(config.carla_port):
+        if config.mode == "web":
+            server = {
+                "status": "external",
+                "detail": f"{config.carla_host}:{config.carla_port} · remote; never stopped",
+            }
+        elif port_open(config.carla_port):
             try:
                 facts = self._server_facts(config)
                 entry = receipt["services"].get("carla", {})
                 server = {
-                    "status": "ready", "detail": f"{facts['version']} · {facts['map']}",
-                    "owned": _process(entry) is not None or any(
-                        _process(child) for child in entry.get("descendants", [])
-                    ),
+                    "status": "ready",
+                    "detail": f"{facts['version']} · {facts['map']}",
+                    "owned": _process(entry) is not None
+                    or any(_process(child) for child in entry.get("descendants", [])),
                 }
             except (ImportError, RuntimeError, OSError) as error:
                 server = {"status": "unavailable", "detail": str(error)}
         rows["carla"] = server
-        token = worker_token(self.root)
+        token = self.credential(config)
         for role in ("worker", "web"):
             entry = receipt["services"].get(role, {})
             alive = _process(entry) is not None
             row = {"status": "running" if alive else "stopped", "owned": alive}
-            if alive:
+            if role == "worker" and config.mode == "web":
+                row = {
+                    "status": "external",
+                    "owned": False,
+                    "detail": "Optional: configure/import connection in Setup",
+                }
+                if config.worker_url and token:
+                    try:
+                        self.check_connection(report=False)
+                        row = {
+                            "status": "ready",
+                            "owned": False,
+                            "detail": config.worker_url + " · remote; never stopped",
+                        }
+                    except (OSError, ValueError, LauncherError) as error:
+                        row = {"status": "unavailable", "owned": False, "detail": str(error)}
+            elif alive:
                 try:
                     if role == "worker":
                         payload = http_json(config.worker_url + "/v1/health", token=token)
@@ -183,9 +254,14 @@ class LocalStack:
         except (OSError, ValueError, LauncherError) as error:
             models = {"ready": False, "error": str(error), "present": 0, "total": 0}
         return {
-            "services": rows, "models": models, "config": asdict(config),
-            "web_url": config.web_url, "owned_services_active": self.active(),
-            "ready": all(row["status"] == "ready" for row in rows.values()),
+            "services": rows,
+            "models": models,
+            "config": asdict(config),
+            "web_url": config.web_url,
+            "owned_services_active": self.active(),
+            "ready": rows["web"]["status"] == "ready"
+            if config.mode == "web"
+            else all(row["status"] == "ready" for row in rows.values()),
         }
 
     def read_logs(self, offsets: dict[str, int]) -> tuple[list[dict], dict[str, int]]:
@@ -193,12 +269,13 @@ class LocalStack:
         receipt = self.state()
         entries = receipt["services"] or receipt.get("last_run", {}).get("services", {})
         updated, chunks = dict(offsets), []
-        token = worker_token(self.root)
+        tokens = [worker_token(self.root), remote_token(self.root)]
         for role, entry in entries.items():
             path = Path(entry.get("log_path", ""))
             if (
                 not path.resolve().is_relative_to((self.directory / "logs").resolve())
-                or path.is_symlink() or not path.is_file()
+                or path.is_symlink()
+                or not path.is_file()
             ):
                 continue
             size = path.stat().st_size
@@ -211,8 +288,9 @@ class LocalStack:
                 data = stream.read(16_384)
                 updated[str(path)] = stream.tell()
             text = data.decode("utf-8", errors="replace")
-            if token:
-                text = text.replace(token, "[private credential]")
+            for token in tokens:
+                if token:
+                    text = text.replace(token, "[private credential]")
             chunks.append({"role": role, "path": str(path), "text": text})
         return chunks, updated
 
@@ -224,17 +302,25 @@ class LocalStack:
         flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" and role != "carla" else 0
         with log_path.open("ab", buffering=0) as log:
             process = subprocess.Popen(
-                command, cwd=self.root if role != "carla" else state["carla_cwd"],
-                env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
-                creationflags=flags, start_new_session=os.name != "nt",
+                command,
+                cwd=self.root if role != "carla" else state["carla_cwd"],
+                env=env,
+                stdin=subprocess.DEVNULL,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                creationflags=flags,
+                start_new_session=os.name != "nt",
             )
         try:
             created = psutil.Process(process.pid).create_time()
         except psutil.NoSuchProcess as error:
             raise LauncherError(f"{role} exited immediately; inspect {log_path}.") from error
         entry = {
-            "pid": process.pid, "create_time": created, "role": role,
-            "log_path": str(log_path), "control_file": str(self.directory / "control" / (role + "-" + run)),
+            "pid": process.pid,
+            "create_time": created,
+            "role": role,
+            "log_path": str(log_path),
+            "control_file": str(self.directory / "control" / (role + "-" + run)),
             "descendants": [],
         }
         with self._receipt_lock:
@@ -258,50 +344,169 @@ class LocalStack:
 
     def _environment(self, config: LauncherConfig, token: str) -> dict[str, str]:
         environment = dict(os.environ)
-        environment.update({
-            "CARLA_WORLD_WORKER_TOKEN": token, "CARLA_HOST": "127.0.0.1",
-            "CARLA_PORT": str(config.carla_port), "CARLA_WORKSPACE": str(self.root),
-            "CARLA_WORLD_WORKER_URL": config.worker_url,
-            "CARLA_WORLD_WORKER_PORT": str(config.worker_port),
-            "CARLA_OPERATOR_BIND": "127.0.0.1", "CARLA_OPERATOR_PORT": str(config.web_port),
-            "CARLA_ENABLE_EXPERIMENTAL": str(config.enable_experimental).lower(),
-            "PYTHONUTF8": "1", "HF_HUB_OFFLINE": "1",
-            "PATH": str(self.directory / "bin") + os.pathsep + os.environ.get("PATH", ""),
-        })
+        environment.update(
+            {
+                "CARLA_WORLD_WORKER_TOKEN": token,
+                "CARLA_HOST": "127.0.0.1",
+                "CARLA_PORT": str(config.carla_port),
+                "CARLA_WORKSPACE": str(self.root),
+                "CARLA_WORLD_WORKER_URL": config.worker_url,
+                "CARLA_WORLD_WORKER_PORT": str(config.worker_port),
+                "CARLA_OPERATOR_BIND": "127.0.0.1",
+                "CARLA_OPERATOR_PORT": str(config.web_port),
+                "CARLA_ENABLE_EXPERIMENTAL": str(config.enable_experimental).lower(),
+                "PYTHONUTF8": "1",
+                "HF_HUB_OFFLINE": "1",
+                "PATH": str(self.directory / "bin") + os.pathsep + os.environ.get("PATH", ""),
+            }
+        )
+        if config.mode == "web":
+            environment["CARLA_HOST"] = config.carla_host
+            environment["CARLA_WORLD_WORKER_URL"] = config.worker_url
         return environment
 
+    def _start_web(self, config: LauncherConfig, open_browser: bool) -> dict:
+        if self.active():
+            snapshot = self.snapshot()
+            if snapshot["ready"]:
+                if open_browser:
+                    webbrowser.open(config.web_url)
+                return snapshot
+            raise LauncherError("An owned service is still running. Stop it before retrying.")
+        if port_open(config.web_port):
+            raise LauncherError(
+                f"Web port {config.web_port} is occupied; choose a free port in Setup."
+            )
+        token = remote_token(self.root)
+        if bool(config.worker_url) != bool(token):
+            raise LauncherError(
+                "Configure both the Worker URL and token, or clear both for offline use."
+            )
+        from ..operator.product_console import console_available
+
+        if not console_available():
+            raise LauncherError("Compiled web console is missing. Repair the source installation.")
+        state = {
+            "schema_version": 1,
+            "run_id": uuid.uuid4().hex,
+            "services": {},
+            "config": asdict(config),
+            "phase": "starting",
+        }
+        self.directory.joinpath("control").mkdir(parents=True, exist_ok=True)
+        control = self.directory / "control" / ("web-" + state["run_id"])
+        # The UI can open for recordings while CARLA/Worker are offline. Explicit
+        # host bypasses automatic discovery during server startup.
+        host = config.carla_host
+        if host == "auto":
+            from urllib.parse import urlparse
+
+            host = urlparse(config.worker_url).hostname or "127.0.0.1"
+        arguments = [
+            "--bind",
+            "127.0.0.1",
+            "--port",
+            str(config.web_port),
+            "--workspace",
+            str(self.root),
+            "--carla-host",
+            host,
+            "--carla-port",
+            str(config.carla_port),
+        ]
+        if config.worker_url:
+            arguments.extend(["--world-worker-url", config.worker_url])
+        else:
+            arguments.append("--no-world-worker")
+        if not config.enable_experimental:
+            arguments.append("--no-enable-experimental")
+        try:
+            entry = self._spawn(
+                "web",
+                [
+                    sys.executable,
+                    "-m",
+                    "carla_vision.launcher.child",
+                    "--role",
+                    "web",
+                    "--control-file",
+                    str(control),
+                    "--",
+                    *arguments,
+                ],
+                self._environment(config, token),
+                state,
+            )
+            deadline = time.monotonic() + 45
+            while True:
+                if _process(entry) is None:
+                    raise LauncherError("Web app exited; inspect Logs and use Install / Repair.")
+                try:
+                    web_ready(config)
+                    break
+                except (OSError, ValueError, LauncherError) as error:
+                    if time.monotonic() >= deadline:
+                        raise LauncherError("Web readiness timed out; inspect Logs.") from error
+                    time.sleep(0.4)
+            state["phase"] = "ready"
+            atomic_json(self.state_path, state)
+            self.report("Web app is ready. Remote CARLA and Worker remain externally managed.")
+            if open_browser:
+                webbrowser.open(config.web_url)
+            return self.snapshot()
+        except BaseException:
+            self._stop_processes(state)
+            raise
+
     def start(self, *, open_browser: bool = True) -> dict:
-        native_platform()
         if sys.version_info[:2] != (3, 12):
-            raise LauncherError("Use the setup-installed Python 3.12 environment to start the local stack.")
+            raise LauncherError(
+                "Use the setup-installed Python 3.12 environment to start the local stack."
+            )
         with operation_lock(self.root):
             config = self.config
+            if config.mode == "web":
+                return self._start_web(config, open_browser)
+            native_platform()
             if self.active():
                 snapshot = self.snapshot()
                 if snapshot["ready"]:
                     if open_browser:
                         webbrowser.open(config.web_url)
                     return snapshot
-                raise LauncherError("Some owned services are already running; stop them before retrying.")
+                raise LauncherError(
+                    "Some owned services are already running; stop them before retrying."
+                )
             try:
                 if importlib.metadata.version("carla") != CARLA_VERSION:
                     raise LauncherError("Install/repair the native-host profile before Start.")
             except importlib.metadata.PackageNotFoundError as error:
-                raise LauncherError("Choose Install / Repair first; CARLA PythonAPI is missing.") from error
+                raise LauncherError(
+                    "Choose Install / Repair first; CARLA PythonAPI is missing."
+                ) from error
             if not model_status(self.root)["ready"]:
-                raise LauncherError("Choose Install / Repair first; some model weights are not hydrated.")
+                raise LauncherError(
+                    "Choose Install / Repair first; some model weights are not hydrated."
+                )
             from ..operator.product_console import console_available
 
             if not console_available():
-                raise LauncherError("The compiled web console is missing; repair the source installation.")
+                raise LauncherError(
+                    "The compiled web console is missing; repair the source installation."
+                )
             for role, port in (("Worker", config.worker_port), ("web app", config.web_port)):
                 if port_open(port):
-                    raise LauncherError(f"{role} port {port} is occupied; select a free port in Setup.")
+                    raise LauncherError(
+                        f"{role} port {port} is occupied; select a free port in Setup."
+                    )
             token = worker_token(self.root, create=True)
             assert token is not None
             state: dict[str, Any] = {
-                "schema_version": 1, "run_id": uuid.uuid4().hex, "services": {},
-                "config": asdict(config), "phase": "starting",
+                "schema_version": 1,
+                "run_id": uuid.uuid4().hex,
+                "services": {},
+                "config": asdict(config),
+                "phase": "starting",
             }
             env = self._environment(config, token)
             try:
@@ -311,10 +516,15 @@ class LocalStack:
                 else:
                     executable = find_carla(self.root, config.carla_root)
                     if executable is None:
-                        raise LauncherError("Select the CARLA folder in Setup, or enable its official download.")
+                        raise LauncherError(
+                            "Select the CARLA folder in Setup, or enable its official download."
+                        )
                     state["carla_cwd"] = str(executable.parent)
-                    command = [str(executable), f"-carla-rpc-port={config.carla_port}",
-                               f"-quality-level={config.quality}"]
+                    command = [
+                        str(executable),
+                        f"-carla-rpc-port={config.carla_port}",
+                        f"-quality-level={config.quality}",
+                    ]
                     if os.name != "nt":
                         command.insert(0, "/bin/bash")
                     if config.offscreen:
@@ -353,28 +563,58 @@ class LocalStack:
                     finally:
                         tracking.set()
                         tracker.join(timeout=1)
-                self.report("CARLA 0.9.16 responded; starting the authenticated loopback Worker.")
+                self.report("CARLA 0.9.16 responded; starting the authenticated Worker.")
                 self.directory.joinpath("control").mkdir(exist_ok=True)
                 for role in ("worker", "web"):
                     control = self.directory / "control" / (role + "-" + state["run_id"])
                     if role == "worker":
                         arguments = [
-                            "--internal-worker", "--bind", "127.0.0.1", "--port", str(config.worker_port),
-                            "--carla-host", "127.0.0.1", "--carla-port", str(config.carla_port),
-                            "--traffic-manager-port", str(config.traffic_manager_port),
-                            "--expected-carla-version", CARLA_VERSION,
+                            "--internal-worker",
+                            "--bind",
+                            config.worker_bind if config.share_worker else "127.0.0.1",
+                            "--port",
+                            str(config.worker_port),
+                            "--carla-host",
+                            "127.0.0.1",
+                            "--carla-port",
+                            str(config.carla_port),
+                            "--traffic-manager-port",
+                            str(config.traffic_manager_port),
+                            "--expected-carla-version",
+                            CARLA_VERSION,
                         ]
+                        if config.share_worker:
+                            arguments.append("--allow-lan")
                     else:
                         arguments = [
-                            "--bind", "127.0.0.1", "--port", str(config.web_port),
-                            "--workspace", str(self.root), "--carla-host", "127.0.0.1",
-                            "--carla-port", str(config.carla_port), "--world-worker-url", config.worker_url,
-                            "--world-worker-port", str(config.worker_port),
+                            "--bind",
+                            "127.0.0.1",
+                            "--port",
+                            str(config.web_port),
+                            "--workspace",
+                            str(self.root),
+                            "--carla-host",
+                            "127.0.0.1",
+                            "--carla-port",
+                            str(config.carla_port),
+                            "--world-worker-url",
+                            config.worker_url,
+                            "--world-worker-port",
+                            str(config.worker_port),
                         ]
                         if not config.enable_experimental:
                             arguments.append("--no-enable-experimental")
-                    command = [sys.executable, "-m", "carla_vision.launcher.child",
-                               "--role", role, "--control-file", str(control), "--", *arguments]
+                    command = [
+                        sys.executable,
+                        "-m",
+                        "carla_vision.launcher.child",
+                        "--role",
+                        role,
+                        "--control-file",
+                        str(control),
+                        "--",
+                        *arguments,
+                    ]
                     entry = self._spawn(role, command, env, state)
                     deadline = time.monotonic() + 45
                     while True:
@@ -384,9 +624,13 @@ class LocalStack:
                             if role == "worker":
                                 payload = http_json(config.worker_url + "/v1/health", token=token)
                                 if payload.get("ready") is not True:
-                                    raise LauncherError("Worker is not ready for this CARLA server.")
+                                    raise LauncherError(
+                                        "Worker is not ready for this CARLA server."
+                                    )
                                 if payload.get("carla", {}).get("server_version") != CARLA_VERSION:
-                                    raise LauncherError("Worker reported a different CARLA version.")
+                                    raise LauncherError(
+                                        "Worker reported a different CARLA version."
+                                    )
                             else:
                                 web_ready(config)
                             break
@@ -403,7 +647,9 @@ class LocalStack:
             except BaseException:
                 self._stop_processes(state)
                 for chunk in self.read_logs({})[0]:
-                    self.report(f"{chunk['role'].capitalize()} log: {chunk['path']}\n{chunk['text']}")
+                    self.report(
+                        f"{chunk['role'].capitalize()} log: {chunk['path']}\n{chunk['text']}"
+                    )
                 raise
 
     def _stop_processes(self, state: dict) -> None:
@@ -446,7 +692,9 @@ class LocalStack:
 
     def _worker_health(self, config: LauncherConfig) -> dict | None:
         try:
-            return http_json(config.worker_url + "/v1/health", token=worker_token(self.root))
+            if not config.worker_url:
+                return None
+            return http_json(config.worker_url + "/v1/health", token=self.credential(config))
         except urllib.error.HTTPError:
             # Authentication and server errors cannot prove an absent Worker.
             raise
@@ -456,7 +704,8 @@ class LocalStack:
     @staticmethod
     def _worker_idle(health: dict) -> bool:
         return (
-            "active_scene" in health and health["active_scene"] is None
+            "active_scene" in health
+            and health["active_scene"] is None
             and health.get("research_job_id") is None
             and health.get("busy", False) is False
             and health.get("status") not in {"busy", "preparing", "research_running"}
@@ -466,8 +715,10 @@ class LocalStack:
     @staticmethod
     def _owners_finished(drive: dict, preview: dict, capture: dict) -> bool:
         errors = drive.get("cleanup_errors") or []
-        if errors or drive.get("cleanup_error_count") or (
-            drive.get("world_worker", {}).get("cleanup_guard_passed") is False
+        if (
+            errors
+            or drive.get("cleanup_error_count")
+            or (drive.get("world_worker", {}).get("cleanup_guard_passed") is False)
         ):
             raise LauncherError("Drive cleanup failed: " + "; ".join(map(str, errors)))
         if preview.get("cleanup_errors") or preview.get("error"):
@@ -497,6 +748,12 @@ class LocalStack:
         if not isinstance(operator_token, str):
             raise LauncherError("Web app did not provide its local control token.")
         drive, preview, capture = self._owner_states(config)
+        if (
+            config.mode == "web"
+            and self._owners_finished(drive, preview, capture)
+            and capture.get("phase") in {"idle", "saved", "cancelled"}
+        ):
+            return
         health = self._worker_health(config)
         capture_was_active = capture.get("active") is True
         requests = []
@@ -506,12 +763,15 @@ class LocalStack:
             requests.append(("api/drive/stop", {"session_id": drive["session_id"]}))
         if capture_was_active:
             requests.append(("api/garage/capture/cancel", {}))
-        if preview.get("active") or health is not None:
+        if preview.get("active") or (health is not None and config.mode == "local"):
             requests.append(("api/garage/preview/stop", {}))
         for route, body in requests:
             # Parse every owner response; 403/404/409 are failures, never a clean stop.
             result = http_json(
-                config.web_url + route, body=body, operator_token=operator_token, timeout=35,
+                config.web_url + route,
+                body=body,
+                operator_token=operator_token,
+                timeout=35,
             )
             if result.get("cleanup_errors"):
                 raise LauncherError(f"{route} reported cleanup errors: {result['cleanup_errors']}")
@@ -519,11 +779,24 @@ class LocalStack:
         while True:
             drive, preview, capture = self._owner_states(config)
             finished = self._owners_finished(drive, preview, capture)
+            if (
+                finished
+                and config.mode == "web"
+                and capture.get("phase")
+                in {
+                    "idle",
+                    "saved",
+                    "cancelled",
+                }
+            ):
+                return
             health = self._worker_health(config)
             if finished:
                 if health is None:
                     if capture.get("phase") not in {"idle", "saved", "cancelled"}:
-                        raise LauncherError("Worker is unavailable and capture cleanup is unconfirmed.")
+                        raise LauncherError(
+                            "Worker is unavailable and capture cleanup is unconfirmed."
+                        )
                     self.report("All web owners are idle; stopping the remaining owned processes.")
                     return
                 if self._worker_idle(health):
@@ -532,9 +805,10 @@ class LocalStack:
                     ):
                         try:
                             job = http_json(
-                                config.worker_url + "/v1/research/jobs/"
+                                config.worker_url
+                                + "/v1/research/jobs/"
                                 + quote(str(capture["job_id"]), safe=""),
-                                token=worker_token(self.root),
+                                token=self.credential(config),
                             )
                         except urllib.error.HTTPError as error:
                             if error.code != 404:
@@ -544,7 +818,9 @@ class LocalStack:
                             if job.get("cleanup_confirmed") is not True:
                                 raise LauncherError("Native capture did not confirm actor cleanup.")
                     elif capture.get("phase") == "failed":
-                        raise LauncherError("Capture state is unreadable; inspect its retained state.")
+                        raise LauncherError(
+                            "Capture state is unreadable; inspect its retained state."
+                        )
                     return
             if time.monotonic() >= deadline:
                 raise LauncherError(

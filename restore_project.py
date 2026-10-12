@@ -524,6 +524,7 @@ def finish_setup(root: Path, role: str, args) -> None:
         from carla_vision.launcher.services import LocalStack
 
         config = LauncherConfig.load(root)
+        config = replace(config, mode="local")
         if args.research:
             config = replace(config, profile="research")
         if args.carla_root:
@@ -535,6 +536,30 @@ def finish_setup(root: Path, role: str, args) -> None:
             require_stopped(root)
             prepare_ffmpeg(root, print)
             create_web_settings(root)
+            from dataclasses import replace
+
+            from carla_vision.launcher.config import LauncherConfig
+            from carla_vision.operator.local_entrypoint import load_local_env
+
+            values = load_local_env(root / ".env.local")
+            url = values.get("CARLA_WORLD_WORKER_URL", "")
+            if url == "auto":
+                url = ""
+            config = replace(
+                LauncherConfig.load(root),
+                mode="web",
+                profile="lean"
+                if args.lean
+                or (platform.system() == "Darwin" and platform.machine().lower() == "x86_64")
+                else "research"
+                if args.research
+                else "vision",
+                carla_host=values.get("CARLA_HOST", "127.0.0.1"),
+                remote_worker_url=url,
+                carla_port=int(values.get("CARLA_PORT", "2000")),
+                web_port=int(values.get("CARLA_OPERATOR_PORT", "8765")),
+            )
+            config.save(root)
 
 
 def create_web_settings(root: Path) -> None:
@@ -643,8 +668,20 @@ def main(argv: list[str] | None = None) -> int:
         help="Print the intended role/paths without downloading or installing",
     )
     parser.add_argument("--finish-setup", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--launcher-only", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     try:
+        if args.launcher_only:
+            root = args.launcher_only.expanduser().resolve()
+            if not (root / "pyproject.toml").is_file() or not (root / "uv.lock").is_file():
+                raise RestoreError("Launcher bootstrap needs a complete project checkout.")
+            with restoration_lock(root, "launcher.lock"), restoration_lock(root, "operation.lock"):
+                require_stopped(root)
+                args.lean = True
+                args.research = False
+                install_environment(root, "web", args)
+            print("Private Python and TUI are ready. Open CARLA-Vision.command and use Setup.")
+            return 0
         role = selected_role(args.role)
         if args.download_carla and role != "local":
             raise RestoreError("--download-carla is available only in local Windows/Linux mode.")
@@ -736,11 +773,9 @@ def main(argv: list[str] | None = None) -> int:
             )
         elif role == "web":
             print(
-                "Set the LAN Worker URL/token in .env.local. Start from the project root "
-                "with the bundled encoder on PATH: "
-                'PATH="$PWD/.launcher/bin:$PATH" .venv/bin/carla-operator-ui --open-browser '
-                '(Windows PowerShell: $env:PATH="$PWD\\.launcher\\bin;$env:PATH"; '
-                ".\\.venv\\Scripts\\carla-operator-ui.exe --open-browser)."
+                "Open the full-screen launcher: CARLA-Vision.command (macOS), "
+                "deploy/desktop/launch.sh (Linux), or deploy\\desktop\\CARLA-Vision.cmd (Windows). "
+                "Configure/import the Worker connection in Setup, then Start web app."
             )
         else:
             print(

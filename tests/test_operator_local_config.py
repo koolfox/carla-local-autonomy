@@ -78,6 +78,14 @@ def test_explicit_no_experimental_overrides_environment(tmp_path: Path) -> None:
     assert args.enable_experimental is False
 
 
+def test_offline_launcher_overrides_saved_worker_configuration(tmp_path: Path) -> None:
+    write_env(tmp_path, "CARLA_WORLD_WORKER_URL=http://192.168.1.10:8766\nCARLA_WORLD_WORKER_TOKEN=saved-secret\n")
+    plan = prepare_launch(["--no-world-worker", "--carla-host", "127.0.0.1"], cwd=tmp_path,
+                          environ={"CARLA_WORLD_WORKER_URL": "", "CARLA_WORLD_WORKER_TOKEN": ""})
+    assert base.parse_args(plan.argv).world_worker_url is None
+    assert "CARLA_WORLD_WORKER_TOKEN" not in plan.env_updates
+
+
 def test_detector_default_rewrites_only_the_checkbox_state() -> None:
     html = '<input id="drive-detector-enabled" type="checkbox" checked>\n<div>stable</div>'
 
