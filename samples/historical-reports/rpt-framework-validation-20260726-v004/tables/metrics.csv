@@ -1,0 +1,24 @@
+source_id,label,kind,metric,value,unit,support,note
+rpt-framework-validation-20260726-v003,Framework validation report v0.5,report,sources,7,objects,,
+rpt-framework-validation-20260726-v003,Framework validation report v0.5,report,metric_rows,54,rows,,
+rpt-framework-validation-20260726-v003,Framework validation report v0.5,report,artifact_inventory_rows,69,rows,,
+bundle-framework-development-20260726-v003,Framework reproduction bundle v0.5,reproduction_bundle,sources,7,objects,,
+bundle-framework-development-20260726-v003,Framework reproduction bundle v0.5,reproduction_bundle,source_files,168,files,,
+bundle-framework-development-20260726-v003,Framework reproduction bundle v0.5,reproduction_bundle,source_bytes,1662106,bytes,,
+bundle-framework-development-20260726-v003,Framework reproduction bundle v0.5,reproduction_bundle,dependency_locks,1,lockfiles,,
+bundle-framework-development-20260726-v003,Framework reproduction bundle v0.5,reproduction_bundle,commands,5,commands,,
+op-20260726T194948Z-verify-e6436e1d,Operator real verification session,operator_session,returncode,0,,,
+op-20260726T194948Z-verify-e6436e1d,Operator real verification session,operator_session,job_succeeded,1,boolean,,"0=false, 1=true"
+op-20260726T194948Z-verify-e6436e1d,Operator real verification session,operator_session,motion_authorized,0,boolean,,"0=false, 1=true"
+op-20260726T194948Z-verify-e6436e1d,Operator real verification session,operator_session,destructive_operation,0,boolean,,"0=false, 1=true"
+op-20260726T194948Z-verify-e6436e1d,Operator real verification session,operator_session,stop_requested,0,boolean,,"0=false, 1=true"
+scenario-plan-operator-poc-v1,Operator crowded-situation scenario plan,scenario_plan,recipes,1,recipes,,
+scenario-plan-operator-poc-v1,Operator crowded-situation scenario plan,scenario_plan,episodes,1,episodes,,
+scenario-plan-operator-poc-v1,Operator crowded-situation scenario plan,scenario_plan,planned_captures,75,images,,
+scenario-plan-operator-poc-v1,Operator crowded-situation scenario plan,scenario_plan,partition_count.train,1,episodes,,
+op-20260726T195126Z-scenario_plan-e715b442,Operator scenario-planning session,operator_session,returncode,0,,,
+op-20260726T195126Z-scenario_plan-e715b442,Operator scenario-planning session,operator_session,job_succeeded,1,boolean,,"0=false, 1=true"
+op-20260726T195126Z-scenario_plan-e715b442,Operator scenario-planning session,operator_session,motion_authorized,0,boolean,,"0=false, 1=true"
+op-20260726T195126Z-scenario_plan-e715b442,Operator scenario-planning session,operator_session,destructive_operation,0,boolean,,"0=false, 1=true"
+op-20260726T195126Z-scenario_plan-e715b442,Operator scenario-planning session,operator_session,stop_requested,0,boolean,,"0=false, 1=true"
+op-20260726T195126Z-scenario_plan-e715b442,Operator scenario-planning session,operator_session,expected_output_exists,1,boolean,,"0=false, 1=true"

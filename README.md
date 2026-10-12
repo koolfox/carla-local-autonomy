@@ -8,6 +8,28 @@ Python for every session.
 This repository is a LAN research tool, not an internet-facing or multi-user
 service. The browser server deliberately binds to loopback only.
 
+## Run everything on the CARLA computer
+
+The new **full-screen launcher preview** targets Windows x86-64 first and Linux
+x86-64 alongside it. It prepares a private Python 3.12 environment, installs
+locked vision dependencies and a recording encoder, verifies/downloads the
+bundled models, and coordinates CARLA, Worker and the existing web console.
+
+Download the [Windows setup ZIP](installers/CARLA-Vision-setup-preview.zip) or
+[Linux setup archive](installers/CARLA-Vision-setup-preview.tar.gz), extract it,
+and run `Install.cmd` or `sh install.sh`. In the TUI's **Setup** tab, choose the
+installed CARLA 0.9.16 folder and **Install / Repair**, then **Start all** from
+**Run**. Setup can also download the official CARLA package when requested.
+A desktop/applications-menu shortcut provides daily startup.
+
+From a clone, run `deploy\desktop\Install.cmd` on Windows, or
+`sh deploy/desktop/install.sh` on Linux. No Node build is needed for normal use.
+See the [same-computer setup guide](docs/desktop_launcher.md) for paths, CLI
+commands and recovery. The installer preview is available on
+`main`; Windows/Linux installation, terminal rendering and
+live-CARLA acceptance remain deferred. Source review and archive integrity do
+not establish runtime acceptance.
+
 New contributors should start with the
 [`developer navigation hub`](docs/README.md): find a feature, its owner, and
 its first test without reading the whole codebase. Branch/PR rules and the current
@@ -56,6 +78,16 @@ World Worker update is required for playback.
 
 ## Architecture
 
+Same-computer operation uses this local topology:
+
+```text
+Full-screen TUI → CARLA 0.9.16 :2000
+                → World Worker :8766
+                → web console :8765 → local browser
+```
+
+The established two-computer topology is also supported:
+
 ```text
 Windows CARLA host                         Research computer
 ------------------                        -----------------
@@ -71,6 +103,36 @@ Ultralytics, or the research environment.
 
 The research computer owns the UI, detector inference, video recording,
 artifacts, datasets, and reports.
+
+## Clone with the bundled models
+
+For automatic restoration and dependency setup, use `Restore.cmd` on Windows
+or `sh restore.sh` on macOS/Linux. The [recovery guide](docs/restore_project.md)
+covers same-computer CARLA on Windows/Linux, the Mac web-app profile and importing
+the private backup saved outside this checkout. Restoration includes all
+published model weights and historical sample files. macOS does not run a local
+CARLA server through this tool.
+
+Install [Git LFS](https://docs.github.com/en/repositories/working-with-files/managing-large-files/installing-git-large-file-storage)
+before cloning. The checkout includes ten model-weight files (about 699 MiB),
+matching DeiT class tables and pinned Hugging Face processor/configuration files:
+
+```bash
+git lfs install
+git clone https://github.com/koolfox/carla-local-autonomy.git
+cd carla-local-autonomy
+git lfs pull
+```
+
+The default `main` branch includes the model/sample, launcher and recovery work.
+Existing checkouts can update `main` and run `git lfs pull`.
+
+See [the bundled-model inventory](models/README.md) for exact paths, hashes,
+upstream notices and offline model-cache settings. A clone without Git LFS, or
+with LFS downloads disabled, leaves small pointer files in place of weights.
+Run commands from the repository root so the default workspace resolves the
+bundled `models/` directory. The [new-environment guide](docs/clone_setup.md)
+covers dependencies, local connection settings and the separate CARLA host.
 
 ## Install profiles
 
@@ -238,10 +300,15 @@ summary.json
 manifest.json
 ```
 
-Generated datasets, runs, models, reports, bundles, native kits, and operator
-sessions are ignored by Git. Publish frozen artifacts through a release or
-external artifact store rather than committing generated ZIPs and videos to
-the source repository.
+Generated datasets, runs, new model downloads, reports, bundles, native kits, and operator
+sessions are ignored by Git. The explicitly curated [historical samples](samples/README.md)
+contain five short recordings, camera images, a three-frame labelled dataset,
+report snapshots and DeiT class tables, with a byte-size and SHA-256 inventory.
+These are historical development examples; fresh live-CARLA acceptance is pending.
+The [bundled models](models/README.md) are a separate, deliberately published
+Git LFS asset set. Keep new runtime output in the ignored roots; additions to
+the model bundle require an explicit ignore-rule and inventory update. Use
+releases or an external artifact store for large datasets and generated bundles.
 
 ## Research workflows
 

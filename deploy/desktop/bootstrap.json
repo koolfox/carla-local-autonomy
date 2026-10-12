@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "python_version": "3.12",
+  "uv_version": "0.11.2",
+  "model_source_commit": "2c600765e34862becc4f236d99291b295604f973",
+  "uv": {
+    "Windows": {
+      "url": "https://github.com/astral-sh/uv/releases/download/0.11.2/uv-x86_64-pc-windows-msvc.zip",
+      "sha256": "171b7ccda1bbd562da6babeffcf533a1c6cc7862cf998da826e1db534fc43e48"
+    },
+    "Linux": {
+      "url": "https://github.com/astral-sh/uv/releases/download/0.11.2/uv-x86_64-unknown-linux-gnu.tar.gz",
+      "sha256": "7ac2ca0449c8d68dae9b99e635cd3bc9b22a4cb1de64b7c43716398447d42981"
+    }
+  },
+  "upstream_release": "https://github.com/astral-sh/uv/releases/tag/0.11.2"
+}

@@ -1,0 +1,143 @@
+{
+  "annotation_count": 27,
+  "category_counts": {
+    "0": 6,
+    "1": 18,
+    "2": 0,
+    "3": 0,
+    "4": 3,
+    "5": 0,
+    "6": 0,
+    "7": 0,
+    "8": 0,
+    "9": 0
+  },
+  "checksum_index": {
+    "algorithm": "sha256",
+    "path": "checksums.sha256",
+    "sha256": "5320c272546aa62d7eb8edafa7f65520e877c9657698b689206d2d1feb27e53c",
+    "size_bytes": 1424
+  },
+  "dataset_id": "ds-carla0916-town10-pilot-v001",
+  "object_type": "dataset",
+  "release_metadata": {
+    "actors": {
+      "rgb_camera": 25,
+      "teacher_camera": 26,
+      "vehicle": 24
+    },
+    "annotation_count": 27,
+    "control_mode": "none",
+    "elapsed_wall_seconds": 3.8859384580136975,
+    "observed_exact_pairs": 3,
+    "requested_samples": 3,
+    "retained_samples": 3,
+    "rgb_frames_skipped_during_pairing": 9,
+    "stop_reason": "sample_target_reached",
+    "teacher_frames_skipped_during_pairing": 6
+  },
+  "runtime_sensor_contract": "front_monocular_rgb_only",
+  "sample_count": 3,
+  "samples": [
+    {
+      "annotation_count": 9,
+      "carla_frame": 1159028,
+      "episode_id": "ep-static-r00",
+      "image_id": 1,
+      "instance_mask": {
+        "path": "teacher/instance/unassigned/00000001.png",
+        "sha256": "f8940b6ba57377e6af9a521eb286c4e6eefb8e5a532f6daab3f7da95b1f6a3ec",
+        "size_bytes": 62301
+      },
+      "metadata": {
+        "path": "metadata/00000001.json",
+        "sha256": "997930e254397861e18546f26b83c46899422c18a143e96aa5d74c17bef15614",
+        "size_bytes": 4166
+      },
+      "rgb": {
+        "path": "images/unassigned/00000001.png",
+        "sha256": "1908683b58f536fd4b2bf97db4d9306551e7b3c1ad425494ee04d7a47e28a987",
+        "size_bytes": 436951
+      },
+      "sample_id": "00000001",
+      "scenario_id": "scn-town10-static-clear",
+      "source_timestamp": 12271.051748134196,
+      "split": "unassigned",
+      "yolo_label": {
+        "path": "labels/unassigned/00000001.txt",
+        "sha256": "c576479dc4ae2ed7863deda77673c0818e6385a151612ed2bf32b4c27a69b6d3",
+        "size_bytes": 414
+      }
+    },
+    {
+      "annotation_count": 9,
+      "carla_frame": 1159067,
+      "episode_id": "ep-static-r00",
+      "image_id": 2,
+      "instance_mask": {
+        "path": "teacher/instance/unassigned/00000002.png",
+        "sha256": "8f222a5a3de7312d2350f005c62810d6d99c1afd276cd588e3ae204cba553035",
+        "size_bytes": 62155
+      },
+      "metadata": {
+        "path": "metadata/00000002.json",
+        "sha256": "3e76fdae0958557454540ee80624296ce343d8056dae6b1fdd3af60b9e8c996d",
+        "size_bytes": 4166
+      },
+      "rgb": {
+        "path": "images/unassigned/00000002.png",
+        "sha256": "9bd866f4403940c45b514399966f84ef55ba883c989aab8ea45a66c3be9629cc",
+        "size_bytes": 439536
+      },
+      "sample_id": "00000002",
+      "scenario_id": "scn-town10-static-clear",
+      "source_timestamp": 12271.553889233619,
+      "split": "unassigned",
+      "yolo_label": {
+        "path": "labels/unassigned/00000002.txt",
+        "sha256": "c576479dc4ae2ed7863deda77673c0818e6385a151612ed2bf32b4c27a69b6d3",
+        "size_bytes": 414
+      }
+    },
+    {
+      "annotation_count": 9,
+      "carla_frame": 1159129,
+      "episode_id": "ep-static-r00",
+      "image_id": 3,
+      "instance_mask": {
+        "path": "teacher/instance/unassigned/00000003.png",
+        "sha256": "2baee92b018f5442de69c1ac517995fe758e8ab84ff5e78dd5cc713e2b6dab6d",
+        "size_bytes": 62273
+      },
+      "metadata": {
+        "path": "metadata/00000003.json",
+        "sha256": "f424719bf33f4951c85dd4514d308dbfd173f7eb9700945b2ada368086308966",
+        "size_bytes": 4167
+      },
+      "rgb": {
+        "path": "images/unassigned/00000003.png",
+        "sha256": "3529855f4ec6682e5fa7ce12a1e042712d77dd880fd030ff1f20b03e9862e7ca",
+        "size_bytes": 440286
+      },
+      "sample_id": "00000003",
+      "scenario_id": "scn-town10-static-clear",
+      "source_timestamp": 12272.346948433667,
+      "split": "unassigned",
+      "yolo_label": {
+        "path": "labels/unassigned/00000003.txt",
+        "sha256": "c576479dc4ae2ed7863deda77673c0818e6385a151612ed2bf32b4c27a69b6d3",
+        "size_bytes": 414
+      }
+    }
+  ],
+  "schema_version": "1.0",
+  "split_counts": {
+    "unassigned": 3
+  },
+  "status": "complete",
+  "teacher_sensor": {
+    "privileged": true,
+    "retained": true,
+    "type": "sensor.camera.instance_segmentation"
+  }
+}

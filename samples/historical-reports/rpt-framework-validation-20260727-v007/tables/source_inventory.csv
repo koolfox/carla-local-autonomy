@@ -1,0 +1,6 @@
+source_id,label,kind,status,artifact_count,artifact_bytes,git_commit,git_dirty,manifest_sha256
+rpt-framework-validation-20260727-v006,Pre-final framework validation report v0.8,report,success,9,192304,,True,00d177cc0dc964254c44051c9472d831b85eda8ba32cf5bb2e19bfce91df116e
+bundle-framework-development-20260727-v006,Pre-final framework reproduction bundle v0.8,reproduction_bundle,success,17,2550952,,True,d931583de4691c64f141e3f0f49f9d9f378c567c82c27b684f394c13d81d0ddc
+native-host-kit-pilot-20260727-v003,Final portable native 50-frame pilot host kit,native_host_kit,success,7,1383892,,True,ec0b81358d93aa2edf71e58c6b272d7f3fcb696121356bb1ba8526c01e939165
+scenario-plan-native-integration-pilot-v1,Minimal native integration scenario plan,scenario_plan,success,4,7313,,True,4b1b7414f8083c53f48261bab2d14b5fff97cd602d83c09c826ec22a21712d5e
+native-preflight-pilot-20260726-v1,Real endpoint read-only native preflight,native_preflight,success,5,16250,,True,2bf0ad29ba006760b3fbaced137a9df2e35f9cf140d6fc497c10573d789b9bdf

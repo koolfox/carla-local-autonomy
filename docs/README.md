@@ -9,6 +9,7 @@ with one user action, its owner, and its test. This page is the navigation hub;
 | I want to… | Read |
 | --- | --- |
 | Install and use the product | [Main README](../README.md) |
+| Restore on a new computer or recover private local state | [Recovery guide](restore_project.md) |
 | Make my first change | The walkthrough below, then [contribution rules](../CONTRIBUTING.md) |
 | Find a feature or trace a bug | The feature map below, then [developer guide](development.md) |
 | Understand directories | [Structure and ownership](project_structure.md) |
@@ -39,8 +40,13 @@ requirements, documented in its runbooks.
 - **Edit:** `web/src/`, `carla_vision/`, focused `tests/`, versioned `configs/`.
 - **Build, do not hand-edit:** `carla_vision/operator/console_static/`.
 - **Do not extend:** `carla_vision/operator/static/` is the legacy fallback.
-- **Do not commit:** `.env.local`, `models/`, `runs/`, `datasets/`, `reports/`,
-  `operator_sessions/`, caches. Keep real recordings and weights safe during cleanup.
+- **Do not commit:** `.env.local`, `.launcher/`, `simulator/`, newly generated
+  model downloads, `runs/`, `datasets/`, `reports/`, `operator_sessions/`, caches.
+  The explicit bundled-model allow-list is versioned through Git LFS; retained
+  historical examples are under `samples/`. Keep real recordings and weights
+  safe during cleanup.
+
+For same-computer installation, use the [full-screen launcher guide](desktop_launcher.md).
 
 ## Find the feature, then its test
 

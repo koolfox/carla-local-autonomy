@@ -1,0 +1,8 @@
+source_id,label,kind,status,artifact_count,artifact_bytes,git_commit,git_dirty,manifest_sha256
+ds-carla0916-town10-pilot-v001,Exact-frame dataset pilot,dataset,success,5,24027,,True,0b744356ab2b2d10f4efcb5cc7c60d8e460dec5998d501b6427ca076782409db
+ds-carla0916-town10-pilot-v001-qa,Dataset semantic QA,dataset_qa,success,5,2166498,,True,de09c8e83b46054bcd4ecec1004281cc64078830cd36ed5b9dde7cb386111afd
+scenario-plan-thesis-pilot-v1,Deterministic scenario plan,scenario_plan,success,4,82279,,True,e78c5f6fc84e7675b0ba5d82aafee196e2c449bd7e84f4f88f507d0898cf73f2
+framework-v0-rtdetr-live-drive-analysis,Live RT-DETR drive analysis,runtime_analysis,success,6,333743,,True,8828604185d9374237b0727118af57584ef2b8ef37ddcc30219ff07fcfb607e6
+eval-rtdetr-pretrained-pilot-v1,Pretrained RT-DETR development evaluation,evaluation,success,20,1719231,,True,cc4834a372b833e21b14d0c0206c49a66e94c0a3f97dec142ff863e93d1038db
+replay-rtdetr-yolo26-pilot-v1,Paired RT-DETR and YOLO26 replay,paired_replay,success,20,2632843,,True,82c554b2ca5fbc6eb186379339c21befe97ac9ea6a3811682d8835d9086c3289
+bundle-framework-development-20260726-v001,Standalone development reproduction bundle,reproduction_bundle,success,22,1877722,,True,a214953f5a75684d00464dcf98fba9e4039fd7f088cb134e7e7177bd4995f7d1

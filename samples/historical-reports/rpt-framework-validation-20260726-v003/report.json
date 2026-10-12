@@ -1,0 +1,232 @@
+{
+  "artifact_inventory_row_count": 69,
+  "authors": [
+    "Hesam",
+    "CARLA Vision Research Project"
+  ],
+  "canonical_tables": {
+    "metrics": {
+      "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v003/tables/metrics.csv",
+      "sha256": "2f311b42c952c09d0dcf35784d50c69533601fbbd17c71fb9365a0bb062cd9d4",
+      "size_bytes": 7532
+    },
+    "source_artifacts": {
+      "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v003/tables/source_artifacts.csv",
+      "sha256": "6aee6e6a97cde31b8759d29ba6e60b843bf4685ad8f5c6d6c5af4514b74d0417",
+      "size_bytes": 15348
+    },
+    "source_inventory": {
+      "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v003/tables/source_inventory.csv",
+      "sha256": "9f4a8e1aa1bf476924123f2127d8817d8e6b92da79ca3304db29236e6ef3bceb",
+      "size_bytes": 1404
+    }
+  },
+  "claims": [
+    "The live shadow matrix and both child runs pass registered SHA-256, external-reference, unregistered-file, and object-specific semantic verification.",
+    "RT-DETR-L and YOLO26n executed sequentially against the configured CARLA 0.9.16 Town10HD_Opt vehicle and front RGB camera while the privileged teacher was the only actuation source.",
+    "Every logged policy observation passed the front-monocular-RGB structural input audit, direct CARLA objects were not exposed, and vision-policy actuation authorization remained false.",
+    "The two twelve-second child runs produced checksum-tracked overlay videos, terminal overlays, detections, policy proposals, summaries, and immutable source-linked post-hoc analyses.",
+    "Observed throughput and latency are extracted from verified frame logs without manual metric transcription and are explicitly reported as systems measurements rather than detector-accuracy comparisons."
+  ],
+  "generation": {
+    "all_sources_verified_before_generation": true,
+    "confirmatory_clean_git_gate": false,
+    "manual_metric_transcription": false
+  },
+  "limitations": [
+    "All sources were created from a dirty, uncommitted workspace and are development evidence rather than confirmatory thesis experiments.",
+    "The two live runs were sequential and observed different route positions and transient scenes, so detection counts and class frequencies must not be used to rank model accuracy.",
+    "The detectors use pretrained COCO weights and different development confidence thresholds rather than checkpoints and thresholds selected on a released CARLA validation partition.",
+    "The hazard-stop policy is a deliberately simple non-learned shadow baseline; it proposed no braking events in these short runs and has not demonstrated safe driving behavior.",
+    "Teacher motion uses privileged simulator pose and speed, remains outside the runtime sensor contract, and cannot be presented as vision-only driving.",
+    "Structural observation isolation prevents accidental privileged inputs but does not sandbox malicious custom policy code.",
+    "Each child ran for only twelve seconds on one map, weather state, vehicle, route segment, and hardware configuration.",
+    "The native synchronous collector and real multi-seed training protocol remain gated on a compatible official CARLA 0.9.16 PythonAPI host and a released dataset."
+  ],
+  "metric_row_count": 54,
+  "object_type": "research_report_release",
+  "plots": [
+    {
+      "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v003/plots/source_inventory.png",
+      "sha256": "6a09ae1b1f021e2c2f7154975371f919c6a0f76b90cd56bf8904e7e8a4fc603c",
+      "size_bytes": 112347
+    },
+    {
+      "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v003/plots/source_inventory.svg",
+      "sha256": "6cc6e70cae37747affd109e03d55e08116864b9970fc7a4bd675a85c22fcd5ff",
+      "size_bytes": 78420
+    },
+    {
+      "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v003/plots/runtime_performance.png",
+      "sha256": "ff0439743fe929c5481eabb4b1ff54893e626dcc03f6c954ca1db0fb0ffa9a31",
+      "size_bytes": 100294
+    },
+    {
+      "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v003/plots/runtime_performance.svg",
+      "sha256": "a73ecabad97d319a4f45e4db6fe1312f79c68c8e3e161d5f11763242901540e3",
+      "size_bytes": 58143
+    }
+  ],
+  "purpose": "development",
+  "report_document": {
+    "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v003/report.md",
+    "sha256": "aa6b585909c67b5afb17c36c6622a58e41bc5d40792628af2328d4634c9522ed",
+    "size_bytes": 9604
+  },
+  "report_id": "rpt-framework-validation-20260726-v003",
+  "schema_version": "1.0",
+  "source_count": 7,
+  "sources": [
+    {
+      "deep_verification": {
+        "kind": "report",
+        "metric_row_count": 65,
+        "purpose": "development",
+        "report_id": "rpt-framework-validation-20260726-v002",
+        "source_count": 7
+      },
+      "kind": "report_source",
+      "label": "Framework validation report v0.4",
+      "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v002/manifest.json",
+      "root": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v002",
+      "run_id": "rpt-framework-validation-20260726-v002",
+      "sha256": "e1ca8f4de8d8fd319a6c0602917bde14636fe6caa63a4ffe4bbf6081f2b68a94",
+      "size_bytes": 14986,
+      "source_kind": "report",
+      "summary": {
+        "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v002/report.json",
+        "sha256": "683916ad01489aec9ed69f0281523678288133f3a90edda5f4bb831c9d4fc65c",
+        "size_bytes": 11188
+      }
+    },
+    {
+      "deep_verification": {
+        "bundle_id": "bundle-framework-development-20260726-v002",
+        "dependency_lock_count": 1,
+        "kind": "reproduction_bundle",
+        "purpose": "development",
+        "source_count": 11,
+        "source_file_count": 147
+      },
+      "kind": "report_source",
+      "label": "Framework reproduction bundle v0.4",
+      "path": "/Users/hesam/Documents/CARLA PY/bundles/bundle-framework-development-20260726-v002/manifest.json",
+      "root": "/Users/hesam/Documents/CARLA PY/bundles/bundle-framework-development-20260726-v002",
+      "run_id": "bundle-framework-development-20260726-v002",
+      "sha256": "e8864662f3df0a4893dfcf58d6d0b78b3a3e8e88221469f513f2f170e9302f24",
+      "size_bytes": 22193,
+      "source_kind": "reproduction_bundle",
+      "summary": {
+        "path": "/Users/hesam/Documents/CARLA PY/bundles/bundle-framework-development-20260726-v002/bundle.json",
+        "sha256": "df31922384470efe2f85cc9771c7dac4fff161a71b5beff44086db7a6301cad2",
+        "size_bytes": 3237
+      }
+    },
+    {
+      "deep_verification": {
+        "actuation_applied": false,
+        "kind": "vision_shadow_matrix",
+        "matrix_id": "shadow-rtdetr-yolo26-live-v1",
+        "mode": "execute",
+        "planned_run_count": 2,
+        "successful_run_count": 2
+      },
+      "kind": "report_source",
+      "label": "RT-DETR and YOLO26 live shadow matrix",
+      "path": "/Users/hesam/Documents/CARLA PY/runs/shadow-rtdetr-yolo26-live-v1/manifest.json",
+      "root": "/Users/hesam/Documents/CARLA PY/runs/shadow-rtdetr-yolo26-live-v1",
+      "run_id": "shadow-rtdetr-yolo26-live-v1",
+      "sha256": "e0f1351856ea7c1d3b735de2e4c413718977cf17e882d1cc86f522cfb4816f73",
+      "size_bytes": 12405,
+      "source_kind": "shadow_matrix",
+      "summary": {
+        "path": "/Users/hesam/Documents/CARLA PY/runs/shadow-rtdetr-yolo26-live-v1/shadow_matrix.json",
+        "sha256": "97a2ab5be479057eb2fd900b2dd9d41a92f98d080acc88863b1ac052489be293",
+        "size_bytes": 888
+      }
+    },
+    {
+      "deep_verification": {
+        "actuation_applied": false,
+        "kind": "vision_shadow_run",
+        "policy": "hazard-stop-shadow-v1",
+        "proposal_count": 73,
+        "run_id": "shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00"
+      },
+      "kind": "report_source",
+      "label": "RT-DETR-L RGB policy shadow run",
+      "path": "/Users/hesam/Documents/CARLA PY/runs/shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00/manifest.json",
+      "root": "/Users/hesam/Documents/CARLA PY/runs/shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00",
+      "run_id": "shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00",
+      "sha256": "1d30b86aa4b27f207ecd9273e0346352047ac854bd06402f3e58d6aabc4b91b3",
+      "size_bytes": 9113,
+      "source_kind": "vision_shadow",
+      "summary": {
+        "path": "/Users/hesam/Documents/CARLA PY/runs/shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00/summary.json",
+        "sha256": "ad86ddb3b08360e2e2d818850e8f204ab21a8313dd55be7d6d9eda7bfec54cdd",
+        "size_bytes": 4533
+      }
+    },
+    {
+      "deep_verification": {
+        "actuation_applied": false,
+        "kind": "vision_shadow_run",
+        "policy": "hazard-stop-shadow-v1",
+        "proposal_count": 103,
+        "run_id": "shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00"
+      },
+      "kind": "report_source",
+      "label": "YOLO26n RGB policy shadow run",
+      "path": "/Users/hesam/Documents/CARLA PY/runs/shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00/manifest.json",
+      "root": "/Users/hesam/Documents/CARLA PY/runs/shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00",
+      "run_id": "shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00",
+      "sha256": "db70ebf8b919380eeb352fbaf9582cf5f7d037313ea3c7d8b9ec8e393a4e292e",
+      "size_bytes": 9100,
+      "source_kind": "vision_shadow",
+      "summary": {
+        "path": "/Users/hesam/Documents/CARLA PY/runs/shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00/summary.json",
+        "sha256": "6525adf0f40300be566ad675c3be2d2c4864dde2ddbaa1d4fa62a8a2eec24ee7",
+        "size_bytes": 4527
+      }
+    },
+    {
+      "deep_verification": {
+        "kind": "tracked_run"
+      },
+      "kind": "report_source",
+      "label": "RT-DETR-L live systems analysis",
+      "path": "/Users/hesam/Documents/CARLA PY/runs/shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00-analysis/manifest.json",
+      "root": "/Users/hesam/Documents/CARLA PY/runs/shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00-analysis",
+      "run_id": "shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00-analysis",
+      "sha256": "745c207f2f229620e628e3d85b3b2817f6602cccefe53defa2c754473d536a2e",
+      "size_bytes": 8145,
+      "source_kind": "runtime_analysis",
+      "summary": {
+        "path": "/Users/hesam/Documents/CARLA PY/runs/shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00-analysis/summary_metrics.json",
+        "sha256": "7669014f529305538dd767e95f12a53948198673aa52d3cfb31fdc9b33652702",
+        "size_bytes": 5330
+      }
+    },
+    {
+      "deep_verification": {
+        "kind": "tracked_run"
+      },
+      "kind": "report_source",
+      "label": "YOLO26n live systems analysis",
+      "path": "/Users/hesam/Documents/CARLA PY/runs/shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00-analysis/manifest.json",
+      "root": "/Users/hesam/Documents/CARLA PY/runs/shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00-analysis",
+      "run_id": "shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00-analysis",
+      "sha256": "f423b915d7d0ea4be4eece0c3cbb62323c7f4ba88907f4b5fc9f02d1a97b7135",
+      "size_bytes": 8133,
+      "source_kind": "runtime_analysis",
+      "summary": {
+        "path": "/Users/hesam/Documents/CARLA PY/runs/shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00-analysis/summary_metrics.json",
+        "sha256": "963beee860449acc0e5b35185a1a6bf9f95a9776369b725f3d99fd20dae06e05",
+        "size_bytes": 4811
+      }
+    }
+  ],
+  "status": "complete",
+  "thesis_context": "Traceable framework validation after adding a modular vision-policy contract, non-actuating live shadow execution, sequential multi-model orchestration, semantic safety verification, live videos, and source-linked latency and throughput analyses.",
+  "title": "CARLA Vision Framework Development Validation v0.5"
+}

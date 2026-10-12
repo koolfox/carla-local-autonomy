@@ -1,0 +1,51 @@
+{
+  "authors": [
+    "Hesam",
+    "CARLA Vision Research Project"
+  ],
+  "claims": [
+    "The framework now creates a deterministic point-in-time evidence index across the seven canonical research roots without contacting CARLA, mutating the simulator, or modifying source research objects.",
+    "Every discovered immediate-child source is retained even when strict deep verification fails; the release includes normalized failures, registered-artifact inventory, canonical JSON/CSV/Markdown, PNG/SVG plots, checksums, and source-manifest fingerprints.",
+    "Dedicated semantic verification reconstructs the recorded source set, rejects registry tampering and recorded-source drift, excludes evidence registries to prevent recursive snapshots, and intentionally ignores objects created after the snapshot.",
+    "The loopback operator UI now provides a searchable manifest-driven Evidence Explorer for every canonical root, exposes only registered contained artifacts, labels catalogue data as not checked, and hands selected objects to the existing verifier without guessing artifact paths.",
+    "Evidence-registry sources are accepted by the report and standalone-reproduction contracts, so registry counts and safety booleans can flow into thesis evidence without manual metric transcription.",
+    "The v0.9 source snapshot, tests, documentation, retained report, and reproduction commands preserve the distinction between development infrastructure and unperformed real CARLA collection or vision-only driving."
+  ],
+  "include_plots": true,
+  "limitations": [
+    "All sources were created from a dirty, uncommitted workspace and are development evidence rather than confirmatory thesis experiments.",
+    "The evidence index is workspace-bound: its canonical absolute workspace path and recorded source objects must remain available for semantic verification.",
+    "The registry inventories source manifests and failed-source fingerprints rather than embedding every source payload; portable archival remains the responsibility of the standalone reproduction bundle.",
+    "The live Evidence Explorer reports manifest declarations and current file availability only; operators must run the separate verifier before relying on hashes or semantics.",
+    "Previously retained invalid historical objects remain visible as failures and are not rewritten or silently omitted.",
+    "A mutable database, cross-object cycle graph, signed release, supersession policy, PDF/LaTeX thesis renderer, and independent release signoff are not introduced by this MVP milestone.",
+    "No native CARLA episode, new dataset, real training run, locked-test benchmark, or vision-only closed-loop control result is introduced by this milestone."
+  ],
+  "purpose": "development",
+  "report_id": "rpt-framework-validation-20260727-v008",
+  "schema_version": "1.0",
+  "sources": [
+    {
+      "kind": "report",
+      "label": "Final framework validation report v0.8",
+      "path": "../../reports/rpt-framework-validation-20260727-v007"
+    },
+    {
+      "kind": "reproduction_bundle",
+      "label": "Final framework reproduction bundle v0.8",
+      "path": "../../bundles/bundle-framework-development-20260727-v007"
+    },
+    {
+      "kind": "evidence_registry",
+      "label": "Sealed workspace evidence index v0.9",
+      "path": "../../runs/evidence-index-workspace-20260727-v001"
+    },
+    {
+      "kind": "native_host_kit",
+      "label": "Portable native 50-frame pilot host kit",
+      "path": "../../native_kits/native-host-kit-pilot-20260727-v003"
+    }
+  ],
+  "thesis_context": "Traceable v0.9 thesis-framework handoff after implementing repository-wide point-in-time evidence discovery, deterministic semantic reconstruction, secure manifest-only operator browsing, and report/reproduction integration while preserving the simulator and scientific claim boundaries.",
+  "title": "CARLA Vision Framework Development Validation v0.9"
+}

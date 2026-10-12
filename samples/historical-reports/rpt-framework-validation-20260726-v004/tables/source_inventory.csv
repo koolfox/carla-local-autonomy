@@ -1,0 +1,6 @@
+source_id,label,kind,status,artifact_count,artifact_bytes,git_commit,git_dirty,manifest_sha256
+rpt-framework-validation-20260726-v003,Framework validation report v0.5,report,success,11,400154,,True,40fcb6fdf902009ab6780c865ee2f966dabdc698b241eaf7e301f2e6c5b95879
+bundle-framework-development-20260726-v003,Framework reproduction bundle v0.5,reproduction_bundle,success,19,2064909,,True,c269cb7be347f443d550b472ddac487b5b4a9d255c1f9bed116188c7095a7de6
+op-20260726T194948Z-verify-e6436e1d,Operator real verification session,operator_session,success,5,2497,,True,1fa82f797a7aabf84463402d02e87c4f871cbeaeff027f410c672f5f5739d69d
+scenario-plan-operator-poc-v1,Operator crowded-situation scenario plan,scenario_plan,success,4,7612,,True,2db2f2d382100e8ae743e7a9fa7b1ad6006deab2bf4c60ef0692109819699f0c
+op-20260726T195126Z-scenario_plan-e715b442,Operator scenario-planning session,operator_session,success,5,3059,,True,b452f6357714917e9c64909b1ec6baa90390c5f1dd8ee3b70f5d5610c729f8e3

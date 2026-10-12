@@ -1,0 +1,15 @@
+path: .
+train: images/train
+val: images/val
+test: images/test
+names:
+  0: traffic_light
+  1: traffic_sign
+  2: pedestrian
+  3: rider
+  4: car
+  5: truck
+  6: bus
+  7: train
+  8: motorcycle
+  9: bicycle

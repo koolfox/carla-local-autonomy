@@ -1,0 +1,66 @@
+{
+  "authors": [
+    "Hesam",
+    "CARLA Vision Research Project"
+  ],
+  "claims": [
+    "The live shadow matrix and both child runs pass registered SHA-256, external-reference, unregistered-file, and object-specific semantic verification.",
+    "RT-DETR-L and YOLO26n executed sequentially against the configured CARLA 0.9.16 Town10HD_Opt vehicle and front RGB camera while the privileged teacher was the only actuation source.",
+    "Every logged policy observation passed the front-monocular-RGB structural input audit, direct CARLA objects were not exposed, and vision-policy actuation authorization remained false.",
+    "The two twelve-second child runs produced checksum-tracked overlay videos, terminal overlays, detections, policy proposals, summaries, and immutable source-linked post-hoc analyses.",
+    "Observed throughput and latency are extracted from verified frame logs without manual metric transcription and are explicitly reported as systems measurements rather than detector-accuracy comparisons."
+  ],
+  "include_plots": true,
+  "limitations": [
+    "All sources were created from a dirty, uncommitted workspace and are development evidence rather than confirmatory thesis experiments.",
+    "The two live runs were sequential and observed different route positions and transient scenes, so detection counts and class frequencies must not be used to rank model accuracy.",
+    "The detectors use pretrained COCO weights and different development confidence thresholds rather than checkpoints and thresholds selected on a released CARLA validation partition.",
+    "The hazard-stop policy is a deliberately simple non-learned shadow baseline; it proposed no braking events in these short runs and has not demonstrated safe driving behavior.",
+    "Teacher motion uses privileged simulator pose and speed, remains outside the runtime sensor contract, and cannot be presented as vision-only driving.",
+    "Structural observation isolation prevents accidental privileged inputs but does not sandbox malicious custom policy code.",
+    "Each child ran for only twelve seconds on one map, weather state, vehicle, route segment, and hardware configuration.",
+    "The native synchronous collector and real multi-seed training protocol remain gated on a compatible official CARLA 0.9.16 PythonAPI host and a released dataset."
+  ],
+  "purpose": "development",
+  "report_id": "rpt-framework-validation-20260726-v003",
+  "schema_version": "1.0",
+  "sources": [
+    {
+      "kind": "report",
+      "label": "Framework validation report v0.4",
+      "path": "../../reports/rpt-framework-validation-20260726-v002"
+    },
+    {
+      "kind": "reproduction_bundle",
+      "label": "Framework reproduction bundle v0.4",
+      "path": "../../bundles/bundle-framework-development-20260726-v002"
+    },
+    {
+      "kind": "shadow_matrix",
+      "label": "RT-DETR and YOLO26 live shadow matrix",
+      "path": "../../runs/shadow-rtdetr-yolo26-live-v1"
+    },
+    {
+      "kind": "vision_shadow",
+      "label": "RT-DETR-L RGB policy shadow run",
+      "path": "../../runs/shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00"
+    },
+    {
+      "kind": "vision_shadow",
+      "label": "YOLO26n RGB policy shadow run",
+      "path": "../../runs/shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00"
+    },
+    {
+      "kind": "runtime_analysis",
+      "label": "RT-DETR-L live systems analysis",
+      "path": "../../runs/shadow-rtdetr-yolo26-live-v1--rtdetr-l-hazard-stop-r00-analysis"
+    },
+    {
+      "kind": "runtime_analysis",
+      "label": "YOLO26n live systems analysis",
+      "path": "../../runs/shadow-rtdetr-yolo26-live-v1--yolo26n-hazard-stop-r00-analysis"
+    }
+  ],
+  "thesis_context": "Traceable framework validation after adding a modular vision-policy contract, non-actuating live shadow execution, sequential multi-model orchestration, semantic safety verification, live videos, and source-linked latency and throughput analyses.",
+  "title": "CARLA Vision Framework Development Validation v0.5"
+}

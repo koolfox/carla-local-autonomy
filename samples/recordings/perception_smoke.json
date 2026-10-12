@@ -1,0 +1,18 @@
+{
+  "host": "172.20.10.7",
+  "vehicle_id": 24,
+  "drive": false,
+  "duration_requested": 3.0,
+  "camera_id": 25,
+  "camera_was_spawned": false,
+  "elapsed": 3.619648291001795,
+  "distance_travelled": 0.0,
+  "max_speed": 0.0,
+  "final_speed": 0.0,
+  "final_position": [
+    -15.507448196411133,
+    24.632665634155273
+  ],
+  "video": "/Users/hesam/Documents/CARLA PY/output/perception_smoke.mp4",
+  "latest_frame": "/Users/hesam/Documents/CARLA PY/output/live_smoke.png"
+}

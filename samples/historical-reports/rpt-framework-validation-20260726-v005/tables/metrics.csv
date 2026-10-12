@@ -1,0 +1,55 @@
+source_id,label,kind,metric,value,unit,support,note
+rpt-framework-validation-20260726-v004,Framework validation report v0.6,report,sources,5,objects,,
+rpt-framework-validation-20260726-v004,Framework validation report v0.6,report,metric_rows,23,rows,,
+rpt-framework-validation-20260726-v004,Framework validation report v0.6,report,artifact_inventory_rows,44,rows,,
+bundle-framework-development-20260726-v004,Framework reproduction bundle v0.6,reproduction_bundle,sources,3,objects,,
+bundle-framework-development-20260726-v004,Framework reproduction bundle v0.6,reproduction_bundle,source_files,186,files,,
+bundle-framework-development-20260726-v004,Framework reproduction bundle v0.6,reproduction_bundle,source_bytes,1850789,bytes,,
+bundle-framework-development-20260726-v004,Framework reproduction bundle v0.6,reproduction_bundle,dependency_locks,1,lockfiles,,
+bundle-framework-development-20260726-v004,Framework reproduction bundle v0.6,reproduction_bundle,commands,6,commands,,
+scenario-plan-native-integration-pilot-v1,Minimal native integration scenario plan,scenario_plan,recipes,1,recipes,,
+scenario-plan-native-integration-pilot-v1,Minimal native integration scenario plan,scenario_plan,episodes,1,episodes,,
+scenario-plan-native-integration-pilot-v1,Minimal native integration scenario plan,scenario_plan,planned_captures,50,images,,
+scenario-plan-native-integration-pilot-v1,Minimal native integration scenario plan,scenario_plan,partition_count.train,1,episodes,,
+native-preflight-pilot-20260726-v1,Minimal 50-frame native pilot preflight,native_preflight,selected_episodes,1,episodes,,
+native-preflight-pilot-20260726-v1,Minimal 50-frame native pilot preflight,native_preflight,planned_captures,50,images,,
+native-preflight-pilot-20260726-v1,Minimal 50-frame native pilot preflight,native_preflight,checks,14,checks,,
+native-preflight-pilot-20260726-v1,Minimal 50-frame native pilot preflight,native_preflight,checks_passed,7,checks,,
+native-preflight-pilot-20260726-v1,Minimal 50-frame native pilot preflight,native_preflight,checks_failed,1,checks,,
+native-preflight-pilot-20260726-v1,Minimal 50-frame native pilot preflight,native_preflight,checks_pending,2,checks,,
+native-preflight-pilot-20260726-v1,Minimal 50-frame native pilot preflight,native_preflight,checks_skipped,3,checks,,
+native-preflight-pilot-20260726-v1,Minimal 50-frame native pilot preflight,native_preflight,checks_warnings,1,checks,,
+native-preflight-pilot-20260726-v1,Minimal 50-frame native pilot preflight,native_preflight,socket_latency,7.508499998948537,ms,,
+native-preflight-pilot-20260726-v1,Minimal 50-frame native pilot preflight,native_preflight,read_only_rpc_latency,22.15020899893716,ms,,
+native-preflight-pilot-20260726-v1,Minimal 50-frame native pilot preflight,native_preflight,read_only,1,boolean,,"0=false, 1=true"
+native-preflight-pilot-20260726-v1,Minimal 50-frame native pilot preflight,native_preflight,simulator_contacted,1,boolean,,"0=false, 1=true"
+native-preflight-pilot-20260726-v1,Minimal 50-frame native pilot preflight,native_preflight,simulator_mutated,0,boolean,,"0=false, 1=true"
+native-preflight-pilot-20260726-v1,Minimal 50-frame native pilot preflight,native_preflight,automated_ready,0,boolean,,"0=false, 1=true"
+native-preflight-pilot-20260726-v1,Minimal 50-frame native pilot preflight,native_preflight,manual_ready,0,boolean,,"0=false, 1=true"
+native-preflight-pilot-20260726-v1,Minimal 50-frame native pilot preflight,native_preflight,ready_for_native_execution,0,boolean,,"0=false, 1=true"
+native-preflight-pilot-20260726-v1,Minimal 50-frame native pilot preflight,native_preflight,rpc_reachable,1,boolean,,"0=false, 1=true"
+native-preflight-pilot-20260726-v1,Minimal 50-frame native pilot preflight,native_preflight,native_pythonapi_importable,0,boolean,,"0=false, 1=true"
+native-preflight-ui-20260726-v1,Operator-launched thesis-plan native preflight,native_preflight,selected_episodes,1,episodes,,
+native-preflight-ui-20260726-v1,Operator-launched thesis-plan native preflight,native_preflight,planned_captures,150,images,,
+native-preflight-ui-20260726-v1,Operator-launched thesis-plan native preflight,native_preflight,checks,14,checks,,
+native-preflight-ui-20260726-v1,Operator-launched thesis-plan native preflight,native_preflight,checks_passed,7,checks,,
+native-preflight-ui-20260726-v1,Operator-launched thesis-plan native preflight,native_preflight,checks_failed,1,checks,,
+native-preflight-ui-20260726-v1,Operator-launched thesis-plan native preflight,native_preflight,checks_pending,2,checks,,
+native-preflight-ui-20260726-v1,Operator-launched thesis-plan native preflight,native_preflight,checks_skipped,3,checks,,
+native-preflight-ui-20260726-v1,Operator-launched thesis-plan native preflight,native_preflight,checks_warnings,1,checks,,
+native-preflight-ui-20260726-v1,Operator-launched thesis-plan native preflight,native_preflight,socket_latency,7.454582999343984,ms,,
+native-preflight-ui-20260726-v1,Operator-launched thesis-plan native preflight,native_preflight,read_only_rpc_latency,22.60549999482464,ms,,
+native-preflight-ui-20260726-v1,Operator-launched thesis-plan native preflight,native_preflight,read_only,1,boolean,,"0=false, 1=true"
+native-preflight-ui-20260726-v1,Operator-launched thesis-plan native preflight,native_preflight,simulator_contacted,1,boolean,,"0=false, 1=true"
+native-preflight-ui-20260726-v1,Operator-launched thesis-plan native preflight,native_preflight,simulator_mutated,0,boolean,,"0=false, 1=true"
+native-preflight-ui-20260726-v1,Operator-launched thesis-plan native preflight,native_preflight,automated_ready,0,boolean,,"0=false, 1=true"
+native-preflight-ui-20260726-v1,Operator-launched thesis-plan native preflight,native_preflight,manual_ready,0,boolean,,"0=false, 1=true"
+native-preflight-ui-20260726-v1,Operator-launched thesis-plan native preflight,native_preflight,ready_for_native_execution,0,boolean,,"0=false, 1=true"
+native-preflight-ui-20260726-v1,Operator-launched thesis-plan native preflight,native_preflight,rpc_reachable,1,boolean,,"0=false, 1=true"
+native-preflight-ui-20260726-v1,Operator-launched thesis-plan native preflight,native_preflight,native_pythonapi_importable,0,boolean,,"0=false, 1=true"
+op-20260726t203533z-native-preflight-34a7877d,Operator native-preflight session,operator_session,returncode,0,,,
+op-20260726t203533z-native-preflight-34a7877d,Operator native-preflight session,operator_session,job_succeeded,1,boolean,,"0=false, 1=true"
+op-20260726t203533z-native-preflight-34a7877d,Operator native-preflight session,operator_session,motion_authorized,0,boolean,,"0=false, 1=true"
+op-20260726t203533z-native-preflight-34a7877d,Operator native-preflight session,operator_session,destructive_operation,0,boolean,,"0=false, 1=true"
+op-20260726t203533z-native-preflight-34a7877d,Operator native-preflight session,operator_session,stop_requested,0,boolean,,"0=false, 1=true"
+op-20260726t203533z-native-preflight-34a7877d,Operator native-preflight session,operator_session,expected_output_exists,1,boolean,,"0=false, 1=true"

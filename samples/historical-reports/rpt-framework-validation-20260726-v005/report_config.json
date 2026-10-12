@@ -1,0 +1,61 @@
+{
+  "authors": [
+    "Hesam",
+    "CARLA Vision Research Project"
+  ],
+  "claims": [
+    "The framework now creates a dedicated read-only native-collection preflight artifact that separates successful assessment from readiness to execute and records automated, advisory, and manual gates.",
+    "Two real preflight assessments contacted only the CARLA read-only version and map RPCs, observed server version 0.9.16 and Town10HD_Opt, selected checksum-verified train episodes, and recorded simulator_mutated as false.",
+    "The current Apple arm64 host is correctly classified as not ready because the official version-matched CARLA PythonAPI is not importable and the destructive world-reload and exclusive-tick-owner confirmations remain pending.",
+    "A deliberately small native integration scenario plan contains one Town10HD train episode, moderate traffic, two construction props, and 50 planned exact-frame RGB/instance captures instead of using the 3,450-capture thesis plan for the first destructive test.",
+    "The operator HTTP workflow launched a real native preflight as a non-destructive, non-actuating job and retained both the operator session and verified child manifest.",
+    "The multi-episode dataset verifier now permits repeated native episode provenance while semantically checking episode IDs, partitions, sample and annotation counts, cleanup success, and asynchronous-world restoration."
+  ],
+  "include_plots": true,
+  "limitations": [
+    "All sources were created from a dirty, uncommitted workspace and are development evidence rather than confirmatory thesis experiments.",
+    "No native dataset episode was executed because this Apple arm64 host has no compatible official CARLA 0.9.16 PythonAPI and SSH access to the simulator host is unavailable.",
+    "The read-only raw RPC confirms endpoint, version, and current map but cannot substitute for the official PythonAPI checks required for Traffic Manager, synchronous world ownership, actor spawning, sensors, and cleanup.",
+    "The two manual readiness gates are deliberately pending; no authority to reload the current world or claim exclusive world.tick ownership is inferred from a read-only preflight.",
+    "The 50-frame native pilot is a plan, not a collected dataset; actor and prop availability, sensor phase, labels, cleanup, and QA remain unverified against the real simulator.",
+    "The scenario-to-dataset-to-QA-to-training handoff is covered by a fake-native integration test and does not prove behavior of CARLA actor spawning or sensor delivery.",
+    "No trained CARLA-specific checkpoint, locked-test detector result, or vision-only closed-loop driving result is introduced by this milestone."
+  ],
+  "purpose": "development",
+  "report_id": "rpt-framework-validation-20260726-v005",
+  "schema_version": "1.0",
+  "sources": [
+    {
+      "kind": "report",
+      "label": "Framework validation report v0.6",
+      "path": "../../reports/rpt-framework-validation-20260726-v004"
+    },
+    {
+      "kind": "reproduction_bundle",
+      "label": "Framework reproduction bundle v0.6",
+      "path": "../../bundles/bundle-framework-development-20260726-v004"
+    },
+    {
+      "kind": "scenario_plan",
+      "label": "Minimal native integration scenario plan",
+      "path": "../../runs/scenario-plan-native-integration-pilot-v1"
+    },
+    {
+      "kind": "native_preflight",
+      "label": "Minimal 50-frame native pilot preflight",
+      "path": "../../runs/native-preflight-pilot-20260726-v1"
+    },
+    {
+      "kind": "native_preflight",
+      "label": "Operator-launched thesis-plan native preflight",
+      "path": "../../runs/native-preflight-ui-20260726-v1"
+    },
+    {
+      "kind": "operator_session",
+      "label": "Operator native-preflight session",
+      "path": "../../operator_sessions/op-20260726t203533z-native-preflight-34a7877d"
+    }
+  ],
+  "thesis_context": "Traceable framework validation after adding a read-only native readiness artifact, operator preflight control, a deliberately small first native dataset plan, stronger multi-episode dataset provenance verification, and a non-destructive scenario-to-training integration test.",
+  "title": "CARLA Vision Framework Development Validation v0.7"
+}

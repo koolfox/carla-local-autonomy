@@ -1,0 +1,5 @@
+source_id,label,kind,status,artifact_count,artifact_bytes,git_commit,git_dirty,manifest_sha256
+rpt-framework-validation-20260727-v007,Final framework validation report v0.8,report,success,9,205720,,True,01bef3ae1389f673f432dc55838e453657e31c655b4d8c26690ae6140a6f9c09
+bundle-framework-development-20260727-v007,Final framework reproduction bundle v0.8,reproduction_bundle,success,17,2561816,,True,b6de8f460da1c4dab4020a48c5beed086ea58d2062c42216e387c46837a34cb0
+evidence-index-workspace-20260727-v001,Sealed workspace evidence index v0.9,evidence_registry,success,12,471757,,True,8a8426b70e182651c81d5959465d5ffc76b906c2dfaae3a5216b456f8f7b0738
+native-host-kit-pilot-20260727-v003,Portable native 50-frame pilot host kit,native_host_kit,success,7,1383892,,True,ec0b81358d93aa2edf71e58c6b272d7f3fcb696121356bb1ba8526c01e939165

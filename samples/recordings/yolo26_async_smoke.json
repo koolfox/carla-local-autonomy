@@ -1,0 +1,19 @@
+{
+  "host": "172.20.10.7",
+  "vehicle_id": 24,
+  "drive": true,
+  "duration_requested": 6.0,
+  "camera_id": 25,
+  "camera_was_spawned": false,
+  "elapsed": 6.031004375006887,
+  "elapsed_with_shutdown": 7.7020626250014175,
+  "distance_travelled": 11.99834099771065,
+  "max_speed": 4.340966749223383,
+  "final_speed": 0.0,
+  "final_position": [
+    6.602329730987549,
+    24.6718692779541
+  ],
+  "video": "/Users/hesam/Documents/CARLA PY/output/yolo26_async_smoke.mp4",
+  "latest_frame": "/Users/hesam/Documents/CARLA PY/output/yolo26_async_smoke.png"
+}

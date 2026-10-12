@@ -1,0 +1,175 @@
+{
+  "artifact_inventory_row_count": 44,
+  "authors": [
+    "Hesam",
+    "CARLA Vision Research Project"
+  ],
+  "canonical_tables": {
+    "metrics": {
+      "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v004/tables/metrics.csv",
+      "sha256": "b19dee9643bcc90dad917148807f626d805689a343cf35454afc9fd44c5e1067",
+      "size_bytes": 2916
+    },
+    "source_artifacts": {
+      "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v004/tables/source_artifacts.csv",
+      "sha256": "24bc522e5f96ac8958c23317efb90a6924b68553216d5c153455bea6665e9992",
+      "size_bytes": 9403
+    },
+    "source_inventory": {
+      "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v004/tables/source_inventory.csv",
+      "sha256": "9c6618219d4b3c435ac57eb330cd24c6088bb959fd374451786b28e309efc5b3",
+      "size_bytes": 983
+    }
+  },
+  "claims": [
+    "The local operator workflow launched a real read-only verification job and a real offline scenario-planning job, and both operator sessions completed successfully with registered requests, tokenized command plans, status records, logs, and SHA-256 manifests.",
+    "The situation builder produced a strict CARLA 0.9.16 Town10HD_Opt recipe with 50 vehicles, 40 walkers, soft-rain sunset weather, construction props, and one forward-facing monocular RGB camera.",
+    "The generated scenario plan contains one deterministic training episode and 75 planned captures while preserving the front-monocular-RGB runtime input contract and the privileged-teacher disclosure.",
+    "The scenario-planning operator session recorded motion_authorized and destructive as false and fingerprinted the successful child scenario-plan manifest as an external input.",
+    "All newly reported operator and scenario objects pass registered SHA-256, external-reference, unregistered-file, and applicable object-specific semantic verification."
+  ],
+  "generation": {
+    "all_sources_verified_before_generation": true,
+    "confirmatory_clean_git_gate": false,
+    "manual_metric_transcription": false
+  },
+  "limitations": [
+    "All sources were created from a dirty, uncommitted workspace and are development evidence rather than confirmatory thesis experiments.",
+    "The operator panel is a loopback-only proof of concept; it launches the existing research CLIs and opens the existing OpenCV live viewer rather than streaming simulator video into the browser.",
+    "The planned crowded scenario was not executed because the compatible native CARLA PythonAPI is not installed on this host and native collection can mutate the simulator world.",
+    "Scenario planning validates configuration, seed allocation, split assignment, capture counts, and provenance but does not demonstrate that every requested CARLA blueprint will spawn successfully at runtime.",
+    "An earlier retained UI smoke session exposed an internal module-invocation defect and exited without performing verification; it is superseded by the successful real verification session included here and is not used as positive evidence.",
+    "No detector training, locked-test evaluation, or vision-only closed-loop driving result is introduced by this operator-console validation.",
+    "The live shadow evidence inherited through the prior report remains sequential systems evidence and cannot be used to rank detector accuracy."
+  ],
+  "metric_row_count": 23,
+  "object_type": "research_report_release",
+  "plots": [
+    {
+      "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v004/plots/source_inventory.png",
+      "sha256": "49db6bdda77d1a9ecc8428f35e4043979d913e3f24667d2f5049980fcc8ca151",
+      "size_bytes": 92399
+    },
+    {
+      "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v004/plots/source_inventory.svg",
+      "sha256": "4ef41cecaee0c5fed1e08be615edb83bdfaf17a976efecf36e34828825e45789",
+      "size_bytes": 63257
+    }
+  ],
+  "purpose": "development",
+  "report_document": {
+    "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v004/report.md",
+    "sha256": "926b614e2f95f833b2c68229d103b16cea4d92a35f1981365c555c33988a86cd",
+    "size_bytes": 6283
+  },
+  "report_id": "rpt-framework-validation-20260726-v004",
+  "schema_version": "1.0",
+  "source_count": 5,
+  "sources": [
+    {
+      "deep_verification": {
+        "kind": "report",
+        "metric_row_count": 54,
+        "purpose": "development",
+        "report_id": "rpt-framework-validation-20260726-v003",
+        "source_count": 7
+      },
+      "kind": "report_source",
+      "label": "Framework validation report v0.5",
+      "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v003/manifest.json",
+      "root": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v003",
+      "run_id": "rpt-framework-validation-20260726-v003",
+      "sha256": "40fcb6fdf902009ab6780c865ee2f966dabdc698b241eaf7e301f2e6c5b95879",
+      "size_bytes": 15945,
+      "source_kind": "report",
+      "summary": {
+        "path": "/Users/hesam/Documents/CARLA PY/reports/rpt-framework-validation-20260726-v003/report.json",
+        "sha256": "d4b96868a293e32f76eaebf8c162345764d463d4197a126d07154dd187cd6509",
+        "size_bytes": 12147
+      }
+    },
+    {
+      "deep_verification": {
+        "bundle_id": "bundle-framework-development-20260726-v003",
+        "dependency_lock_count": 1,
+        "kind": "reproduction_bundle",
+        "purpose": "development",
+        "source_count": 7,
+        "source_file_count": 168
+      },
+      "kind": "report_source",
+      "label": "Framework reproduction bundle v0.5",
+      "path": "/Users/hesam/Documents/CARLA PY/bundles/bundle-framework-development-20260726-v003/manifest.json",
+      "root": "/Users/hesam/Documents/CARLA PY/bundles/bundle-framework-development-20260726-v003",
+      "run_id": "bundle-framework-development-20260726-v003",
+      "sha256": "c269cb7be347f443d550b472ddac487b5b4a9d255c1f9bed116188c7095a7de6",
+      "size_bytes": 18653,
+      "source_kind": "reproduction_bundle",
+      "summary": {
+        "path": "/Users/hesam/Documents/CARLA PY/bundles/bundle-framework-development-20260726-v003/bundle.json",
+        "sha256": "ce7a42f9f4eadb603c38c1afd926e589122bd90fac92e482c9eb43c41b88aacb",
+        "size_bytes": 3385
+      }
+    },
+    {
+      "deep_verification": {
+        "kind": "tracked_run"
+      },
+      "kind": "report_source",
+      "label": "Operator real verification session",
+      "path": "/Users/hesam/Documents/CARLA PY/operator_sessions/op-20260726T194948Z-verify-e6436e1d/manifest.json",
+      "root": "/Users/hesam/Documents/CARLA PY/operator_sessions/op-20260726T194948Z-verify-e6436e1d",
+      "run_id": "op-20260726T194948Z-verify-e6436e1d",
+      "sha256": "1fa82f797a7aabf84463402d02e87c4f871cbeaeff027f410c672f5f5739d69d",
+      "size_bytes": 5917,
+      "source_kind": "operator_session",
+      "summary": {
+        "path": "/Users/hesam/Documents/CARLA PY/operator_sessions/op-20260726T194948Z-verify-e6436e1d/status.json",
+        "sha256": "91c747fc72daab3fe265921bc226ba8c18af49a2d7c9244cb9fc6784ee7cdfe7",
+        "size_bytes": 650
+      }
+    },
+    {
+      "deep_verification": {
+        "episode_count": 1,
+        "kind": "scenario_plan",
+        "planned_capture_count": 75,
+        "suite_id": "suite-operator-town10-ui-poc-v1-v1"
+      },
+      "kind": "report_source",
+      "label": "Operator crowded-situation scenario plan",
+      "path": "/Users/hesam/Documents/CARLA PY/runs/scenario-plan-operator-poc-v1/manifest.json",
+      "root": "/Users/hesam/Documents/CARLA PY/runs/scenario-plan-operator-poc-v1",
+      "run_id": "scenario-plan-operator-poc-v1",
+      "sha256": "2db2f2d382100e8ae743e7a9fa7b1ad6006deab2bf4c60ef0692109819699f0c",
+      "size_bytes": 5770,
+      "source_kind": "scenario_plan",
+      "summary": {
+        "path": "/Users/hesam/Documents/CARLA PY/runs/scenario-plan-operator-poc-v1/summary.json",
+        "sha256": "3df11f6194af8318ed746247046b8473b9d08888a91ad0b3549907f2584010cb",
+        "size_bytes": 948
+      }
+    },
+    {
+      "deep_verification": {
+        "kind": "tracked_run"
+      },
+      "kind": "report_source",
+      "label": "Operator scenario-planning session",
+      "path": "/Users/hesam/Documents/CARLA PY/operator_sessions/op-20260726T195126Z-scenario_plan-e715b442/manifest.json",
+      "root": "/Users/hesam/Documents/CARLA PY/operator_sessions/op-20260726T195126Z-scenario_plan-e715b442",
+      "run_id": "op-20260726T195126Z-scenario_plan-e715b442",
+      "sha256": "b452f6357714917e9c64909b1ec6baa90390c5f1dd8ee3b70f5d5610c729f8e3",
+      "size_bytes": 6773,
+      "source_kind": "operator_session",
+      "summary": {
+        "path": "/Users/hesam/Documents/CARLA PY/operator_sessions/op-20260726T195126Z-scenario_plan-e715b442/status.json",
+        "sha256": "40b17b58955d2ad345b4644327ec19fe709888fa0101e646234295268eb8f555",
+        "size_bytes": 730
+      }
+    }
+  ],
+  "status": "complete",
+  "thesis_context": "Traceable framework validation after adding a loopback-only operator console, compact situation and crowdedness controls, safe allow-listed workflow launch, persistent operator sessions, and an API-driven deterministic scenario-planning smoke test.",
+  "title": "CARLA Vision Framework Development Validation v0.6"
+}

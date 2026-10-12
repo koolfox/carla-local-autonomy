@@ -1,0 +1,7 @@
+source_id,label,kind,status,artifact_count,artifact_bytes,git_commit,git_dirty,manifest_sha256
+rpt-framework-validation-20260726-v004,Framework validation report v0.6,report,success,9,189122,,True,ce149284941dd190175001f0f7d48679edde384821f140bd869b144867dd373b
+bundle-framework-development-20260726-v004,Framework reproduction bundle v0.6,reproduction_bundle,success,15,2208292,,True,4adf0bcbadcaf4d3a6e55f834b03b6d97c0e3218152464c15b3424e17e4ad3cd
+scenario-plan-native-integration-pilot-v1,Minimal native integration scenario plan,scenario_plan,success,4,7313,,True,4b1b7414f8083c53f48261bab2d14b5fff97cd602d83c09c826ec22a21712d5e
+native-preflight-pilot-20260726-v1,Minimal 50-frame native pilot preflight,native_preflight,success,5,16250,,True,2bf0ad29ba006760b3fbaced137a9df2e35f9cf140d6fc497c10573d789b9bdf
+native-preflight-ui-20260726-v1,Operator-launched thesis-plan native preflight,native_preflight,success,5,16120,,True,3b4202f87d229069a5b7256c4cf686553d53d2a52085638636edb5e02a321123
+op-20260726t203533z-native-preflight-34a7877d,Operator native-preflight session,operator_session,success,5,5156,,True,6be2eef2ab87aa278d2e20b972d5211b8fe48f250b924d784cdc2254d905a217

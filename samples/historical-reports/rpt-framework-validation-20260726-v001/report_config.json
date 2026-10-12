@@ -1,0 +1,53 @@
+{
+  "authors": [
+    "CARLA Vision Research Project"
+  ],
+  "claims": [
+    "The retained development artifacts pass their registered SHA-256 and semantic verification checks.",
+    "The live perception overlay and analysis preserve exact detector-frame provenance.",
+    "The pilot dataset preserves exact RGB and privileged instance-frame pairing and reproducible labels.",
+    "The scenario plan is reproducible from its frozen suite, split plan, and hierarchical seed protocol.",
+    "The common evaluator produces canonical predictions, metrics, uncertainty, plots, and qualitative evidence for RT-DETR."
+  ],
+  "include_plots": true,
+  "limitations": [
+    "All sources were created from a dirty, uncommitted workspace and are not publishable thesis experiments.",
+    "The dataset has only three images from one unassigned episode and cannot support training or statistical accuracy claims.",
+    "The reported RT-DETR weights are pretrained rather than trained on this CARLA ontology.",
+    "The episode bootstrap is degenerate because the evaluation contains one episode.",
+    "The native synchronous collector has not yet been executed against a compatible official CARLA 0.9.16 PythonAPI host.",
+    "No vision-only driving policy has been implemented or evaluated."
+  ],
+  "purpose": "development",
+  "report_id": "rpt-framework-validation-20260726-v001",
+  "schema_version": "1.0",
+  "sources": [
+    {
+      "kind": "dataset",
+      "label": "Exact-frame dataset pilot",
+      "path": "../../datasets/ds-carla0916-town10-pilot-v001"
+    },
+    {
+      "kind": "dataset_qa",
+      "label": "Dataset QA",
+      "path": "../../runs/ds-carla0916-town10-pilot-v001-qa"
+    },
+    {
+      "kind": "scenario_plan",
+      "label": "Deterministic scenario plan",
+      "path": "../../runs/scenario-plan-thesis-pilot-v1"
+    },
+    {
+      "kind": "runtime_analysis",
+      "label": "Live RT-DETR runtime analysis",
+      "path": "../../runs/framework-v0.2-rtdetr-smoke-analysis"
+    },
+    {
+      "kind": "evaluation",
+      "label": "Pretrained RT-DETR development evaluation",
+      "path": "../../runs/eval-rtdetr-pretrained-pilot-v1"
+    }
+  ],
+  "thesis_context": "Traceable validation of the monocular-RGB research framework before native dataset scaling, detector training, and locked testing.",
+  "title": "CARLA Vision Framework Development Validation"
+}

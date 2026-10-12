@@ -1,4 +1,4 @@
-"""Workspace-owned downloads; model binaries remain outside Git."""
+"""Workspace-owned model assets, including bundled LFS weights and local downloads."""
 from pathlib import Path
 
 

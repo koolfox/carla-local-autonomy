@@ -1,0 +1,701 @@
+{
+  "annotations": [
+    {
+      "area": 11,
+      "attributes": {
+        "bbox_area_pixels": 16,
+        "carla_actor_id": 11,
+        "carla_semantic_tag": 7,
+        "mask_fill_ratio": 0.6875,
+        "teacher_method": "instance_segmentation_visible_mask",
+        "truncated": false,
+        "visible_area_pixels": 11
+      },
+      "bbox": [
+        305,
+        176,
+        2,
+        8
+      ],
+      "category_id": 1,
+      "id": 1,
+      "image_id": 1,
+      "iscrowd": 0
+    },
+    {
+      "area": 21,
+      "attributes": {
+        "bbox_area_pixels": 253,
+        "carla_actor_id": 23,
+        "carla_semantic_tag": 7,
+        "mask_fill_ratio": 0.08300395256916997,
+        "teacher_method": "instance_segmentation_visible_mask",
+        "truncated": false,
+        "visible_area_pixels": 21
+      },
+      "bbox": [
+        334,
+        178,
+        23,
+        11
+      ],
+      "category_id": 1,
+      "id": 2,
+      "image_id": 1,
+      "iscrowd": 0
+    },
+    {
+      "area": 22,
+      "attributes": {
+        "bbox_area_pixels": 35,
+        "carla_actor_id": 5,
+        "carla_semantic_tag": 8,
+        "mask_fill_ratio": 0.6285714285714286,
+        "teacher_method": "instance_segmentation_visible_mask",
+        "truncated": false,
+        "visible_area_pixels": 22
+      },
+      "bbox": [
+        479,
+        180,
+        5,
+        7
+      ],
+      "category_id": 2,
+      "id": 3,
+      "image_id": 1,
+      "iscrowd": 0
+    },
+    {
+      "area": 6,
+      "attributes": {
+        "bbox_area_pixels": 45,
+        "carla_actor_id": 12,
+        "carla_semantic_tag": 8,
+        "mask_fill_ratio": 0.13333333333333333,
+        "teacher_method": "instance_segmentation_visible_mask",
+        "truncated": false,
+        "visible_area_pixels": 6
+      },
+      "bbox": [
+        299,
+        177,
+        5,
+        9
+      ],
+      "category_id": 2,
+      "id": 4,
+      "image_id": 1,
+      "iscrowd": 0
+    },
+    {
+      "area": 11,
+      "attributes": {
+        "bbox_area_pixels": 208,
+        "carla_actor_id": 23,
+        "carla_semantic_tag": 8,
+        "mask_fill_ratio": 0.052884615384615384,
+        "teacher_method": "instance_segmentation_visible_mask",
+        "truncated": false,
+        "visible_area_pixels": 11
+      },
+      "bbox": [
+        329,
+        177,
+        26,
+        8
+      ],
+      "category_id": 2,
+      "id": 5,
+      "image_id": 1,
+      "iscrowd": 0
+    },
+    {
+      "area": 12,
+      "attributes": {
+        "bbox_area_pixels": 20,
+        "carla_actor_id": 29924,
+        "carla_semantic_tag": 8,
+        "mask_fill_ratio": 0.6,
+        "teacher_method": "instance_segmentation_visible_mask",
+        "truncated": false,
+        "visible_area_pixels": 12
+      },
+      "bbox": [
+        479,
+        190,
+        5,
+        4
+      ],
+      "category_id": 2,
+      "id": 6,
+      "image_id": 1,
+      "iscrowd": 0
+    },
+    {
+      "area": 18,
+      "attributes": {
+        "bbox_area_pixels": 20,
+        "carla_actor_id": 46198,
+        "carla_semantic_tag": 8,
+        "mask_fill_ratio": 0.9,
+        "teacher_method": "instance_segmentation_visible_mask",
+        "truncated": false,
+        "visible_area_pixels": 18
+      },
+      "bbox": [
+        182,
+        177,
+        2,
+        10
+      ],
+      "category_id": 2,
+      "id": 7,
+      "image_id": 1,
+      "iscrowd": 0
+    },
+    {
+      "area": 141,
+      "attributes": {
+        "bbox_area_pixels": 180,
+        "carla_actor_id": 46220,
+        "carla_semantic_tag": 8,
+        "mask_fill_ratio": 0.7833333333333333,
+        "teacher_method": "instance_segmentation_visible_mask",
+        "truncated": false,
+        "visible_area_pixels": 141
+      },
+      "bbox": [
+        45,
+        162,
+        9,
+        20
+      ],
+      "category_id": 2,
+      "id": 8,
+      "image_id": 1,
+      "iscrowd": 0
+    },
+    {
+      "area": 305,
+      "attributes": {
+        "bbox_area_pixels": 481,
+        "carla_actor_id": 42700,
+        "carla_semantic_tag": 14,
+        "mask_fill_ratio": 0.6340956340956341,
+        "teacher_method": "instance_segmentation_visible_mask",
+        "truncated": false,
+        "visible_area_pixels": 305
+      },
+      "bbox": [
+        3,
+        193,
+        37,
+        13
+      ],
+      "category_id": 5,
+      "id": 9,
+      "image_id": 1,
+      "iscrowd": 0
+    },
+    {
+      "area": 11,
+      "attributes": {
+        "bbox_area_pixels": 16,
+        "carla_actor_id": 11,
+        "carla_semantic_tag": 7,
+        "mask_fill_ratio": 0.6875,
+        "teacher_method": "instance_segmentation_visible_mask",
+        "truncated": false,
+        "visible_area_pixels": 11
+      },
+      "bbox": [
+        305,
+        176,
+        2,
+        8
+      ],
+      "category_id": 1,
+      "id": 10,
+      "image_id": 2,
+      "iscrowd": 0
+    },
+    {
+      "area": 21,
+      "attributes": {
+        "bbox_area_pixels": 253,
+        "carla_actor_id": 23,
+        "carla_semantic_tag": 7,
+        "mask_fill_ratio": 0.08300395256916997,
+        "teacher_method": "instance_segmentation_visible_mask",
+        "truncated": false,
+        "visible_area_pixels": 21
+      },
+      "bbox": [
+        334,
+        178,
+        23,
+        11
+      ],
+      "category_id": 1,
+      "id": 11,
+      "image_id": 2,
+      "iscrowd": 0
+    },
+    {
+      "area": 22,
+      "attributes": {
+        "bbox_area_pixels": 35,
+        "carla_actor_id": 5,
+        "carla_semantic_tag": 8,
+        "mask_fill_ratio": 0.6285714285714286,
+        "teacher_method": "instance_segmentation_visible_mask",
+        "truncated": false,
+        "visible_area_pixels": 22
+      },
+      "bbox": [
+        479,
+        180,
+        5,
+        7
+      ],
+      "category_id": 2,
+      "id": 12,
+      "image_id": 2,
+      "iscrowd": 0
+    },
+    {
+      "area": 6,
+      "attributes": {
+        "bbox_area_pixels": 45,
+        "carla_actor_id": 12,
+        "carla_semantic_tag": 8,
+        "mask_fill_ratio": 0.13333333333333333,
+        "teacher_method": "instance_segmentation_visible_mask",
+        "truncated": false,
+        "visible_area_pixels": 6
+      },
+      "bbox": [
+        299,
+        177,
+        5,
+        9
+      ],
+      "category_id": 2,
+      "id": 13,
+      "image_id": 2,
+      "iscrowd": 0
+    },
+    {
+      "area": 11,
+      "attributes": {
+        "bbox_area_pixels": 208,
+        "carla_actor_id": 23,
+        "carla_semantic_tag": 8,
+        "mask_fill_ratio": 0.052884615384615384,
+        "teacher_method": "instance_segmentation_visible_mask",
+        "truncated": false,
+        "visible_area_pixels": 11
+      },
+      "bbox": [
+        329,
+        177,
+        26,
+        8
+      ],
+      "category_id": 2,
+      "id": 14,
+      "image_id": 2,
+      "iscrowd": 0
+    },
+    {
+      "area": 12,
+      "attributes": {
+        "bbox_area_pixels": 20,
+        "carla_actor_id": 29924,
+        "carla_semantic_tag": 8,
+        "mask_fill_ratio": 0.6,
+        "teacher_method": "instance_segmentation_visible_mask",
+        "truncated": false,
+        "visible_area_pixels": 12
+      },
+      "bbox": [
+        479,
+        190,
+        5,
+        4
+      ],
+      "category_id": 2,
+      "id": 15,
+      "image_id": 2,
+      "iscrowd": 0
+    },
+    {
+      "area": 18,
+      "attributes": {
+        "bbox_area_pixels": 20,
+        "carla_actor_id": 46198,
+        "carla_semantic_tag": 8,
+        "mask_fill_ratio": 0.9,
+        "teacher_method": "instance_segmentation_visible_mask",
+        "truncated": false,
+        "visible_area_pixels": 18
+      },
+      "bbox": [
+        182,
+        177,
+        2,
+        10
+      ],
+      "category_id": 2,
+      "id": 16,
+      "image_id": 2,
+      "iscrowd": 0
+    },
+    {
+      "area": 141,
+      "attributes": {
+        "bbox_area_pixels": 180,
+        "carla_actor_id": 46220,
+        "carla_semantic_tag": 8,
+        "mask_fill_ratio": 0.7833333333333333,
+        "teacher_method": "instance_segmentation_visible_mask",
+        "truncated": false,
+        "visible_area_pixels": 141
+      },
+      "bbox": [
+        45,
+        162,
+        9,
+        20
+      ],
+      "category_id": 2,
+      "id": 17,
+      "image_id": 2,
+      "iscrowd": 0
+    },
+    {
+      "area": 305,
+      "attributes": {
+        "bbox_area_pixels": 481,
+        "carla_actor_id": 42700,
+        "carla_semantic_tag": 14,
+        "mask_fill_ratio": 0.6340956340956341,
+        "teacher_method": "instance_segmentation_visible_mask",
+        "truncated": false,
+        "visible_area_pixels": 305
+      },
+      "bbox": [
+        3,
+        193,
+        37,
+        13
+      ],
+      "category_id": 5,
+      "id": 18,
+      "image_id": 2,
+      "iscrowd": 0
+    },
+    {
+      "area": 11,
+      "attributes": {
+        "bbox_area_pixels": 16,
+        "carla_actor_id": 11,
+        "carla_semantic_tag": 7,
+        "mask_fill_ratio": 0.6875,
+        "teacher_method": "instance_segmentation_visible_mask",
+        "truncated": false,
+        "visible_area_pixels": 11
+      },
+      "bbox": [
+        305,
+        176,
+        2,
+        8
+      ],
+      "category_id": 1,
+      "id": 19,
+      "image_id": 3,
+      "iscrowd": 0
+    },
+    {
+      "area": 21,
+      "attributes": {
+        "bbox_area_pixels": 253,
+        "carla_actor_id": 23,
+        "carla_semantic_tag": 7,
+        "mask_fill_ratio": 0.08300395256916997,
+        "teacher_method": "instance_segmentation_visible_mask",
+        "truncated": false,
+        "visible_area_pixels": 21
+      },
+      "bbox": [
+        334,
+        178,
+        23,
+        11
+      ],
+      "category_id": 1,
+      "id": 20,
+      "image_id": 3,
+      "iscrowd": 0
+    },
+    {
+      "area": 22,
+      "attributes": {
+        "bbox_area_pixels": 35,
+        "carla_actor_id": 5,
+        "carla_semantic_tag": 8,
+        "mask_fill_ratio": 0.6285714285714286,
+        "teacher_method": "instance_segmentation_visible_mask",
+        "truncated": false,
+        "visible_area_pixels": 22
+      },
+      "bbox": [
+        479,
+        180,
+        5,
+        7
+      ],
+      "category_id": 2,
+      "id": 21,
+      "image_id": 3,
+      "iscrowd": 0
+    },
+    {
+      "area": 6,
+      "attributes": {
+        "bbox_area_pixels": 45,
+        "carla_actor_id": 12,
+        "carla_semantic_tag": 8,
+        "mask_fill_ratio": 0.13333333333333333,
+        "teacher_method": "instance_segmentation_visible_mask",
+        "truncated": false,
+        "visible_area_pixels": 6
+      },
+      "bbox": [
+        299,
+        177,
+        5,
+        9
+      ],
+      "category_id": 2,
+      "id": 22,
+      "image_id": 3,
+      "iscrowd": 0
+    },
+    {
+      "area": 11,
+      "attributes": {
+        "bbox_area_pixels": 208,
+        "carla_actor_id": 23,
+        "carla_semantic_tag": 8,
+        "mask_fill_ratio": 0.052884615384615384,
+        "teacher_method": "instance_segmentation_visible_mask",
+        "truncated": false,
+        "visible_area_pixels": 11
+      },
+      "bbox": [
+        329,
+        177,
+        26,
+        8
+      ],
+      "category_id": 2,
+      "id": 23,
+      "image_id": 3,
+      "iscrowd": 0
+    },
+    {
+      "area": 12,
+      "attributes": {
+        "bbox_area_pixels": 20,
+        "carla_actor_id": 29924,
+        "carla_semantic_tag": 8,
+        "mask_fill_ratio": 0.6,
+        "teacher_method": "instance_segmentation_visible_mask",
+        "truncated": false,
+        "visible_area_pixels": 12
+      },
+      "bbox": [
+        479,
+        190,
+        5,
+        4
+      ],
+      "category_id": 2,
+      "id": 24,
+      "image_id": 3,
+      "iscrowd": 0
+    },
+    {
+      "area": 18,
+      "attributes": {
+        "bbox_area_pixels": 20,
+        "carla_actor_id": 46198,
+        "carla_semantic_tag": 8,
+        "mask_fill_ratio": 0.9,
+        "teacher_method": "instance_segmentation_visible_mask",
+        "truncated": false,
+        "visible_area_pixels": 18
+      },
+      "bbox": [
+        182,
+        177,
+        2,
+        10
+      ],
+      "category_id": 2,
+      "id": 25,
+      "image_id": 3,
+      "iscrowd": 0
+    },
+    {
+      "area": 141,
+      "attributes": {
+        "bbox_area_pixels": 180,
+        "carla_actor_id": 46220,
+        "carla_semantic_tag": 8,
+        "mask_fill_ratio": 0.7833333333333333,
+        "teacher_method": "instance_segmentation_visible_mask",
+        "truncated": false,
+        "visible_area_pixels": 141
+      },
+      "bbox": [
+        45,
+        162,
+        9,
+        20
+      ],
+      "category_id": 2,
+      "id": 26,
+      "image_id": 3,
+      "iscrowd": 0
+    },
+    {
+      "area": 305,
+      "attributes": {
+        "bbox_area_pixels": 481,
+        "carla_actor_id": 42700,
+        "carla_semantic_tag": 14,
+        "mask_fill_ratio": 0.6340956340956341,
+        "teacher_method": "instance_segmentation_visible_mask",
+        "truncated": false,
+        "visible_area_pixels": 305
+      },
+      "bbox": [
+        3,
+        193,
+        37,
+        13
+      ],
+      "category_id": 5,
+      "id": 27,
+      "image_id": 3,
+      "iscrowd": 0
+    }
+  ],
+  "categories": [
+    {
+      "carla_semantic_tag": 7,
+      "id": 1,
+      "name": "traffic_light",
+      "supercategory": "road_user_or_control"
+    },
+    {
+      "carla_semantic_tag": 8,
+      "id": 2,
+      "name": "traffic_sign",
+      "supercategory": "road_user_or_control"
+    },
+    {
+      "carla_semantic_tag": 12,
+      "id": 3,
+      "name": "pedestrian",
+      "supercategory": "road_user_or_control"
+    },
+    {
+      "carla_semantic_tag": 13,
+      "id": 4,
+      "name": "rider",
+      "supercategory": "road_user_or_control"
+    },
+    {
+      "carla_semantic_tag": 14,
+      "id": 5,
+      "name": "car",
+      "supercategory": "road_user_or_control"
+    },
+    {
+      "carla_semantic_tag": 15,
+      "id": 6,
+      "name": "truck",
+      "supercategory": "road_user_or_control"
+    },
+    {
+      "carla_semantic_tag": 16,
+      "id": 7,
+      "name": "bus",
+      "supercategory": "road_user_or_control"
+    },
+    {
+      "carla_semantic_tag": 17,
+      "id": 8,
+      "name": "train",
+      "supercategory": "road_user_or_control"
+    },
+    {
+      "carla_semantic_tag": 18,
+      "id": 9,
+      "name": "motorcycle",
+      "supercategory": "road_user_or_control"
+    },
+    {
+      "carla_semantic_tag": 19,
+      "id": 10,
+      "name": "bicycle",
+      "supercategory": "road_user_or_control"
+    }
+  ],
+  "images": [
+    {
+      "carla_frame": 1159028,
+      "episode_id": "ep-static-r00",
+      "file_name": "images/unassigned/00000001.png",
+      "height": 384,
+      "id": 1,
+      "scenario_id": "scn-town10-static-clear",
+      "simulation_timestamp_seconds": 12271.051748134196,
+      "split": "unassigned",
+      "width": 640
+    },
+    {
+      "carla_frame": 1159067,
+      "episode_id": "ep-static-r00",
+      "file_name": "images/unassigned/00000002.png",
+      "height": 384,
+      "id": 2,
+      "scenario_id": "scn-town10-static-clear",
+      "simulation_timestamp_seconds": 12271.553889233619,
+      "split": "unassigned",
+      "width": 640
+    },
+    {
+      "carla_frame": 1159129,
+      "episode_id": "ep-static-r00",
+      "file_name": "images/unassigned/00000003.png",
+      "height": 384,
+      "id": 3,
+      "scenario_id": "scn-town10-static-clear",
+      "simulation_timestamp_seconds": 12272.346948433667,
+      "split": "unassigned",
+      "width": 640
+    }
+  ],
+  "info": {
+    "dataset_id": "ds-carla0916-town10-pilot-v001",
+    "description": "CARLA synchronized RGB detection dataset",
+    "version": "1.0"
+  },
+  "licenses": []
+}

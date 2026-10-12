@@ -1,0 +1,55 @@
+{
+  "authors": [
+    "Hesam",
+    "CARLA Vision Research Project"
+  ],
+  "claims": [
+    "The framework now builds a deterministic self-contained native-host kit for the bounded 50-frame pilot without contacting or mutating CARLA.",
+    "The kit carries the exact verified scenario plan, project collection sources, platform-specific CPython 3.12 lock files with required hashes, guarded Windows and Linux scripts, and complete payload inventories.",
+    "Collection cannot start through the kit scripts unless a semantically verified ready preflight exactly matches the kit and the operator supplies the literal world-reload and exclusive-tick confirmation token.",
+    "The kit archive is independently reconstructed and semantically checked for deterministic order, timestamps, permissions, content hashes, Python compilation, scenario-plan recomputation, dependency pins, and safety gates.",
+    "The operator catalog now discovers native-host kits as normal research objects while live MessagePack capture remains independent of native PythonAPI availability."
+  ],
+  "include_plots": true,
+  "limitations": [
+    "All sources were created from a dirty, uncommitted workspace and are development evidence rather than confirmatory thesis experiments.",
+    "The portable kit targets CPython 3.12 on Windows or Linux x86-64 and has not been bootstrapped on the eventual execution host.",
+    "No native episode was executed; world reload, actor spawning, synchronous sensor delivery, cleanup, and restoration still require manual acceptance against CARLA.",
+    "The retained real preflight remains not ready on Apple arm64 because the official CARLA PythonAPI is unavailable there and the two manual mutation gates are pending.",
+    "The dependency locks were resolved and hash checked, but external package availability at future bootstrap time remains outside this artifact.",
+    "The kit deliberately contains no CARLA server binary, model weights, secrets, prior datasets, or full 23-episode thesis plan.",
+    "No CARLA-specific RT-DETR training, locked-test evaluation, or vision-only closed-loop driving result is introduced by this milestone."
+  ],
+  "purpose": "development",
+  "report_id": "rpt-framework-validation-20260727-v006",
+  "schema_version": "1.0",
+  "sources": [
+    {
+      "kind": "report",
+      "label": "Framework validation report v0.7",
+      "path": "../../reports/rpt-framework-validation-20260726-v005"
+    },
+    {
+      "kind": "reproduction_bundle",
+      "label": "Framework reproduction bundle v0.7",
+      "path": "../../bundles/bundle-framework-development-20260726-v005"
+    },
+    {
+      "kind": "native_host_kit",
+      "label": "Portable native 50-frame pilot host kit",
+      "path": "../../native_kits/native-host-kit-pilot-20260727-v002"
+    },
+    {
+      "kind": "scenario_plan",
+      "label": "Minimal native integration scenario plan",
+      "path": "../../runs/scenario-plan-native-integration-pilot-v1"
+    },
+    {
+      "kind": "native_preflight",
+      "label": "Real endpoint read-only native preflight",
+      "path": "../../runs/native-preflight-pilot-20260726-v1"
+    }
+  ],
+  "thesis_context": "Traceable framework handoff after replacing ad-hoc host setup with a deterministic portable collection kit, explicit preflight binding, immutable safety gates, and operator-catalog discovery while leaving real CARLA execution to a bounded manual acceptance test.",
+  "title": "CARLA Vision Framework Development Validation v0.8"
+}

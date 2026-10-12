@@ -89,9 +89,17 @@ pull request is merged; Git history retains the commit.
 
 ## Local and generated data
 
-Do not commit `.env.local`, checkpoints, datasets, runs, reports, browser build
+Do not commit `.env.local`, new training checkpoints, datasets, runs, reports, browser build
 caches, Python caches, or operator session output. Keep shareable examples
 small and add them deliberately through a release or sample-data decision.
+The maintainer-approved archive under [`samples/`](samples/README.md) is one
+such decision: its original payloads are retained without modification and
+indexed by size and SHA-256. Do not extend it by copying an entire runtime root
+without reviewing the new material and recording its provenance and limitations.
+The explicitly allow-listed [bundled models](models/README.md) are maintained
+through Git LFS. Commit their processor/configuration files and class tables with
+the weights, update the inventory/checksums, and retain upstream notices. A new
+model download remains ignored unless it is deliberately added to that bundle.
 
 The final removal of legacy code belongs to #58. Until feature parity is
 verified, cleanup means removing proven duplication, not deleting the only
