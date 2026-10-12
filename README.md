@@ -95,7 +95,9 @@ New contributors should start with the
 [`developer navigation hub`](docs/README.md): find a feature, its owner, and
 its first test without reading the whole codebase. Branch/PR rules and the current
 source map are documented in [`CONTRIBUTING.md`](CONTRIBUTING.md) and
-[`docs/project_structure.md`](docs/project_structure.md).
+[`docs/project_structure.md`](docs/project_structure.md). AI coding agents
+start with [`AGENTS.md`](AGENTS.md). Participation follows the
+[Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Product boundary
 
