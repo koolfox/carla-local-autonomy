@@ -19,8 +19,13 @@ Recovery defaults and clone documentation now select `main`. Integrity/preservat
 tests cover the standalone recovery engine, including original private data,
 rejected corrupt archives/downloads, existing-project protection and process-lock
 exclusion. Windows lock initialization uses file size instead of reading a byte
-that another process may have locked. CI adds Linux, Windows and macOS recovery
+that another process may have locked. Recovery selects the exact lowercase
+`samples/archive.json` filename, which is required on case-sensitive Linux
+filesystems. CI adds Linux, Windows and macOS recovery
 checks alongside the existing Operator, frontend and research regression jobs.
+The native-research HTTP fixture injects an explicitly offline CARLA loader so
+installing the optional SDK cannot make it contact a real localhost simulator.
+It still verifies crash receipts, world-owner release and the next capture.
 
 These checks do not require CARLA and do not establish complete native installation,
 TUI appearance, live inference or simulator acceptance. Those gates remain deferred

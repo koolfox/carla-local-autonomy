@@ -210,7 +210,7 @@ def obtain_source(destination: Path, commit: str, use_git: bool) -> None:
             "pyproject.toml",
             "uv.lock",
             "models/assets.json",
-            "samples/ARCHIVE.json",
+            "samples/archive.json",
             "carla_vision/operator/console_static/index.html",
         )
         if any(not safe_path(payload, name).is_file() for name in required):
@@ -265,7 +265,7 @@ def hydrate_models(root: Path, commit: str) -> None:
 
 
 def verify_samples(root: Path, copy_original_paths: bool) -> None:
-    inventory = json.loads((root / "samples/ARCHIVE.json").read_text(encoding="utf-8"))
+    inventory = json.loads((root / "samples/archive.json").read_text(encoding="utf-8"))
     for entry in inventory["files"]:
         path = safe_path(root, "samples/" + entry["path"])
         if not path.is_file() or file_hash(path) != entry["sha256"]:

@@ -87,7 +87,7 @@ Use `--download-carla` instead of `--carla-root` to request the official server.
 | --- | --- |
 | GitHub source at one resolved commit | Application, compiled browser console, configuration examples, scripts and documentation |
 | Published `models/assets.json` | All ten full weight files (732,845,619 bytes), labels, pinned processor/configuration files and notices; every declared size/SHA-256 checked |
-| Published `samples/ARCHIVE.json` | All 123 historical payloads, including five videos; every SHA-256 checked |
+| Published `samples/archive.json` | All 123 historical payloads, including five videos; every SHA-256 checked |
 | Sample original paths | Copies under the recorded `output/`, `reports/`, `datasets/` and model-table paths, unless `--no-sample-copies` |
 | Locked Python environment | Managed Python 3.12, `.venv`, private uv and recording encoder; vision profile by default except Intel macOS/`--lean` |
 | Optional CARLA package | Windows/Linux x86-64 only, when `--download-carla` is requested |

@@ -120,6 +120,61 @@ def test_fresh_restore_refuses_existing_project_before_downloading(
     assert existing.read_text() == "valuable work"
 
 
+def test_source_archive_restores_canonical_sample_manifest_and_original_paths(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config = b'{"classes":[]}\n'
+    sample = b'{"historical":true}\n'
+    files = {
+        "pyproject.toml": b'[project]\nname = "fixture"\n',
+        "uv.lock": b"version = 1\n",
+        "carla_vision/operator/console_static/index.html": b"<html>console</html>",
+        "models/config.json": config,
+        "models/assets.json": json.dumps(
+            {
+                "files": [
+                    {
+                        "path": "config.json",
+                        "storage": "git",
+                        "size_bytes": len(config),
+                        "sha256": hashlib.sha256(config).hexdigest(),
+                    }
+                ]
+            }
+        ).encode(),
+        "samples/recordings/demo.json": sample,
+        "samples/archive.json": json.dumps(
+            {
+                "files": [
+                    {
+                        "path": "recordings/demo.json",
+                        "source_path": "output/demo.json",
+                        "size_bytes": len(sample),
+                        "sha256": hashlib.sha256(sample).hexdigest(),
+                    }
+                ]
+            }
+        ).encode(),
+    }
+    archive = tmp_path / "github-source.zip"
+    with zipfile.ZipFile(archive, "w") as source:
+        for name, data in files.items():
+            source.writestr("repository-commit/" + name, data)
+
+    def download_archive(url, destination):
+        destination.write_bytes(archive.read_bytes())
+
+    monkeypatch.setattr(restore, "download", download_archive)
+    target = tmp_path / "new project"
+    restore.obtain_source(target, "a" * 40, False)
+    restore.hydrate_models(target, "a" * 40)
+    restore.verify_samples(target, True)
+    assert (target / "samples/archive.json").read_bytes() == files["samples/archive.json"]
+    assert (target / "models/config.json").read_bytes() == config
+    assert (target / "output/demo.json").read_bytes() == sample
+    assert not (target / ".venv").exists()
+
+
 def test_failed_download_preserves_destination_and_removes_partial_file(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -199,7 +254,7 @@ def test_plan_uses_main_without_network_or_creating_destination(
 
 
 def test_published_assets_match_inventories_or_exact_lfs_pointers() -> None:
-    for folder, filename in (("models", "assets.json"), ("samples", "ARCHIVE.json")):
+    for folder, filename in (("models", "assets.json"), ("samples", "archive.json")):
         inventory = json.loads((ROOT / folder / filename).read_text())
         for entry in inventory["files"]:
             path = ROOT / folder / entry["path"]

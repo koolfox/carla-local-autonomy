@@ -133,11 +133,17 @@ def wait_done(jobs, job_id="sample", seconds=10):
     pytest.fail("native job did not terminate")
 
 
+def offline_carla_loader():
+    # Installing the native-host SDK must not turn this HTTP/subprocess fixture
+    # into a real RPC probe against localhost:2000.
+    raise RuntimeError("No CARLA server is used by the native research fixture")
+
+
 @pytest.fixture
 def host(tmp_path, monkeypatch):
     raw = install(tmp_path / "tasks")
     monkeypatch.setenv("CARLA_WORLD_WORKER_TOKEN", TOKEN)
-    worker = WorldWorker(start_monitor=False)
+    worker = WorldWorker(start_monitor=False, carla_loader=offline_carla_loader)
     jobs = ResearchJobs(tmp_path / "tasks", tmp_path / "jobs", worker)
     server = create_server(bind="127.0.0.1", port=0, token=TOKEN, worker=worker, research_jobs=jobs)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -232,7 +238,9 @@ def test_native_crash_preserves_failure_but_allows_the_next_capture(host):
     jobs.submit({**raw, "parameters": {"crash": True}})
     status = wait_done(jobs)
     assert status["status"] == "failed" and not status["cleanup_confirmed"]
-    assert client.health()["status"] != "recovery_required"
+    health = client.health()
+    assert health["status"] == "unavailable"
+    assert health["error_code"] == "carla_unavailable"
     assert not client.tasks()["recovery_required"]
     assert worker.research_reset_pending
     assert not (jobs.root / "recovery-required.json").exists()
