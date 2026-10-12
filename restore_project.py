@@ -736,7 +736,11 @@ def main(argv: list[str] | None = None) -> int:
             )
         elif role == "web":
             print(
-                "Set the LAN Worker URL/token in .env.local. Use .venv/bin/carla-operator-ui --open-browser (Windows: .venv\\Scripts\\carla-operator-ui.exe)."
+                "Set the LAN Worker URL/token in .env.local. Start from the project root "
+                "with the bundled encoder on PATH: "
+                'PATH="$PWD/.launcher/bin:$PATH" .venv/bin/carla-operator-ui --open-browser '
+                '(Windows PowerShell: $env:PATH="$PWD\\.launcher\\bin;$env:PATH"; '
+                ".\\.venv\\Scripts\\carla-operator-ui.exe --open-browser)."
             )
         else:
             print(

@@ -10,9 +10,12 @@ gets these additions too. Use `--ref <commit>` for a specific version; recovery
 resolves the requested ref to one exact commit and checks its model/sample
 inventory and compiled console.
 
+To bootstrap directly from GitHub without cloning, use the
+[curl commands in the main README](../README.md#quick-start-with-curl).
+
 ## Windows: CARLA and the web app together
 
-Extract/download this branch or use the recovery tools saved beside your local
+Extract/download `main` or use the recovery tools saved beside your local
 backup. From its root in PowerShell:
 
 ```powershell
@@ -50,7 +53,7 @@ On Apple Silicon with macOS 14 or newer:
 sh restore.sh --destination "$HOME/CARLA-Vision" --role web
 cd "$HOME/CARLA-Vision"
 # Set the Windows/LAN Worker URL and matching secret in .env.local first.
-.venv/bin/carla-operator-ui --open-browser
+PATH="$PWD/.launcher/bin:$PATH" .venv/bin/carla-operator-ui --open-browser
 ```
 
 This restores all published models and installs the locked vision/recording
@@ -59,6 +62,14 @@ environment, without a local CARLA server or native CARLA PythonAPI. Intel macOS
 and ONNX Runtime wheels target Apple Silicon. Its model files are still restored;
 local ML inference needs a supported vision host. `--lean --role web` selects
 that dependency profile explicitly on other supported computers.
+
+The `PATH` prefix makes the bundled recording encoder available to the web app.
+For a Windows web-only installation, add it before starting the console:
+
+```powershell
+$env:PATH = "$PWD\.launcher\bin;$env:PATH"
+.\.venv\Scripts\carla-operator-ui.exe --open-browser
+```
 
 The native TUI coordinates a same-computer stack only on Windows/Linux x86-64.
 For the Mac workflow, run CARLA and the Worker on Windows/Linux. The same-host
