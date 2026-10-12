@@ -2,9 +2,9 @@
 
 This guide brings together the source, retained models, dependency lock and
 local connection settings. It does not run tests or claim new simulator or
-model acceptance. Until the maintainer merges this delivery, use the
-`codex/single-host-launcher` branch; default-branch clones do not yet contain
-its models or historical samples.
+model acceptance. The default `main` branch includes the published models,
+historical samples, native launcher and recovery tools. The [recovery script](restore_project.md)
+can prepare these files and dependencies without preinstalled Git or Python.
 
 For Windows/Linux users who want CARLA and the web app on one computer, use the
 [full-screen installer/launcher](desktop_launcher.md). Its source bundles do not
@@ -18,12 +18,12 @@ Python 3.11–3.13 and [uv](https://docs.astral.sh/uv/). Then:
 
 ```bash
 git lfs install
-git clone --branch codex/single-host-launcher https://github.com/koolfox/carla-local-autonomy.git
+git clone https://github.com/koolfox/carla-local-autonomy.git
 cd carla-local-autonomy
 git lfs pull
 ```
 
-After merge, the branch option is unnecessary. The clone includes ten weight
+The clone includes ten weight
 files, exact class tables, pinned processor/configuration files and the
 [historical sample archive](../samples/README.md). The complete model inventory
 and original-file hashes are under [`models/`](../models/README.md).

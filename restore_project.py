@@ -15,7 +15,6 @@ import subprocess
 import sys
 import tarfile
 import tempfile
-import urllib.error
 import urllib.request
 import zipfile
 from contextlib import contextmanager
@@ -23,7 +22,7 @@ from pathlib import Path, PurePosixPath
 from urllib.parse import quote, urlparse
 
 REPOSITORY = "koolfox/carla-local-autonomy"
-DEFAULT_REF = "codex/project-restore-cleanup"
+DEFAULT_REF = "main"
 UV_VERSION = "0.11.2"
 UV_PACKAGES = {
     ("Windows", "amd64"): (
@@ -135,16 +134,8 @@ def download(
 def resolve_commit(reference: str) -> str:
     url = f"https://api.github.com/repos/{REPOSITORY}/commits/{quote(reference, safe='')}"
     request = urllib.request.Request(url, headers={"User-Agent": "CARLA-Project-Restore/1"})
-    try:
-        with urllib.request.build_opener(SecureRedirects()).open(request, timeout=20) as response:
-            value = json.load(response)
-    except urllib.error.HTTPError as error:
-        if error.code == 404 and reference == DEFAULT_REF:
-            print(
-                "Delivery branch is unavailable; checking main for the merged restoration assets..."
-            )
-            return resolve_commit("main")
-        raise
+    with urllib.request.build_opener(SecureRedirects()).open(request, timeout=20) as response:
+        value = json.load(response)
     commit = value.get("sha")
     if not isinstance(commit, str) or not re.fullmatch("[a-f0-9]{40}", commit):
         raise RestoreError("GitHub did not return a valid source commit.")
@@ -224,7 +215,7 @@ def obtain_source(destination: Path, commit: str, use_git: bool) -> None:
         )
         if any(not safe_path(payload, name).is_file() for name in required):
             raise RestoreError(
-                "This GitHub ref lacks required model/sample assets; use the delivery branch."
+                "This GitHub ref lacks required model/sample assets; use main or a complete delivery commit."
             )
         if destination.exists():
             destination.rmdir()  # Only the verified empty destination.
@@ -470,8 +461,8 @@ def restoration_lock(root: Path, name: str):
     private = safe_path(root, ".launcher")
     private.mkdir(parents=True, exist_ok=True)
     with safe_path(root, ".launcher/" + name).open("a+b") as stream:
-        stream.seek(0)
-        if not stream.read(1):
+        # Do not read a byte locked by another process on Windows.
+        if os.fstat(stream.fileno()).st_size == 0:
             stream.write(b"0")
             stream.flush()
         stream.seek(0)

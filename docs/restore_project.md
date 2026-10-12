@@ -4,13 +4,11 @@ Use `restore.sh` on macOS/Linux or `Restore.cmd` on Windows. These entry points
 prepare a private, checksum-verified uv runtime and managed Python 3.12; you do
 not need preinstalled Python, Node or Git for the default restoration.
 
-Until this work is merged, the default source is
-`codex/project-restore-cleanup`, which includes the published models, historical
-samples, native launcher and recovery tools. A default clone of `main` does not
-yet contain those additions. Use `--ref main` after merging, or `--ref <commit>`
-for a specific version.
-If the delivery branch is later deleted, the default retrieval falls back to
-`main` and still requires its model/sample inventory and compiled console.
+The default source is `main`, which includes the published models, historical
+samples, native launcher and recovery tools. A normal clone of the repository
+gets these additions too. Use `--ref <commit>` for a specific version; recovery
+resolves the requested ref to one exact commit and checks its model/sample
+inventory and compiled console.
 
 ## Windows: CARLA and the web app together
 
@@ -166,7 +164,8 @@ engine option, including `--plan` or `--help`.
 
 ## Verification status
 
-For this delivery, source/static checks, CLI help/plan and existing payload
-integrity were checked. Fresh-machine restoration, native installer execution,
-cross-platform runtime behavior and live CARLA acceptance remain deferred.
-CARLA was unavailable; no new simulator, inference or application test is claimed.
+Source/static checks, CLI help/plan and existing payload integrity were checked.
+Recovery tests exercise archive rejection, private-file preservation, corrupt
+downloads, process locks and published assets; CI runs these on Windows, Linux
+and macOS without installing the ML/native runtime. Full fresh-machine restoration,
+native installer/TUI execution, inference and live CARLA acceptance remain deferred.

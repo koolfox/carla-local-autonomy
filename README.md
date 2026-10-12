@@ -26,7 +26,7 @@ From a clone, run `deploy\desktop\Install.cmd` on Windows, or
 `sh deploy/desktop/install.sh` on Linux. No Node build is needed for normal use.
 See the [same-computer setup guide](docs/desktop_launcher.md) for paths, CLI
 commands and recovery. The installer preview is available on
-`codex/project-restore-cleanup`; Windows/Linux installation, terminal rendering and
+`main`; Windows/Linux installation, terminal rendering and
 live-CARLA acceptance remain deferred. Source review and archive integrity do
 not establish runtime acceptance.
 
@@ -119,14 +119,13 @@ matching DeiT class tables and pinned Hugging Face processor/configuration files
 
 ```bash
 git lfs install
-git clone --branch codex/project-restore-cleanup https://github.com/koolfox/carla-local-autonomy.git
+git clone https://github.com/koolfox/carla-local-autonomy.git
 cd carla-local-autonomy
 git lfs pull
 ```
 
-This delivery branch includes the model/sample, launcher and recovery work.
-After it is merged, use `--branch main` instead. Existing checkouts can switch
-to the delivery branch and run `git lfs pull`.
+The default `main` branch includes the model/sample, launcher and recovery work.
+Existing checkouts can update `main` and run `git lfs pull`.
 
 See [the bundled-model inventory](models/README.md) for exact paths, hashes,
 upstream notices and offline model-cache settings. A clone without Git LFS, or

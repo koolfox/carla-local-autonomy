@@ -13,6 +13,36 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  recovery:
+    name: Recovery integrity (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - name: Check recovery and published payload integrity without CARLA
+        # Match the test runner recorded in uv.lock, without installing ML profiles.
+        run: uv run --no-project --python 3.12 --with pytest==9.1.1 python -B -m pytest -q -p no:cacheprovider tests/test_project_restore.py
+      - name: Check Unix bootstrap syntax
+        if: runner.os != 'Windows'
+        run: sh -n restore.sh && sh -n deploy/desktop/install.sh && sh -n deploy/desktop/launch.sh
+      - name: Check Windows bootstrap syntax
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          foreach ($Path in @('deploy/restore/restore.ps1', 'deploy/desktop/install.ps1', 'deploy/desktop/launch.ps1')) {
+            $Tokens = $null
+            $Errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD $Path), [ref]$Tokens, [ref]$Errors) | Out-Null
+            if ($Errors.Count) { throw ($Errors.Message -join "`n") }
+          }
+
   core:
     name: Operator core
     runs-on: ubuntu-latest
@@ -37,7 +67,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
       - name: Lint source and tests
-        run: uv run ruff check carla_vision tests
+        run: uv run ruff check carla_vision tests restore_project.py
 
       - name: Check browser JavaScript syntax
         run: node --check carla_vision/operator/static/app.js

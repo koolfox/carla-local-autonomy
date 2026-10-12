@@ -28,11 +28,7 @@ try {
     $Engine = Join-Path $Root "restore_project.py"
     if (-not (Test-Path -LiteralPath $Engine -PathType Leaf)) {
         $Engine = Join-Path $Stage "restore_project.py"
-        try {
-            Invoke-WebRequest -UseBasicParsing -Uri "https://raw.githubusercontent.com/koolfox/carla-local-autonomy/refs/heads/codex/project-restore-cleanup/restore_project.py" -OutFile $Engine
-        } catch {
-            Invoke-WebRequest -UseBasicParsing -Uri "https://raw.githubusercontent.com/koolfox/carla-local-autonomy/refs/heads/main/restore_project.py" -OutFile $Engine
-        }
+        Invoke-WebRequest -UseBasicParsing -Uri "https://raw.githubusercontent.com/koolfox/carla-local-autonomy/refs/heads/main/restore_project.py" -OutFile $Engine
     }
     $env:UV_PYTHON_INSTALL_DIR = Join-Path $BootstrapRoot "python"
     $env:UV_CACHE_DIR = Join-Path $BootstrapRoot "cache"

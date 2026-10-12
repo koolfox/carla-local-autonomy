@@ -18,8 +18,8 @@ owned services before updating; bootstrap checks the lifetime/operation locks
 and verifies process creation time alongside the PID.
 
 These are **preview artifacts**, pending Windows/Linux installation, visual and
-live-CARLA validation. They are published on a feature branch for review, with
-maintainer-owned PR and merge; they are not a validated production release.
+live-CARLA validation. They are available from `main` with their exact archived
+source identity below; they are not a validated production release.
 
 [manifest.json](manifest.json) records the exact source commit, file count,
 fixed model source, artifact sizes and hashes. [checksums.sha256](checksums.sha256)

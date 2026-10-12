@@ -2,13 +2,13 @@
 
 The launcher preview runs CARLA 0.9.16, its World Worker and the existing web app
 on one machine. Windows x86-64 is the primary target; Linux x86-64 is supported
-by the same Python controller and its own bootstrap. The current delivery is on
-`codex/single-host-launcher`, which also includes the previously published model
-and sample commits. The maintainer owns the PR and merge.
+by the same Python controller and its own bootstrap. The `main` branch includes
+the launcher, published models, historical samples and [recovery tools](restore_project.md).
 
-**Validation status:** source review and package integrity only. No installer,
-TUI, CARLA service, inference or new runtime tests were run for this delivery.
-Windows/Linux installation, visual and live acceptance remain tomorrow's work.
+**Validation status:** source review and package integrity, plus offline recovery
+checks. CI exercises the existing regression suite and recovery file-preservation
+contracts without CARLA. Native installer/TUI execution, Windows/Linux full
+installation, inference, visual and live acceptance remain tomorrow's work.
 
 ## Install on Windows
 

@@ -51,13 +51,9 @@ chmod 700 "$RestoreUv"
 RestoreEngine="$RestoreScriptDirectory/restore_project.py"
 if [ ! -f "$RestoreEngine" ]; then
     RestoreEngine="$RestoreStage/restore_project.py"
-    if ! curl --fail --location --proto '=https' --proto-redir '=https' --retry 3 \
-        'https://raw.githubusercontent.com/koolfox/carla-local-autonomy/refs/heads/codex/project-restore-cleanup/restore_project.py' \
-        --output "$RestoreEngine"; then
-        curl --fail --location --proto '=https' --proto-redir '=https' --retry 3 \
-            'https://raw.githubusercontent.com/koolfox/carla-local-autonomy/refs/heads/main/restore_project.py' \
-            --output "$RestoreEngine"
-    fi
+    curl --fail --location --proto '=https' --proto-redir '=https' --retry 3 \
+        'https://raw.githubusercontent.com/koolfox/carla-local-autonomy/refs/heads/main/restore_project.py' \
+        --output "$RestoreEngine"
 fi
 export UV_PYTHON_INSTALL_DIR="$RestoreCacheDirectory/python"
 export UV_CACHE_DIR="$RestoreCacheDirectory/cache"
