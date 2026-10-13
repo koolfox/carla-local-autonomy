@@ -1,12 +1,40 @@
 # CARLA Vision Research Console
 
+**English** · [فارسی](README.fa.md)
+
 A local research console for CARLA 0.9.16. It provides a full-screen Garage,
 manual and Traffic Manager driving, live monocular vision inference, recording,
 and reproducible dataset/model workflows without requiring researchers to write
 Python for every session.
 
+<p align="center"><img src="docs/images/console-drive.webp" alt="Driving in the web console: live CARLA camera with detections, HUD, Emergency Brake and Stop &amp; Save" width="860"></p>
+
 This repository is a LAN research tool, not an internet-facing or multi-user
 service. The browser server deliberately binds to loopback only.
+
+## Get started
+
+The **[user guide](docs/user_guide.md)** ([فارسی](docs/user_guide_fa.md)) walks
+through installation, first start, driving and recordings step by step for your
+operating system:
+
+| Windows | Linux | macOS |
+| --- | --- | --- |
+| [CARLA + Worker + web app](docs/user_guide.md#windows) | [CARLA + Worker + web app](docs/user_guide.md#linux) | [Web app connected to a CARLA computer](docs/user_guide.md#macos) |
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/console-garage.webp" alt="Garage with the Scene settings panel"><br><sub>Garage: camera in the middle, sections on the left, settings on the right</sub></td>
+    <td width="50%"><img src="docs/images/tui-run.webp" alt="Launcher Run tab"><br><sub>Launcher: install, start and stop CARLA, Worker and web app</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/console-dark.webp" alt="Dark theme"><br><sub>Automatic dark theme</sub></td>
+    <td align="center"><img src="docs/images/mobile-settings.webp" alt="Settings sheet on a phone" width="45%"> <img src="docs/images/mobile-drive.webp" alt="Touch driving on a phone" width="45%"><br><sub>Phone and tablet: settings sheet and touch driving</sub></td>
+  </tr>
+</table>
+
+<sub>Screenshots show the console without a simulator connected, except the
+driving images, which replay a frame recorded from CARLA.</sub>
 
 ## Quick start with curl
 
@@ -121,7 +149,7 @@ project.
 
 ## Watch saved recordings
 
-Open **Garage → Menu → Recordings** to search saved runs, switch between original
+Open **Recordings** in the left rail to search saved runs, switch between original
 camera and recorded overlays, and play them with Video.js. The player includes
 seeking, five-second skip buttons, playback speed, and fullscreen. Expand **Run
 files** to download the original artifacts; browsing does not verify their integrity.
