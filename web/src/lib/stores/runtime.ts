@@ -1,6 +1,6 @@
 import { get, writable } from 'svelte/store';
 
-import { OperatorApi, type CaptureState, type SituationSettings } from '$lib/api/operator';
+import { OperatorApi, type CaptureState, type LiveCheckState, type SituationSettings } from '$lib/api/operator';
 import type { SessionConfig } from '$lib/domain/config';
 import type { RigSelection } from '$lib/domain/capture';
 import { driveRecordingSettings } from '$lib/domain/capture';
@@ -28,6 +28,11 @@ export const garageRuntime = writable<GarageRuntimeState>({
   action: null,
   error: null,
   lastUpdatedAt: null
+});
+
+export const liveCheckRuntime = writable<LiveCheckState>({
+  phase: 'idle', active: false, holds_world: false, available: false,
+  started_at: null, report: null, summary: null, error: null
 });
 
 export const captureRuntime = writable<CaptureState>({
@@ -69,18 +74,19 @@ export function initializeRuntime(token: string, initialDrive: DriveState, captu
 
 export async function refreshRuntime(): Promise<void> {
   try {
-    const [drive, capture] = await Promise.all([
-      runtimeApi().getDriveState(), runtimeApi().getCaptureState()
+    const [drive, capture, liveCheck] = await Promise.all([
+      runtimeApi().getDriveState(), runtimeApi().getCaptureState(), runtimeApi().getLiveCheckState()
     ]);
     setDrive(drive);
     captureRuntime.set(capture);
+    liveCheckRuntime.set(liveCheck);
   } catch (error) {
     setError(error);
   }
 }
 
 function nextPollDelay(): number {
-  return isDriveActive(get(garageRuntime).drive) || get(captureRuntime).active ? 700 : 3000;
+  return isDriveActive(get(garageRuntime).drive) || get(captureRuntime).active || get(liveCheckRuntime).active ? 700 : 3000;
 }
 
 async function pollOnce(): Promise<void> {
@@ -177,6 +183,17 @@ export async function startCapture(session: SessionConfig, situation: SituationS
   captureRuntime.update((state) => ({ ...state, active: true, holds_world: true, phase: 'preparing', error: null }));
   try {
     captureRuntime.set(await runtimeApi().startCapture(session, situation, rig));
+  } catch (error) {
+    await refreshRuntime();
+    throw error;
+  }
+}
+
+export async function startLiveCheck(): Promise<void> {
+  // Suspend auto-apply before the backend pauses the preview for the check.
+  liveCheckRuntime.update((state) => ({ ...state, active: true, holds_world: true, phase: 'preparing', error: null }));
+  try {
+    liveCheckRuntime.set(await runtimeApi().startLiveCheck());
   } catch (error) {
     await refreshRuntime();
     throw error;

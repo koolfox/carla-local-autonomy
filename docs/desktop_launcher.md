@@ -262,6 +262,15 @@ are reproducible LFS pointers; the fixed model source and hashes drive hydration
 Both archives have deterministic metadata and an indexed source SHA. The
 published preview payloads and checksums are under [installers/](../installers/README.md).
 
+## Live check
+
+After **Start all** (or **Start web app** with a paired Worker), press **Live
+check** on the Run tab, then press it again within six seconds to confirm. The
+TUI asks the running web app to run its live CARLA check and shows progress and
+the result on the Run tab; the same check and result appear in the web app under
+**System → Live check**. It reloads Town10HD and drives a test car for about a
+minute, so run it before a session, not during one.
+
 ## Deferred acceptance
 
 Tomorrow's validation needs actual Windows/Linux hosts and a reachable CARLA:

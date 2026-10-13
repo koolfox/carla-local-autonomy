@@ -373,8 +373,14 @@ and deployable bundle are synchronized. CI has six checks: the lean Operator
 profile, the SvelteKit console, the complete research/experimental suite, and
 recovery contracts on Windows, Linux and macOS. The merged integration passed
 [main CI](https://github.com/koolfox/carla-local-autonomy/actions/runs/38260870609).
-Live CARLA acceptance remains a separate manual gate because unit tests use
-fake RPC/PythonAPI objects and do not prove simulator behavior.
+Live CARLA acceptance remains a separate gate because unit tests use
+fake RPC/PythonAPI objects and do not prove simulator behavior. Run it with one
+click: **System → Live check** in the web app, or **Live check** in the TUI's Run
+tab (press twice to confirm). It loads Town10HD, spawns a test car with five cars
+and five walkers, drives it manually (and with BehaviorAgent when the CARLA
+PythonAPI is installed), stops, and saves `runs/garage-acceptance-<time>.json`.
+The Garage preview pauses and Drive is blocked while it runs. The CLI
+`uv run carla-garage-acceptance` remains for scripted runs.
 
 ## Production acceptance gate
 

@@ -101,6 +101,9 @@ class GarageCapture:
 
     def start(self, raw: dict) -> dict:
         self.require_world_available()
+        live_check = getattr(self.application, "live_check", None)
+        if live_check is not None:
+            live_check.require_world_available()
         if set(raw) != {"session", "situation", "camera_rig", "acknowledge"}:
             raise ValueError("capture requires session, situation, camera_rig and acknowledgement")
         if raw["acknowledge"] is not True:

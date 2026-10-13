@@ -28,6 +28,7 @@ from .configuration import (
 from .garage_async import GaragePreviewAsyncFacade
 from .garage_capture import GarageCapture
 from .garage_drive import GarageDriveSessionManager, GarageDriveStartConfig
+from .garage_live_check import GarageLiveCheck
 from .garage_preview import GaragePreviewConfig, GaragePreviewManager
 from .garage_research import GarageResearchRequest, build_garage_research_plan
 from .world_worker_client import WorldWorkerScene
@@ -140,6 +141,9 @@ class GarageOperatorRequestHandler(base.OperatorRequestHandler):
             path = urlparse(self.path).path
             if path == "/api/garage/capture":
                 self._json(HTTPStatus.OK, self.server.application.capture.state())
+                return
+            if path == "/api/garage/live-check":
+                self._json(HTTPStatus.OK, self.server.application.live_check.state())
                 return
             if path == "/api/garage/preview/state":
                 self._json(HTTPStatus.OK, self.server.application.preview.state())
@@ -262,7 +266,13 @@ class GarageOperatorRequestHandler(base.OperatorRequestHandler):
             "/api/garage/preview/stop",
         }
         capture_routes = {"/api/garage/capture", "/api/garage/capture/cancel"}
-        handled_routes = {"/api/garage/jobs", "/api/session/start", *preview_routes, *capture_routes}
+        handled_routes = {
+            "/api/garage/jobs",
+            "/api/session/start",
+            "/api/garage/live-check",
+            *preview_routes,
+            *capture_routes,
+        }
         if path not in handled_routes:
             super().do_POST()
             return
@@ -274,6 +284,9 @@ class GarageOperatorRequestHandler(base.OperatorRequestHandler):
                 )
                 return
             body = self._body()
+            if path == "/api/garage/live-check":
+                self._json(HTTPStatus.ACCEPTED, self.server.application.live_check.start(body))
+                return
             if path in capture_routes:
                 capture = self.server.application.capture
                 if path.endswith("/cancel"):
@@ -374,6 +387,9 @@ class GarageOperatorDriveManager(GarageDriveSessionManager):
             capture = getattr(self, "_garage_capture", None)
             if capture is not None:
                 capture.require_world_available()
+            live_check = getattr(self, "_garage_live_check", None)
+            if live_check is not None:
+                live_check.require_world_available()
             return super().start(raw)
 
     def _prepare_worker_scene(self, config: GarageDriveStartConfig) -> WorldWorkerScene | None:
@@ -425,6 +441,9 @@ class GarageOperatorApplication(base.OperatorApplication):
         capture = getattr(self, "capture", None)
         if capture is not None:
             capture.close()
+        live_check = getattr(self, "live_check", None)
+        if live_check is not None:
+            live_check.close()
         preview_async = getattr(self, "preview_async", None)
         if preview_async is not None:
             preview_async.close()
@@ -481,10 +500,12 @@ def create_server(
     world_mode_lock = threading.RLock()
     application.capture = GarageCapture(application, world_mode_lock)
     drive._garage_capture = application.capture
+    application.live_check = GarageLiveCheck(application, world_mode_lock)
+    drive._garage_live_check = application.live_check
 
     def preview_owner_state() -> dict[str, Any]:
         # Reuse preview's exclusive-world gate; no new CARLA control path.
-        if application.capture.state()["holds_world"]:
+        if application.capture.state()["holds_world"] or application.live_check.state()["holds_world"]:
             return {"status": "running"}
         return drive.state()
 

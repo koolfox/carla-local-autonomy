@@ -28,7 +28,7 @@
     workspaceOptions
   } from '$lib/stores/configuration';
   import { garageSyncPending } from '$lib/stores/garageSync';
-  import { captureRuntime, garageRuntime, runtimeOperatorApi } from '$lib/stores/runtime';
+  import { captureRuntime, garageRuntime, liveCheckRuntime, runtimeOperatorApi } from '$lib/stores/runtime';
 
   type CameraPreset = GarageOrbitRequest['preset'];
 
@@ -150,7 +150,7 @@
   );
   $: driveActive = isDriveActive($garageRuntime.drive) || $garageRuntime.action === 'start';
   $: available = Boolean(
-    $systemSettings?.workerConfigured && $sessionConfig.vehicle.blueprint && !driveActive && !$captureRuntime.holds_world
+    $systemSettings?.workerConfigured && $sessionConfig.vehicle.blueprint && !driveActive && !$captureRuntime.holds_world && !$liveCheckRuntime.holds_world
   );
   $: signature = garagePreviewSignature($sessionConfig);
   $: inputError = garagePreviewInputError($sessionConfig);
@@ -435,6 +435,10 @@
           {#if $captureRuntime.holds_world}
             <strong>Teacher capture · {$captureRuntime.phase}</strong>
             <span>Progress and cancellation are in Research.</span>
+          {:else if $liveCheckRuntime.holds_world}
+            <span class="loading-ring"></span>
+            <strong>Live check · {$liveCheckRuntime.phase}</strong>
+            <span>The Garage resumes when the check releases CARLA. Results are in System.</span>
           {:else if busy}
             <span class="loading-ring"></span>
             <strong>{garagePreparationStageLabel(lifecycleStage)}</strong>
@@ -491,12 +495,12 @@
       <span
         class="preview-state"
         class:updating={busy || dirty || configureRetrying || Boolean(streamRetryTimer)}
-        class:live={active && !busy && !dirty && !error && !driveActive && !$captureRuntime.holds_world}
+        class:live={active && !busy && !dirty && !error && !driveActive && !$captureRuntime.holds_world && !$liveCheckRuntime.holds_world}
         class:attention={Boolean(error)}
         aria-live="polite"
       >
         {#if busy}<span class="loading-ring" aria-hidden="true"></span>{:else}<i aria-hidden="true"></i>{/if}
-        {#if $captureRuntime.holds_world}Teacher capture{:else if driveActive}Drive active{:else if busy}{garagePreparationStageLabel(lifecycleStage)}{:else if configureRetrying || streamRetryTimer}Reconnecting…{:else if error}Needs attention{:else if dirty}Syncing settings…{:else if active}Live CARLA{:else}Waiting for bridge{/if}
+        {#if $captureRuntime.holds_world}Teacher capture{:else if $liveCheckRuntime.holds_world}Live check{:else if driveActive}Drive active{:else if busy}{garagePreparationStageLabel(lifecycleStage)}{:else if configureRetrying || streamRetryTimer}Reconnecting…{:else if error}Needs attention{:else if dirty}Syncing settings…{:else if active}Live CARLA{:else}Waiting for bridge{/if}
       </span>
       {#if (configureError || streamError) && !inputError && available}
         <button

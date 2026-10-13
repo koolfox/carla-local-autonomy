@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import platform
 import threading
+import time
 import webbrowser
 from dataclasses import replace
 from pathlib import Path
@@ -32,6 +33,7 @@ from textual.widgets import (
 
 from .config import LauncherConfig, LauncherError, default_mode, find_carla, remote_token
 from .install import setup
+from .live_check import describe_live_check, live_check_state, start_live_check
 from .network import (
     export_connection,
     import_connection,
@@ -61,7 +63,7 @@ class LauncherApp(App):
     TabPane { padding: 0; }
     #summary { height: auto; min-height: 2; margin-bottom: 1; }
     #services { height: 5; margin-bottom: 1; background: #ffffff; }
-    #actions { height: auto; min-height: 3; layout: grid; grid-size: 3; grid-columns: 1fr 1fr 1fr; grid-rows: 3; }
+    #actions { height: auto; min-height: 3; layout: grid; grid-size: 4; grid-columns: 1fr 1fr 1fr 1fr; grid-rows: 3; }
     Button { margin-right: 1; min-width: 12; }
     Button.-primary { background: #315bea; color: #ffffff; }
     Button:focus, Input:focus, Select:focus { border: tall #315bea; }
@@ -90,6 +92,8 @@ class LauncherApp(App):
         self._status_running = False
         self._status_generation = 0
         self._log_offsets: dict[str, int] = {}
+        self._live_check_armed_at = 0.0
+        self._live_check_running = False
 
     def compose(self) -> ComposeResult:
         config = LauncherConfig.load(self.root)
@@ -110,6 +114,7 @@ class LauncherApp(App):
                             disabled=True,
                         )
                         yield Button("Open web app", id="browser", disabled=True)
+                        yield Button("Live check", id="live-check", disabled=True)
                         yield Button("Stop", id="stop", disabled=True)
                     yield Static(
                         "Choose Setup for first-time installation.", id="stage", markup=False
@@ -399,6 +404,9 @@ class LauncherApp(App):
         self.query_one("#browser", Button).disabled = (
             snapshot["services"]["web"]["status"] != "ready"
         )
+        self.query_one("#live-check", Button).disabled = (
+            snapshot["services"]["web"]["status"] != "ready" or self._live_check_running
+        )
         if not self.busy:
             self.query_one("#start", Button).disabled = snapshot["ready"]
             self.query_one("#stop", Button).disabled = not snapshot["owned_services_active"]
@@ -519,6 +527,9 @@ class LauncherApp(App):
         if name == "browser":
             self.action_open_web()
             return
+        if name == "live-check":
+            self._press_live_check(event.button)
+            return
         if self.busy:
             return
         try:
@@ -562,6 +573,44 @@ class LauncherApp(App):
                 else None,
                 Path(self.query_one("#connection-file", Input).value).expanduser(),
             )
+
+    def _press_live_check(self, button: Button) -> None:
+        # The check reloads the map and drives a test car: require a second press.
+        if time.monotonic() - self._live_check_armed_at > 6.0:
+            self._live_check_armed_at = time.monotonic()
+            button.label = "Confirm: reloads map"
+            self.query_one("#stage", Static).update(
+                "Live check loads Town10HD, spawns a test car with traffic and drives it for about "
+                "a minute. Press again within 6 seconds to start."
+            )
+            self.set_timer(6.0, lambda: setattr(button, "label", "Live check"))
+            return
+        self._live_check_armed_at = 0.0
+        button.label = "Live check"
+        button.disabled = True
+        self._live_check_running = True
+        self._run_live_check(self.stack.config.web_url)
+
+    @work(thread=True, exclusive=True, group="live-check", exit_on_error=False)
+    def _run_live_check(self, web_url: str) -> None:
+        try:
+            state = start_live_check(web_url)
+            while state.get("active"):
+                self.call_from_thread(
+                    self.query_one("#stage", Static).update, describe_live_check(state)
+                )
+                time.sleep(2.0)
+                state = live_check_state(web_url)
+            message = describe_live_check(state)
+            passed = state.get("phase") == "passed"
+            self.call_from_thread(self.query_one("#stage", Static).update, message)
+            self.call_from_thread(
+                self.notify, message, severity="information" if passed else "error"
+            )
+        except LauncherError as error:
+            self.call_from_thread(self.notify, str(error), severity="error")
+        finally:
+            self._live_check_running = False
 
     def action_start_stack(self) -> None:
         if not self.busy:

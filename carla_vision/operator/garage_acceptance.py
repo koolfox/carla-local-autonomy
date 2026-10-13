@@ -185,6 +185,7 @@ class GarageAcceptanceRunner:
         destination_spawn_index: int | None = None,
         expected_version: str = EXPECTED_CARLA_VERSION,
         state_timeout: float = 45.0,
+        modes: Sequence[str] = ("manual", "behavior"),
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
@@ -203,6 +204,9 @@ class GarageAcceptanceRunner:
         self.destination_spawn_index = destination_spawn_index
         self.expected_version = expected_version
         self.state_timeout = state_timeout
+        self.modes = tuple(modes)
+        if not self.modes or any(mode not in {"manual", "behavior"} for mode in self.modes):
+            raise ValueError("acceptance modes must be a non-empty subset of manual and behavior")
         self.clock = clock
         self.sleep = sleep
 
@@ -233,6 +237,7 @@ class GarageAcceptanceRunner:
                     ),
                 },
                 "repeat": self.repeat,
+                "modes": list(self.modes),
             },
             "checks": [],
             "sessions": [],
@@ -243,8 +248,8 @@ class GarageAcceptanceRunner:
             if any(item["required"] and not item["passed"] for item in checks):
                 raise RuntimeError("live Garage preflight failed")
             for repetition in range(1, self.repeat + 1):
-                report["sessions"].append(self._run_session("manual", repetition))
-                report["sessions"].append(self._run_session("behavior", repetition))
+                for mode in self.modes:
+                    report["sessions"].append(self._run_session(mode, repetition))
         except BaseException as error:
             report["runner_error"] = _safe_error(error)
         finally:
@@ -265,7 +270,7 @@ class GarageAcceptanceRunner:
             and "shutdown_error" not in report
             and bool(report["sessions"])
             and all(item.get("passed") is True for item in [*required_checks, *session_checks])
-            and len(report["sessions"]) == self.repeat * 2
+            and len(report["sessions"]) == self.repeat * len(self.modes)
         )
         report["status"] = "pass" if passed else "fail"
         report["duration_seconds"] = max(0.0, self.clock() - started)
