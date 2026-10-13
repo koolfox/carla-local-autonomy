@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
+from collections.abc import Mapping
 from typing import Any
 
 from .config import LauncherError
@@ -18,14 +19,26 @@ from .config import LauncherError
 _TIMEOUT = 5.0
 
 
-def _request(url: str, *, token: str | None = None, body: Any = None) -> dict[str, Any]:
+def _request(
+    url: str,
+    *,
+    token: str | None = None,
+    body: Any = None,
+    headers: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
     data = None if body is None else json.dumps(body).encode("utf-8")
-    headers = {"Content-Type": "application/json"} if data is not None else {}
+    headers = {**(headers or {}), **({"Content-Type": "application/json"} if data is not None else {})}
     if token is not None:
         headers["X-Operator-Token"] = token
     request = urllib.request.Request(url, data=data, headers=headers, method="POST" if data else "GET")
     try:
         with urllib.request.urlopen(request, timeout=_TIMEOUT) as response:
+            if "json" not in response.headers.get("Content-Type", ""):
+                # Cloudflare Access answers an unauthenticated request with its login page.
+                raise LauncherError(
+                    "Live check: the server answered with a web page instead of the console API; "
+                    "check the Cloudflare Access service token."
+                )
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as error:
         try:
@@ -37,16 +50,18 @@ def _request(url: str, *, token: str | None = None, body: Any = None) -> dict[st
         raise LauncherError(f"Live check: the web app is not reachable ({error}).") from error
 
 
-def live_check_state(web_url: str) -> dict[str, Any]:
-    return _request(f"{web_url.rstrip('/')}/api/garage/live-check")
+def live_check_state(web_url: str, headers: Mapping[str, str] | None = None) -> dict[str, Any]:
+    return _request(f"{web_url.rstrip('/')}/api/garage/live-check", headers=headers)
 
 
-def start_live_check(web_url: str) -> dict[str, Any]:
+def start_live_check(web_url: str, headers: Mapping[str, str] | None = None) -> dict[str, Any]:
     base = web_url.rstrip("/")
-    token = _request(f"{base}/api/bootstrap").get("token")
+    token = _request(f"{base}/api/bootstrap", headers=headers).get("token")
     if not isinstance(token, str) or not token:
         raise LauncherError("Live check: the web app did not provide a request token.")
-    return _request(f"{base}/api/garage/live-check", token=token, body={"acknowledge": True})
+    return _request(
+        f"{base}/api/garage/live-check", token=token, body={"acknowledge": True}, headers=headers
+    )
 
 
 def describe_live_check(state: dict[str, Any]) -> str:

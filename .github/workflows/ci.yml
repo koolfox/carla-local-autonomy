@@ -121,6 +121,7 @@ jobs:
           tests/test_operator_local_config.py
           tests/test_product_console.py
           tests/test_recording.py
+          tests/test_remote.py
           tests/test_runtime.py
           tests/test_voxel_rgb_depth.py
           tests/test_voxel_live_view.py
@@ -139,6 +140,7 @@ jobs:
           uv run carla-world-worker --help
           uv run carla-operator-ui --help
           uv run carla-discover --help
+          uv run carla-remote --help
           uv run carla-garage-acceptance --help
           uv run carla-garage-density-acceptance --help
           uv run carla-vision --help
