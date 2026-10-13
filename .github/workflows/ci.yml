@@ -115,6 +115,7 @@ jobs:
           tests/test_operator.py
           tests/test_operator_artifacts.py
           tests/test_operator_configuration.py
+          tests/test_operator_host_allowlist.py
           tests/test_operator_local_config.py
           tests/test_product_console.py
           tests/test_recording.py

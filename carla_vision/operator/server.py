@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import os
 import re
@@ -40,6 +41,63 @@ from .world_worker_client import WorldWorkerClient
 STATIC_ROOT = Path(__file__).resolve().parent / "static"
 _LOCAL_BINDS = frozenset({"127.0.0.1", "::1", "localhost"})
 _ENVIRONMENT_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+ALLOWED_HOSTS_ENV = "CARLA_OPERATOR_ALLOWED_HOSTS"
+_HOST_HEADER = re.compile(
+    r"^(?:\[(?P<ipv6>[0-9A-Fa-f:.]+(?:%[A-Za-z0-9_.-]+)?)\]|(?P<name>[A-Za-z0-9_.-]+))"
+    r"(?::[0-9]{1,5})?$"
+)
+
+
+def _host_header_name(header: str) -> str | None:
+    """Return the lower-case host from a Host header, or None when malformed."""
+
+    match = _HOST_HEADER.fullmatch(header.strip())
+    if match is None:
+        return None
+    return (match.group("ipv6") or match.group("name")).lower().rstrip(".")
+
+
+def configured_allowed_hosts(environ: Mapping[str, str] | None = None) -> frozenset[str]:
+    """Read extra browser-facing host names, e.g. a Cloudflare Tunnel hostname."""
+
+    raw = (os.environ if environ is None else environ).get(ALLOWED_HOSTS_ENV, "")
+    names = set()
+    for item in raw.split(","):
+        if not item.strip():
+            continue
+        name = _host_header_name(item)
+        if name is None:
+            raise ValueError(f"{ALLOWED_HOSTS_ENV} contains an invalid host name: {item!r}")
+        names.add(name)
+    return frozenset(names)
+
+
+def host_header_allowed(header: str | None, allowed: frozenset[str] = frozenset()) -> bool:
+    """Reject DNS-rebinding requests whose Host is an unlisted public DNS name.
+
+    IP literals, localhost, single-label and mDNS ``.local`` names cannot be
+    pointed at this computer by a public website, so they remain accepted for
+    loopback and private-LAN use. Requests without Host come from non-browser
+    clients and are accepted.
+    """
+
+    if header is None:
+        return True
+    name = _host_header_name(header)
+    if not name:
+        return False
+    try:
+        ipaddress.ip_address(name)
+    except ValueError:
+        pass
+    else:
+        return True
+    return (
+        name == "localhost"
+        or name.endswith((".localhost", ".local"))
+        or "." not in name
+        or name in allowed
+    )
 _APPLICATION_CSP = (
     "default-src 'self'; script-src 'self'; style-src 'self'; "
     "img-src 'self' data:; media-src 'self'; object-src 'none'; "
@@ -187,6 +245,7 @@ class OperatorHTTPServer(ThreadingHTTPServer):
         application: OperatorApplication,
     ) -> None:
         self.application = application
+        self.allowed_hosts = configured_allowed_hosts()
         super().__init__(server_address, OperatorRequestHandler)
 
     def server_close(self) -> None:
@@ -203,6 +262,27 @@ class OperatorRequestHandler(BaseHTTPRequestHandler):
 
     server: OperatorHTTPServer
     protocol_version = "HTTP/1.1"
+
+    def parse_request(self) -> bool:
+        if not super().parse_request():
+            return False
+        host = self.headers.get("Host")
+        if host_header_allowed(host, getattr(self.server, "allowed_hosts", frozenset())):
+            return True
+        self.close_connection = True
+        self._json(
+            HTTPStatus.FORBIDDEN,
+            {
+                "error": {
+                    "type": "PermissionError",
+                    "message": (
+                        f"Host {host!r} is not allowed. Open the console through "
+                        f"127.0.0.1 or localhost, or add this host name to {ALLOWED_HOSTS_ENV}."
+                    ),
+                }
+            },
+        )
+        return False
 
     def log_message(self, format: str, *args: Any) -> None:
         del format, args

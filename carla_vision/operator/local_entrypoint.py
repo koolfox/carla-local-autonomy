@@ -32,6 +32,7 @@ _SUPPORTED_KEYS = frozenset(
         "CARLA_PORT",
         "CARLA_OPERATOR_BIND",
         "CARLA_OPERATOR_PORT",
+        "CARLA_OPERATOR_ALLOWED_HOSTS",
         "CARLA_WORKSPACE",
         "CARLA_OPERATOR_SESSIONS_ROOT",
         "CARLA_WORLD_WORKER_URL",
@@ -234,6 +235,10 @@ def prepare_launch(
         prefix.append("--enable-experimental")
 
     env_updates: dict[str, str] = {}
+    allowed_hosts = file_values.get(base.ALLOWED_HOSTS_ENV)
+    if allowed_hosts is not None and base.ALLOWED_HOSTS_ENV not in process_env:
+        base.configured_allowed_hosts({base.ALLOWED_HOSTS_ENV: allowed_hosts})
+        env_updates[base.ALLOWED_HOSTS_ENV] = allowed_hosts
     token = _effective(file_values, process_env, "CARLA_WORLD_WORKER_TOKEN")
     if token is not None and not without_worker:
         token = _nonempty(token, "CARLA_WORLD_WORKER_TOKEN")

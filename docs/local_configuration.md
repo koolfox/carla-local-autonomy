@@ -26,6 +26,7 @@ CARLA_HOST
 CARLA_PORT
 CARLA_OPERATOR_BIND
 CARLA_OPERATOR_PORT
+CARLA_OPERATOR_ALLOWED_HOSTS
 CARLA_WORKSPACE
 CARLA_OPERATOR_SESSIONS_ROOT
 CARLA_WORLD_WORKER_URL
@@ -38,6 +39,12 @@ detector.enabled
 `CARLA_WORLD_WORKER_URL` must be a raw `http://` or `https://` URL. Markdown link
 syntax is rejected. The worker token remains process-local and is never added to
 command-line arguments or browser-visible startup output.
+
+The Operator rejects browser requests whose `Host` header is a public DNS name,
+so a website cannot reach it through DNS rebinding. IP addresses, `localhost`,
+single-label names and `.local` names always work. `CARLA_OPERATOR_ALLOWED_HOSTS`
+is a comma-separated list of extra names, such as a Cloudflare Tunnel hostname:
+`CARLA_OPERATOR_ALLOWED_HOSTS='garage.example.com'`.
 
 `detector.enabled` controls the initial Garage detector checkbox. It accepts
 `true/false`, `1/0`, `yes/no`, or `on/off`. A user action in the browser can still
