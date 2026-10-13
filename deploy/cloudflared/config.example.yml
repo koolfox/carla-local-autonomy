@@ -1,8 +1,8 @@
 # Copy to ~/.cloudflared/config.yml after creating a named tunnel.
 # Replace both placeholders with values from `cloudflared tunnel create`.
 # Keep the CARLA Operator bound to loopback; cloudflared is the only public ingress.
-# Also set CARLA_OPERATOR_ALLOWED_HOSTS='garage.example.com' in the Operator's
-# .env.local, or the Operator rejects the public Host header.
+# The Operator reads this file at startup and accepts the hostname below
+# automatically because its service is the Operator's loopback port.
 
 tunnel: <TUNNEL-UUID>
 credentials-file: /Users/<YOUR-USER>/.cloudflared/<TUNNEL-UUID>.json
