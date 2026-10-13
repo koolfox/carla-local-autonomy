@@ -10,6 +10,7 @@ with one user action, its owner, and its test. This page is the navigation hub;
 | --- | --- |
 | Install and use the product | [User guide](user_guide.md) ([فارسی](user_guide_fa.md)), [Main README](../README.md), [TUI guide](desktop_launcher.md) |
 | Configure a custom development environment or standalone Worker | [Developer/manual setup](manual_setup.md) |
+| Test a Windows CARLA server together from another computer (LAN or Cloudflare) | [Remote test session](remote_test_session.md) ([فارسی](remote_test_session_fa.md)) |
 | Restore on a new computer or recover private local state | [Recovery guide](restore_project.md) |
 | Understand the remaining branches after PR #125 | [Branch audit, 2026-10-12](branch_audit_2026-10-12.md) |
 | Make my first change | The walkthrough below, then [contribution rules](../CONTRIBUTING.md) |

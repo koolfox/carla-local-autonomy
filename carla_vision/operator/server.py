@@ -77,6 +77,9 @@ _CLOUDFLARED_CONFIGS = (
     Path.home() / ".cloudflared" / "config.yaml",
     Path("/etc/cloudflared/config.yml"),
     Path("/etc/cloudflared/config.yaml"),
+    # `cloudflared service install` on Windows runs as LocalSystem with this profile.
+    Path("C:/Windows/System32/config/systemprofile/.cloudflared/config.yml"),
+    Path("C:/Windows/System32/config/systemprofile/.cloudflared/config.yaml"),
 )
 _CLOUDFLARED_KEY = re.compile(r"^\s*(?:-\s+)?(hostname|service)\s*:\s*['\"]?([^'\"#\s]+)")
 _LOOPBACK_NAMES = frozenset({"127.0.0.1", "localhost", "::1"})

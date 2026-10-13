@@ -95,6 +95,7 @@ carla-shadow-matrix = "carla_vision.shadow.matrix:main"
 carla-verify-shadow-matrix = "carla_vision.shadow.verified:main"
 carla-operator-ui = "carla_vision.operator.product_console:main"
 carla-discover = "carla_vision.discovery:main"
+carla-remote = "carla_vision.remote:main"
 
 [dependency-groups]
 dev = [

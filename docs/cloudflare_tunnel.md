@@ -1,6 +1,6 @@
 # WAN access through Cloudflare Tunnel
 
-Use Cloudflare Tunnel for remote browser access to the macOS Operator. Do **not** bind the Operator directly to a public IP and do not port-forward TCP 8765 on the router.
+Use Cloudflare Tunnel for remote browser access to the Operator. For a Windows CARLA server tested together with a script or agent (`carla-remote`, Access service tokens), follow the [remote test session guide](remote_test_session.md). Do **not** bind the Operator directly to a public IP and do not port-forward TCP 8765 on the router.
 
 ## Security boundary
 
