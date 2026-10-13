@@ -42,8 +42,10 @@ command-line arguments or browser-visible startup output.
 
 The Operator rejects browser requests whose `Host` header is a public DNS name,
 so a website cannot reach it through DNS rebinding. IP addresses, `localhost`,
-single-label names and `.local` names always work. `CARLA_OPERATOR_ALLOWED_HOSTS`
-is a comma-separated list of extra names, such as a Cloudflare Tunnel hostname:
+single-label names and `.local` names always work. Cloudflare Tunnel hostnames
+that `~/.cloudflared/config.yml` routes to this Operator's port are accepted
+automatically. `CARLA_OPERATOR_ALLOWED_HOSTS` is a comma-separated list of any
+other names, for example a different reverse proxy:
 `CARLA_OPERATOR_ALLOWED_HOSTS='garage.example.com'`.
 
 `detector.enabled` controls the initial Garage detector checkbox. It accepts

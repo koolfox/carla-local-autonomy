@@ -72,6 +72,55 @@ def configured_allowed_hosts(environ: Mapping[str, str] | None = None) -> frozen
     return frozenset(names)
 
 
+_CLOUDFLARED_CONFIGS = (
+    Path.home() / ".cloudflared" / "config.yml",
+    Path.home() / ".cloudflared" / "config.yaml",
+    Path("/etc/cloudflared/config.yml"),
+    Path("/etc/cloudflared/config.yaml"),
+)
+_CLOUDFLARED_KEY = re.compile(r"^\s*(?:-\s+)?(hostname|service)\s*:\s*['\"]?([^'\"#\s]+)")
+_LOOPBACK_NAMES = frozenset({"127.0.0.1", "localhost", "::1"})
+
+
+def cloudflared_tunnel_hosts(
+    port: int,
+    config_paths: Sequence[Path] | None = None,
+) -> frozenset[str]:
+    """Return tunnel hostnames whose cloudflared ingress forwards to this Operator.
+
+    Only ingress rules that pair a ``hostname`` with a loopback ``service`` on
+    ``port`` count, so a tunnel the user routed here works without extra setup.
+    Unreadable or unrelated configuration is ignored.
+    """
+
+    names: set[str] = set()
+    for path in _CLOUDFLARED_CONFIGS if config_paths is None else config_paths:
+        try:
+            lines = Path(path).read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeError):
+            continue
+        hostname: str | None = None
+        for line in lines:
+            if line.lstrip().startswith("- "):
+                hostname = None
+            match = _CLOUDFLARED_KEY.match(line)
+            if match is None:
+                continue
+            key, value = match.groups()
+            if key == "hostname":
+                hostname = _host_header_name(value)
+                continue
+            target = urlparse(value)
+            if (
+                hostname
+                and target.scheme in {"http", "https"}
+                and (target.hostname or "") in _LOOPBACK_NAMES
+                and target.port == port
+            ):
+                names.add(hostname)
+    return frozenset(names)
+
+
 def host_header_allowed(header: str | None, allowed: frozenset[str] = frozenset()) -> bool:
     """Reject DNS-rebinding requests whose Host is an unlisted public DNS name.
 
@@ -247,6 +296,7 @@ class OperatorHTTPServer(ThreadingHTTPServer):
         self.application = application
         self.allowed_hosts = configured_allowed_hosts()
         super().__init__(server_address, OperatorRequestHandler)
+        self.allowed_hosts |= cloudflared_tunnel_hosts(int(self.server_address[1]))
 
     def server_close(self) -> None:
         self.application.close()
@@ -277,7 +327,8 @@ class OperatorRequestHandler(BaseHTTPRequestHandler):
                     "type": "PermissionError",
                     "message": (
                         f"Host {host!r} is not allowed. Open the console through "
-                        f"127.0.0.1 or localhost, or add this host name to {ALLOWED_HOSTS_ENV}."
+                        f"127.0.0.1 or localhost, route it to this port in ~/.cloudflared/config.yml, "
+                        f"or add this host name to {ALLOWED_HOSTS_ENV}."
                     ),
                 }
             },

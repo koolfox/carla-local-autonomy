@@ -8,9 +8,11 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from carla_vision.operator import server as operator_server
 from carla_vision.operator.local_entrypoint import prepare_launch
 from carla_vision.operator.server import (
     ALLOWED_HOSTS_ENV,
+    cloudflared_tunnel_hosts,
     configured_allowed_hosts,
     create_server,
     host_header_allowed,
@@ -64,7 +66,10 @@ class HostHeaderPolicyTests(unittest.TestCase):
 class OperatorHostHeaderTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
-        with mock.patch.dict("os.environ", {ALLOWED_HOSTS_ENV: "garage.example.com"}):
+        with (
+            mock.patch.dict("os.environ", {ALLOWED_HOSTS_ENV: "garage.example.com"}),
+            mock.patch.object(operator_server, "_CLOUDFLARED_CONFIGS", ()),
+        ):
             self.server = create_server(
                 workspace=self.temporary.name,
                 port=0,
@@ -110,6 +115,71 @@ class OperatorHostHeaderTests(unittest.TestCase):
                 status, payload = self.request("GET", host)
                 self.assertEqual(status, 200)
                 self.assertIn("token", payload)
+
+
+TUNNEL_CONFIG = """
+tunnel: 6ff42ae2-765d-4adf-8112-31c55c1551ef
+credentials-file: /Users/me/.cloudflared/6ff42ae2.json
+
+ingress:
+  - hostname: Garage.Example.com
+    service: http://127.0.0.1:8765
+    originRequest:
+      connectTimeout: 10s
+  - hostname: "other.example.com"
+    service: http://localhost:9000
+  - hostname: lan.example.com
+    service: http://192.168.1.20:8765
+  - hostname: v6.example.com
+    service: http://[::1]:8765  # loopback IPv6
+  - service: http_status:404
+"""
+
+
+class CloudflaredTunnelHostTests(unittest.TestCase):
+    def config(self, text: str) -> Path:
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        path = Path(directory.name, "config.yml")
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    def test_only_loopback_ingress_on_the_operator_port_is_allowed(self) -> None:
+        path = self.config(TUNNEL_CONFIG)
+        self.assertEqual(
+            cloudflared_tunnel_hosts(8765, [path]),
+            {"garage.example.com", "v6.example.com"},
+        )
+        self.assertEqual(cloudflared_tunnel_hosts(9000, [path]), {"other.example.com"})
+        self.assertEqual(cloudflared_tunnel_hosts(8766, [path]), frozenset())
+
+    def test_missing_or_unreadable_config_is_ignored(self) -> None:
+        self.assertEqual(
+            cloudflared_tunnel_hosts(8765, [Path("/nonexistent/cloudflared.yml")]),
+            frozenset(),
+        )
+        path = self.config("ingress:\n  - service: http://127.0.0.1:8765\n")
+        self.assertEqual(cloudflared_tunnel_hosts(8765, [path]), frozenset())
+
+    def test_operator_accepts_its_tunnel_hostname_automatically(self) -> None:
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        server = create_server(workspace=temporary.name, port=0, carla_host="127.0.0.1", carla_port=1)
+        port = server.server_address[1]
+        server.server_close()
+        server.application.jobs.shutdown()
+
+        path = self.config(f"ingress:\n  - hostname: garage.example.com\n    service: http://127.0.0.1:{port}\n")
+        with (
+            mock.patch.dict("os.environ", {}, clear=False),
+            mock.patch.object(operator_server, "_CLOUDFLARED_CONFIGS", (path,)),
+        ):
+            server = create_server(workspace=temporary.name, port=port, carla_host="127.0.0.1", carla_port=1)
+        try:
+            self.assertIn("garage.example.com", server.allowed_hosts)
+        finally:
+            server.server_close()
+            server.application.jobs.shutdown()
 
 
 class LocalEnvAllowedHostsTests(unittest.TestCase):
