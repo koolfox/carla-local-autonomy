@@ -225,7 +225,7 @@
       {/if}
 
       <div class="drive-hud" aria-label="driving HUD">
-        <div><span>Speed</span><strong>{speedKmh.toFixed(1)}<small> km/h</small></strong></div>
+        <div><span>Speed</span><strong>{speedKmh.toFixed(1)} <small>km/h</small></strong></div>
         <div title="Manual driving uses automatic transmission; CARLA reports the actual gear."><span>Gear · auto</span><strong>{gearLabel(drive.telemetry?.gear)}</strong></div>
         <div><span>RPM</span><strong>{drive.telemetry?.rpm == null ? '—' : Math.round(drive.telemetry.rpm)}</strong></div>
         <div><span>Elapsed</span><strong>{elapsed(drive.elapsed_seconds)}</strong></div>
@@ -308,6 +308,17 @@
 
   .navigation-intent-badge > strong {
     white-space: nowrap;
+  }
+
+  @media (max-width: 860px) {
+    .viewport-toolbar {
+      left: 8px;
+      right: 8px;
+      width: auto;
+      max-width: none;
+      transform: none;
+      justify-content: flex-start;
+    }
   }
 
   @media (max-width: 720px) {

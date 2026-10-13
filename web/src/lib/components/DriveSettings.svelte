@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/components/Icon.svelte';
   import VehiclePicker from '$lib/components/VehiclePicker.svelte';
   import type { ControlMode } from '$lib/domain/config';
   import {
@@ -16,7 +17,6 @@
 <section id="drive-config" class="config-card scroll-section">
   <div class="section-heading">
     <div>
-      <span class="eyebrow">03 · Drive</span>
       <h2>Vehicle & control owner</h2>
     </div>
     <span class="section-note">Exactly one owner reaches the ego control path for a session.</span>
@@ -35,7 +35,7 @@
       class:active={$sessionConfig.control.mode === 'manual'}
       onclick={() => setControlMode('manual')}
     >
-      <span class="mode-icon">M</span><strong>Manual</strong><small>Browser keyboard / touch</small>
+      <span class="mode-icon"><Icon name="manual" /></span><strong>Manual</strong><small>Browser keyboard / touch</small>
     </button>
     <button
       type="button"
@@ -43,7 +43,7 @@
       disabled={!$systemSettings?.capabilities.autopilot}
       onclick={() => setControlMode('autopilot')}
     >
-      <span class="mode-icon">TM</span><strong>Traffic Manager</strong><small>CARLA autopilot baseline</small>
+      <span class="mode-icon"><Icon name="autopilot" /></span><strong>Traffic Manager</strong><small>CARLA autopilot baseline</small>
     </button>
     {#if $systemSettings?.experimentalEnabled}
       <button
@@ -52,7 +52,7 @@
         disabled={!$systemSettings.capabilities.garage_behavior_drive}
         onclick={() => setControlMode('behavior')}
       >
-        <span class="mode-icon">B</span><strong>BehaviorAgent</strong><small>Experimental actuation</small>
+        <span class="mode-icon"><Icon name="behavior" /></span><strong>BehaviorAgent</strong><small>Experimental actuation</small>
       </button>
       <button
         type="button"
@@ -60,7 +60,7 @@
         disabled={!$systemSettings.capabilities.garage_imitation_drive}
         onclick={() => setControlMode('imitation')}
       >
-        <span class="mode-icon">I</span><strong>Imitation</strong><small>RGB + speed policy</small>
+        <span class="mode-icon"><Icon name="imitation" /></span><strong>Imitation</strong><small>RGB + speed policy</small>
       </button>
       <button
         type="button"
@@ -68,7 +68,7 @@
         disabled={!$systemSettings.capabilities.garage_voxel_drive}
         onclick={() => setControlMode('voxel')}
       >
-        <span class="mode-icon">V</span><strong>Voxel Planner</strong><small>Supervised voxel steering</small>
+        <span class="mode-icon"><Icon name="voxel" /></span><strong>Voxel Planner</strong><small>Supervised voxel steering</small>
       </button>
       <button
         type="button"
@@ -76,7 +76,7 @@
         disabled={!$systemSettings.capabilities.garage_model_drive}
         onclick={() => setControlMode('model')}
       >
-        <span class="mode-icon">P</span><strong>PyTorch Model</strong><small>Registered driving policy</small>
+        <span class="mode-icon"><Icon name="model" /></span><strong>PyTorch Model</strong><small>Registered driving policy</small>
       </button>
     {/if}
   </div>

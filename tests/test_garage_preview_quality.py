@@ -46,38 +46,40 @@ def test_svelte_preview_uses_double_buffered_stream_instead_of_clearing_ready_fr
     assert "last decoded frame" in source.lower()
 
 
+def _block(styles: str, header: str) -> str:
+    match = re.search(re.escape(header) + r"\s*\{(?P<body>.*?)\n\}", styles, re.DOTALL)
+    assert match is not None, header
+    return match.group("body")
+
+
 def test_toolbar_has_stable_desktop_tablet_and_phone_layout_regions() -> None:
     styles = STYLES.read_text(encoding="utf-8")
-    desktop = re.search(
-        r"\.garage-preview-toolbar\s*\{(?P<body>.*?)\n\}",
-        styles,
-        re.DOTALL,
-    )
-    assert desktop is not None
-    assert "grid-template-columns: minmax(330px, 1fr) auto auto" in desktop.group("body")
 
-    tablet = re.search(
-        r"@media \(max-width: 1100px\)\s*\{(?P<body>.*?)\n\}",
-        styles,
-        re.DOTALL,
-    )
-    assert tablet is not None
-    assert "grid-template-columns: minmax(300px, 1fr) auto" in tablet.group("body")
-    assert ".garage-camera-presets" in tablet.group("body")
+    # Desktop and laptop: one floating row centred under the artboard.
+    desktop = _block(styles, "\n.garage-preview-toolbar")
+    assert "display: flex" in desktop
+    assert "justify-self: center" in desktop
+    assert "flex-wrap: wrap" in desktop
 
+    # Narrow laptop canvas: the same row compacts instead of dropping controls.
+    laptop = _block(styles, "@container canvas (min-width: 861px) and (max-width: 1000px)")
+    assert ".vehicle-carousel" in laptop
+    assert ".garage-camera-presets" in laptop
+
+    # Phone and tablet: full-width toolbar, inspector becomes a bottom sheet.
     phone = re.search(
-        r"@media \(max-width: 760px\)\s*\{(?P<body>.*?)(?:\n\}\n\n@media|\Z)",
+        r"@media \(max-width: 860px\)\s*\{(?P<body>.*?)(?:\n\}\n\n@media|\Z)",
         styles,
         re.DOTALL,
     )
     assert phone is not None
-    assert "grid-template-columns: 1fr" in phone.group("body")
-    assert ".garage-preview-actions" in phone.group("body")
-    assert "flex-wrap: wrap" in phone.group("body")
+    body = phone.group("body")
+    assert ".garage-preview-toolbar" in body
+    assert ".garage-preview-actions" in body
+    assert ".panels" in body and "position: fixed" in body
 
 
 def test_orbit_surface_is_a_real_button_for_pointer_and_keyboard_semantics() -> None:
     source = SVELTE.read_text(encoding="utf-8")
-    marker = '<button\n      type="button"\n      class="garage-orbit-surface"'
-    assert marker in source
+    assert re.search(r'<button\s+type="button"\s+class="garage-orbit-surface"', source)
     assert 'aria-label="Garage orbit camera"' in source

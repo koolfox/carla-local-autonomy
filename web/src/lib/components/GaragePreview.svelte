@@ -2,6 +2,7 @@
   import { onDestroy } from 'svelte';
 
   import type { ConfigurationEvidence, GaragePreviewOperation } from '$lib/api/operator';
+  import Icon from '$lib/components/Icon.svelte';
   import SessionLaunchBar from '$lib/components/SessionLaunchBar.svelte';
   import VehiclePicker from '$lib/components/VehiclePicker.svelte';
   import {
@@ -26,6 +27,7 @@
     systemSettings,
     workspaceOptions
   } from '$lib/stores/configuration';
+  import { garageSyncPending } from '$lib/stores/garageSync';
   import { captureRuntime, garageRuntime, runtimeOperatorApi } from '$lib/stores/runtime';
 
   type CameraPreset = GarageOrbitRequest['preset'];
@@ -155,6 +157,7 @@
   $: dirty = available && (signature !== appliedSignature || Boolean(inputError));
   $: if (active && !busy && !dirty) configureError = '';
   $: error = inputError || configureError || streamError;
+  $: garageSyncPending.set(dirty && active);
   $: applyQueue.select(
     $sessionConfig,
     available ? $systemSettings?.workerUrl ?? 'worker' : '',
@@ -219,6 +222,7 @@
     if (active) detachPreview();
   }
 
+  onDestroy(() => garageSyncPending.set(false));
   onDestroy(() => {
     destroyed = true;
     applyQueue.dispose();
@@ -386,69 +390,93 @@
 </script>
 
 <section id="garage" class="garage-preview-card scroll-section">
-  <div class="garage-preview-stage" class:live={active && streamBuffer.ready}>
-    {#each streamBuffer.sources as source, slot}
-      {#if source}
-        <img
-          src={source}
-          alt={slot === streamBuffer.visible ? 'Live CARLA Garage preview' : ''}
-          aria-hidden={slot !== streamBuffer.visible}
-          draggable="false"
-          style:opacity={slot === streamBuffer.visible ? '1' : '0'}
-          style:z-index={slot === streamBuffer.visible ? '1' : '0'}
-          onload={() => streamLoaded(slot)}
-          onerror={() => streamFailed(slot)}
-        />
-      {/if}
-    {/each}
-
-    <button
-      type="button"
-      class="garage-orbit-surface"
-      aria-label="Garage orbit camera"
-      onpointerdown={pointerDown}
-      onpointermove={pointerMove}
-      onpointerup={pointerUp}
-      onpointercancel={pointerUp}
-      onwheel={wheel}
-    ></button>
-
-    {#if !active}
-      <div class="garage-preview-placeholder">
-        {#if $captureRuntime.holds_world}
-          <strong>Teacher capture · {$captureRuntime.phase}</strong>
-          <span>Progress and cancellation are in Research.</span>
-        {:else if busy}
-          <span class="loading-ring"></span>
-          <strong>{garagePreparationStageLabel(lifecycleStage)}</strong>
-        {:else}
-          <span class="garage-preview-mark">CV</span>
-          <strong title="The live Garage opens automatically when the World Worker is ready.">{selectedVehicle?.label ?? 'Select a CARLA vehicle'}</strong>
-        {/if}
-      </div>
-    {:else if !streamBuffer.ready}
-      <div class="garage-preview-placeholder compact-placeholder">
-        <span class="loading-ring"></span>
-        <strong>{busy ? garagePreparationStageLabel(lifecycleStage) : 'Waiting for CARLA camera…'}</strong>
-      </div>
-    {/if}
-
-    <div class="garage-stage-hud">
-      <span>{appliedMap.split('/').at(-1) ?? 'current'}</span>
-      <span>{appliedWeather.replaceAll('-', ' ')}</span>
-      <span class:adjusted={populationAdjusted}>{appliedTraffic} cars · {appliedWalkers} walkers</span>
+  <div class="artboard-frame">
+    <div class="artboard-label">
+      <strong>{selectedVehicle?.label ?? 'Garage preview'}</strong>
       {#if previewEvidence}
         <span class:adjusted={resolutionAdjusted} title={evidenceTitle}>
           Applied {appliedResolution} · {appliedFps} FPS{resolutionAdjusted ? ` · ${requestedFps} requested` : ''}
         </span>
+      {:else}
+        <span>{requestedResolution.replace('x', ' × ')} · {requestedFps} FPS requested</span>
       {/if}
     </div>
+
+    <div class="garage-preview-stage" class:live={active && streamBuffer.ready}>
+      {#each streamBuffer.sources as source, slot}
+        {#if source}
+          <img
+            src={source}
+            alt={slot === streamBuffer.visible ? 'Live CARLA Garage preview' : ''}
+            aria-hidden={slot !== streamBuffer.visible}
+            draggable="false"
+            style:opacity={slot === streamBuffer.visible ? '1' : '0'}
+            style:z-index={slot === streamBuffer.visible ? '1' : '0'}
+            onload={() => streamLoaded(slot)}
+            onerror={() => streamFailed(slot)}
+          />
+        {/if}
+      {/each}
+
+      <button
+        type="button"
+        class="garage-orbit-surface"
+        aria-label="Garage orbit camera"
+        title={active ? 'Drag to orbit · scroll to zoom' : undefined}
+        onpointerdown={pointerDown}
+        onpointermove={pointerMove}
+        onpointerup={pointerUp}
+        onpointercancel={pointerUp}
+        onwheel={wheel}
+      ></button>
+
+      {#if !active}
+        <div class="garage-preview-placeholder">
+          {#if $captureRuntime.holds_world}
+            <strong>Teacher capture · {$captureRuntime.phase}</strong>
+            <span>Progress and cancellation are in Research.</span>
+          {:else if busy}
+            <span class="loading-ring"></span>
+            <strong>{garagePreparationStageLabel(lifecycleStage)}</strong>
+            {#if preparationText}<span aria-live="polite">{preparationText}</span>{/if}
+          {:else if !$systemSettings?.workerConnected}
+            <strong>
+              {$systemSettings?.connected
+                ? 'Connect the World Worker for live Garage'
+                : 'CARLA and the World Worker bridge are offline'}
+            </strong>
+            <span>The live Garage camera is served by carla-world-worker on the CARLA computer, normally port 8766. It opens automatically when the Worker is ready.</span>
+          {:else}
+            <strong>{selectedVehicle?.label ?? 'Select a CARLA vehicle'}</strong>
+            <span>The live Garage opens automatically when the World Worker is ready.</span>
+          {/if}
+        </div>
+      {:else if !streamBuffer.ready}
+        <div class="garage-preview-placeholder compact-placeholder">
+          <span class="loading-ring"></span>
+          <strong>{busy ? garagePreparationStageLabel(lifecycleStage) : 'Waiting for CARLA camera…'}</strong>
+        </div>
+      {/if}
+
+      <span class="artboard-handle" aria-hidden="true"></span>
+      <span class="artboard-handle" aria-hidden="true"></span>
+      <span class="artboard-handle" aria-hidden="true"></span>
+      <span class="artboard-handle" aria-hidden="true"></span>
+    </div>
+
+    <div class="garage-stage-hud" aria-label="Applied scene">
+      <span class="hud-name">{appliedMap === 'current' ? 'Current map' : appliedMap.split('/').at(-1)}</span>
+      <span class="hud-name">{appliedWeather === 'keep' ? 'Current weather' : appliedWeather.replaceAll('-', ' ')}</span>
+      <span class:adjusted={populationAdjusted}>{appliedTraffic} cars · {appliedWalkers} walkers</span>
+      {#if busy && preparationText && active}<span aria-live="polite">{preparationText}</span>{/if}
+    </div>
+    {#if error}<p class="inline-error" role="alert">{error}</p>{/if}
   </div>
 
   <div class="garage-preview-toolbar">
     <VehiclePicker compact={true} />
 
-    <div class="garage-camera-presets" aria-label="Garage camera presets">
+    <div class="garage-camera-presets segmented-control" aria-label="Garage camera presets">
       {#each presetNames as name}
         <button
           type="button"
@@ -460,6 +488,16 @@
     </div>
 
     <div class="garage-preview-actions">
+      <span
+        class="preview-state"
+        class:updating={busy || dirty || configureRetrying || Boolean(streamRetryTimer)}
+        class:live={active && !busy && !dirty && !error && !driveActive && !$captureRuntime.holds_world}
+        class:attention={Boolean(error)}
+        aria-live="polite"
+      >
+        {#if busy}<span class="loading-ring" aria-hidden="true"></span>{:else}<i aria-hidden="true"></i>{/if}
+        {#if $captureRuntime.holds_world}Teacher capture{:else if driveActive}Drive active{:else if busy}{garagePreparationStageLabel(lifecycleStage)}{:else if configureRetrying || streamRetryTimer}Reconnecting…{:else if error}Needs attention{:else if dirty}Syncing settings…{:else if active}Live CARLA{:else}Waiting for bridge{/if}
+      </span>
       {#if (configureError || streamError) && !inputError && available}
         <button
           type="button"
@@ -467,32 +505,9 @@
           disabled={busy}
           title="Retry the live Garage connection with the current settings"
           onclick={retry}
-        >Retry</button>
+        ><Icon name="retry" />Retry</button>
       {/if}
-      <span
-        class="preview-state"
-        class:updating={busy}
-        aria-live="polite"
-      >
-        {#if busy}<span class="loading-ring" aria-hidden="true"></span>{/if}
-        {#if $captureRuntime.holds_world}Teacher capture{:else if driveActive}Drive active{:else if busy}{garagePreparationStageLabel(lifecycleStage)}{:else if configureRetrying || streamRetryTimer}Reconnecting…{:else if error}Needs attention{:else if dirty}Syncing settings…{:else if active}Live CARLA{:else}Waiting for bridge{/if}
-      </span>
       <SessionLaunchBar compact={true} configurationPending={dirty || busy} />
     </div>
   </div>
-
-  {#if busy && preparationText}
-    <p class="garage-preview-note" aria-live="polite">{preparationText}</p>
-  {/if}
-  {#if !$systemSettings?.workerConnected && !active}
-    <p
-      class="garage-preview-note"
-      title="The live Garage camera is served by carla-world-worker on the CARLA computer, normally port 8766."
-    >
-      {$systemSettings?.connected
-        ? 'CARLA online · connect the World Worker bridge for live Garage'
-        : 'CARLA and the World Worker bridge are offline'}
-    </p>
-  {/if}
-  {#if error}<p class="inline-error" role="alert">{error}</p>{/if}
 </section>

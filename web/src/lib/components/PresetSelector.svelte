@@ -9,7 +9,6 @@
 <section id="intent" class="config-card preset-card scroll-section">
   <div class="section-heading">
     <div>
-      <span class="eyebrow">01 · Intent</span>
       <h2>Experiment preset</h2>
     </div>
     <span class="section-note">A preset patches the visible SessionConfig; it never creates parallel state.</span>

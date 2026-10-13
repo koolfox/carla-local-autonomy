@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/components/Icon.svelte';
   import type { BehaviorStyle } from '$lib/domain/config';
   import {
     patchSessionSection,
@@ -30,13 +31,12 @@
 <section id="policy" class="config-card scroll-section">
   <div class="section-heading">
     <div>
-      <span class="eyebrow">05 · Policy</span>
       <h2>Autonomy runtime</h2>
     </div>
     {#if autonomous}
       <span class="capability">Explicit opt-in · fail-closed runtime</span>
     {:else}
-      <span class="capability">No research policy owns control</span>
+      <span class="capability idle">No research policy owns control</span>
     {/if}
   </div>
 
@@ -200,7 +200,7 @@
     </label>
   {:else}
     <div class="policy-empty">
-      <span class="policy-empty-icon">✓</span>
+      <span class="policy-empty-icon"><Icon name="check" /></span>
       <div>
         <strong>No experimental driving policy is selected.</strong>
         <p>Manual Browser control and Traffic Manager use their own runtime paths. Choose an experimental control owner above to expose policy-specific settings here.</p>
