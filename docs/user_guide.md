@@ -207,6 +207,16 @@ can switch between the original camera and recorded overlays, and download the
 original files under **Run files**. Older videos that the browser cannot play
 can be converted with **Prepare playable copy**; the original is never changed.
 
+### Check the setup against real CARLA
+
+Before a session, run the live check once to confirm that CARLA, the Worker and
+the console work together. In the web app open **System → Live check**, tick
+the confirmation and press **Run live check**; in the launcher press **Live
+check** on the Run tab twice. The check loads Town10HD, spawns a test car with
+five cars and five walkers, drives it, then stops and cleans up (about a
+minute). The Garage preview pauses meanwhile. The result shows how many checks
+passed, names any that failed, and saves a report under `runs/`.
+
 ### Light and dark
 
 The app follows your system's light or dark setting automatically.
@@ -224,10 +234,12 @@ The app follows your system's light or dark setting automatically.
 | "Web port is occupied" | Another program uses port 8765. Close it, or choose another port in **Setup**. |
 | The Mac cannot reach the Worker | Both computers must be on the same network; check the firewall step on the CARLA computer and press **Check connection**. |
 | A recording does not play | Use **Prepare playable copy** in **Recordings**. |
-| "Host … is not allowed" | Open the app through `127.0.0.1` or `localhost`. For a public hostname, see [Cloudflare Tunnel](cloudflare_tunnel.md). |
+| "Host … is not allowed" | Open the app through `127.0.0.1` or `localhost`. A Cloudflare Tunnel hostname routed to the web app in `~/.cloudflared/config.yml` is accepted automatically after a restart; see [Cloudflare Tunnel](cloudflare_tunnel.md). |
+| Live check fails | Read the failed check names in **System → Live check** and the report in `runs/`. Make sure no drive or capture is running. |
 
 More detail: [launcher guide](desktop_launcher.md),
 [recovery guide](restore_project.md), [manual setup](manual_setup.md).
 
 Screenshots show the console without a simulator connected, except the driving
-images, which replay a frame recorded from CARLA (`samples/recordings/`).
+images, which replay a raw camera frame recorded from CARLA in the sample
+dataset (`samples/data/`).
