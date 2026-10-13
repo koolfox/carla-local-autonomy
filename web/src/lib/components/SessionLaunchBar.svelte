@@ -11,6 +11,7 @@
   } from '$lib/stores/configuration';
   import {
     captureRuntime,
+    liveCheckRuntime,
     emergencyStopDrive,
     garageRuntime,
     startDrive,
@@ -26,9 +27,10 @@
   $: running = $garageRuntime.drive.status === 'running';
   $: terminal = ['success', 'failed'].includes($garageRuntime.drive.status);
   $: freshRunId = !terminal || $sessionConfig.identity.runId !== $garageRuntime.drive.run_id;
-  $: disabled = $captureRuntime.holds_world || configurationPending || blockers.length > 0 || active || $garageRuntime.action !== null;
+  $: disabled = $captureRuntime.holds_world || $liveCheckRuntime.holds_world || configurationPending || blockers.length > 0 || active || $garageRuntime.action !== null;
   $: hint = $garageRuntime.error
     ?? ($captureRuntime.holds_world ? 'Finish or cancel teacher capture in Research before driving.' : null)
+    ?? ($liveCheckRuntime.holds_world ? 'Wait for the live check in System to finish before driving.' : null)
     ?? blockers[0]?.message
     ?? (configurationPending ? 'Waiting for the current Garage settings to finish syncing.' : null)
     ?? (running

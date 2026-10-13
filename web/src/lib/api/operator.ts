@@ -50,6 +50,27 @@ export interface SituationSettings {
   repetitions: number;
 }
 
+export interface LiveCheckSummary {
+  status: string;
+  passed_checks: number;
+  total_checks: number;
+  failed_checks: string[];
+  error: string | null;
+  modes: string[];
+  duration_seconds?: number | null;
+}
+
+export interface LiveCheckState {
+  phase: string;
+  active: boolean;
+  holds_world: boolean;
+  available: boolean;
+  started_at: string | null;
+  report: string | null;
+  summary: LiveCheckSummary | null;
+  error: string | null;
+}
+
 export interface CaptureState {
   phase: string;
   active: boolean;
@@ -300,6 +321,14 @@ export async function loadWorkspaceSnapshot(): Promise<WorkspaceSnapshot> {
 
 export class OperatorApi {
   constructor(private readonly token: string) {}
+
+  getLiveCheckState(): Promise<LiveCheckState> {
+    return readJson<LiveCheckState>('/api/garage/live-check');
+  }
+
+  startLiveCheck(): Promise<LiveCheckState> {
+    return this.post('/api/garage/live-check', { acknowledge: true });
+  }
 
   getCaptureState(): Promise<CaptureState> {
     return readJson<CaptureState>('/api/garage/capture');
