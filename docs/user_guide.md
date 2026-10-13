@@ -241,4 +241,5 @@ More detail: [launcher guide](desktop_launcher.md),
 [recovery guide](restore_project.md), [manual setup](manual_setup.md).
 
 Screenshots show the console without a simulator connected, except the driving
-images, which replay a frame recorded from CARLA (`samples/recordings/`).
+images, which replay a raw camera frame recorded from CARLA in the sample
+dataset (`samples/data/`).

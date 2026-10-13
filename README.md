@@ -7,7 +7,7 @@ manual and Traffic Manager driving, live monocular vision inference, recording,
 and reproducible dataset/model workflows without requiring researchers to write
 Python for every session.
 
-<p align="center"><img src="docs/images/console-drive.webp" alt="Driving in the web console: live CARLA camera with detections, HUD, Emergency Brake and Stop &amp; Save" width="860"></p>
+<p align="center"><img src="docs/images/console-drive.webp" alt="Driving in the web console: live CARLA camera, HUD, Emergency Brake and Stop &amp; Save" width="860"></p>
 
 This repository is a LAN research tool, not an internet-facing or multi-user
 service. The browser server deliberately binds to loopback only.
