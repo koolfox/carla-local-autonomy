@@ -140,3 +140,19 @@ manifest.json
 - مشارکت در پروژه: [CONTRIBUTING.md](CONTRIBUTING.md) و [نقشه‌ی توسعه‌دهندگان](docs/README.md)
 - عامل‌های هوش مصنوعی: [AGENTS.md](AGENTS.md)
 - [منشور رفتاری](CODE_OF_CONDUCT.md)
+
+## تیم و ارجاع
+
+این پروژه زیر نظر و با مدیریت فنی [مرجان شاهچرا](https://scholar.google.com/citations?user=A3rF0FAAAAAJ)، دانشجوی دکتری دانشگاه کاشان، و با راهنمایی [دکتر حسین ابراهیم‌پور کومله](https://scholar.google.com/citations?user=7ahmLpgAAAAJ) (دانشگاه کاشان) ساخته شده است. مرجان شاهچرا مدیر فنی (CTO) و برنامه‌نویس [هوش افزار امین پارس (hoosh.pro)](https://hoosh.pro) نیز هست. نگهداری مخزن بر عهده‌ی [حسام شانی](https://github.com/koolfox) است.
+
+اگر از این نرم‌افزار در پژوهش خود استفاده می‌کنید، لطفاً به آن ارجاع دهید. دکمه‌ی **Cite this repository** در گیت‌هاب از فایل [`CITATION.cff`](CITATION.cff) خوانده می‌شود؛ مدخل BibTeX:
+
+```bibtex
+@software{shahchera_carla_vision_console_2026,
+  author = {Shahchera, Marjan and Ebrahimpour-Komleh, Hossein},
+  title  = {{CARLA Vision Research Console}},
+  year   = {2026},
+  url    = {https://github.com/koolfox/carla-local-autonomy},
+  note   = {Maintained by Hesam Shani}
+}
+```

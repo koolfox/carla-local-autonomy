@@ -428,3 +428,26 @@ Detailed contracts remain in [docs/architecture.md](docs/architecture.md),
 [docs/operator_ui.md](docs/operator_ui.md), and
 [docs/artifact_policy.md](docs/artifact_policy.md). Remote-video acceptance is
 defined in [docs/realtime_streaming.md](docs/realtime_streaming.md).
+
+## Team and citation
+
+This project was built under the technical leadership of
+[Marjan Shahchera](https://scholar.google.com/citations?user=A3rF0FAAAAAJ),
+PhD candidate at the University of Kashan, supervised by
+[Dr. Hossein Ebrahimpour-Komleh](https://scholar.google.com/citations?user=7ahmLpgAAAAJ)
+(University of Kashan). Marjan Shahchera is also CTO and developer at
+[Hoosh Afzar Amin Pars (hoosh.pro)](https://hoosh.pro). The repository is
+maintained by [Hesam Shani](https://github.com/koolfox).
+
+If you use this software in your research, please cite it. GitHub's **Cite this
+repository** button reads [`CITATION.cff`](CITATION.cff); the BibTeX entry is:
+
+```bibtex
+@software{shahchera_carla_vision_console_2026,
+  author = {Shahchera, Marjan and Ebrahimpour-Komleh, Hossein},
+  title  = {{CARLA Vision Research Console}},
+  year   = {2026},
+  url    = {https://github.com/koolfox/carla-local-autonomy},
+  note   = {Maintained by Hesam Shani}
+}
+```
