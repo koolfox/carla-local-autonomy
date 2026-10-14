@@ -32,7 +32,7 @@ def test_road_and_detection_render_preserves_exact_source():
                               np.ones((120, 320), dtype=np.float32), "road-model")
     road = render_segmentation_overlay(image, mask)
     output = OverlayRenderer().render(replace(detection, source_bgr=road),
-                                      hud={"NAME": "Hesam Shani", "MODEL": "custom-model"})
+                                      hud={"NAME": "Hesam Sheini", "MODEL": "custom-model"})
     assert output.shape == image.shape
     assert output.any()
     assert not image.any()
