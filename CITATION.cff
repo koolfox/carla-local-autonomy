@@ -1,0 +1,29 @@
+cff-version: 1.2.0
+message: "If you use this software in your research, please cite it as below."
+title: "CARLA Vision Research Console"
+abstract: >-
+  A local research console for CARLA 0.9.16: a full-screen Garage, manual and
+  Traffic Manager driving, live monocular vision inference, recording, and
+  reproducible dataset and model workflows.
+type: software
+authors:
+  - given-names: Marjan
+    family-names: Shahchera
+    affiliation: University of Kashan
+    website: "https://scholar.google.com/citations?user=A3rF0FAAAAAJ"
+  - given-names: Hossein
+    family-names: Ebrahimpour-Komleh
+    affiliation: University of Kashan
+    website: "https://scholar.google.com/citations?user=7ahmLpgAAAAJ"
+contact:
+  - given-names: Hesam
+    family-names: Shani
+    alias: koolfox
+    website: "https://github.com/koolfox"
+repository-code: "https://github.com/koolfox/carla-local-autonomy"
+keywords:
+  - CARLA
+  - autonomous driving
+  - computer vision
+  - simulation
+  - deep learning
