@@ -26,7 +26,7 @@ class QueuedSensorFrame:
 class NativeSensorQueue:
     """Thread-safe CARLA callback queue with strict target-frame retrieval."""
 
-    def __init__(self, name: str, *, max_frames: int = 0) -> None:
+    def __init__(self, name: str, *, max_frames: int = 4) -> None:
         if isinstance(max_frames, bool) or not isinstance(max_frames, int) or max_frames < 0:
             raise ValueError("max_frames must be a non-negative integer")
         self.name = name
@@ -65,6 +65,8 @@ class NativeSensorQueue:
     def get_next(self, timeout: float) -> QueuedSensorFrame:
         """Return the next callback item, preserving its receive sequence."""
 
+        if not math.isfinite(timeout) or timeout <= 0:
+            raise ValueError("sensor timeout must be finite and positive")
         try:
             return self._queue.get(timeout=timeout)
         except queue.Empty as error:
@@ -73,6 +75,10 @@ class NativeSensorQueue:
             ) from error
 
     def get_exact(self, target_frame: int, timeout: float) -> QueuedSensorFrame:
+        if not math.isfinite(timeout) or timeout <= 0:
+            raise ValueError("sensor timeout must be finite and positive")
+        if isinstance(target_frame, bool) or not isinstance(target_frame, int) or target_frame < 0:
+            raise ValueError("target frame must be a non-negative integer")
         deadline = time.monotonic() + timeout
         while True:
             remaining = deadline - time.monotonic()
@@ -93,45 +99,53 @@ class NativeSensorQueue:
             return queued
 
 
-def compose_relative_transform(
-    origin: TransformRecipe,
-    relative: TransformRecipe,
-) -> TransformRecipe:
-    """Compose a local offset with a world transform using CARLA Euler order.
+def carla_transform_matrix(transform: TransformRecipe) -> tuple[tuple[float, ...], ...]:
+    """CARLA 0.9.16 GetMatrix convention, including pitch/roll signs.
 
-    The location is rotated by the origin's yaw, pitch, and roll using the
-    standard Z-Y-X rotation matrix. Euler angles are then added, matching the
-    bounded prop-placement contract used by the scenario recipes.
+    Reference: carla-simulator/carla, LibCarla/source/carla/geom/Transform.h.
+    Matrices compose rigid poses; Euler-angle addition is not a general composition.
     """
+    values = (transform.x, transform.y, transform.z, transform.pitch, transform.yaw, transform.roll)
+    if not all(math.isfinite(float(value)) for value in values):
+        raise ValueError("transform must contain six finite values")
+    pitch, yaw, roll = (math.radians(value) for value in values[3:])
+    cp, sp, cy, sy, cr, sr = (
+        math.cos(pitch),
+        math.sin(pitch),
+        math.cos(yaw),
+        math.sin(yaw),
+        math.cos(roll),
+        math.sin(roll),
+    )
+    return (
+        (cp * cy, cy * sp * sr - sy * cr, -cy * sp * cr - sy * sr, transform.x),
+        (cp * sy, sy * sp * sr + cy * cr, -sy * sp * cr + cy * sr, transform.y),
+        (sp, -cp * sr, cp * cr, transform.z),
+        (0.0, 0.0, 0.0, 1.0),
+    )
 
-    yaw = math.radians(origin.yaw)
-    pitch = math.radians(origin.pitch)
-    roll = math.radians(origin.roll)
-    cy, sy = math.cos(yaw), math.sin(yaw)
-    cp, sp = math.cos(pitch), math.sin(pitch)
-    cr, sr = math.cos(roll), math.sin(roll)
-    rotation = (
-        (cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr),
-        (sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr),
-        (-sp, cp * sr, cp * cr),
+
+def compose_relative_transform(
+    origin: TransformRecipe, relative: TransformRecipe
+) -> TransformRecipe:
+    """Compose full SE(3) transforms in the CARLA axis/angle convention."""
+    left, right = carla_transform_matrix(origin), carla_transform_matrix(relative)
+    matrix = tuple(
+        tuple(sum(left[i][k] * right[k][j] for k in range(4)) for j in range(4)) for i in range(4)
     )
-    local = (relative.x, relative.y, relative.z)
-    translated = tuple(
-        origin_value
-        + sum(coefficient * component for coefficient, component in zip(row, local, strict=True))
-        for origin_value, row in zip(
-            (origin.x, origin.y, origin.z),
-            rotation,
-            strict=True,
-        )
-    )
+    pitch = math.asin(max(-1.0, min(1.0, matrix[2][0])))
+    if abs(math.cos(pitch)) > 1e-8:
+        yaw = math.atan2(matrix[1][0], matrix[0][0])
+        roll = math.atan2(-matrix[2][1], matrix[2][2])
+    else:
+        yaw, roll = math.atan2(-matrix[0][1], matrix[1][1]), 0.0
     return TransformRecipe(
-        x=translated[0],
-        y=translated[1],
-        z=translated[2],
-        pitch=origin.pitch + relative.pitch,
-        yaw=origin.yaw + relative.yaw,
-        roll=origin.roll + relative.roll,
+        x=matrix[0][3],
+        y=matrix[1][3],
+        z=matrix[2][3],
+        pitch=math.degrees(pitch),
+        yaw=math.degrees(yaw),
+        roll=math.degrees(roll),
     )
 
 

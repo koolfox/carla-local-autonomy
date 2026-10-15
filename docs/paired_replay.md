@@ -122,3 +122,12 @@ The final protocol is:
 The existing three-frame replay is deliberately retained as development
 evidence. It validates orchestration, pairing, provenance, latency collection,
 and calibration diagnostics; it does not rank RT-DETR and YOLO26.
+
+## Binding model-specific validation thresholds
+
+Each model specification can now supply `threshold_selection` pointing to its
+verified validation-only selection. Both its child evaluator and the parent
+operating-point comparison bind that selection to model/ontology/preprocessing
+identity. An omitted path retains the explicit common-raw-threshold experiment.
+See [research integrity](research_integrity.md) for AP bootstrap, latency scope
+and the distinction between a plan comparison and a learning-utility result.

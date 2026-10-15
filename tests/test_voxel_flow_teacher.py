@@ -20,7 +20,7 @@ def test_dynamic_depth_change_becomes_forward_voxel_velocity() -> None:
     depth_source = np.full((4, 4), 5.0, dtype=np.float32)
     depth_target = np.full((4, 4), 6.0, dtype=np.float32)
     semantic = np.zeros((4, 4), dtype=np.uint8)
-    semantic[2, 2] = 10
+    semantic[2, 2] = 14  # CARLA 0.9.16 car
     optical = np.zeros((4, 4, 2), dtype=np.float32)
     spec = VoxelGridSpec(
         x_min=0.0,

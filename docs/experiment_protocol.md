@@ -1,5 +1,9 @@
 # Experiment Protocol
 
+For the updated source-partition, decision-aligned supervision, explicit test,
+resume and acquisition contracts, see [Research integrity](research_integrity.md).
+Historical capability/acceptance notes below are not fresh empirical results.
+
 Status: active thesis protocol with implemented development gates explicitly marked  
 Applies to: dataset generation, detector training, offline evaluation, replay,
 live shadow evaluation, teacher driving, and future vision-only driving

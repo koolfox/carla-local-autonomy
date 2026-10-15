@@ -57,6 +57,11 @@ voxel = [
 ]
 
 [project.scripts]
+carla-check-research-claims = "carla_vision.scenarios.claims:main"
+carla-prepare-acquisition-pool = "carla_vision.failure_mining.acquisition_pool:main"
+carla-plan-acquisition-study = "carla_vision.scenarios.study:main"
+carla-derive-training-dataset = "carla_vision.dataset.derivation:main"
+carla-evaluate-imitation = "carla_vision.imitation.evaluate:main"
 carla-app = "carla_vision.launcher.cli:main"
 carla-build-installer = "carla_vision.launcher.bundle:main"
 carla-vision = "carla_vision.runtime:main"

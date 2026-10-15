@@ -14,6 +14,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
+from ...dataset.semantic_version import COMPACT_VOXEL_TAGS
 from ..contracts import OCCUPIED, SEMANTIC_UNKNOWN, VoxelGridSpec
 
 Partition = Literal["train", "val", "test"]
@@ -28,16 +29,9 @@ COMPACT_SEMANTIC_NAMES = (
 )
 COMPACT_SEMANTIC_IGNORE = 255
 
-# CARLA 0.9.x semantic tag IDs. Only occupied voxels are supervised.
-_SEMANTIC_TAG_TO_COMPACT = {
-    1: 0,  # Building
-    6: 1,  # RoadLine
-    7: 1,  # Road
-    8: 2,  # SideWalk
-    10: 3,  # Vehicles
-    4: 4,  # Pedestrian
-    9: 5,  # Vegetation
-}
+# Only occupied voxels are supervised; this is the supported 0.9.16 table.
+
+_SEMANTIC_TAG_TO_COMPACT = COMPACT_VOXEL_TAGS
 
 
 @dataclass(frozen=True, slots=True)

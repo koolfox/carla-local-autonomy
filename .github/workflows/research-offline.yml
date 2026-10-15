@@ -1,0 +1,84 @@
+name: Offline research evidence
+
+on:
+  pull_request:
+    paths:
+      - 'carla_vision/**'
+      - 'tests/**'
+      - 'configs/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/research-offline.yml'
+  push:
+    branches: ['codex/research-validity-offline']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: research-evidence-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          lfs: false
+          persist-credentials: false
+      - name: Archive tracked research source, excluding model and sample payloads
+        shell: bash
+        run: |
+          mkdir -p /tmp/carlapyvision-source
+          git archive --format=tar.gz -o /tmp/carlapyvision-source/source.tar.gz HEAD -- carla_vision tests configs docs web .github .agents pyproject.toml uv.lock restore_project.py AGENTS.md CONTRIBUTING.md PRODUCT.md README.md README.fa.md CITATION.cff .gitignore .gitattributes
+          git rev-parse HEAD > /tmp/carlapyvision-source/commit.txt
+          printf '%s\n' 'Source-only archive; model weights, historical samples and runtime data excluded. Obtain those separately before full recovery acceptance.' > /tmp/carlapyvision-source/SCOPE.txt
+          cd /tmp/carlapyvision-source && sha256sum source.tar.gz > checksums.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: research-source-${{ github.sha }}
+          path: /tmp/carlapyvision-source/
+          retention-days: 7
+          if-no-files-found: error
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - name: Install locked research and test dependencies
+        run: uv sync --all-extras --all-groups --frozen
+      - name: Install recording encoder for offline tests
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Lint
+        run: uv run ruff check carla_vision tests restore_project.py
+      - name: Run offline regression suite
+        run: uv run pytest -q --junitxml=/tmp/research-tests.xml
+      - name: Retain test results even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-tests-${{ github.sha }}
+          path: /tmp/research-tests.xml
+          retention-days: 14
+          if-no-files-found: warn
+
+  offline-tooling:
+    name: Pinned offline tooling (CPython 3.13 Linux x86-64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Download only the small tools needed by an offline reviewer
+        run: |
+          python -m pip download --no-deps --only-binary=:all: --dest /tmp/research-tooling ruff==0.16.0 pycocotools==2.0.11
+          cd /tmp/research-tooling && sha256sum *.whl > checksums.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: research-offline-tooling-cp313-linux
+          path: /tmp/research-tooling/
+          retention-days: 7
+          if-no-files-found: error

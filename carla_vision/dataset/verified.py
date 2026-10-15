@@ -13,11 +13,17 @@ from typing import Any
 
 from ..artifacts import fingerprint_file
 from .camera_views import verify_camera_views
-from .writer import DATASET_SCHEMA_VERSION
+from .lineage import partition_role, validate_derivation
+from .semantic import verify_sample_semantics
+from .writer import DATASET_PARTITIONS, DATASET_SCHEMA_VERSION
 
-_REPEATABLE_TRACKER_ROLES = frozenset({
-    "native_episode_provenance", "behavior_teacher_episode_provenance", "rgb_camera_view",
-})
+_REPEATABLE_TRACKER_ROLES = frozenset(
+    {
+        "native_episode_provenance",
+        "behavior_teacher_episode_provenance",
+        "rgb_camera_view",
+    }
+)
 
 
 class DatasetIntegrityError(RuntimeError):
@@ -338,6 +344,12 @@ class VerifiedDataset:
         training_partitions: Sequence[str] = ("train",),
         validation_partitions: Sequence[str] = ("val_seen", "val"),
     ) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        if any(partition_role(p) != "train" for p in training_partitions):
+            raise DatasetIntegrityError("training selection may only consume train partitions")
+        if any(partition_role(p) != "val" for p in validation_partitions):
+            raise DatasetIntegrityError(
+                "validation selection may only consume validation partitions"
+            )
         train = tuple(
             dict.fromkeys(
                 partition
@@ -408,6 +420,8 @@ def load_verified_dataset(path: str | Path) -> VerifiedDataset:
         raise DatasetIntegrityError("dataset samples must be an array")
     if dataset.get("sample_count") != len(samples):
         raise DatasetIntegrityError("dataset sample_count is inconsistent")
+    if not samples:
+        raise DatasetIntegrityError("empty dataset is not a trainable release")
     requires_teacher_control = _requires_privileged_teacher_control(dataset)
 
     partitions: Counter[str] = Counter()
@@ -422,7 +436,9 @@ def load_verified_dataset(path: str | Path) -> VerifiedDataset:
         if not isinstance(sample, Mapping):
             raise DatasetIntegrityError("dataset sample must be an object")
         sample_id = str(sample.get("sample_id", ""))
-        image_id = int(sample.get("image_id", -1))
+        image_id = sample.get("image_id", -1)
+        if isinstance(image_id, bool) or not isinstance(image_id, int):
+            raise DatasetIntegrityError("image ID must be an integer")
         if not sample_id or sample_id in sample_ids:
             raise DatasetIntegrityError(f"duplicate or missing sample ID: {sample_id!r}")
         if image_id <= 0 or image_id in image_ids:
@@ -430,7 +446,7 @@ def load_verified_dataset(path: str | Path) -> VerifiedDataset:
         split = str(sample.get("split", ""))
         scenario_id = str(sample.get("scenario_id", ""))
         episode_id = str(sample.get("episode_id", ""))
-        if not split or not scenario_id or not episode_id:
+        if split not in DATASET_PARTITIONS or not scenario_id or not episode_id:
             raise DatasetIntegrityError(f"sample {sample_id} grouping fields are incomplete")
         episode_key = (scenario_id, episode_id)
         prior_split = episode_splits.setdefault(episode_key, split)
@@ -480,7 +496,11 @@ def load_verified_dataset(path: str | Path) -> VerifiedDataset:
         if dataset.get("rgb_camera_ids") is not None:
             metadata = _load_json(_path_inside(root, metadata_relative), "camera bundle metadata")
             view_errors = verify_camera_views(
-                root, sample, metadata, dataset["rgb_camera_ids"], checksum_entries,
+                root,
+                sample,
+                metadata,
+                dataset["rgb_camera_ids"],
+                checksum_entries,
             )
             if view_errors:
                 raise DatasetIntegrityError(f"sample {sample_id}: " + "; ".join(view_errors))
@@ -540,6 +560,55 @@ def load_verified_dataset(path: str | Path) -> VerifiedDataset:
         episode_sample_counts=episode_sample_counts,
         episode_annotation_counts=episode_annotation_counts,
     )
+
+    image_by_id = {}
+    annotation_ids = set()
+    annotations_by_image: dict[int, list[Mapping[str, Any]]] = defaultdict(list)
+    for image in images_raw:
+        if not isinstance(image, Mapping) or image.get("id") in image_by_id:
+            raise DatasetIntegrityError("duplicate or invalid COCO image")
+        image_by_id[image.get("id")] = image
+    if set(image_by_id) != image_ids:
+        raise DatasetIntegrityError("COCO image IDs disagree with dataset")
+    for annotation in annotations_raw:
+        if not isinstance(annotation, Mapping):
+            raise DatasetIntegrityError("COCO annotation must be an object")
+        identifier = annotation.get("id")
+        if (
+            isinstance(identifier, bool)
+            or not isinstance(identifier, int)
+            or identifier <= 0
+            or identifier in annotation_ids
+            or annotation.get("image_id") not in image_ids
+        ):
+            raise DatasetIntegrityError("duplicate or invalid COCO annotation ID/image reference")
+        annotation_ids.add(identifier)
+        annotations_by_image[annotation["image_id"]].append(annotation)
+    config = manifest.get("invocation", {}).get("config", {})
+    for sample in samples:
+        try:
+            metadata = _load_json(root / sample["metadata"]["path"], "sample metadata")
+            lineage = metadata.get("context", {}).get("lineage")
+            if lineage is not None:
+                if not isinstance(lineage, Mapping) or lineage.get("schema_version") != "1.0":
+                    raise ValueError("invalid sample lineage schema")
+                validate_derivation(lineage["parent_partition"], sample["split"], lineage["action"])
+                if (
+                    not isinstance(lineage.get("scene_root_id"), str)
+                    or not lineage["scene_root_id"]
+                ):
+                    raise ValueError("lineage scene root missing")
+            verify_sample_semantics(
+                root,
+                sample,
+                image_by_id[sample["image_id"]],
+                annotations_by_image[sample["image_id"]],
+                config,
+            )
+        except (OSError, ValueError, TypeError, KeyError) as error:
+            raise DatasetIntegrityError(
+                f"sample {sample['sample_id']} semantic mismatch: {error}"
+            ) from error
 
     manifest_reference = fingerprint_file(manifest_path)
     dataset_reference = fingerprint_file(dataset_path)

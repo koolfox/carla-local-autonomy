@@ -187,6 +187,25 @@ def load_verified_evaluation(path: str | Path) -> VerifiedEvaluation:
     ):
         raise EvaluationIntegrityError("evaluation identity or purpose is inconsistent")
     dataset, dataset_reference = _source_dataset(resolved)
+    threshold_ref = resolved.get("threshold_selection")
+    if threshold_ref is not None:
+        from ..contracts import DetectorConfig
+        from .threshold_binding import bind_threshold
+
+        try:
+            raw_detector = dict(resolved["detector"])
+            if raw_detector.get("weights") is not None:
+                raw_detector["weights"] = Path(raw_detector["weights"])
+            threshold, reference = bind_threshold(
+                Path(threshold_ref["manifest"]["path"]).parent,
+                detector=DetectorConfig(**raw_detector),
+                evaluation=config,
+                dataset=dataset,
+            )
+            if reference != threshold_ref or threshold != config.operating_confidence:
+                raise ValueError("selected operating point differs from resolved evaluation")
+        except (KeyError, TypeError, ValueError, RuntimeError) as error:
+            raise EvaluationIntegrityError(f"threshold binding failed: {error}") from error
     selected_samples = [
         sample for sample in dataset.dataset["samples"] if str(sample["split"]) in config.partitions
     ]

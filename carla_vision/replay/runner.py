@@ -620,7 +620,7 @@ def _comparison_montage(
     labels: Mapping[str, str],
     categories: Mapping[int, str],
     ground_truth_by_image: Mapping[int, Sequence[Mapping[str, Any]]],
-    operating_confidence: float,
+    operating_confidence: Mapping[str, float],
     count: int,
 ) -> list[int]:
     rows_by_model_image = {
@@ -685,7 +685,7 @@ def _comparison_montage(
                 categories=categories,
                 color=(30, 80, 245),
                 prefix="P",
-                confidence_threshold=operating_confidence,
+                confidence_threshold=operating_confidence[model_id],
             )
             panels.append(panel)
         titles = ["Ground truth", *(labels[model_id] for model_id in model_ids)]
@@ -941,6 +941,7 @@ def run_replay(
                 repository_root=repository_root,
                 detector_override=overrides.get(model_id),
                 model_reference_override=model.reference,
+                threshold_selection_path=model.spec.threshold_selection,
             )
             child_root = Path(child_result["run_dir"]).resolve(strict=True)
             verification = verify_research_object(
@@ -1032,6 +1033,10 @@ def run_replay(
         for annotation in ground_truth:
             ground_truth_by_image[int(annotation["image_id"])].append(annotation)
 
+        operating_thresholds = {
+            model_id: float(payload["summary"]["prediction_mapping"]["operating_confidence"])
+            for model_id, payload in child_payloads.items()
+        }
         model_rows: dict[str, list[dict[str, Any]]] = {}
         aggregate_rows: list[dict[str, Any]] = []
         predictions_by_model_image: dict[
@@ -1050,7 +1055,7 @@ def run_replay(
                 predictions,
                 image_ids=image_ids,
                 categories=categories,
-                confidence_threshold=evaluation.operating_confidence,
+                confidence_threshold=operating_thresholds[model_id],
                 iou_threshold=evaluation.matching_iou,
             )
             frames_by_image = {int(frame["image_id"]): frame for frame in frames}
@@ -1069,7 +1074,7 @@ def run_replay(
                 )
                 frame = frames_by_image[image_id]
                 operating_prediction_count = sum(
-                    float(prediction["score"]) >= evaluation.operating_confidence
+                    float(prediction["score"]) >= operating_thresholds[model_id]
                     for prediction in by_image.get(image_id, ())
                 )
                 rows.append(
@@ -1370,7 +1375,7 @@ def run_replay(
             labels=labels,
             categories=categories,
             ground_truth_by_image=ground_truth_by_image,
-            operating_confidence=evaluation.operating_confidence,
+            operating_confidence=operating_thresholds,
             count=config.montage_count,
         )
         summary = {

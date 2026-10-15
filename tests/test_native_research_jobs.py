@@ -449,6 +449,7 @@ def test_optional_host_module_imports_only_stdlib_in_isolation():
         [
             sys.executable,
             "-I",
+            "-S",  # exclude sitecustomize imports when testing stdlib-only boundary
             "-c",
             "import runpy,sys; runpy.run_path(sys.argv[1]); "
             "print(sorted(set(sys.modules)&{'carla','numpy','torch','cv2'}))",

@@ -295,10 +295,21 @@ def validate_behavior_sample_context(context: Mapping[str, Any], *, carla_frame:
             ("brake", 0.0, 1.0),
         ):
             value = control.get(name)
-            if not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(float(value))
+            ):
                 errors.append(f"teacher control {name} must be finite")
             elif not minimum <= float(value) <= maximum:
                 errors.append(f"teacher control {name} is outside [{minimum}, {maximum}]")
+    if "teacher_transition" in context:
+        from .teacher_timing import validate_decision_target
+
+        try:
+            validate_decision_target(context, carla_frame)
+        except (TypeError, ValueError) as error:
+            errors.append(f"teacher timing: {error}")
     navigation = context.get("navigation_intent")
     if navigation is not None:
         if not isinstance(navigation, Mapping):

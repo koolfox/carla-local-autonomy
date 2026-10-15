@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import math
 import os
 import tempfile
 from collections import Counter
@@ -20,7 +19,7 @@ from ..bridge import CarlaImageFrame
 from .camera_rig import validate_bundle
 from .instance_labels import InstanceLabel, extract_instance_labels
 from .ontology import CARLA_SEMANTIC_TAGS, DETECTOR_CATEGORIES
-from .sync import SynchronizedFramePair
+from .sync import ExactFramePairer, SynchronizedFramePair
 
 DATASET_SCHEMA_VERSION = "1.0"
 ANNOTATION_SCHEMA_VERSION = "1.0"
@@ -36,6 +35,7 @@ DATASET_PARTITIONS = frozenset(
         "val_weather_ood",
         "test_weather_ood",
         "unassigned",
+        "acquisition_pool",
     }
 )
 
@@ -131,7 +131,17 @@ class DatasetWriter:
         minimum_pixels: int = 16,
         minimum_box_width: int = 2,
         minimum_box_height: int = 2,
+        maximum_samples: int = 100_000,
+        maximum_annotations: int = 2_000_000,
     ) -> None:
+        for name, value in (
+            ("maximum_samples", maximum_samples),
+            ("maximum_annotations", maximum_annotations),
+        ):
+            if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                raise ValueError(f"{name} must be a positive integer")
+        self.maximum_samples = maximum_samples
+        self.maximum_annotations = maximum_annotations
         self._tracker = RunArtifactTracker(
             datasets_root,
             run_id=dataset_id,
@@ -145,6 +155,8 @@ class DatasetWriter:
                 "minimum_pixels": minimum_pixels,
                 "minimum_box_width": minimum_box_width,
                 "minimum_box_height": minimum_box_height,
+                "maximum_samples": maximum_samples,
+                "maximum_annotations": maximum_annotations,
                 **dict(config or {}),
             },
             repository_root=repository_root,
@@ -292,6 +304,8 @@ class DatasetWriter:
                 f"duplicate CARLA frame {pair.carla_frame} within episode {episode_id!r}"
             )
 
+        if len(self._samples) >= self.maximum_samples:
+            raise RuntimeError("dataset sample capacity reached; start a new immutable release")
         rgb = pair.rgb.bgr()
         teacher_bgra = pair.teacher.bgra_array()
         labels = extract_instance_labels(
@@ -300,6 +314,8 @@ class DatasetWriter:
             minimum_box_width=self.minimum_box_width,
             minimum_box_height=self.minimum_box_height,
         )
+        if len(self._coco_annotations) + len(labels) > self.maximum_annotations:
+            raise RuntimeError("dataset annotation capacity reached; start a new immutable release")
         image_id = len(self._samples) + 1
         sample_id = f"{image_id:08d}"
         rgb_path = self.dataset_dir / "images" / split / f"{sample_id}.png"
@@ -343,6 +359,8 @@ class DatasetWriter:
             "teacher": {
                 "privileged": True,
                 "sensor_type": "sensor.camera.instance_segmentation",
+                "identity_semantics": "render_instance_id_scoped_to_episode_and_semantic_tag",
+                "world_actor_mapping": "not_established",
                 "encoding": {
                     "pixel_order": "BGRA",
                     "semantic_tag": "R",
@@ -356,8 +374,10 @@ class DatasetWriter:
         if rgb_views is not None:
             view_rows = {}
             for name, frame in rgb_views.items():
-                view_path = rgb_path if name == "front" else (
-                    self.dataset_dir / "cameras" / name / split / f"{sample_id}.png"
+                view_path = (
+                    rgb_path
+                    if name == "front"
+                    else (self.dataset_dir / "cameras" / name / split / f"{sample_id}.png")
                 )
                 if name != "front":
                     if view_path.exists():
@@ -365,10 +385,13 @@ class DatasetWriter:
                     _write_png(view_path, frame.bgr())
                     relative = view_path.relative_to(self.dataset_dir).as_posix()
                     self._auxiliary_paths.add(relative)
-                    self._auxiliary_artifacts.append(AuxiliaryArtifact(
-                        path=relative, role="rgb_camera_view",
-                        metadata={"camera_id": name, "sample_id": sample_id},
-                    ))
+                    self._auxiliary_artifacts.append(
+                        AuxiliaryArtifact(
+                            path=relative,
+                            role="rgb_camera_view",
+                            metadata={"camera_id": name, "sample_id": sample_id},
+                        )
+                    )
                 view_rows[name] = {
                     "image": asdict(self._sample_artifact(view_path)),
                     "carla_frame": frame.frame,
@@ -493,9 +516,14 @@ class DatasetWriter:
                 "dataset_id": self.dataset_id,
                 "status": "complete",
                 "runtime_sensor_contract": "front_monocular_rgb_only",
-                **({"rgb_camera_ids": list(self._rgb_camera_ids),
-                    "capture_sensor_contract": "synchronized_multicamera_rgb"}
-                   if self._rgb_camera_ids else {}),
+                **(
+                    {
+                        "rgb_camera_ids": list(self._rgb_camera_ids),
+                        "capture_sensor_contract": "synchronized_multicamera_rgb",
+                    }
+                    if self._rgb_camera_ids
+                    else {}
+                ),
                 "teacher_sensor": {
                     "type": "sensor.camera.instance_segmentation",
                     "privileged": True,
@@ -552,30 +580,7 @@ class DatasetWriter:
 
     @staticmethod
     def _validate_pair(pair: SynchronizedFramePair) -> None:
-        rgb = pair.rgb
-        teacher = pair.teacher
-        if rgb.frame != teacher.frame:
-            raise ValueError("RGB and teacher must have the same CARLA frame")
-        if not math.isclose(
-            rgb.timestamp,
-            teacher.timestamp,
-            rel_tol=0.0,
-            abs_tol=1e-6,
-        ):
-            raise ValueError("RGB and teacher timestamps differ")
-        if (rgb.width, rgb.height) != (teacher.width, teacher.height):
-            raise ValueError("RGB and teacher dimensions differ")
-        if not math.isclose(rgb.fov, teacher.fov, rel_tol=0.0, abs_tol=1e-4):
-            raise ValueError("RGB and teacher FOV differ")
-        if any(
-            abs(left - right) > 1e-4
-            for left, right in zip(
-                rgb.transform,
-                teacher.transform,
-                strict=True,
-            )
-        ):
-            raise ValueError("RGB and teacher camera transforms differ")
+        ExactFramePairer()._validate_pair(pair.rgb, pair.teacher)
 
     def _append_coco(
         self,
