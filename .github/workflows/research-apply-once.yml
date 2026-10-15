@@ -1,0 +1,135 @@
+name: Materialize reviewed research patch once
+
+on:
+  push:
+    branches: ['codex/research-validity-offline']
+    paths:
+      - '.github/research_transport/**'
+      - '.github/workflows/research-apply-once.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reviewed-research-patch
+  cancel-in-progress: false
+
+jobs:
+  materialize:
+    if: github.repository == 'koolfox/carla-local-autonomy' && github.ref == 'refs/heads/codex/research-validity-offline'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write
+    env:
+      OMP_NUM_THREADS: '2'
+      MKL_NUM_THREADS: '2'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          lfs: false
+          persist-credentials: false
+      - name: Retain exact transport bytes before verifying or applying
+        run: |
+          mkdir -p /tmp/reviewed-transport
+          cp -r .github/research_transport /tmp/reviewed-transport/
+          git rev-parse HEAD > /tmp/reviewed-transport/commit.txt
+      - name: Verify immutable patch and apply only reviewed source paths
+        shell: bash
+        run: |
+          git merge-base --is-ancestor 1bf933e5dc00797a4a605851ae249be864343d0f HEAD
+          git diff --exit-code 1bf933e5dc00797a4a605851ae249be864343d0f HEAD -- carla_vision tests docs pyproject.toml uv.lock
+          python - <<'PY'
+          import base64, bz2, hashlib, json, subprocess
+          from pathlib import Path, PurePosixPath
+          root = Path('.github/research_transport')
+          pieces = {f'payload.{i:02}': (root / f'payload.{i:02}').read_text(encoding='ascii') for i in range(9)}
+          repairs_path = root / 'repairs.json'
+          if repairs_path.exists():
+              repairs = json.loads(repairs_path.read_text())
+              for name, operations in repairs.items():
+                  value = pieces[name]
+                  for start, old, new in sorted(operations, reverse=True):
+                      if value[start:start + len(old)] != old:
+                          raise SystemExit(f'transport correction precondition failed: {name}:{start}')
+                      value = value[:start] + new + value[start + len(old):]
+                  pieces[name] = value
+          encoded = ''.join(pieces[f'payload.{i:02}'] for i in range(9))
+          if len(encoded) != 83388:
+              raise SystemExit(f'transport length mismatch: {len(encoded)}')
+          compressed = base64.b64decode(encoded, validate=True)
+          if hashlib.sha256(compressed).hexdigest() != '15d118dede52ccd41d34f9e6edc12813436d594328f3bcf1c44d5971e3f3eb88':
+              raise SystemExit('compressed patch digest mismatch; no code applied')
+          patch = bz2.decompress(compressed)
+          if len(patch) != 313366 or hashlib.sha256(patch).hexdigest() != 'dc0951d6b7118be03e3f46b1e09e4d79c8511c49ccafc2012be95c9ce9d25280':
+              raise SystemExit('reviewed patch digest mismatch; no code applied')
+          path = Path('/tmp/reviewed-transport/research-validity.patch')
+          path.write_bytes(patch)
+          stats = subprocess.check_output(['git', 'apply', '--numstat', str(path)], text=True)
+          changed = []
+          for line in stats.splitlines():
+              added, removed, filename = line.split('\t', 2)
+              p = PurePosixPath(filename)
+              if added == '-' or removed == '-' or p.is_absolute() or '..' in p.parts:
+                  raise SystemExit('binary or unsafe patch path')
+              if not (filename.startswith(('carla_vision/', 'tests/', 'docs/')) or filename == 'pyproject.toml'):
+                  raise SystemExit(f'non-source patch path: {filename}')
+              if filename.startswith('carla_vision/operator/') or filename.endswith('observable_world_worker.py'):
+                  raise SystemExit('product/standalone boundary unexpectedly changed')
+              changed.append(filename)
+          if len(changed) != 60 or len(set(changed)) != 60:
+              raise SystemExit('expected exactly 60 reviewed source files')
+          subprocess.run(['git', 'apply', '--check', '--index', str(path)], check=True)
+          subprocess.run(['git', 'apply', '--index', str(path)], check=True)
+          fingerprints = {name: hashlib.sha256(Path(name).read_bytes()).hexdigest() for name in changed}
+          Path('/tmp/reviewed-transport/changed-file-sha256.json').write_text(json.dumps(fingerprints, indent=2) + '\n')
+          print('Applied verified research patch to 60 source files; no CARLA executed.')
+          PY
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+      - name: Install locked dependencies
+        run: uv sync --all-extras --all-groups --frozen
+      - name: Install offline video encoder
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Lint and check patch whitespace
+        run: |
+          uv run ruff check carla_vision tests restore_project.py
+          git diff --cached --check
+      - name: Run the complete offline suite
+        run: uv run pytest -q --junitxml=/tmp/reviewed-transport/tests.xml
+      - name: Publish tested source to this feature branch only
+        env:
+          REVIEW_PUSH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import base64, os, subprocess
+          from pathlib import Path
+          branch = 'codex/research-validity-offline'
+          if os.environ['GITHUB_REF'] != f'refs/heads/{branch}':
+              raise SystemExit('unexpected push target')
+          token = os.environ.pop('REVIEW_PUSH_TOKEN')
+          header = 'AUTHORIZATION: basic ' + base64.b64encode(f'x-access-token:{token}'.encode()).decode()
+          auth = ['git', '-c', f'http.https://github.com/.extraheader={header}']
+          remote = subprocess.check_output(auth + ['ls-remote', 'origin', f'refs/heads/{branch}'], text=True).split()[0]
+          if remote != os.environ['GITHUB_SHA']:
+              raise SystemExit('branch moved during validation; refusing push')
+          env = dict(os.environ, GIT_AUTHOR_NAME='Codex', GIT_AUTHOR_EMAIL='codex@openai.com', GIT_COMMITTER_NAME='Hesam Shani', GIT_COMMITTER_EMAIL='50404883+koolfox@users.noreply.github.com')
+          message = 'fix(research): enforce evidence contracts and add offline hypothesis infrastructure\n\nImplements the reviewed software slice of #140. Synthetic tests do not establish CARLA acceptance or empirical model gains.\n\nCo-authored-by: Hesam Sheini <50404883+koolfox@users.noreply.github.com>'
+          subprocess.run(['git', 'commit', '-m', message], env=env, check=True)
+          subprocess.run(auth + ['push', 'origin', f'HEAD:refs/heads/{branch}'], check=True)
+          sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True)
+          Path('/tmp/reviewed-transport/published-commit.txt').write_text(sha)
+          print('Published tested research source:', sha.strip())
+          PY
+      - name: Preserve transport verification and tests
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reviewed-research-transport-${{ github.sha }}
+          path: /tmp/reviewed-transport/
+          retention-days: 7
+          if-no-files-found: error
