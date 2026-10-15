@@ -29,13 +29,14 @@ jobs:
         with:
           lfs: false
           persist-credentials: false
-      - name: Archive the exact tracked source, never the working directory
+      - name: Archive tracked research source, excluding model and sample payloads
         shell: bash
         run: |
           mkdir -p /tmp/carlapyvision-source
-          git archive --format=tar.gz -o /tmp/carlapyvision-source/source.tar.gz HEAD
+          git archive --format=tar.gz -o /tmp/carlapyvision-source/source.tar.gz HEAD -- carla_vision tests configs docs web .github .agents pyproject.toml uv.lock restore_project.py AGENTS.md CONTRIBUTING.md PRODUCT.md README.md README.fa.md CITATION.cff .gitignore .gitattributes
           git rev-parse HEAD > /tmp/carlapyvision-source/commit.txt
-          sha256sum /tmp/carlapyvision-source/source.tar.gz > /tmp/carlapyvision-source/checksums.sha256
+          printf '%s\n' 'Source-only archive; model weights, historical samples and runtime data excluded. Obtain those separately before full recovery acceptance.' > /tmp/carlapyvision-source/SCOPE.txt
+          cd /tmp/carlapyvision-source && sha256sum source.tar.gz > checksums.sha256
       - uses: actions/upload-artifact@v4
         with:
           name: research-source-${{ github.sha }}
