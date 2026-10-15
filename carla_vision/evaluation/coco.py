@@ -38,14 +38,21 @@ def _empty_results(ground_truth: COCO) -> COCO:
 
 
 def evaluate_coco(
-    ground_truth_path: str | Path,
+    ground_truth_path: str | Path | Mapping[str, Any],
     predictions: Sequence[Mapping[str, Any]],
     *,
     image_ids: Sequence[int],
 ) -> CocoEvaluation:
     output = io.StringIO()
     with contextlib.redirect_stdout(output):
-        ground_truth = COCO(str(ground_truth_path))
+        if isinstance(ground_truth_path, Mapping):
+            import copy
+
+            ground_truth = COCO()
+            ground_truth.dataset = copy.deepcopy(dict(ground_truth_path))
+            ground_truth.createIndex()
+        else:
+            ground_truth = COCO(str(ground_truth_path))
         detections = (
             ground_truth.loadRes([dict(prediction) for prediction in predictions])
             if predictions

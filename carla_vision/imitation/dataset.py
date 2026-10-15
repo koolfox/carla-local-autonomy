@@ -17,6 +17,9 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
+from ..artifacts import fingerprint_file
+from ..dataset.lineage import canonical_digest, partition_role, scene_group_key
+from ..native.teacher_timing import validate_decision_target
 from ..native.teacher_verify import verify_teacher_dataset
 from ..navigation_intent import NAVIGATION_COMMAND_ORDER, NavigationIntent
 
@@ -64,20 +67,7 @@ def _route_group_key(
     context: Mapping[str, Any],
     episode_id: str,
 ) -> str:
-    route = context.get("route")
-    group = context.get("group")
-    route_data = dict(route) if isinstance(route, Mapping) else {}
-    group_data = dict(group) if isinstance(group, Mapping) else {}
-    payload = {
-        "map_family": context.get("map_family"),
-        "scenario_recipe_id": context.get("scenario_recipe_id"),
-        "route_seed": route_data.get("route_seed"),
-        "start_spawn_index": route_data.get("start_spawn_index"),
-        "destination_spawn_index": route_data.get("destination_spawn_index"),
-        "static_layout_seed": group_data.get("static_layout_seed"),
-        "fallback_episode_id": episode_id if route_data.get("route_seed") is None else None,
-    }
-    return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return scene_group_key(context, episode_id=episode_id)
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,15 +86,17 @@ class ImitationSampleRef:
     brake: float
     route_group_key: str
     partition: Partition
+    source_partition: str
+    rgb_sha256: str
     navigation_intent: NavigationIntent | None
 
 
 class BehaviorImitationDataset(Dataset[dict[str, Any]]):
     """Load RGB and privileged teacher labels from BehaviorAgent datasets.
 
-    Split assignment is derived from a stable route/seed group key so all
-    samples from the same route and static layout remain in one partition even
-    when multiple dataset roots are combined. Ego speed and navigation intent
+    Published source partitions are authoritative and never rehashed. Route
+    identities detect conflicts across roots; split_seed/val_fraction/test_fraction
+    are legacy API parameters and cannot change the published membership. Ego speed and navigation intent
     are retained as privileged labels/optional experiment features; their
     presence does not make them inputs to the strict front-RGB model track.
     """
@@ -127,6 +119,7 @@ class BehaviorImitationDataset(Dataset[dict[str, Any]]):
         verify: bool = True,
         max_samples: int | None = None,
         require_navigation_intent: bool = False,
+        allow_legacy_action_targets: bool = False,
     ) -> None:
         if partition not in {"train", "val", "test"}:
             raise ValueError("partition must be train, val, or test")
@@ -158,12 +151,15 @@ class BehaviorImitationDataset(Dataset[dict[str, Any]]):
         self.speed_scale_mps = float(speed_scale_mps)
         self.augment = bool(augment)
         self.augmentation_seed = int(augmentation_seed)
+        self._augmentation_epoch = 0
         self.brightness = float(brightness)
         self.contrast = float(contrast)
         self.horizontal_flip_probability = float(horizontal_flip_probability)
         self.require_navigation_intent = bool(require_navigation_intent)
         self.samples: list[ImitationSampleRef] = []
         self.group_partitions: dict[str, Partition] = {}
+        self.source_references: list[dict[str, Any]] = []
+        self.allow_legacy_action_targets = bool(allow_legacy_action_targets)
 
         for raw_root in roots:
             root = Path(raw_root).expanduser().resolve(strict=True)
@@ -174,6 +170,10 @@ class BehaviorImitationDataset(Dataset[dict[str, Any]]):
                         f"teacher dataset verification failed for {root}: {report['errors']}"
                     )
             dataset = _read_json(root / "dataset.json")
+            source_ref = fingerprint_file(root / "dataset.json")
+            if any(ref["sha256"] == source_ref["sha256"] for ref in self.source_references):
+                raise ValueError("duplicate source dataset release")
+            self.source_references.append(source_ref)
             dataset_id = str(dataset.get("dataset_id") or root.name)
             raw_samples = dataset.get("samples")
             if not isinstance(raw_samples, list):
@@ -181,6 +181,15 @@ class BehaviorImitationDataset(Dataset[dict[str, Any]]):
             for raw_sample in raw_samples:
                 if not isinstance(raw_sample, Mapping):
                     raise ValueError(f"dataset sample must be an object: {root}")
+                # Select from the published split before opening target metadata.
+                source_partition = str(raw_sample.get("split", ""))
+                assigned = partition_role(source_partition)
+                if assigned in {"unassigned", "acquisition_pool"}:
+                    raise ValueError(
+                        f"{source_partition} is not a frozen training/evaluation partition"
+                    )
+                if assigned != partition:
+                    continue
                 metadata_artifact = raw_sample.get("metadata")
                 rgb_artifact = raw_sample.get("rgb")
                 if not isinstance(metadata_artifact, Mapping) or not isinstance(
@@ -195,6 +204,8 @@ class BehaviorImitationDataset(Dataset[dict[str, Any]]):
                     raise ValueError(f"sample context is missing: {metadata_path}")
                 if context.get("control_mode") != "behavior_agent_teacher":
                     raise ValueError(f"sample is not BehaviorAgent teacher data: {metadata_path}")
+                if not self.allow_legacy_action_targets:
+                    validate_decision_target(context, int(raw_sample["carla_frame"]))
                 control = context.get("privileged_teacher_control")
                 ego_state = context.get("privileged_evaluation")
                 if not isinstance(control, Mapping) or not isinstance(ego_state, Mapping):
@@ -229,12 +240,6 @@ class BehaviorImitationDataset(Dataset[dict[str, Any]]):
                             f"navigation intent frame does not match sample: {metadata_path}"
                         )
                 group_key = _route_group_key(context=context, episode_id=episode_id)
-                assigned = _group_partition(
-                    group_key,
-                    split_seed=split_seed,
-                    val_fraction=val_fraction,
-                    test_fraction=test_fraction,
-                )
                 prior = self.group_partitions.setdefault(group_key, assigned)
                 if prior != assigned:
                     raise RuntimeError("one route group was assigned to multiple partitions")
@@ -256,6 +261,8 @@ class BehaviorImitationDataset(Dataset[dict[str, Any]]):
                         brake=brake,
                         route_group_key=group_key,
                         partition=assigned,
+                        source_partition=source_partition,
+                        rgb_sha256=fingerprint_file(image_path)["sha256"],
                         navigation_intent=navigation_intent,
                     )
                 )
@@ -274,13 +281,17 @@ class BehaviorImitationDataset(Dataset[dict[str, Any]]):
     def __len__(self) -> int:
         return len(self.samples)
 
+    def set_epoch(self, epoch: int) -> None:
+        if isinstance(epoch, bool) or not isinstance(epoch, int) or epoch < 0:
+            raise ValueError("augmentation epoch must be a non-negative integer")
+        self._augmentation_epoch = epoch
+
     def _augmentation_rng(self, sample: ImitationSampleRef) -> random.Random:
         identity = (
-            f"{sample.dataset_id}/{sample.episode_id}/{sample.sample_id}/"
-            f"{sample.carla_frame}"
+            f"{sample.dataset_id}/{sample.episode_id}/{sample.sample_id}/{sample.carla_frame}"
         )
         digest = hashlib.sha256(
-            f"imitation-augmentation-v1\0{self.augmentation_seed}\0{identity}".encode()
+            f"imitation-augmentation-v2\0{self.augmentation_seed}\0{self._augmentation_epoch}\0{identity}".encode()
         ).digest()[:8]
         return random.Random(int.from_bytes(digest, byteorder="big", signed=False))
 
@@ -329,9 +340,7 @@ class BehaviorImitationDataset(Dataset[dict[str, Any]]):
             navigation_distance = np.zeros(1, dtype=np.float32)
         else:
             navigation_command = navigation_intent.command_index
-            navigation_features = np.asarray(
-                navigation_intent.model_features(), dtype=np.float32
-            )
+            navigation_features = np.asarray(navigation_intent.model_features(), dtype=np.float32)
             navigation_direction = np.asarray(navigation_intent.direction, dtype=np.float32)
             navigation_distance = np.asarray(
                 [navigation_intent.distance_to_maneuver_m], dtype=np.float32
@@ -367,12 +376,41 @@ def split_summary(datasets: Mapping[Partition, BehaviorImitationDataset]) -> dic
             shared = groups_by_partition[left_name] & groups_by_partition[right_name]
             if shared:
                 overlaps[f"{left_name}:{right_name}"] = sorted(shared)
+    rgb_partitions: dict[str, set[str]] = {}
+    for name, dataset in datasets.items():
+        for sample in dataset.samples:
+            rgb_partitions.setdefault(sample.rgb_sha256, set()).add(name)
+    rgb_overlap = {
+        digest: sorted(names) for digest, names in rgb_partitions.items() if len(names) > 1
+    }
     return {
-        "sample_counts": {name: len(dataset) for name, dataset in datasets.items()},
-        "route_group_counts": {
-            name: len(groups) for name, groups in groups_by_partition.items()
+        "rgb_hash_overlap": rgb_overlap,
+        "group_ids_by_partition": {
+            name: sorted(groups) for name, groups in groups_by_partition.items()
         },
+        "rgb_hashes_by_partition": {
+            name: sorted({sample.rgb_sha256 for sample in dataset.samples})
+            for name, dataset in datasets.items()
+        },
+        "sample_counts": {name: len(dataset) for name, dataset in datasets.items()},
+        "route_group_counts": {name: len(groups) for name, groups in groups_by_partition.items()},
         "route_group_overlap": overlaps,
+        "source_partition_counts": {
+            name: dict(Counter(sample.source_partition for sample in dataset.samples))
+            for name, dataset in datasets.items()
+        },
+        "split_manifest_sha256": canonical_digest(
+            sorted(
+                (
+                    sample.dataset_id,
+                    sample.sample_id,
+                    sample.source_partition,
+                    sample.route_group_key,
+                )
+                for dataset in datasets.values()
+                for sample in dataset.samples
+            )
+        ),
         "control_counts": {
             name: dict(
                 Counter(

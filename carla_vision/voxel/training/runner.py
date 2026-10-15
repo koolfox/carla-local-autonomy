@@ -272,6 +272,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--num-workers", type=int, default=0)
     parser.add_argument("--device", default="auto")
     parser.add_argument("--seed", type=int, default=17)
+    parser.add_argument(
+        "--split-seed",
+        type=int,
+        default=17,
+        help="Frozen split seed, independent of model initialization seed",
+    )
     parser.add_argument("--val-fraction", type=float, default=0.2)
     parser.add_argument("--test-fraction", type=float, default=0.1)
     parser.add_argument("--semantic-weight", type=float, default=0.25)
@@ -319,7 +325,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "history_frames": args.history_frames,
         "horizons_s": args.horizons,
         "image_size": args.image_size,
-        "split_seed": args.seed,
+        "split_seed": args.split_seed,
         "val_fraction": args.val_fraction,
         "test_fraction": args.test_fraction,
         "max_samples": args.max_samples,
@@ -377,7 +383,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "samples": available,
             "splits": split_summary(
                 roots,
-                split_seed=args.seed,
+                split_seed=args.split_seed,
                 val_fraction=args.val_fraction,
                 test_fraction=args.test_fraction,
             ),
@@ -450,7 +456,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "samples": available,
         "splits": split_summary(
             roots,
-            split_seed=args.seed,
+            split_seed=args.split_seed,
             val_fraction=args.val_fraction,
             test_fraction=args.test_fraction,
         ),

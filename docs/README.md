@@ -20,6 +20,7 @@ with one user action, its owner, and its test. This page is the navigation hub;
 | Change the road/lane model | [Road models](road_models.md) |
 | Understand executable driving-policy packages | [Runtime model packages](runtime_model_packages.md) — not the same as detector weights |
 | Understand voxel research | [RGB voxel viewer (Persian)](voxel_live_view_fa.md), [voxel research flow (Persian)](voxel_flow_fa.md) |
+| Research integrity, source splits and offline acquisition experiments | [Research integrity](research_integrity.md), [ADR 0001](adr/0001-research-data-and-evidence-boundaries.md) |
 | Build datasets / evaluate models | [Experiment protocol](experiment_protocol.md), [reproducibility](reproducibility.md), [paired replay](paired_replay.md) |
 | Record and replay multi-camera teacher episodes | [Multi-camera capture](multicamera_episodes.md) — research collector, not live Garage controls |
 | Launch native collection on Windows from the Mac | [Native research jobs](native_research_jobs.md) — optional trusted task host |

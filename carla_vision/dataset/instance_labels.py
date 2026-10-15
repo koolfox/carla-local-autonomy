@@ -16,7 +16,7 @@ from .ontology import (
 
 @dataclass(frozen=True, slots=True)
 class InstanceLabel:
-    """One visible CARLA actor instance measured in image pixel coordinates.
+    """One visible render instance measured in image pixel coordinates.
 
     ``bbox_xyxy`` uses half-open coordinates: ``x2`` and ``y2`` are one pixel
     beyond the box. ``truncated`` means the visible mask touches an image edge.
@@ -31,6 +31,11 @@ class InstanceLabel:
     bbox_area_pixels: int
     fill_ratio: float
     truncated: bool
+
+    @property
+    def render_instance_id(self) -> int:
+        """The legacy actor_id field contains a renderer ID, scoped to the episode/tag."""
+        return self.actor_id
 
     @property
     def box_width(self) -> int:
@@ -69,8 +74,9 @@ def _validate_bgra(image_bgra: np.ndarray) -> np.ndarray:
 def decode_instance_bgra(image_bgra: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Decode a CARLA instance-segmentation BGRA image.
 
-    CARLA writes the semantic tag to the red channel. Its 16-bit actor id uses
+    CARLA writes the semantic tag to the red channel. Its 16-bit render-instance identifier uses
     green as the low byte and blue as the high byte. Alpha is ignored.
+    This decoded value is NOT a verified world actor or environment-object ID.
 
     Returns:
         A ``(semantic_tags, actor_ids)`` pair shaped ``HxW``. Semantic tags are
@@ -174,8 +180,8 @@ def extract_instance_labels(
         key = int(raw_key)
         semantic_tag = CarlaSemanticTag(key >> 16)
         actor_id = key & 0xFFFF
-        # CARLA actors use positive IDs.  Zero denotes missing/invalid instance
-        # identity and must not merge unrelated pixels into one training box.
+        # Zero is conservatively excluded under this versioned label policy.
+        # No mapping from renderer ID to world actor identity is inferred.
         if actor_id == 0:
             continue
         mask = allowed_mask & (keys == raw_key)

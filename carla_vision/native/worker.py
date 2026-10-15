@@ -18,7 +18,7 @@ from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from ..dataset.sync import SynchronizedFramePair
 from ..dataset.writer import DATASET_PARTITIONS, DatasetWriter
@@ -164,6 +164,7 @@ def _response_ids(
     *,
     operation: str,
     strict: bool,
+    register: Callable[[list[int]], None] | None = None,
 ) -> tuple[list[int], list[dict[str, Any]]]:
     actor_ids: list[int] = []
     failures: list[dict[str, Any]] = []
@@ -178,6 +179,8 @@ def _response_ids(
             )
         else:
             actor_ids.append(int(response.actor_id))
+    if register is not None:
+        register(actor_ids)
     if strict and failures:
         raise RuntimeError(
             f"{operation} failed for {len(failures)} request(s): "
@@ -410,6 +413,7 @@ class NativeCarlaSession:
             self.client.apply_batch_sync([command], True),
             operation="spawn_ego",
             strict=True,
+            register=lambda ids: setattr(actors, "ego_id", ids[0]) if ids else None,
         )
         actors.ego_id = actor_ids[0]
         ego = self.world.get_actor(actors.ego_id)
@@ -451,8 +455,8 @@ class NativeCarlaSession:
                 self.client.apply_batch_sync(commands, True),
                 operation="spawn_props",
                 strict=True,
+                register=actors.prop_ids.extend,
             )
-            actors.prop_ids.extend(actor_ids)
         return placements
 
     def _spawn_traffic(
@@ -663,8 +667,18 @@ class NativeCarlaSession:
             "motion_blur_intensity": 0.0,
             "motion_blur_max_distortion": 0.0,
         }
+        values.update({"lens_k": 0.0, "lens_kcube": 0.0})
+        required = {"image_size_x", "image_size_y", "fov", "sensor_tick", "lens_k", "lens_kcube"}
         for name, value in values.items():
+            if name in required and not blueprint.has_attribute(name):
+                raise RuntimeError(f"pinhole camera profile requires blueprint attribute {name}")
             _set_blueprint_attribute(blueprint, name, value)
+            if name in required:
+                actual = float(str(blueprint.get_attribute(name)))
+                if not math.isfinite(actual) or not math.isclose(
+                    actual, float(value), abs_tol=1e-5
+                ):
+                    raise RuntimeError(f"camera blueprint did not retain requested {name}")
         return blueprint
 
     def _spawn_cameras(
@@ -690,12 +704,12 @@ class NativeCarlaSession:
             self.carla.command.SpawnActor(rgb_blueprint, mount, actors.ego_id),
             self.carla.command.SpawnActor(teacher_blueprint, mount, actors.ego_id),
         ]
-        sensor_ids, _ = _response_ids(
-            self.client.apply_batch_sync(commands, False),
-            operation="spawn_cameras",
-            strict=True,
-        )
-        actors.rgb_sensor_id, actors.teacher_sensor_id = sensor_ids
+        responses = self.client.apply_batch_sync(commands, False)
+        # A partial batch still owns every successfully spawned camera.
+        for name, response in zip(("rgb_sensor_id", "teacher_sensor_id"), responses, strict=True):
+            if not response.error:
+                setattr(actors, name, int(response.actor_id))
+        _response_ids(responses, operation="spawn_cameras", strict=True)
         rgb_sensor = self.world.get_actor(actors.rgb_sensor_id)
         teacher_sensor = self.world.get_actor(actors.teacher_sensor_id)
         if rgb_sensor is None or teacher_sensor is None:
@@ -729,7 +743,26 @@ class NativeCarlaSession:
         sensor_actors: Sequence[Any],
     ) -> dict[str, Any]:
         errors: list[dict[str, Any]] = []
-        for sensor in sensor_actors:
+        all_sensors = {int(sensor.id): sensor for sensor in sensor_actors}
+        for sensor_id in (
+            actors.rgb_sensor_id,
+            actors.teacher_sensor_id,
+            *actors.additional_sensor_ids,
+        ):
+            if sensor_id is not None and sensor_id not in all_sensors:
+                try:
+                    sensor = self.world.get_actor(sensor_id)
+                    if sensor is not None:
+                        all_sensors[sensor_id] = sensor
+                except Exception as error:
+                    errors.append(
+                        {
+                            "operation": "lookup_sensor_for_cleanup",
+                            "actor_id": sensor_id,
+                            "error": str(error),
+                        }
+                    )
+        for sensor in all_sensors.values():
             try:
                 sensor.stop()
             except BaseException as error:
@@ -837,8 +870,21 @@ class NativeCarlaSession:
                 raise RuntimeError(
                     "capture_every_ticks must be a multiple of the camera sensor period"
                 )
+            last_owned_frame: int | None = None
+
+            def capture_tick() -> int:
+                nonlocal last_owned_frame
+                before = int(world.get_snapshot().frame)
+                if last_owned_frame is not None and before != last_owned_frame:
+                    raise RuntimeError("unexpected external world tick during native capture")
+                frame = int(world.tick())
+                if frame != before + 1:
+                    raise RuntimeError("world tick did not advance exactly one frame")
+                last_owned_frame = frame
+                return frame
+
             for _ in range(sensor_tick_multiple):
-                world.tick()
+                capture_tick()
             first_rgb = rgb_queue.get_next(self.sensor_timeout)
             first_teacher = teacher_queue.get_next(self.sensor_timeout)
             first_rgb_frame = int(first_rgb.image.frame)
@@ -850,12 +896,12 @@ class NativeCarlaSession:
                 )
             sensor_phase_frame = first_rgb_frame
             for _ in range(recipe.capture.warmup_ticks):
-                world.tick()
+                capture_tick()
 
             first_capture_frame: int | None = None
             alignment_ticks = 0
             for _ in range(sensor_tick_multiple):
-                candidate = int(world.tick())
+                candidate = capture_tick()
                 alignment_ticks += 1
                 if (candidate - sensor_phase_frame) % sensor_tick_multiple == 0:
                     first_capture_frame = candidate
@@ -869,7 +915,7 @@ class NativeCarlaSession:
             first_timestamp: float | None = None
             last_timestamp: float | None = None
             for tick_index in range(recipe.capture.duration_ticks):
-                world_frame = first_capture_frame if tick_index == 0 else int(world.tick())
+                world_frame = first_capture_frame if tick_index == 0 else capture_tick()
                 if tick_index % recipe.capture.capture_every_ticks:
                     continue
                 if (world_frame - sensor_phase_frame) % sensor_tick_multiple:
@@ -992,7 +1038,15 @@ class NativeCarlaSession:
         except BaseException as error:
             primary_error = error
         finally:
-            cleanup = self._cleanup_episode(actors, sensors)
+            try:
+                cleanup = self._cleanup_episode(actors, sensors)
+            except BaseException as cleanup_error:
+                cleanup = {
+                    "success": False,
+                    "errors": [{"operation": "cleanup", "error": str(cleanup_error)}],
+                }
+                if primary_error is None:
+                    primary_error = cleanup_error
 
         if primary_error is not None:
             if not cleanup.get("success", False):
@@ -1060,7 +1114,7 @@ def _dry_run_summary(
     }
 
 
-def collect_native(args: argparse.Namespace) -> dict[str, Any]:
+def _collect_native_unleased(args: argparse.Namespace) -> dict[str, Any]:
     plan = load_verified_scenario_plan(args.scenario_plan)
     episodes = select_episodes(
         plan,
@@ -1192,6 +1246,7 @@ def collect_native(args: argparse.Namespace) -> dict[str, Any]:
                         "runtime_model_input": False,
                     },
                     "world_restored_to_asynchronous_mode": True,
+                    "world_restore_policy": "intentional_asynchronous_baseline_reset_not_prior_world",
                 }
             )
         except BaseException as error:
@@ -1217,6 +1272,15 @@ def collect_native(args: argparse.Namespace) -> dict[str, Any]:
     }
     print(json.dumps(result, ensure_ascii=False, indent=2), flush=True)
     return result
+
+
+def collect_native(args: argparse.Namespace) -> dict[str, Any]:
+    from .session_lease import NativeSessionLease
+
+    if args.dry_run:
+        return _collect_native_unleased(args)
+    with NativeSessionLease(args.host, args.port):
+        return _collect_native_unleased(args)
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:

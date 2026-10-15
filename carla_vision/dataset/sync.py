@@ -48,12 +48,12 @@ class ExactFramePairer:
         transform_tolerance: float = 1e-4,
         fov_tolerance: float = 1e-4,
     ) -> None:
-        if timestamp_tolerance < 0.0:
-            raise ValueError("timestamp_tolerance must be non-negative")
-        if transform_tolerance < 0.0:
-            raise ValueError("transform_tolerance must be non-negative")
-        if fov_tolerance < 0.0:
-            raise ValueError("fov_tolerance must be non-negative")
+        if not math.isfinite(timestamp_tolerance) or timestamp_tolerance < 0.0:
+            raise ValueError("timestamp_tolerance must be finite and non-negative")
+        if not math.isfinite(transform_tolerance) or transform_tolerance < 0.0:
+            raise ValueError("transform_tolerance must be finite and non-negative")
+        if not math.isfinite(fov_tolerance) or fov_tolerance < 0.0:
+            raise ValueError("fov_tolerance must be finite and non-negative")
         self.timestamp_tolerance = float(timestamp_tolerance)
         self.transform_tolerance = float(transform_tolerance)
         self.fov_tolerance = float(fov_tolerance)
@@ -69,7 +69,7 @@ class ExactFramePairer:
         *,
         timeout: float = 5.0,
     ) -> SynchronizedFramePair:
-        if timeout <= 0.0:
+        if not math.isfinite(timeout) or timeout <= 0.0:
             raise ValueError("timeout must be positive")
         deadline = time.monotonic() + timeout
         rgb = self._wait(
@@ -141,8 +141,24 @@ class ExactFramePairer:
         rgb: CarlaImageFrame,
         teacher: CarlaImageFrame,
     ) -> None:
+        for frame in (rgb, teacher):
+            if isinstance(frame.frame, bool) or not isinstance(frame.frame, int) or frame.frame < 0:
+                raise ValueError("CARLA frame ID must be a non-negative integer")
+            if len(frame.transform) != 6 or not all(
+                math.isfinite(float(x)) for x in frame.transform
+            ):
+                raise ValueError("camera transform must have six finite coordinates")
+            if not math.isfinite(frame.timestamp) or not math.isfinite(frame.fov):
+                raise ValueError("camera timestamp and FOV must be finite")
+            if not 0 < frame.fov < 180:
+                raise ValueError("camera FOV must be in (0, 180)")
+            if any(
+                isinstance(v, bool) or not isinstance(v, int) or v <= 0
+                for v in (frame.width, frame.height)
+            ):
+                raise ValueError("camera dimensions must be positive integers")
         if rgb.frame != teacher.frame:
-            raise ValueError("camera pair does not share a CARLA frame")
+            raise ValueError("camera pair must share the same CARLA frame")
         if not math.isclose(
             rgb.timestamp,
             teacher.timestamp,
@@ -166,7 +182,10 @@ class ExactFramePairer:
         ):
             raise ValueError(f"RGB and teacher camera FOV differ: {rgb.fov} vs {teacher.fov}")
         transform_error = max(
-            abs(left - right) for left, right in zip(rgb.transform, teacher.transform, strict=True)
+            abs(left - right) if index < 3 else abs((left - right + 180.0) % 360.0 - 180.0)
+            for index, (left, right) in enumerate(
+                zip(rgb.transform, teacher.transform, strict=True)
+            )
         )
         if transform_error > self.transform_tolerance:
             raise ValueError(

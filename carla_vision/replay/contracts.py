@@ -175,11 +175,12 @@ class ReplayModelSpec:
     device: str
     model_package: Path | None
     detector: ReplayDetectorSpec | None
+    threshold_selection: Path | None = None
 
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any], *, base: Path) -> Self:
         _strict_keys(
-            raw,
+            {key: value for key, value in raw.items() if key != "threshold_selection"},
             {"model_id", "label", "device", "model_package", "detector"},
             "replay model",
         )
@@ -204,6 +205,9 @@ class ReplayModelSpec:
             device=_nonempty(raw["device"], "model.device"),
             model_package=package,
             detector=detector,
+            threshold_selection=_resolve_optional_path(
+                raw.get("threshold_selection"), base=base, name="model.threshold_selection"
+            ),
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -213,6 +217,11 @@ class ReplayModelSpec:
             "device": self.device,
             "model_package": (str(self.model_package) if self.model_package is not None else None),
             "detector": self.detector.as_dict() if self.detector is not None else None,
+            **(
+                {"threshold_selection": str(self.threshold_selection)}
+                if self.threshold_selection is not None
+                else {}
+            ),
         }
 
 

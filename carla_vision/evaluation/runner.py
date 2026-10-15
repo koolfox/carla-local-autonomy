@@ -9,7 +9,6 @@ import math
 import os
 import re
 import tempfile
-import time
 from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
@@ -503,10 +502,19 @@ def run_evaluation(
     repository_root: str | Path | None = None,
     detector_override: Detector | None = None,
     model_reference_override: Mapping[str, Any] | None = None,
+    threshold_selection_path: str | Path | None = None,
 ) -> dict[str, Any]:
     config_path_resolved = Path(config_path).expanduser().resolve(strict=True)
     config = load_evaluation_config(config_path_resolved)
     dataset = load_verified_dataset(dataset_path)
+    threshold_reference = None
+    if threshold_selection_path is not None:
+        from .threshold_binding import bind_threshold
+
+        threshold, threshold_reference = bind_threshold(
+            threshold_selection_path, detector=detector_config, evaluation=config, dataset=dataset
+        )
+        config = replace(config, operating_confidence=threshold)
     samples = _selected_samples(dataset, config)
     if config.purpose == "confirmatory" and "unassigned" in config.partitions:
         raise RuntimeError("confirmatory evaluation cannot use unassigned data")
@@ -541,6 +549,7 @@ def run_evaluation(
         "model": model_reference,
         "selected_sample_count": len(samples),
         "locked_test_acknowledged": acknowledge_locked_test,
+        "threshold_selection": threshold_reference,
         "runtime_sensor_contract": "front_monocular_rgb_only",
         "privileged_metadata_use": "evaluation_stratification_only",
     }
@@ -554,6 +563,8 @@ def run_evaluation(
         dataset_refs=[dataset.reference],
     )
     with tracker:
+        if threshold_reference is not None:
+            tracker.add_input_reference(threshold_reference)
         resolved_path = tracker.artifact_path("resolved_evaluation_config.json")
         predictions_path = tracker.artifact_path("predictions/predictions.coco.json")
         frame_log_path = tracker.artifact_path("predictions/frames.jsonl")
@@ -587,9 +598,11 @@ def run_evaluation(
                 image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
                 if image is None:
                     raise RuntimeError(f"could not read evaluation image {image_path}")
-                started = time.perf_counter()
-                detections = detector.infer(image)
-                elapsed = time.perf_counter() - started
+                from .timing import measured_inference
+
+                detections, elapsed = measured_inference(
+                    lambda image=image: detector.infer(image), device=detector_config.device
+                )
                 inference_seconds.append(elapsed)
                 mapped_rows = []
                 source_rows = []
@@ -784,6 +797,27 @@ def run_evaluation(
         )
         _write_json(bootstrap_path, bootstrap)
         latency_ms = [value * 1000.0 for value in inference_seconds]
+        from ..dataset.lineage import scene_group_key
+        from .timing import timing_contract
+        from .uncertainty import bootstrap_coco, supported_ratios
+
+        ap_uncertainty = None
+        if config.ap_bootstrap_replicates:
+            groups = {
+                int(sample["image_id"]): scene_group_key(
+                    metadata_by_image[int(sample["image_id"])].get("context", {}),
+                    episode_id=str(sample["episode_id"]),
+                )
+                for sample in samples
+            }
+            ap_uncertainty = bootstrap_coco(
+                dataset.coco,
+                predictions,
+                group_by_image=groups,
+                replicates=config.ap_bootstrap_replicates,
+                confidence=config.bootstrap_confidence,
+                seed=config.master_seed,
+            )
         summary = {
             "schema_version": EVALUATION_RUN_SCHEMA_VERSION,
             "status": "success",
@@ -809,6 +843,14 @@ def run_evaluation(
             },
             "coco": dict(coco.aggregate),
             "operating_point": dict(operating.overall),
+            "supported_operating_point": supported_ratios(
+                int(operating.overall["tp"]),
+                int(operating.overall["fp"]),
+                int(operating.overall["fn"]),
+            ),
+            "legacy_operating_point_undefined_policy": "zero_for_compatibility_use_supported_operating_point",
+            "ap_group_bootstrap": ap_uncertainty,
+            "timing_contract": timing_contract(detector_config.device),
             "calibration": calibration_summary,
             "bootstrap": bootstrap,
             "latency_ms": {
@@ -885,6 +927,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--runs-root", default="runs")
     parser.add_argument("--run-id")
     parser.add_argument("--acknowledge-locked-test", action="store_true")
+    parser.add_argument("--threshold-selection", help="verified validation-only operating point")
     args = parser.parse_args(argv)
     if args.model_package:
         conflicting = [
@@ -932,6 +975,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         runs_root=args.runs_root,
         run_id=args.run_id,
         acknowledge_locked_test=args.acknowledge_locked_test,
+        threshold_selection_path=args.threshold_selection,
         cli_args=vars(args),
         repository_root=Path.cwd(),
         model_reference_override=(verified_model.reference if verified_model is not None else None),

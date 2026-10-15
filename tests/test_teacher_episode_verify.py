@@ -6,7 +6,11 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+from research_fixtures import rehash_dataset
+from test_dataset_writer import camera_frame
 
+from carla_vision.dataset.sync import SynchronizedFramePair
+from carla_vision.dataset.writer import DatasetWriter
 from carla_vision.native.teacher_verify import verify_teacher_dataset
 from carla_vision.navigation_intent import (
     NAVIGATION_INTENT_SCHEMA_VERSION,
@@ -56,41 +60,36 @@ def _build_dataset(root: Path) -> Path:
             "privileged_evaluation": {"velocity_mps": {"speed": 2.5}},
         },
     }
-    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
-    image_rel = image_path.relative_to(root).as_posix()
-    metadata_rel = metadata_path.relative_to(root).as_posix()
-    dataset = {
-        "status": "complete",
-        "dataset_id": "teacher-test",
-        "sample_count": 1,
-        "samples": [
-            {
-                "sample_id": "00000001",
-                "carla_frame": 100,
-                "source_timestamp": 5.0,
-                "episode_id": "ep-a",
-                "rgb": {
-                    "path": image_rel,
-                    "sha256": _sha(image_path),
-                    "size_bytes": image_path.stat().st_size,
-                },
-                "metadata": {
-                    "path": metadata_rel,
-                    "sha256": _sha(metadata_path),
-                    "size_bytes": metadata_path.stat().st_size,
-                },
-            }
-        ],
-        "release_metadata": {
-            "control_mode": "behavior_agent_teacher",
-            "episode_ids": ["ep-a"],
-        },
-    }
-    (root / "dataset.json").write_text(json.dumps(dataset), encoding="utf-8")
-    (root / "checksums.sha256").write_text(
-        f"{_sha(image_path)}  {image_rel}\n{_sha(metadata_path)}  {metadata_rel}\n",
-        encoding="utf-8",
+    # Build the same tiny teacher example through the canonical release writer.
+    # The previously handcrafted fixture omitted the tracker/COCO/mask trust envelope.
+    import shutil
+
+    shutil.rmtree(root)
+    pixels = np.zeros((12, 16, 4), dtype=np.uint8)
+    pixels[:, 4:12, :3] = 127
+    pixels[:, :, 3] = 255
+    mask = np.zeros_like(pixels)
+    pair = SynchronizedFramePair(
+        camera_frame(1, 100, pixels, timestamp=5.0), camera_frame(1, 100, mask, timestamp=5.0), 0, 0
     )
+    with DatasetWriter(
+        root.parent,
+        dataset_id=root.name,
+        carla_endpoint={"host": "fixture", "port": 2000},
+        carla_version="0.9.16",
+        carla_map="Town10HD_Opt",
+        minimum_pixels=1,
+    ) as writer:
+        writer.add_pair(
+            pair,
+            split="train",
+            scenario_id="fixture",
+            episode_id="ep-a",
+            context=metadata["context"],
+        )
+        writer.set_release_metadata(
+            {"control_mode": "behavior_agent_teacher", "episode_ids": ["ep-a"]}
+        )
     return root
 
 
@@ -193,6 +192,7 @@ def test_teacher_dataset_verifier_accepts_exact_frame_navigation_teacher_label(
         encoding="utf-8",
     )
 
+    rehash_dataset(root)
     report = verify_teacher_dataset(root)
 
     assert report["status"] == "passed"

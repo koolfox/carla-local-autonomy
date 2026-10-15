@@ -25,6 +25,7 @@ from ..artifacts import (
     fingerprint_file,
 )
 from .instance_labels import extract_instance_labels
+from .semantic import verify_coco_labels
 
 DATASET_AUDIT_SCHEMA_VERSION = "1.0"
 
@@ -256,6 +257,10 @@ def _audit_records(
         image_annotations = annotations_by_image.get(image_id, [])
         if len(image_annotations) != len(extracted):
             raise DatasetAuditError(f"COCO annotation count mismatch for image {image_id}")
+        try:
+            verify_coco_labels(extracted, image_annotations, image_id=image_id)
+        except ValueError as error:
+            raise DatasetAuditError(str(error)) from error
         expected_yolo = _expected_yolo(
             image_annotations,
             width=width,

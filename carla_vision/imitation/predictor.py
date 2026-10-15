@@ -24,6 +24,11 @@ class ImitationDrivingPredictor:
             raise ValueError("imitation checkpoint must contain a mapping")
         if payload.get("task") != "behavior_agent_control_imitation":
             raise ValueError("checkpoint task is not behavior_agent_control_imitation")
+        input_contract = payload.get("runtime_input_contract")
+        if input_contract not in {None, "front_rgb_bgr_uint8_plus_speed_mps"}:
+            raise ValueError("imitation checkpoint input contract must be RGB plus speed")
+        if payload.get("schema_version") == "1.1" and input_contract is None:
+            raise ValueError("version 1.1 imitation checkpoint must declare its input contract")
         self.model_config = ImitationModelConfig.from_dict(dict(payload["model_config"]))
         self.model = ImitationControlNet(self.model_config)
         self.device = prepare_module_for_inference(

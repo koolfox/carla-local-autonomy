@@ -21,7 +21,9 @@ from typing import Any
 
 import numpy as np
 
-CLOSED_LOOP_EVALUATION_SCHEMA_VERSION = "1.0"
+from .artifacts import RunArtifactTracker
+
+CLOSED_LOOP_EVALUATION_SCHEMA_VERSION = "1.1"
 
 
 def _load_carla() -> Any:
@@ -83,10 +85,15 @@ class RouteProgressTracker:
     """Monotonic progress over a sampled polyline route."""
 
     points_xy: np.ndarray
+    maximum_forward_window_m: float = 25.0
+    maximum_lateral_distance_m: float = 5.0
     _cumulative_m: np.ndarray = field(init=False, repr=False)
     _best_index: int = field(default=0, init=False, repr=False)
 
     def __post_init__(self) -> None:
+        for value in (self.maximum_forward_window_m, self.maximum_lateral_distance_m):
+            if not math.isfinite(value) or value <= 0:
+                raise ValueError("route search windows must be finite and positive")
         points = np.asarray(self.points_xy, dtype=np.float64)
         if points.ndim != 2 or points.shape[1] != 2 or points.shape[0] < 2:
             raise ValueError("points_xy must have shape (N, 2) with at least two points")
@@ -116,9 +123,17 @@ class RouteProgressTracker:
         if not np.isfinite(point).all():
             raise ValueError("vehicle location must be finite")
         start = max(0, self._best_index - 5)
-        distances = np.linalg.norm(self.points_xy[start:] - point, axis=1)
-        nearest = start + int(np.argmin(distances))
-        self._best_index = max(self._best_index, nearest)
+        end = int(
+            np.searchsorted(
+                self._cumulative_m,
+                self._cumulative_m[self._best_index] + self.maximum_forward_window_m,
+                side="right",
+            )
+        )
+        distances = np.linalg.norm(self.points_xy[start:end] - point, axis=1)
+        nearest_offset = int(np.argmin(distances))
+        if distances[nearest_offset] <= self.maximum_lateral_distance_m:
+            self._best_index = max(self._best_index, start + nearest_offset)
         return self.completion
 
     def mark_complete(self) -> None:
@@ -179,9 +194,7 @@ class EvaluationEvents:
         actor_id = int(getattr(other_actor, "id", -1))
         frame = int(event.frame)
         impulse = event.normal_impulse
-        intensity = math.sqrt(
-            float(impulse.x) ** 2 + float(impulse.y) ** 2 + float(impulse.z) ** 2
-        )
+        intensity = math.sqrt(float(impulse.x) ** 2 + float(impulse.y) ** 2 + float(impulse.z) ** 2)
         with self._lock:
             previous = self._last_collision_frame_by_actor.get(actor_id)
             self._last_collision_frame_by_actor[actor_id] = frame
@@ -204,9 +217,7 @@ class EvaluationEvents:
         threshold: float,
         minimum_speed_mps: float,
     ) -> bool:
-        full_brake = (
-            brake >= threshold and throttle <= 0.05 and speed_mps >= minimum_speed_mps
-        )
+        full_brake = brake >= threshold and throttle <= 0.05 and speed_mps >= minimum_speed_mps
         with self._lock:
             started = full_brake and not self._full_brake_active
             if started:
@@ -220,7 +231,8 @@ class EvaluationEvents:
                 "collision_count": self.collision_count,
                 "collision_intensity_sum": self.collision_intensity_sum,
                 "lane_invasion_count": self.lane_invasion_count,
-                "full_brake_intervention_count": self.full_brake_intervention_count,
+                "high_brake_transition_count": self.full_brake_intervention_count,
+                "full_brake_intervention_count": self.full_brake_intervention_count,  # legacy alias only
             }
 
 
@@ -266,7 +278,9 @@ def _choose_destination(
     return spawn_points[index], index
 
 
-def _route_points(world: Any, start: Any, destination: Any, sampling_resolution: float) -> np.ndarray:
+def _route_points(
+    world: Any, start: Any, destination: Any, sampling_resolution: float
+) -> np.ndarray:
     planner_type = _load_global_route_planner()
     planner = planner_type(world.get_map(), sampling_resolution)
     route = planner.trace_route(start, destination)
@@ -332,8 +346,20 @@ def _validate_args(args: argparse.Namespace) -> None:
         "destination_threshold_m",
         "status_every",
     ):
-        if getattr(args, name) <= 0.0:
+        if not math.isfinite(getattr(args, name)) or getattr(args, name) <= 0.0:
             raise ValueError(f"{name} must be positive")
+    if any(
+        not math.isfinite(getattr(args, name))
+        for name in (
+            "duration",
+            "full_brake_threshold",
+            "full_brake_minimum_speed_mps",
+            "red_light_stop_speed_mps",
+        )
+    ):
+        raise ValueError("observer numeric settings must be finite")
+    if args.red_light_stop_speed_mps < 0:
+        raise ValueError("red light speed threshold must be non-negative")
     if args.duration < 0.0 or args.max_frames < 0:
         raise ValueError("duration and max_frames must be non-negative")
     if args.duration == 0.0 and args.max_frames == 0 and not args.dry_run:
@@ -363,7 +389,7 @@ def _dry_run_payload(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
-def run(args: argparse.Namespace) -> dict[str, Any]:
+def _observe(args: argparse.Namespace) -> dict[str, Any]:
     _validate_args(args)
     if args.dry_run:
         payload = _dry_run_payload(args)
@@ -390,7 +416,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     tracker = RouteProgressTracker(route_points)
     events = EvaluationEvents()
     red_lights = RedLightMonitor(stop_speed_mps=args.red_light_stop_speed_mps)
-    output = _ensure_output(args.output)
+    output = Path(args.output).expanduser().resolve()
     _write_json(
         output / "route.json",
         {
@@ -402,15 +428,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         },
     )
 
-    collision_sensor = _spawn_event_sensor(
-        world, carla, vehicle, "sensor.other.collision"
-    )
-    lane_sensor = _spawn_event_sensor(
-        world, carla, vehicle, "sensor.other.lane_invasion"
-    )
-    collision_sensor.listen(events.collision_callback)
-    lane_sensor.listen(events.lane_invasion_callback)
-    sensors = (collision_sensor, lane_sensor)
+    sensors = []
+    cleanup_errors = []
+    primary_error = None
     started = time.monotonic()
     status_at = started
     frame_count = 0
@@ -419,7 +439,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     stop_reason = "duration"
     telemetry_path = output / "telemetry.jsonl"
     try:
-        with telemetry_path.open("w", encoding="utf-8") as telemetry:
+        collision_sensor = _spawn_event_sensor(world, carla, vehicle, "sensor.other.collision")
+        sensors.append(collision_sensor)
+        lane_sensor = _spawn_event_sensor(world, carla, vehicle, "sensor.other.lane_invasion")
+        sensors.append(lane_sensor)
+        collision_sensor.listen(events.collision_callback)
+        lane_sensor.listen(events.lane_invasion_callback)
+        with telemetry_path.open("x", encoding="utf-8") as telemetry:
             while True:
                 elapsed = time.monotonic() - started
                 if args.duration > 0.0 and elapsed >= args.duration:
@@ -434,9 +460,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 previous_location = location
                 speed = _speed_mps(vehicle)
                 completion = tracker.update(float(location.x), float(location.y))
-                distance_to_destination = _distance_xyz(
-                    location, destination_transform.location
-                )
+                distance_to_destination = _distance_xyz(location, destination_transform.location)
                 control = vehicle.get_control()
                 full_brake_started = events.observe_control(
                     throttle=float(control.throttle),
@@ -481,7 +505,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 }
                 telemetry.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
                 telemetry.flush()
-                if distance_to_destination <= args.destination_threshold_m:
+                if (
+                    distance_to_destination <= args.destination_threshold_m
+                    and tracker.completion >= 0.95
+                ):
                     tracker.mark_complete()
                     stop_reason = "destination_reached"
                     break
@@ -497,16 +524,28 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     status_at = now + args.status_every
     except KeyboardInterrupt:
         stop_reason = "keyboard_interrupt"
+    except BaseException as error:
+        primary_error = error
+        raise
     finally:
         for sensor in sensors:
             try:
                 sensor.stop()
-            except RuntimeError:
-                pass
+            except RuntimeError as error:
+                cleanup_errors.append(f"stop sensor: {error}")
             try:
-                sensor.destroy()
-            except RuntimeError:
-                pass
+                if sensor.destroy() is False:
+                    cleanup_errors.append("sensor destruction returned false")
+            except RuntimeError as error:
+                cleanup_errors.append(f"destroy sensor: {error}")
+        _write_json(
+            output / "cleanup.json", {"success": not cleanup_errors, "errors": cleanup_errors}
+        )
+        if cleanup_errors:
+            if primary_error is not None:
+                primary_error.add_note("Observer cleanup also failed: " + "; ".join(cleanup_errors))
+            else:
+                raise RuntimeError("Observer cleanup failed: " + "; ".join(cleanup_errors))
 
     event_snapshot = events.snapshot()
     distance_km = distance_m / 1000.0
@@ -530,9 +569,20 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "destination_reached": stop_reason == "destination_reached",
         **event_snapshot,
         "red_light_violation_count": red_lights.violations,
-        "collisions_per_km": event_snapshot["collision_count"] / max(distance_km, 1e-6),
-        "lane_invasions_per_km": event_snapshot["lane_invasion_count"]
-        / max(distance_km, 1e-6),
+        "collisions_per_km": event_snapshot["collision_count"] / distance_km
+        if distance_km > 0
+        else None,
+        "lane_invasions_per_km": event_snapshot["lane_invasion_count"] / distance_km
+        if distance_km > 0
+        else None,
+        "distance_support_km": distance_km,
+        "human_intervention_count": None,
+        "driver_identity_verified": False,
+        "route_bound_to_driver": False,
+        "scientific_scope": "development_observer_proxies_not_confirmatory_driving_benchmark",
+        "seed_scope": "observer_label_only_world_rng_not_set",
+        "state_alignment": "actor_reads_after_snapshot_not_atomic_control_telemetry",
+        "legacy_metric_aliases": {"full_brake_intervention_count": "high_brake_transition_count"},
         "read_only_vehicle_control": True,
         "control_calls": 0,
         "red_light_metric_note": (
@@ -547,6 +597,35 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     _write_json(output / "summary.json", summary)
     print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
     return summary
+
+
+def run(args: argparse.Namespace) -> dict[str, Any]:
+    _validate_args(args)
+    if args.dry_run:
+        return _observe(args)
+    output = Path(args.output).expanduser().resolve()
+    with RunArtifactTracker(
+        output.parent,
+        run_id=output.name,
+        cli_args=vars(args),
+        config={
+            "object_type": "development_driving_observer",
+            "control_calls": 0,
+            "confirmatory_driving_claim": False,
+        },
+    ) as tracker:
+        try:
+            return _observe(args)
+        finally:
+            for name, role in (
+                ("route.json", "observer_route"),
+                ("telemetry.jsonl", "observer_telemetry"),
+                ("cleanup.json", "observer_cleanup"),
+                ("summary.json", "observer_summary"),
+            ):
+                path = output / name
+                if path.is_file():
+                    tracker.register_artifact(path, role=role)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

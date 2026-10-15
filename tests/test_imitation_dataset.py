@@ -42,15 +42,20 @@ def _build_dataset(
                     "start_spawn_index": index,
                     "destination_spawn_index": index + 1,
                 },
+                "teacher_transition": {
+                    "observation_frame": 100 + index,
+                    "decision_frame": 100 + index,
+                    "action_applies_before_frame": 101 + index,
+                    "teacher_id": "fixture-teacher",
+                },
                 "privileged_teacher_control": {
+                    "carla_frame": 100 + index,
                     "source": "BehaviorAgent.run_step",
                     "throttle": 0.3 if index % 4 else 0.0,
                     "steer": steer,
                     "brake": 0.5 if index % 4 == 0 else 0.0,
                 },
-                "privileged_evaluation": {
-                    "velocity_mps": {"speed": float(2 + index % 6)}
-                },
+                "privileged_evaluation": {"velocity_mps": {"speed": float(2 + index % 6)}},
             }
         }
         if with_navigation:
@@ -70,6 +75,9 @@ def _build_dataset(
         samples.append(
             {
                 "sample_id": sample_id,
+                "split": (
+                    "val_seen" if index % 5 == 3 else "test_seen" if index % 5 == 4 else "train"
+                ),
                 "episode_id": f"ep-{index}",
                 "carla_frame": 100 + index,
                 "rgb": {"path": image_path.relative_to(root).as_posix()},

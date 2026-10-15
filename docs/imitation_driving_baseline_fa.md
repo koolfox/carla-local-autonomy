@@ -29,7 +29,7 @@ uv run carla-train-imitation \
   --hidden-dim 16
 ```
 
-Dry run یک forward/backward مصنوعی اجرا می‌کند و به Dataset یا CARLA نیاز ندارد.
+Dry run بدون دیتاست فقط یک گذر رو‌به‌جلؤ ساختگی برای بررسی شکل خروجی انجام می‌دهد؛ با دیتاست فقط برنامه و تقسیم ثبت‌شده را بررسی می‌کند. در هیچ‌یک پس‌انتشار، optimizer یا ذخیرهٔ checkpoint اجرا نمی‌شود.
 
 ## آماده‌سازی Dataset
 
@@ -56,15 +56,13 @@ uv run carla-verify-teacher-episodes \
 ```bash
 uv run carla-train-imitation \
   --dataset datasets/ds-behavior-teacher-train-v001 \
-  --dataset datasets/ds-behavior-teacher-train-v002 \
+  --dataset datasets/ds-behavior-teacher-val-v001 \
   --output models/imitation-behavior-v001 \
   --device cuda \
   --image-size 192x320 \
   --epochs 20 \
   --batch-size 16 \
   --learning-rate 3e-4 \
-  --val-fraction 0.20 \
-  --test-fraction 0.10 \
   --brightness 0.12 \
   --contrast 0.12 \
   --horizontal-flip-probability 0.0
@@ -84,13 +82,7 @@ models/imitation-behavior-v001/
 
 ## جلوگیری از Leakage
 
-تقسیم train/validation/test براساس یک کلید گروهی پایدار انجام می‌شود که شامل موارد زیر است:
-
-- map family؛
-- Scenario recipe؛
-- route seed؛
-- spawn شروع و مقصد؛
-- static-layout seed.
+تقسیم‌بندی از `sample.split` انتشار منبع خوانده می‌شود و دیگر از بذر آموزش ساخته نمی‌شود. یک انتشار واقعیِ اعتبارسنجی با بخش `val` یا `val_*` را در کنار انتشار `train` بدهید. فقط با تغییر نام پوشه نمی‌توان بخش داده را تغییر داد. دادهٔ `unassigned` قابل آموزش نیست. برای انتشار جدید، زمان‌بندی صریح مشاهده و تصمیم معلم لازم است؛ دادهٔ قدیمی بدون این مدرک خودکار جابه‌جا نمی‌شود.
 
 تمام نمونه‌های یک route/seed group فقط در یک partition قرار می‌گیرند. `summary.json` باید این مقدار را خالی نشان دهد:
 
@@ -106,7 +98,7 @@ models/imitation-behavior-v001/
 
 ## Augmentation بازتولیدپذیر
 
-augmentation براساس ترکیب `augmentation_seed` و شناسه ثابت هر نمونه مشتق می‌شود. در نتیجه همان نمونه با همان seed همیشه دقیقاً همان تغییر را می‌گیرد.
+augmentation از `augmentation_seed`، شمارهٔ epoch و شناسهٔ ثابت نمونه مشتق می‌شود؛ در همان epoch تکرارپذیر است، ولی به یک تبدیل ثابت در تمام آموزش محدود نمی‌شود.
 
 augmentationهای فعلی محدود هستند:
 
@@ -167,3 +159,11 @@ uv run carla-local-drive \
 5. نتیجه را با BehaviorAgent و demo مدل lane-center مقایسه کن.
 
 تا زمانی که این ارزیابی closed-loop انجام نشده، checkpoint فقط یک baseline تحقیقاتی است و نباید به‌عنوان مدل رانندگی معتبر تلقی شود.
+
+## آزمون مستقل و ادامهٔ آموزش
+
+آموزش، آزمون نهایی را خودکار اجرا نمی‌کند. از `carla-evaluate-imitation` با تأیید صریح آزمون قفل‌شده استفاده کنید. برای آزمونِ ذخیره‌شده در انتشار مستقل، `--evaluation-protocol` هویت مدل، منابع و عدم هم‌پوشانی گروه/RGB را متصل می‌کند.
+
+گزینهٔ `--resume` فقط checkpoint آخر با حالت optimizer و RNG را در یک پوشهٔ اجرای تازه ادامه می‌دهد. این ادامه در مرز epoch است، نه تضمین تکرار بیت‌به‌بیت روی سخت‌افزار متفاوت. نبود val در اجرای تأییدی خطاست؛ انتخاب بر اساس train فقط با گزینهٔ توسعه‌ای صریح و نام معیار درست مجاز است.
+
+[قراردادها، دستورها و آزمون‌های جدید](research_integrity.md) وضعیت دادهٔ قدیمی، منشأ مدل و مرز شواهد ساختگی را شرح می‌دهد.

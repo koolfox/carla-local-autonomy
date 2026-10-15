@@ -14,6 +14,7 @@ from typing import Any
 import cv2
 
 from ..dataset.camera_views import verify_camera_views, view_path
+from ..dataset.verified import DatasetIntegrityError, load_verified_dataset
 from .teacher_routes import NAVIGATION_INTENT_SCHEMA_VERSION, validate_behavior_sample_context
 
 TEACHER_EPISODE_VERIFICATION_SCHEMA_VERSION = "1.0"
@@ -87,6 +88,12 @@ def verify_teacher_dataset(dataset_dir: str | Path) -> dict[str, Any]:
             "warnings": [],
         }
 
+    # Teacher-specific checks extend, never replace, the common release trust gate.
+    try:
+        load_verified_dataset(root)
+    except (OSError, ValueError, TypeError, KeyError, DatasetIntegrityError) as error:
+        errors.append(f"base dataset integrity: {error}")
+
     try:
         checksums = _load_checksum_index(checksum_path)
     except (FileNotFoundError, OSError, ValueError) as error:
@@ -99,7 +106,11 @@ def verify_teacher_dataset(dataset_dir: str | Path) -> dict[str, Any]:
         except (OSError, ValueError) as error:
             errors.append(f"checksum artifact {relative}: {error}")
             continue
-        actual = _sha256(path)
+        try:
+            actual = _sha256(path)
+        except OSError as error:
+            errors.append(f"checksum read failed {relative}: {error}")
+            continue
         if actual != expected:
             errors.append(f"checksum mismatch: {relative}")
 
@@ -131,10 +142,14 @@ def verify_teacher_dataset(dataset_dir: str | Path) -> dict[str, Any]:
             continue
         frame = sample.get("carla_frame")
         timestamp = sample.get("source_timestamp")
-        if not isinstance(frame, int) or frame < 0:
+        if isinstance(frame, bool) or not isinstance(frame, int) or frame < 0:
             errors.append(f"{prefix}.carla_frame must be a non-negative integer")
             continue
-        if not isinstance(timestamp, (int, float)) or not math.isfinite(float(timestamp)):
+        if (
+            isinstance(timestamp, bool)
+            or not isinstance(timestamp, (int, float))
+            or not math.isfinite(float(timestamp))
+        ):
             errors.append(f"{prefix}.source_timestamp must be finite")
             continue
         frames_by_episode[episode_id].append(frame)
@@ -181,8 +196,13 @@ def verify_teacher_dataset(dataset_dir: str | Path) -> dict[str, Any]:
         if metadata.get("carla_frame") != frame:
             errors.append(f"{prefix} metadata frame does not match dataset sample")
         errors.extend(
-            f"{prefix}: {message}" for message in verify_camera_views(
-                root, sample, metadata, dataset.get("rgb_camera_ids"), checksums,
+            f"{prefix}: {message}"
+            for message in verify_camera_views(
+                root,
+                sample,
+                metadata,
+                dataset.get("rgb_camera_ids"),
+                checksums,
             )
         )
         metadata_timestamp = metadata.get("simulation_timestamp_seconds")
@@ -248,17 +268,12 @@ def verify_teacher_dataset(dataset_dir: str | Path) -> dict[str, Any]:
             if navigation_release.get("privileged") is not True:
                 errors.append("release navigation_intent must declare privileged=true")
             if navigation_release.get("runtime_model_input") is not False:
-                errors.append(
-                    "release navigation_intent must declare runtime_model_input=false"
-                )
+                errors.append("release navigation_intent must declare runtime_model_input=false")
             if navigation_release.get("strict_rgb_only_input") is not False:
-                errors.append(
-                    "release navigation_intent must declare strict_rgb_only_input=false"
-                )
+                errors.append("release navigation_intent must declare strict_rgb_only_input=false")
             if navigation_release.get("route_conditioned_vision_input") is not True:
                 errors.append(
-                    "release navigation_intent must declare "
-                    "route_conditioned_vision_input=true"
+                    "release navigation_intent must declare route_conditioned_vision_input=true"
                 )
             if navigation_release.get("available_for_every_sample") is True and (
                 navigation_intent_count != len(samples)
@@ -282,6 +297,7 @@ def verify_teacher_dataset(dataset_dir: str | Path) -> dict[str, Any]:
         "navigation_intent_count": navigation_intent_count,
         "rgb_camera_ids": dataset.get("rgb_camera_ids", ["front"]),
         "checksum_entry_count": len(checksums),
+        "trust_contract": "common_dataset_integrity_plus_behavior_teacher",
         "errors": errors,
         "warnings": warnings,
     }

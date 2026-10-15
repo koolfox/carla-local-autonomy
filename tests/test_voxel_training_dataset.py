@@ -27,7 +27,7 @@ def _write_episode(root: Path, *, episode_id: str = "ep-1", route_id: str = "rou
         occupancy[0, 1, min(frame - 1, 3)] = 1
         occupancy[1, :, :] = -1
         semantics = np.full((2, 4, 4), 255, dtype=np.uint8)
-        semantics[occupancy == 1] = 10
+        semantics[occupancy == 1] = 14  # CARLA 0.9.16 car
         np.savez_compressed(
             root / "teacher_voxels" / f"{stem}.npz",
             occupancy=occupancy,
@@ -92,7 +92,7 @@ def test_dataset_loads_rgb_history_and_future_targets(tmp_path: Path) -> None:
 
 def test_compact_semantics_ignore_free_and_unknown() -> None:
     occupancy = np.asarray([0, 1, 1, -1], dtype=np.int8)
-    tags = np.asarray([7, 10, 4, 1], dtype=np.uint8)
+    tags = np.asarray([1, 14, 12, 3], dtype=np.uint8)
     compact = compact_semantic_labels(tags, occupancy)
     assert compact.tolist() == [COMPACT_SEMANTIC_IGNORE, 3, 4, COMPACT_SEMANTIC_IGNORE]
 

@@ -34,6 +34,7 @@ from .teacher_routes import (
     navigation_intent_from_plan,
     serialize_behavior_control,
 )
+from .teacher_timing import ObservationActionTransition
 from .teacher_verify import verify_teacher_dataset
 from .worker import (
     NATIVE_WORKER_SCHEMA_VERSION,
@@ -48,7 +49,7 @@ from .worker import (
     select_episodes,
 )
 
-BEHAVIOR_TEACHER_WORKER_SCHEMA_VERSION = "1.0"
+BEHAVIOR_TEACHER_WORKER_SCHEMA_VERSION = "1.1"
 
 
 def _load_behavior_agent() -> type[Any]:
@@ -102,6 +103,8 @@ class BehaviorRouteController:
         self._leg_index = -1
         self._current_leg: dict[str, Any] | None = None
         self._history: list[dict[str, Any]] = []
+        self._cached_decision_frame: int | None = None
+        self._cached_control: Any = None
         self._start_next_leg(completed_before_frame=None)
 
     def _start_next_leg(self, *, completed_before_frame: int | None) -> None:
@@ -139,10 +142,20 @@ class BehaviorRouteController:
         self._history.append(leg)
 
     def apply_before_tick(self, *, current_world_frame: int) -> Any:
+        # Capture and ticking may request the same decision. Run the teacher once per state.
+        if current_world_frame == self._cached_decision_frame:
+            return self._cached_control
+        if (
+            self._cached_decision_frame is not None
+            and current_world_frame < self._cached_decision_frame
+        ):
+            raise RuntimeError("teacher world frame moved backwards")
         if bool(self._agent.done()):
             self._start_next_leg(completed_before_frame=current_world_frame)
         control = self._agent.run_step(debug=False)
         self.ego.apply_control(control)
+        self._cached_decision_frame = current_world_frame
+        self._cached_control = control
         return control
 
     def sample_route_context(self, *, carla_frame: int) -> dict[str, Any]:
@@ -281,14 +294,14 @@ class BehaviorTeacherSession(NativeCarlaSession):
                 spawn_points,
                 blueprint_library,
             )
-            spawn_failures.extend(
-                self._spawn_walkers(episode, actors, blueprint_library)
-            )
+            spawn_failures.extend(self._spawn_walkers(episode, actors, blueprint_library))
             rig = TeacherCameraRig(recipes) if len(recipes) > 1 else None
             print(f"Spawning RGB cameras: {', '.join(recipes)}", flush=True)
             if rig is None:
                 rgb_sensor, teacher_sensor, rgb_queue, teacher_queue = self._spawn_cameras(
-                    episode, actors, blueprint_library,
+                    episode,
+                    actors,
+                    blueprint_library,
                 )
                 sensors.extend((rgb_sensor, teacher_sensor))
             else:
@@ -319,12 +332,20 @@ class BehaviorTeacherSession(NativeCarlaSession):
                     "capture_every_ticks must be a multiple of the camera sensor period"
                 )
 
+            last_owned_frame: int | None = None
+
             def controlled_tick() -> tuple[int, Any, dict[str, Any], dict[str, Any]]:
+                nonlocal last_owned_frame
                 if getattr(self, "cancel_check", None) and self.cancel_check():
                     raise InterruptedError("native collection cancelled")
                 snapshot = world.get_snapshot()
+                if last_owned_frame is not None and int(snapshot.frame) != last_owned_frame:
+                    raise RuntimeError("unexpected external world tick during teacher capture")
                 control = controller.apply_before_tick(current_world_frame=int(snapshot.frame))
                 frame = int(world.tick())
+                if frame != int(snapshot.frame) + 1:
+                    raise RuntimeError("world tick did not advance exactly one frame")
+                last_owned_frame = frame
                 return (
                     frame,
                     control,
@@ -347,9 +368,13 @@ class BehaviorTeacherSession(NativeCarlaSession):
             sensor_phase_frame = first_rgb_frame
             if rig is not None:
                 read_frame_bundle(
-                    {name: sensor_queue for name, sensor_queue in rig.queues.items()
-                     if name not in {"front", "front_teacher"}},
-                    sensor_phase_frame, self.sensor_timeout,
+                    {
+                        name: sensor_queue
+                        for name, sensor_queue in rig.queues.items()
+                        if name not in {"front", "front_teacher"}
+                    },
+                    sensor_phase_frame,
+                    self.sensor_timeout,
                 )
             for _ in range(recipe.capture.warmup_ticks):
                 controlled_tick()
@@ -392,8 +417,12 @@ class BehaviorTeacherSession(NativeCarlaSession):
                     except SensorFrameError as error:
                         writer.add_auxiliary_json(
                             f"episodes/{episode.episode_id}/capture_failure.json",
-                            {"carla_frame": world_frame, "error": str(error),
-                             "expected_cameras": list(recipes), "queues": rig.diagnostics()},
+                            {
+                                "carla_frame": world_frame,
+                                "error": str(error),
+                                "expected_cameras": list(recipes),
+                                "queues": rig.diagnostics(),
+                            },
                             role="rgb_capture_failure",
                         )
                         raise
@@ -401,7 +430,9 @@ class BehaviorTeacherSession(NativeCarlaSession):
                     view_frames = {
                         name: image_to_bridge_frame(
                             bundle[name], fov_degrees=camera.fov_degrees, sensor_type=0
-                        ) for name, camera in recipes.items() if name != "front"
+                        )
+                        for name, camera in recipes.items()
+                        if name != "front"
                     }
                 rgb_frame = image_to_bridge_frame(
                     rgb_queued,
@@ -421,9 +452,21 @@ class BehaviorTeacherSession(NativeCarlaSession):
                     rgb_skipped=rgb_queue.discarded,
                     teacher_skipped=teacher_queue.discarded,
                 )
+                if int(world.get_snapshot().frame) != world_frame:
+                    raise RuntimeError("world advanced while reading the captured teacher frame")
+                # x_t supervises the teacher decision made from state s_t, not u_(t-1).
+                decision_control = controller.apply_before_tick(current_world_frame=world_frame)
+                route_context = controller.sample_route_context(carla_frame=world_frame)
+                navigation_intent = controller.sample_navigation_intent(carla_frame=world_frame)
                 route_id = str(route_context["route_id"])
+                timing = ObservationActionTransition(
+                    observation_frame=world_frame,
+                    decision_frame=world_frame,
+                    action_applies_before_frame=world_frame + 1,
+                    teacher_id=f"carla:{self.server_version}/BehaviorAgent/{self.behavior}",
+                )
                 teacher_control = serialize_behavior_control(
-                    applied_control,
+                    decision_control,
                     carla_frame=world_frame,
                     route_id=route_id,
                 )
@@ -454,6 +497,7 @@ class BehaviorTeacherSession(NativeCarlaSession):
                         },
                         "privileged_evaluation": _privileged_ego_state(ego),
                         "privileged_teacher_control": teacher_control,
+                        "teacher_transition": timing.as_dict(),
                     },
                 )
                 sample_ids.append(sample.sample_id)
@@ -487,7 +531,7 @@ class BehaviorTeacherSession(NativeCarlaSession):
                     "target_speed_kmh": self.target_speed_kmh,
                     "control_schema_version": BEHAVIOR_TEACHER_CONTROL_SCHEMA_VERSION,
                     "navigation_intent_schema_version": NAVIGATION_INTENT_SCHEMA_VERSION,
-                    "control_alignment": "BehaviorAgent.run_step applied before captured world.tick",
+                    "control_alignment": "BehaviorAgent.run_step from captured state, issued before next world.tick",
                 },
                 "route": {
                     "route_seed": int(episode.seeds.values["route"]),
@@ -543,14 +587,21 @@ class BehaviorTeacherSession(NativeCarlaSession):
         except BaseException as error:
             primary_error = error
         finally:
-            cleanup = self._cleanup_episode(actors, sensors)
+            try:
+                cleanup = self._cleanup_episode(actors, sensors)
+            except BaseException as cleanup_error:
+                cleanup = {
+                    "success": False,
+                    "errors": [{"operation": "cleanup", "error": str(cleanup_error)}],
+                }
+                if primary_error is None:
+                    primary_error = cleanup_error
 
         if primary_error is not None:
             primary_error.native_cleanup_confirmed = bool(cleanup.get("success", False))
             if not cleanup.get("success", False):
                 primary_error.add_note(
-                    "CARLA episode cleanup also failed: "
-                    + json.dumps(cleanup, ensure_ascii=False)
+                    "CARLA episode cleanup also failed: " + json.dumps(cleanup, ensure_ascii=False)
                 )
             raise primary_error
         if not cleanup.get("success", False):
@@ -600,7 +651,7 @@ def _dry_run_summary(
     }
 
 
-def collect_behavior_teacher(
+def _collect_behavior_teacher_unleased(
     args: argparse.Namespace,
     *,
     cancel_check: Callable[[], bool] | None = None,
@@ -620,10 +671,12 @@ def collect_behavior_teacher(
             raise ValueError("camera rig config must be a JSON object")
     resolved_rigs = {
         episode.episode_id: {
-            name: camera.as_dict() for name, camera in resolve_camera_rig(
+            name: camera.as_dict()
+            for name, camera in resolve_camera_rig(
                 episode.recipe.camera, preset=args.camera_rig, config=rig_config
             ).items()
-        } for episode in episodes
+        }
+        for episode in episodes
     }
     if args.dry_run:
         result = _dry_run_summary(plan, episodes, args)
@@ -752,9 +805,7 @@ def collect_behavior_teacher(
                     "target_speed_kmh": args.target_speed_kmh,
                     "scenario_plan": dict(plan.reference),
                     "episode_count": len(episode_results),
-                    "episode_ids": [
-                        result["episode"]["episode_id"] for result in episode_results
-                    ],
+                    "episode_ids": [result["episode"]["episode_id"] for result in episode_results],
                     "partition_counts": dict(
                         sorted(
                             Counter(
@@ -762,9 +813,7 @@ def collect_behavior_teacher(
                             ).items()
                         )
                     ),
-                    "sample_count": sum(
-                        result["samples"]["count"] for result in episode_results
-                    ),
+                    "sample_count": sum(result["samples"]["count"] for result in episode_results),
                     "annotation_count": sum(
                         result["samples"]["annotation_count"] for result in episode_results
                     ),
@@ -775,7 +824,7 @@ def collect_behavior_teacher(
                         "schema_version": BEHAVIOR_TEACHER_CONTROL_SCHEMA_VERSION,
                         "available_for_every_sample": True,
                         "source": "BehaviorAgent.run_step",
-                        "sample_alignment": "applied before exact captured world.tick",
+                        "sample_alignment": "decision from exact captured state, issued before next world.tick",
                         "runtime_model_input": False,
                     },
                     "navigation_intent": {
@@ -790,9 +839,7 @@ def collect_behavior_teacher(
                             sorted(
                                 sum(
                                     (
-                                        Counter(
-                                            result["samples"]["navigation_command_counts"]
-                                        )
+                                        Counter(result["samples"]["navigation_command_counts"])
                                         for result in episode_results
                                     ),
                                     Counter(),
@@ -801,6 +848,7 @@ def collect_behavior_teacher(
                         ),
                     },
                     "world_restored_to_asynchronous_mode": True,
+                    "world_restore_policy": "intentional_asynchronous_baseline_reset_not_prior_world",
                 }
             )
         except BaseException as error:
@@ -821,9 +869,7 @@ def collect_behavior_teacher(
             raise
 
     dataset_dir = (Path(args.datasets_root) / args.dataset_id).resolve()
-    verification = (
-        verify_teacher_dataset(dataset_dir) if args.verify_after_collection else None
-    )
+    verification = verify_teacher_dataset(dataset_dir) if args.verify_after_collection else None
     if verification is not None and verification["status"] != "passed":
         raise RuntimeError(
             "BehaviorAgent teacher dataset verification failed: "
@@ -840,9 +886,7 @@ def collect_behavior_teacher(
         "annotation_count": sum(
             result["samples"]["annotation_count"] for result in episode_results
         ),
-        "route_leg_count": sum(
-            result["route"]["leg_count"] for result in episode_results
-        ),
+        "route_leg_count": sum(result["route"]["leg_count"] for result in episode_results),
         "server_version": session.server_version,
         "client_version": session.client_version,
         "world_restored_to_asynchronous_mode": restored,
@@ -850,6 +894,24 @@ def collect_behavior_teacher(
     }
     print(json.dumps(result, ensure_ascii=False, indent=2), flush=True)
     return result
+
+
+def collect_behavior_teacher(
+    args: argparse.Namespace,
+    *,
+    cancel_check: Callable[[], bool] | None = None,
+    cleanup_report: Callable[[bool], None] | None = None,
+) -> dict[str, Any]:
+    from .session_lease import NativeSessionLease
+
+    if args.dry_run:
+        return _collect_behavior_teacher_unleased(
+            args, cancel_check=cancel_check, cleanup_report=cleanup_report
+        )
+    with NativeSessionLease(args.host, args.port):
+        return _collect_behavior_teacher_unleased(
+            args, cancel_check=cancel_check, cleanup_report=cleanup_report
+        )
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -869,11 +931,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--carla-python-api")
     rig_options = parser.add_mutually_exclusive_group()
     rig_options.add_argument(
-        "--camera-rig", choices=("front", "front-three"), default="front",
+        "--camera-rig",
+        choices=("front", "front-three"),
+        default="front",
         help="RGB collection rig; front-three adds left/right views without changing Drive",
     )
     rig_options.add_argument(
-        "--camera-rig-config", help="JSON rig with additional RGB camera mounts and FOVs",
+        "--camera-rig-config",
+        help="JSON rig with additional RGB camera mounts and FOVs",
     )
     parser.add_argument("--episode-id", action="append", default=[])
     parser.add_argument(

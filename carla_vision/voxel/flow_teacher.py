@@ -14,10 +14,11 @@ from typing import Sequence
 
 import numpy as np
 
+from ..dataset.semantic_version import DYNAMIC_ROAD_USER_TAGS
 from .contracts import VoxelGridSpec
 from .geometry import camera_intrinsics
 
-DYNAMIC_SEMANTIC_TAGS = (4, 10)  # pedestrian, vehicle
+DYNAMIC_SEMANTIC_TAGS = DYNAMIC_ROAD_USER_TAGS
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,9 +53,7 @@ def decode_carla_optical_flow(
     expected_bytes = expected * np.dtype(np.float32).itemsize
     actual_bytes = memoryview(raw_data).nbytes
     if actual_bytes != expected_bytes:
-        raise ValueError(
-            f"expected {expected_bytes} optical-flow bytes, received {actual_bytes}"
-        )
+        raise ValueError(f"expected {expected_bytes} optical-flow bytes, received {actual_bytes}")
     values = np.frombuffer(raw_data, dtype=np.float32)
     flow = values.reshape(height, width, 2).copy()
     if not np.isfinite(flow).all():
@@ -124,10 +123,7 @@ def _candidate_correspondences(
     target_cols = np.rint(target_cols_f).astype(np.int32)
     target_rows = np.rint(target_rows_f).astype(np.int32)
     inside = (
-        (target_cols >= 0)
-        & (target_cols < width)
-        & (target_rows >= 0)
-        & (target_rows < height)
+        (target_cols >= 0) & (target_cols < width) & (target_rows >= 0) & (target_rows < height)
     )
     rows = rows[inside]
     cols = cols[inside]

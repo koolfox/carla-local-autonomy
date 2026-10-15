@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import hashlib
-import json
 from pathlib import Path
 
-import cv2
 import numpy as np
+from test_dataset_writer import camera_frame
 
+from carla_vision.dataset.sync import SynchronizedFramePair
+from carla_vision.dataset.writer import DatasetWriter
 from carla_vision.native.teacher_compare import compare_teacher_datasets
 
 
@@ -21,83 +22,52 @@ def _build_dataset(
     time_origin: float,
     steer_second: float = 0.1,
 ) -> Path:
-    samples = []
-    checksum_lines = []
-    for index, (frame_offset, time_offset, steer) in enumerate(
-        ((0, 0.0, 0.0), (2, 0.1, steer_second)),
-        start=1,
-    ):
-        sample_id = f"{index:08d}"
-        image_path = root / "images" / "train" / f"{sample_id}.png"
-        metadata_path = root / "metadata" / f"{sample_id}.json"
-        image_path.parent.mkdir(parents=True, exist_ok=True)
-        metadata_path.parent.mkdir(parents=True, exist_ok=True)
-        image = np.full((8, 12, 3), index * 30, dtype=np.uint8)
-        assert cv2.imwrite(str(image_path), image)
-        frame = frame_origin + frame_offset
-        timestamp = time_origin + time_offset
-        metadata = {
-            "carla_frame": frame,
-            "simulation_timestamp_seconds": timestamp,
-            "camera": {"width": 12, "height": 8},
-            "synchronization": {"exact_carla_frame_match": True},
-            "context": {
-                "control_mode": "behavior_agent_teacher",
-                "route": {
-                    "route_id": "route-ep-a-leg-000-d001",
-                    "leg_index": 0,
-                    "destination_spawn_index": 1,
-                    "destination_world_transform": {"x": 30.0, "y": 0.0, "z": 0.0},
+    with DatasetWriter(
+        root.parent,
+        dataset_id=root.name,
+        carla_endpoint={"host": "fixture", "port": 2000},
+        carla_version="0.9.16",
+        carla_map="Town10HD_Opt",
+        minimum_pixels=1,
+    ) as writer:
+        for index, (offset, seconds, steer) in enumerate(
+            ((0, 0.0, 0.0), (2, 0.1, steer_second)), 1
+        ):
+            frame, timestamp = frame_origin + offset, time_origin + seconds
+            pixels = np.full((8, 12, 4), index * 30, np.uint8)
+            mask = np.zeros_like(pixels)
+            pair = SynchronizedFramePair(
+                camera_frame(index, frame, pixels, timestamp=timestamp),
+                camera_frame(index, frame, mask, timestamp=timestamp),
+                0,
+                0,
+            )
+            writer.add_pair(
+                pair,
+                split="train",
+                scenario_id="fixture",
+                episode_id="ep-a",
+                context={
+                    "control_mode": "behavior_agent_teacher",
+                    "route": {
+                        "route_id": "route-ep-a-leg-000-d001",
+                        "leg_index": 0,
+                        "destination_spawn_index": 1,
+                        "destination_world_transform": {"x": 30.0, "y": 0.0, "z": 0.0},
+                    },
+                    "privileged_teacher_control": {
+                        "source": "BehaviorAgent.run_step",
+                        "carla_frame": frame,
+                        "throttle": 0.2,
+                        "steer": steer,
+                        "brake": 0.0,
+                    },
+                    "privileged_evaluation": {"velocity_mps": {"speed": 2.0 + index}},
                 },
-                "privileged_teacher_control": {
-                    "source": "BehaviorAgent.run_step",
-                    "carla_frame": frame,
-                    "throttle": 0.2,
-                    "steer": steer,
-                    "brake": 0.0,
-                },
-                "privileged_evaluation": {"velocity_mps": {"speed": 2.0 + index}},
-            },
-        }
-        metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
-        image_rel = image_path.relative_to(root).as_posix()
-        metadata_rel = metadata_path.relative_to(root).as_posix()
-        samples.append(
-            {
-                "sample_id": sample_id,
-                "carla_frame": frame,
-                "source_timestamp": timestamp,
-                "episode_id": "ep-a",
-                "rgb": {
-                    "path": image_rel,
-                    "sha256": _sha(image_path),
-                    "size_bytes": image_path.stat().st_size,
-                },
-                "metadata": {
-                    "path": metadata_rel,
-                    "sha256": _sha(metadata_path),
-                    "size_bytes": metadata_path.stat().st_size,
-                },
-            }
+            )
+        writer.set_release_metadata(
+            {"control_mode": "behavior_agent_teacher", "episode_ids": ["ep-a"]}
         )
-        checksum_lines.extend(
-            (f"{_sha(image_path)}  {image_rel}", f"{_sha(metadata_path)}  {metadata_rel}")
-        )
-    dataset = {
-        "status": "complete",
-        "dataset_id": root.name,
-        "sample_count": len(samples),
-        "samples": samples,
-        "release_metadata": {
-            "control_mode": "behavior_agent_teacher",
-            "episode_ids": ["ep-a"],
-        },
-    }
-    (root / "dataset.json").write_text(json.dumps(dataset), encoding="utf-8")
-    (root / "checksums.sha256").write_text(
-        "\n".join(checksum_lines) + "\n",
-        encoding="utf-8",
-    )
     return root
 
 

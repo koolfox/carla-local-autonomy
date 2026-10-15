@@ -54,6 +54,7 @@ class EvaluationConfig:
     bootstrap_confidence: float
     montage_count: int
     class_aliases: Mapping[str, str]
+    ap_bootstrap_replicates: int = 0
 
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any]) -> Self:
@@ -74,7 +75,7 @@ class EvaluationConfig:
         }
         keys = {str(key) for key in raw}
         missing = sorted(required - keys)
-        unknown = sorted(keys - required)
+        unknown = sorted(keys - required - {"ap_bootstrap_replicates"})
         if missing:
             raise ValueError(f"evaluation config is missing fields: {', '.join(missing)}")
         if unknown:
@@ -118,6 +119,13 @@ class EvaluationConfig:
         }
         if any(not source or not target for source, target in normalized_aliases.items()):
             raise ValueError("class_aliases cannot contain empty labels")
+        ap_replicates = raw.get("ap_bootstrap_replicates", 0)
+        if (
+            isinstance(ap_replicates, bool)
+            or not isinstance(ap_replicates, int)
+            or not 0 <= ap_replicates <= 1_000_000
+        ):
+            raise ValueError("ap_bootstrap_replicates must be an integer in [0, 1000000]")
         return cls(
             evaluation_id=evaluation_id,
             schema_version=schema_version,
@@ -144,6 +152,7 @@ class EvaluationConfig:
             ),
             montage_count=_positive_integer(raw["montage_count"], "montage_count", 1000),
             class_aliases=normalized_aliases,
+            ap_bootstrap_replicates=ap_replicates,
         )
 
     def as_dict(self) -> dict[str, Any]:
