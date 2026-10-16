@@ -19,6 +19,7 @@ from torch.utils.data import Dataset
 
 from ..artifacts import fingerprint_file
 from ..dataset.lineage import canonical_digest, partition_role, scene_group_key
+from ..dataset.shards import expand_dataset_roots
 from ..native.teacher_timing import validate_decision_target
 from ..native.teacher_verify import verify_teacher_dataset
 from ..navigation_intent import NAVIGATION_COMMAND_ORDER, NavigationIntent
@@ -161,7 +162,7 @@ class BehaviorImitationDataset(Dataset[dict[str, Any]]):
         self.source_references: list[dict[str, Any]] = []
         self.allow_legacy_action_targets = bool(allow_legacy_action_targets)
 
-        for raw_root in roots:
+        for raw_root in expand_dataset_roots(roots):
             root = Path(raw_root).expanduser().resolve(strict=True)
             if verify:
                 report = verify_teacher_dataset(root)

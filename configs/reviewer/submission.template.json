@@ -1,0 +1,25 @@
+{
+  "artifacts": {
+    "baseline_registry": null,
+    "claim_registry": null,
+    "costs": null,
+    "dataset_card": null,
+    "dependency_lock": null,
+    "environment": null,
+    "geometry": null,
+    "independent_reproduction": null,
+    "label_audit": null,
+    "manuscript": null,
+    "model_card": null,
+    "protocol": null,
+    "results": null,
+    "rights": null,
+    "source_snapshot": null,
+    "tests": null
+  },
+  "limitations": [],
+  "mode": "empirical_simulation",
+  "schema_version": "1.0",
+  "source_commit": null,
+  "study_id": "replace-with-registered-study-id"
+}

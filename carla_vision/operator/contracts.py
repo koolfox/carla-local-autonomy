@@ -10,6 +10,12 @@ OPERATOR_SCHEMA_VERSION = "1.0"
 OPERATOR_JOB_KINDS = frozenset(
     {
         "analyze",
+        "dataset_derive",
+        "acquisition_plan",
+        "acquisition_pool",
+        "diagnosis_benchmark",
+        "coreset_select",
+        "reviewer_check",
         "dataset_qa",
         "live",
         "native_capture",

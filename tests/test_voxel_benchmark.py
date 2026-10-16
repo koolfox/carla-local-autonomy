@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import cv2
 import numpy as np
 
 from carla_vision.voxel.benchmark import benchmark_voxel_runs
@@ -12,6 +13,8 @@ def build_voxel_benchmark_run(root: Path) -> Path:
     (root / "teacher_voxels").mkdir(parents=True)
     (root / "predicted_voxels").mkdir(parents=True)
     (root / "rgb").mkdir(parents=True)
+    for frame in (1, 2):
+        assert cv2.imwrite(str(root / "rgb" / f"{frame:08d}.png"), np.zeros((8, 8, 3), dtype=np.uint8))
     grid = {
         "x_min": 0.0,
         "x_max": 2.0,
@@ -27,9 +30,9 @@ def build_voxel_benchmark_run(root: Path) -> Path:
     future = np.zeros((1, 2, 2), dtype=np.int8)
     future[0, 0, 1] = 1
     semantics_current = np.full(current.shape, 255, dtype=np.uint8)
-    semantics_current[current == 1] = 10
+    semantics_current[current == 1] = 14
     semantics_future = np.full(future.shape, 255, dtype=np.uint8)
-    semantics_future[future == 1] = 10
+    semantics_future[future == 1] = 14
     np.savez_compressed(
         root / "teacher_voxels" / "00000001.npz",
         occupancy=current,

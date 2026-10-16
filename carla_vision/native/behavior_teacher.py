@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from ..dataset.camera_rig import resolve_camera_rig
+from ..dataset.shards import ShardedDatasetWriter, expand_dataset_roots
 from ..dataset.sync import SynchronizedFramePair
 from ..dataset.writer import DATASET_PARTITIONS, DatasetWriter
 from ..scenarios.planner import EpisodePlan
@@ -277,6 +278,9 @@ class BehaviorTeacherSession(NativeCarlaSession):
             # including a front-only rig with a custom mount/FOV.
             episode = replace(episode, recipe=replace(episode.recipe, camera=recipes["front"]))
             world, _ = self._configure_world(episode)
+            from .map_evidence import record_map_evidence
+
+            map_evidence = record_map_evidence(world, writer, episode.episode_id)
             blueprint_library = world.get_blueprint_library()
             spawn_points = list(world.get_map().get_spawn_points())
             print("Spawning teacher vehicle and scene population", flush=True)
@@ -479,6 +483,7 @@ class BehaviorTeacherSession(NativeCarlaSession):
                     episode_id=episode.episode_id,
                     context={
                         "map": world.get_map().name,
+                        **map_evidence,
                         "map_family": canonical_map_family(recipe.map_name),
                         "weather_recipe_id": recipe.weather.weather_id,
                         "light": recipe.weather.light,
@@ -720,8 +725,13 @@ def _collect_behavior_teacher_unleased(
     )
     episode_results: list[dict[str, Any]] = []
     restored = False
-    with DatasetWriter(
+    writer_type = ShardedDatasetWriter if getattr(args, "shard_samples", None) else DatasetWriter
+    shard_options = (
+        {"shard_samples": args.shard_samples} if getattr(args, "shard_samples", None) else {}
+    )
+    with writer_type(
         args.datasets_root,
+        **shard_options,
         dataset_id=args.dataset_id,
         cli_args=vars(args),
         carla_endpoint={"host": args.host, "port": args.port},
@@ -869,7 +879,18 @@ def _collect_behavior_teacher_unleased(
             raise
 
     dataset_dir = (Path(args.datasets_root) / args.dataset_id).resolve()
-    verification = verify_teacher_dataset(dataset_dir) if args.verify_after_collection else None
+    verification = None
+    if args.verify_after_collection:
+        reports = [verify_teacher_dataset(root) for root in expand_dataset_roots([dataset_dir])]
+        verification = (
+            reports[0]
+            if len(reports) == 1
+            else {
+                "status": "passed" if all(r["status"] == "passed" for r in reports) else "failed",
+                "shard_reports": reports,
+                "errors": [error for report in reports for error in report["errors"]],
+            }
+        )
     if verification is not None and verification["status"] != "passed":
         raise RuntimeError(
             "BehaviorAgent teacher dataset verification failed: "
@@ -924,6 +945,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--scenario-plan", required=True)
     parser.add_argument("--dataset-id", required=True)
     parser.add_argument("--datasets-root", default="datasets")
+    parser.add_argument(
+        "--shard-samples", type=int, help="Seal canonical shards after this many samples"
+    )
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=2000)
     parser.add_argument("--timeout", type=float, default=30.0)
@@ -970,6 +994,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     args = parser.parse_args(argv)
+    if args.shard_samples is not None and not 1 <= args.shard_samples <= 100000:
+        parser.error("--shard-samples must be in [1, 100000]")
     if not 1 <= args.port <= 65535:
         parser.error("--port must be in [1, 65535]")
     if args.timeout <= 0.0:

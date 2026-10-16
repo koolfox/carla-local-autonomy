@@ -21,6 +21,7 @@ with one user action, its owner, and its test. This page is the navigation hub;
 | Understand executable driving-policy packages | [Runtime model packages](runtime_model_packages.md) — not the same as detector weights |
 | Understand voxel research | [RGB voxel viewer (Persian)](voxel_live_view_fa.md), [voxel research flow (Persian)](voxel_flow_fa.md) |
 | Research integrity, source splits and offline acquisition experiments | [Research integrity](research_integrity.md), [ADR 0001](adr/0001-research-data-and-evidence-boundaries.md) |
+| Prepare reviewer evidence / replay metrics / audit captured corridors | [Reviewer runbook](reviewer_evidence.md), [paper checklist](paper/reviewer_requirements.md), [فارسی](paper/research_completion_fa.md) |
 | Build datasets / evaluate models | [Experiment protocol](experiment_protocol.md), [reproducibility](reproducibility.md), [paired replay](paired_replay.md) |
 | Record and replay multi-camera teacher episodes | [Multi-camera capture](multicamera_episodes.md) — research collector, not live Garage controls |
 | Launch native collection on Windows from the Mac | [Native research jobs](native_research_jobs.md) — optional trusted task host |
@@ -74,6 +75,7 @@ only when native code/protocol or native dependencies change, not for every UI e
 | Dataset / training / evaluation | [dataset](../carla_vision/dataset/), [training](../carla_vision/training/), [evaluation](../carla_vision/evaluation/) | `tests/test_dataset_collector.py`, `tests/test_training.py`, `tests/test_evaluation.py` | Native collection only |
 | Multi-camera teacher data / replay | [rig contract](../carla_vision/dataset/camera_rig.py), [native rig](../carla_vision/native/camera_rig.py), [episode replay](../carla_vision/dataset/episode_replay.py) | `tests/test_multicamera_dataset.py`, `tests/test_multicamera_teacher.py` | Collector host only; bridge unchanged |
 | Native task submission / cancellation / download | [task host](../carla_vision/native/research_jobs.py), [collector adapter](../carla_vision/native/tasks/teacher_capture.py), [SDK/CLI](../carla_vision/operator/native_research.py) | `tests/test_native_research_jobs.py` | One-time host update; later collector edits deploy as task packages |
+| Reviewer closure, geometry, shards and registered tables | [reproduction](../carla_vision/reproduction/), [dataset](../carla_vision/dataset/), [research commands](../carla_vision/operator/research_commands.py) | `tests/test_reviewer_evidence.py`, `tests/test_reviewer_storage.py`, `tests/test_reviewer_workflows.py`, `tests/test_reviewer_operator.py` | Native capture only; no live acceptance implied |
 | Research-job buttons / execution | [commands.py](../carla_vision/operator/commands.py), [jobs.py](../carla_vision/operator/jobs.py), [installed commands](../pyproject.toml) | `tests/test_operator.py`; producer's own test | Depends on job |
 
 The table finds owners; it does not certify a feature's real-CARLA performance.

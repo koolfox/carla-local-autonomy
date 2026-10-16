@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Literal, Sequence
@@ -14,7 +15,9 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
+from ...dataset.lineage import partition_role
 from ...dataset.semantic_version import COMPACT_VOXEL_TAGS
+from ...reproduction.review_contracts import integer, number, relative_path
 from ..contracts import OCCUPIED, SEMANTIC_UNKNOWN, VoxelGridSpec
 
 Partition = Literal["train", "val", "test"]
@@ -42,6 +45,7 @@ class VoxelEpisode:
     spec: VoxelGridSpec
     records: tuple[dict[str, Any], ...]
     future_targets: dict[int, dict[float, int | None]]
+    source_partition: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +79,14 @@ def _episode_group_key(root: Path, manifest: dict[str, Any]) -> tuple[str, str]:
         or manifest.get("map_name")
         or episode_id
     )
+    lineage = manifest.get("lineage")
+    if isinstance(lineage, dict) and isinstance(lineage.get("scene_root_id"), str):
+        if not lineage["scene_root_id"].strip():
+            raise ValueError("empty voxel scene root")
+        return episode_id, "scene-root:" + lineage["scene_root_id"]
+    # A route with a declared partition must stay grouped across traffic seeds.
+    if manifest.get("split") is not None:
+        return episode_id, "source-route:" + route
     seed = manifest.get("seed")
     if seed is None:
         seed = manifest.get("scenario_seed")
@@ -96,7 +108,26 @@ def load_voxel_episode(root: Path | str) -> VoxelEpisode:
     if not isinstance(raw_records, list) or not raw_records:
         raise ValueError(f"voxel sequence contains no records: {resolved}")
     records = tuple(dict(record) for record in raw_records)
-    frames = [int(record["frame"]) for record in records]
+    for record in records:
+        for name in ("rgb", "teacher_voxel", "teacher_flow"):
+            if record.get(name) is not None:
+                relative_path(resolved, record[name])
+    source_partition = manifest.get("split")
+    record_splits = {r["split"] for r in records if "split" in r}
+    if record_splits:
+        if len(record_splits) != 1 or any("split" not in r for r in records):
+            raise ValueError("voxel temporal windows cannot cross source partitions")
+        record_partition = next(iter(record_splits))
+        if source_partition is not None and source_partition != record_partition:
+            raise ValueError("voxel manifest and record source partitions disagree")
+        source_partition = record_partition
+    if source_partition is not None:
+        partition_role(source_partition)
+    frames = [integer(record["frame"], "voxel frame") for record in records]
+    timestamps = [number(record["timestamp"], "voxel timestamp", minimum=0) for record in records]
+    if any(b <= a for a, b in zip(timestamps, timestamps[1:], strict=False)):
+        raise ValueError("voxel timestamps must be strictly increasing")
+    time_by_frame = dict(zip(frames, timestamps, strict=True))
     if len(frames) != len(set(frames)):
         raise ValueError(f"duplicate frame IDs in voxel sequence: {resolved}")
     if frames != sorted(frames):
@@ -117,10 +148,24 @@ def load_voxel_episode(root: Path | str) -> VoxelEpisode:
             value = float(horizon)
             if not math.isfinite(value) or value < 0:
                 raise ValueError("future target horizons must be finite and non-negative")
-            converted[value] = None if target is None else int(target)
-        future_targets[int(item["frame"])] = converted
+            if value in converted:
+                raise ValueError("duplicate numeric future horizon")
+            converted[value] = None if target is None else integer(target, "future target frame")
+        anchor = integer(item["frame"], "future anchor frame")
+        if anchor not in time_by_frame or anchor in future_targets:
+            raise ValueError("unknown/duplicate future target anchor")
+        for horizon, target in converted.items():
+            expected = next(
+                (f for f in frames if time_by_frame[f] + 1e-9 >= time_by_frame[anchor] + horizon),
+                None,
+            )
+            if target != expected:
+                raise ValueError(
+                    "future target must be the first recorded frame at/after its horizon"
+                )
+        future_targets[anchor] = converted
 
-    episode_id, group_key = _episode_group_key(resolved, manifest)
+    episode_id, group_key = _episode_group_key(resolved, dict(manifest, split=source_partition))
     return VoxelEpisode(
         root=resolved,
         episode_id=episode_id,
@@ -128,6 +173,7 @@ def load_voxel_episode(root: Path | str) -> VoxelEpisode:
         spec=spec,
         records=records,
         future_targets=future_targets,
+        source_partition=source_partition,
     )
 
 
@@ -189,6 +235,7 @@ class TemporalVoxelDataset(Dataset[dict[str, Any]]):
         val_fraction: float = 0.2,
         test_fraction: float = 0.1,
         max_samples: int | None = None,
+        allow_legacy_splits: bool = False,
     ) -> None:
         if history_frames <= 0:
             raise ValueError("history_frames must be positive")
@@ -206,17 +253,38 @@ class TemporalVoxelDataset(Dataset[dict[str, Any]]):
         first_spec = episodes[0].spec
         if any(episode.spec != first_spec for episode in episodes[1:]):
             raise ValueError("all voxel episodes must use the same grid specification")
+        if partition not in {"train", "val", "test"}:
+            raise ValueError("partition must be train, val or test")
+        if any(e.source_partition is None for e in episodes):
+            if not allow_legacy_splits:
+                raise ValueError(
+                    "voxel source partition missing; explicitly opt into development legacy splits"
+                )
+            warnings.warn(
+                "legacy voxel repartitioning is development-only", UserWarning, stacklevel=2
+            )
+        self.legacy_split_used = any(e.source_partition is None for e in episodes)
         selected = tuple(
             episode
             for episode in episodes
-            if stable_partition(
-                episode.group_key,
-                split_seed=split_seed,
-                val_fraction=val_fraction,
-                test_fraction=test_fraction,
+            if (
+                partition_role(episode.source_partition)
+                if episode.source_partition is not None
+                else stable_partition(
+                    episode.group_key,
+                    split_seed=split_seed,
+                    val_fraction=val_fraction,
+                    test_fraction=test_fraction,
+                )
             )
             == partition
         )
+        assignment = {}
+        for episode in episodes:
+            if episode.source_partition is not None:
+                prior = assignment.setdefault(episode.group_key, episode.source_partition)
+                if prior != episode.source_partition:
+                    raise ValueError("voxel scene group crosses source partitions")
         self.episodes = selected
         self.spec = first_spec
         self.partition = partition
@@ -281,14 +349,17 @@ class TemporalVoxelDataset(Dataset[dict[str, Any]]):
             reference.anchor_index - self.history_frames + 1 : reference.anchor_index + 1
         ]
         rgb_history = torch.stack(
-            [self._load_rgb(episode.root / str(record["rgb"])) for record in history_records]
+            [
+                self._load_rgb(relative_path(episode.root, record["rgb"]))
+                for record in history_records
+            ]
         )
         by_frame = {int(record["frame"]): record for record in episode.records}
         occupancies: list[torch.Tensor] = []
         semantics: list[torch.Tensor] = []
         for target_frame in reference.target_frames:
             record = by_frame[target_frame]
-            target_path = episode.root / str(record["teacher_voxel"])
+            target_path = relative_path(episode.root, record["teacher_voxel"])
             with np.load(target_path, allow_pickle=False) as payload:
                 occupancy = np.asarray(payload["occupancy"], dtype=np.int8)
                 semantic_tags = np.asarray(payload["semantics"], dtype=np.uint8)
@@ -314,15 +385,26 @@ def split_summary(
     split_seed: int = 17,
     val_fraction: float = 0.2,
     test_fraction: float = 0.1,
+    allow_legacy_splits: bool = False,
 ) -> dict[str, list[str]]:
+    """Describe the *same* source partitions consumed by temporal datasets."""
     result: dict[str, list[str]] = {"train": [], "val": [], "test": []}
+    groups: dict[str, str] = {}
     for root in roots:
         episode = load_voxel_episode(root)
-        partition = stable_partition(
-            episode.group_key,
-            split_seed=split_seed,
-            val_fraction=val_fraction,
-            test_fraction=test_fraction,
-        )
-        result[partition].append(episode.episode_id)
+        if episode.source_partition is None:
+            if not allow_legacy_splits:
+                raise ValueError("voxel source partition missing; development opt-in required")
+            partition = stable_partition(
+                episode.group_key,
+                split_seed=split_seed,
+                val_fraction=val_fraction,
+                test_fraction=test_fraction,
+            )
+        else:
+            partition = partition_role(episode.source_partition)
+        previous = groups.setdefault(episode.group_key, partition)
+        if previous != partition:
+            raise ValueError("voxel source group crosses partitions")
+        result.setdefault(partition, []).append(episode.episode_id)
     return result

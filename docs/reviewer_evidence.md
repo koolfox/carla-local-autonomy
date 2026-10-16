@@ -1,0 +1,213 @@
+# Reviewer evidence kit: executable runbook
+
+This is an offline **software and evidence-completeness** workflow. It is not a
+certificate of model quality, novelty, real-CARLA behavior, rights, or Q1 acceptance.
+The active delivery status is in [#142](https://github.com/koolfox/carla-local-autonomy/issues/142)
+and its parent [#140](https://github.com/koolfox/carla-local-autonomy/issues/140).
+See [ADR 0002](adr/0002-reviewer-evidence-and-shard-contracts.md), the
+[paper evidence checklist](paper/reviewer_requirements.md), and [method text](paper/methods_update.md).
+
+## 1. Reproduce software checks, with no running CARLA
+
+Use a full checkout for the complete suite; a source-only archive deliberately
+omits historical model/recovery assets. The CARLA Python SDK may be installed by
+`--all-extras`; no simulator server is started or contacted by these tests.
+
+```bash
+uv sync --all-extras --all-groups --frozen
+uv run ruff check carla_vision tests restore_project.py
+uv run pytest -q tests/test_reviewer_evidence.py tests/test_reviewer_storage.py tests/test_reviewer_workflows.py tests/test_reviewer_operator.py tests/test_reviewer_voxel_training.py
+uv run pytest -q --junitxml=reviewer-tests.xml
+```
+
+Keep test output outside tracked source. Frontend changes additionally use the
+existing `npm ci`, `npm run check`, `npm test`, `npm run build`, and current-bundle
+checks. The TypeScript mirror exposes the six research job kinds; no alternate
+front end or new network endpoint is introduced.
+
+The test fixtures include deliberately false metadata, exact small geometric
+answers, known k-center selections, duplicate COCO identifiers, real tiny CPU
+optimization in the previous integrity suite, a real JobManager subprocess,
+source-archive races, and metric replay after deleting its original workspace.
+These are artificial inputs for software assertions, not publishable ADAS scores.
+
+## 2. Freeze a source snapshot and register reviewer evidence
+
+```bash
+uv run carla-source-snapshot --repository . --commit HEAD --output ../source-review.zip
+uv run carla-reviewer-evidence init --output ../submission.json
+uv run carla-reviewer-evidence check ../submission.json
+```
+
+The last command intentionally returns 1 for a fresh template. It cannot become
+ready by passing an empty custom requirement list. Fill `source_commit` with the
+actual selected full Git SHA; retain the generated archive fingerprint and Git
+object proof. `SOURCE_COMMIT.txt` alone is not source authenticity. Templates under
+`configs/reviewer/` contain null/false values until actual artifacts exist.
+
+The fixed roles are source snapshot, dependency lock, JUnit, registered study
+protocol, geometric audit, independent label audit, result matrix, actual costs,
+claim registry, rights review, dataset card, model card, environment, baseline
+registry, manuscript inventory and independent reproduction. `offline_fixture`
+mode checks the software-package subset and **never** returns empirical readiness.
+`empirical_simulation` and `empirical_real_world` require every role; the latter
+also needs a real-world claim. This catalog is a project review protocol, not a
+universal rule imposed by all journals. Human scientific review remains necessary.
+
+Every file reference is `{path, sha256, size_bytes}` with actual values produced
+by `carla_vision.artifacts.fingerprint_file`. Relative paths are interpreted at the
+referencing artifact; traversal and symlinks are rejected. Unknown schema fields,
+invalid numeric values and duplicate JSON keys are errors, not ignored metadata.
+Do not use an in-place rehash utility to conceal modifications to evidence.
+
+## 3. Verify observed route independence
+
+New native collection records an OpenDRIVE description using the existing read-only
+map API. It records the returned map name/hash in sample context; unsupported
+legacy APIs report that map evidence is unavailable, not a made-up map hash.
+
+```bash
+uv run carla-audit-trajectories --dataset datasets/release-train --dataset datasets/release-test --map-document datasets/release-train/maps/episode-a.opendrive.json --clearance-m 2 --maximum-step-m 5 --runs-root runs --run-id observed-corridors
+```
+
+Paths and numeric settings above illustrate the command shape; use actual release
+paths and **preregistered** clearance/gap values, not these example numbers as a
+study requirement. The command verifies the datasets, reconstructs trajectories
+across canonical shards, rejects duplicate release identities, and evaluates
+segment-interior distances in 3D. A transitive connected component may not span
+partitions. Overpasses can remain distinct according to measured vertical distance.
+The reviewer checker recomputes this audit from original captures rather than
+trusting supplied route arrays. Empty, stationary or undersampled evidence cannot
+establish unseen-route claims. A Town-name change alone is not independence.
+
+## Voxel compatibility and model selection
+
+The experimental voxel trainers preserve source partitions, require nonempty
+validation for normal training and do not automatically open a test loader. Their
+post-training flow check reloads the selected best checkpoint and evaluates only
+validation. The explicit `--allow-training-selection` option is development-only
+and labels its score accordingly; `--allow-legacy-splits` does not authorize it
+implicitly. Nested dataset paths now serialize in the recorded configuration and
+nonfinite settings fail before model execution. These repairs do not promote the
+voxel model or teacher to a validated empirical driving baseline.
+
+## 4. Bounded dataset generation and consumption
+
+Native worker and BehaviorAgent teacher commands accept `--shard-samples N`.
+Single-release output remains the default. N bounds samples per active canonical
+writer; each finalized shard has its normal manifests and semantic verification.
+
+```bash
+uv run carla-verify-shards datasets/my-sharded-release
+uv run carla-verify-shards datasets/incomplete-release --recover-inventory
+```
+
+Recovery is a read-only inventory and returns nonzero: it does not repair, delete,
+overwrite, or promote incomplete evidence. Explicitly start a fresh release after
+investigating the crash. Across-shard identities and sample order are checked before
+training roots are returned. Both detector training and imitation consume verified
+shards; data YAML references the actual shard image directories without copying RGB.
+
+For evaluations produced independently per shard with the same model/policy:
+
+```bash
+uv run carla-pool-evaluations --evaluation runs/eval-shard-0 --evaluation runs/eval-shard-1 --runs-root runs --run-id pooled-evaluation
+```
+
+This recomputes pooled AP from remapped source annotations/predictions and rejects
+duplicate source samples or changed model/ontology/policy. It is not an average
+of shard AP. Frame/group identities remain in the output. The evaluator is
+memory-resident with an explicit image cap; sharding does not make COCO unlimited.
+
+## 5. Supervision, diagnosis, baselines and budgets
+
+`carla-score-diagnosis --observations ... --reference ...` first predicts actions
+from allowed signals; only then does it read held-out fault/reference labels.
+The oracle outcome is not an acquisition feature. The output retains confusion
+matrices, clean-hard behavior, unknown decisions and all case/group counts.
+`tests/test_reviewer_workflows.py` includes an executable fixture in which changing
+only truth labels leaves predictions unchanged. Independent human review still has
+to establish whether real captures/labels/actions are correct.
+
+`carla-select-coreset --protocol ...` implements **Sener & Savarese, Algorithm 1,
+greedy k-center** on frozen, equal-cost feature rows, with a disclosed initial
+labeled set and deterministic tie order. It does not implement their robust
+mixed-integer solver or noisy-oracle detection. The seven original internal
+heuristics are not relabeled QActor, NAS or ADAA. For a novelty claim, implement and
+validate the closest task-matched baseline, disclose adaptation and hyperparameter
+search budgets, and charge embeddings, probes and review costs to every method.
+The feature pool records labels/partitions and encoder hashes but does not by
+itself prove the encoder was never fitted on held-out data.
+
+`RunArtifactTracker.resource_usage` measures elapsed wall time, current-process CPU
+and registered output bytes on success/failure. GPU time is null if not measured;
+child processes and overlapping nested scopes are explicitly not additive. The
+all-attempt `CostLedger` requires known units and retains rejected/failed/cancelled
+work. Complete external-stage instrumentation and audit are still needed to claim
+end-to-end monetary, energy or GPU-hour savings.
+
+## 6. Bind real results to runs and compute manuscript tables
+
+The results role contains `protocol` (a fingerprinted matrix specification),
+`rows`, `synthetic`, and `producers`. The matrix specifies methods, paired seeds,
+one holdout digest, the common budget and explicit resource conversion weights.
+Each row has method, seed, unique run ID, outcome, actual cost, holdout digest and
+metric. Each producer binds the real manifest, registered summary, metric field
+and cost ledger. The producing manifest's `invocation.config.review_binding` must
+match matrix SHA, method, seed, holdout and ledger SHA. Empirical mode additionally
+requires non-synthetic status and the selected clean Git source. Register these
+bindings in the experimental producer; do not edit a completed manifest afterwards.
+
+The complete synthetic construction is `bound_result_matrix` and
+`test_seed_analysis_emits_recomputed_table_from_bound_producers` in the workflow
+tests. It is a schema example, not an adapter claiming that older runs have these
+bindings. Failed/missing cells make a matrix incomplete, and their cost is retained.
+
+```bash
+uv run carla-analyze-study-seeds --results results/registered-matrix.json --baseline random --source-commit FULL_ACTUAL_GIT_SHA --runs-root runs --run-id paired-analysis
+```
+
+The generated CSV/JSON are recomputed from registered results, not hand-entered
+summary numbers. This CLI conditions on one generation condition and fixed holdout.
+Use `paired_crossed_analysis` for a complete generation-seed by training-seed
+factorial design; it resamples factor levels separately instead of treating every
+cell as independent. Group-bootstrap COCO intervals condition on fixed weights.
+These uncertainties answer different questions and must not be conflated.
+
+`plan_paired_sample_size` accepts independent pilot pairs only, not the final test,
+and reports its normal-approximation/Bonferroni assumptions. `holm_adjust` controls
+a declared multiple-testing family when valid p-values have been computed. A
+bootstrap interval or small-N seed average is not an automatic superiority verdict.
+
+## 7. Integrate through the existing Operator
+
+The existing `/api/jobs`/`OperatorJobRequest` path recognizes `dataset_derive`,
+`acquisition_plan`, `acquisition_pool`, `diagnosis_benchmark`, `coreset_select`, and
+`reviewer_check`. Its existing workspace restrictions, token arrays and JobManager
+remain the authority. `operator/research_cycle.py::execute_cycle_job` advances one
+eligible stage with a durable receipt, real job completion and verified producer
+output. It never retries an uncertain submission. Inspect the receipt and actual
+job state to reconcile a crash. Human audit/approval stages are deliberately not
+synthesized by the dispatcher. Native capture uses the existing job kind and
+motion-authorization boundary; it was not executed in this offline work.
+
+## 8. Move the package and reproduce metrics
+
+```bash
+uv run carla-reviewer-evidence pack submission.json --output ../review-bundle
+uv run carla-reviewer-evidence verify ../review-bundle --sha256 ACTUAL_CLOSURE_INDEX_SHA256
+uv run carla-replay-bundled-metrics ../review-bundle --evaluation-manifest-sha256 ACTUAL_EVALUATION_MANIFEST_SHA256 --closure-sha256 ACTUAL_CLOSURE_INDEX_SHA256 --runs-root runs --run-id reviewer-metric-replay
+```
+
+`pack` may retain an incomplete submission for inspection but still returns a
+nonzero readiness status. `verify` checks portable byte/reference integrity, not
+all paper semantics. Metric replay supports canonical and pooled COCO evaluations,
+uses saved predictions and writes its own manifest/log/comparison. Original paths
+may be absent. It explicitly records that training and inference were **not**
+reexecuted. Reproduce actual training separately with legally available inputs and
+an independently resolved runtime; this package does not execute untrusted code.
+
+The bundle includes original path strings and author metadata. Review privacy,
+licensing and anonymous-review requirements before sharing; there is no automatic
+public upload, license grant, or anonymization. Archive the final code/data with
+persistent identifiers only after owner approval and preserve the prior versions.
