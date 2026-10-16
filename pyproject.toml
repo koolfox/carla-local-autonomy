@@ -57,6 +57,15 @@ voxel = [
 ]
 
 [project.scripts]
+carla-pool-evaluations = "carla_vision.evaluation.pool:main"
+carla-replay-bundled-metrics = "carla_vision.reproduction.replay_metrics:main"
+carla-reviewer-evidence = "carla_vision.reproduction.reviewer:main"
+carla-source-snapshot = "carla_vision.reproduction.source_snapshot:main"
+carla-audit-trajectories = "carla_vision.dataset.trajectory_audit:main"
+carla-verify-shards = "carla_vision.dataset.shards:main"
+carla-select-coreset = "carla_vision.scenarios.baselines:main"
+carla-score-diagnosis = "carla_vision.failure_mining.diagnosis_benchmark:main"
+carla-analyze-study-seeds = "carla_vision.evaluation.study_statistics:main"
 carla-check-research-claims = "carla_vision.scenarios.claims:main"
 carla-prepare-acquisition-pool = "carla_vision.failure_mining.acquisition_pool:main"
 carla-plan-acquisition-study = "carla_vision.scenarios.study:main"

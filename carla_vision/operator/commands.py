@@ -990,6 +990,9 @@ def build_command_plan(
     root = Path(workspace).expanduser().resolve(strict=True)
     if not root.is_dir():
         raise ValueError("operator workspace must be a directory")
+    from .research_commands import RESEARCH_JOB_KINDS, build_research_plan
+    if request.kind in RESEARCH_JOB_KINDS:
+        return build_research_plan(request, root, executable)
     return _BUILDERS[request.kind](request.parameters, root, executable)
 
 

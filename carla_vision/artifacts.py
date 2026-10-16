@@ -20,6 +20,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timezone
@@ -535,6 +536,7 @@ class RunArtifactTracker:
             if self._manifest["status"] != "created":
                 raise RuntimeError("run context can only be entered once")
             now = _iso_utc(self._clock())
+            self._resource_started = (time.perf_counter(), time.process_time())
             self._manifest["status"] = "running"
             self._manifest["timestamps"]["started_at"] = now
             self._manifest["timestamps"]["updated_at"] = now
@@ -553,6 +555,18 @@ class RunArtifactTracker:
                 raise RuntimeError("run context is not active")
             now = _iso_utc(self._clock())
             self._manifest["timestamps"]["finished_at"] = now
+            wall, cpu = self._resource_started
+            self._manifest["resource_usage"] = {
+                "schema_version": "1.0",
+                "wall_seconds": max(0.0, time.perf_counter() - wall),
+                "cpu_seconds": max(0.0, time.process_time() - cpu),
+                "gpu_seconds": None,
+                "scope": "this_process_aggregate_between_tracker_context_boundaries",
+                "overlapping_scopes_additive": False,
+                "child_processes_included": False,
+                "registered_bytes": sum(a["size_bytes"] for a in self._manifest["artifacts"]),
+                "storage_scope": "registered_files_only_not_peak_disk_or_parent_datasets",
+            }
             self._manifest["timestamps"]["updated_at"] = now
             if exception_type is None:
                 self._manifest["status"] = "success"

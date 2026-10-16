@@ -18,6 +18,7 @@ from torch.utils.data import DataLoader
 
 from ..artifacts import RunArtifactTracker, fingerprint_file
 from ..dataset.lineage import canonical_digest
+from ..dataset.shards import expand_dataset_roots
 from .checkpoint import atomic_torch_save, capture_rng, restore_rng
 from .dataset import BehaviorImitationDataset, split_summary
 from .model import ImitationControlNet, ImitationModelConfig
@@ -363,7 +364,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         print(json.dumps(summary, indent=2, sort_keys=True))
         return summary
 
-    roots = tuple(path.expanduser().resolve(strict=True) for path in args.dataset)
+    roots = expand_dataset_roots(args.dataset)
     common = {
         "roots": roots,
         "image_size": args.image_size,

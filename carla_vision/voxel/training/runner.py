@@ -88,8 +88,16 @@ def _ensure_output(path: Path) -> Path:
 
 
 def _write_json(path: Path, payload: Any) -> None:
+    def encode(value):
+        if isinstance(value, Path):
+            return str(value)
+        raise TypeError(f"unsupported JSON value: {type(value).__name__}")
+
     path.write_text(
-        json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+        json.dumps(
+            payload, indent=2, sort_keys=True, ensure_ascii=False, allow_nan=False, default=encode
+        )
+        + "\n",
         encoding="utf-8",
     )
 
@@ -278,6 +286,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=17,
         help="Frozen split seed, independent of model initialization seed",
     )
+    parser.add_argument(
+        "--allow-legacy-splits",
+        action="store_true",
+        help="Development-only compatibility for unpartitioned old episodes",
+    )
     parser.add_argument("--val-fraction", type=float, default=0.2)
     parser.add_argument("--test-fraction", type=float, default=0.1)
     parser.add_argument("--semantic-weight", type=float, default=0.25)
@@ -291,10 +304,30 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-samples", type=int)
     parser.add_argument("--max-batches", type=int)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--allow-training-selection",
+        action="store_true",
+        help="Explicit development-only selection without validation; never confirmatory",
+    )
     return parser
 
 
 def _validate_args(args: argparse.Namespace) -> None:
+    for name in (
+        "learning_rate",
+        "weight_decay",
+        "semantic_weight",
+        "temporal_weight",
+        "focal_gamma",
+        "positive_weight",
+        "val_fraction",
+        "test_fraction",
+    ):
+        value = getattr(args, name)
+        if isinstance(value, bool) or not math.isfinite(value) or value < 0:
+            raise ValueError(f"{name} must be finite and non-negative")
+    if args.positive_weight <= 0 or args.val_fraction + args.test_fraction >= 1:
+        raise ValueError("positive weight and split fractions are invalid")
     for name in ("history_frames", "epochs", "batch_size"):
         if getattr(args, name) <= 0:
             raise ValueError(f"{name} must be positive")
@@ -326,22 +359,24 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "horizons_s": args.horizons,
         "image_size": args.image_size,
         "split_seed": args.split_seed,
+        "allow_legacy_splits": args.allow_legacy_splits,
         "val_fraction": args.val_fraction,
         "test_fraction": args.test_fraction,
         "max_samples": args.max_samples,
     }
     train_dataset = TemporalVoxelDataset(partition="train", **common)
     val_dataset = TemporalVoxelDataset(partition="val", **common)
-    test_dataset = TemporalVoxelDataset(partition="test", **common)
     available = {
         "train": len(train_dataset),
         "val": len(val_dataset),
-        "test": len(test_dataset),
+        "test": None,
     }
     if len(train_dataset) == 0:
         raise RuntimeError(
             "training split has no samples; add more route/seed groups or adjust split fractions"
         )
+    if not args.dry_run and not len(val_dataset) and not args.allow_training_selection:
+        raise RuntimeError("nonempty validation is required for model selection")
     spec = train_dataset.spec
     model = TemporalVoxelNet(_model_config(args, spec)).to(device)
     train_loader = _loader(
@@ -384,6 +419,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "splits": split_summary(
                 roots,
                 split_seed=args.split_seed,
+                allow_legacy_splits=args.allow_legacy_splits,
                 val_fraction=args.val_fraction,
                 test_fraction=args.test_fraction,
             ),
@@ -431,6 +467,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 )
         score_metrics = val_metrics or train_metrics
         score = float(score_metrics["mean_occupied_iou"])
+        if not math.isfinite(score):
+            raise RuntimeError("non-finite model-selection score")
         epoch_record = {"epoch": epoch, "train": train_metrics, "val": val_metrics}
         history.append(epoch_record)
         payload = _checkpoint_payload(
@@ -457,10 +495,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "splits": split_summary(
             roots,
             split_seed=args.split_seed,
+            allow_legacy_splits=args.allow_legacy_splits,
             val_fraction=args.val_fraction,
             test_fraction=args.test_fraction,
         ),
         "best_epoch": best_epoch,
+        "score_source": "validation" if val_loader is not None else "train_development_only",
+        "test_evaluation_completed": False,
+        "research_scope": "experimental_not_confirmatory",
         "best_mean_occupied_iou": best_score,
         "semantic_class_names": list(COMPACT_SEMANTIC_NAMES),
         "flow_head": False,

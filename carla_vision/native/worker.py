@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
+from ..dataset.shards import ShardedDatasetWriter
 from ..dataset.sync import SynchronizedFramePair
 from ..dataset.writer import DATASET_PARTITIONS, DatasetWriter
 from ..scenarios.contracts import ScenarioRecipe, TransformRecipe
@@ -822,6 +823,9 @@ class NativeCarlaSession:
         cleanup: dict[str, Any] = {}
         try:
             world, _ = self._configure_world(episode)
+            from .map_evidence import record_map_evidence
+
+            map_evidence = record_map_evidence(world, writer, episode.episode_id)
             blueprint_library = world.get_blueprint_library()
             spawn_points = list(world.get_map().get_spawn_points())
             ego = self._spawn_ego(
@@ -955,6 +959,7 @@ class NativeCarlaSession:
                     episode_id=episode.episode_id,
                     context={
                         "map": world.get_map().name,
+                        **map_evidence,
                         "map_family": canonical_map_family(recipe.map_name),
                         "weather_recipe_id": recipe.weather.weather_id,
                         "light": recipe.weather.light,
@@ -1159,8 +1164,13 @@ def _collect_native_unleased(args: argparse.Namespace) -> dict[str, Any]:
     )
     episode_results: list[dict[str, Any]] = []
     restored = False
-    with DatasetWriter(
+    writer_type = ShardedDatasetWriter if getattr(args, "shard_samples", None) else DatasetWriter
+    shard_options = (
+        {"shard_samples": args.shard_samples} if getattr(args, "shard_samples", None) else {}
+    )
+    with writer_type(
         args.datasets_root,
+        **shard_options,
         dataset_id=args.dataset_id,
         cli_args=vars(args),
         carla_endpoint={"host": args.host, "port": args.port},
@@ -1293,6 +1303,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--scenario-plan", required=True)
     parser.add_argument("--dataset-id", required=True)
     parser.add_argument("--datasets-root", default="datasets")
+    parser.add_argument(
+        "--shard-samples", type=int, help="Seal canonical shards after this many samples"
+    )
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=2000)
     parser.add_argument("--timeout", type=float, default=30.0)
@@ -1316,6 +1329,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     args = parser.parse_args(argv)
+    if args.shard_samples is not None and not 1 <= args.shard_samples <= 100000:
+        parser.error("--shard-samples must be in [1, 100000]")
     if args.timeout <= 0.0:
         parser.error("--timeout must be positive")
     if args.sensor_timeout <= 0.0:

@@ -81,6 +81,7 @@ def test_flow_dataset_filters_anchor_without_next_frame_label(tmp_path: Path) ->
     dataset = TemporalVoxelFlowDataset(
         [root],
         partition="train",
+        allow_legacy_splits=True,
         history_frames=1,
         horizons_s=(0.0,),
         image_size=(12, 16),

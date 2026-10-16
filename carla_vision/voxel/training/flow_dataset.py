@@ -9,6 +9,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
+from ...reproduction.review_contracts import relative_path
 from .dataset import TemporalVoxelDataset
 
 Partition = Literal["train", "val", "test"]
@@ -29,6 +30,7 @@ class TemporalVoxelFlowDataset(Dataset[dict[str, Any]]):
         val_fraction: float = 0.2,
         test_fraction: float = 0.1,
         max_samples: int | None = None,
+        allow_legacy_splits: bool = False,
     ) -> None:
         self.base = TemporalVoxelDataset(
             roots,
@@ -40,6 +42,7 @@ class TemporalVoxelFlowDataset(Dataset[dict[str, Any]]):
             val_fraction=val_fraction,
             test_fraction=test_fraction,
             max_samples=None,
+            allow_legacy_splits=allow_legacy_splits,
         )
         eligible: list[int] = []
         for index, reference in enumerate(self.base.samples):
@@ -74,7 +77,7 @@ class TemporalVoxelFlowDataset(Dataset[dict[str, Any]]):
         reference = self.base.samples[base_index]
         episode = self.base.episodes[reference.episode_index]
         anchor = episode.records[reference.anchor_index]
-        path = episode.root / str(anchor["teacher_flow"])
+        path = relative_path(episode.root, anchor["teacher_flow"])
         with np.load(path, allow_pickle=False) as payload:
             velocity = np.asarray(payload["velocity_mps"], dtype=np.float32)
             valid = np.asarray(payload["valid"], dtype=bool)

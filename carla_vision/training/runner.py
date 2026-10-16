@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from ..artifacts import RunArtifactTracker, fingerprint_file
-from ..dataset.verified import VerifiedDataset, load_verified_dataset
+from ..dataset.verified import VerifiedDataset
 from ..scenarios.seeds import derive_seed_bundle
 from .backends import create_training_backend
 from .contracts import (
@@ -27,6 +27,7 @@ from .contracts import (
     load_training_config,
 )
 from .seeding import apply_training_seeds
+from .sharded_data import VerifiedShardedTrainingSet, load_training_dataset
 
 TRAINING_RUN_SCHEMA_VERSION = "1.0"
 
@@ -111,6 +112,11 @@ def _training_data_yaml(
     validation_partitions: Sequence[str],
 ) -> str:
     def paths(partitions: Sequence[str]) -> str:
+        if isinstance(dataset, VerifiedShardedTrainingSet):
+            return "\n".join(
+                "  - " + json.dumps(str(path), ensure_ascii=False)
+                for partition in partitions for path in dataset.image_directories[partition]
+            )
         return "\n".join(f"  - images/{partition}" for partition in partitions)
 
     names = "\n".join(
@@ -130,6 +136,11 @@ def _ensure_partition_directories(
     dataset: VerifiedDataset,
     partitions: Sequence[str],
 ) -> None:
+    if isinstance(dataset, VerifiedShardedTrainingSet):
+        for partition in partitions:
+            if not dataset.image_directories.get(partition):
+                raise RuntimeError(f"no shard images for partition {partition!r}")
+        return
     for partition in partitions:
         image_dir = dataset.root / "images" / partition
         label_dir = dataset.root / "labels" / partition
@@ -237,7 +248,7 @@ def run_training(
         if not device_override.strip():
             raise ValueError("device_override must not be empty")
         config = replace(config, device=device_override.strip())
-    dataset = load_verified_dataset(dataset_path)
+    dataset = load_training_dataset(dataset_path)
     train_partitions, validation_partitions = dataset.resolve_training_partitions(
         training_partitions=config.training_partitions,
         validation_partitions=config.validation_partitions,

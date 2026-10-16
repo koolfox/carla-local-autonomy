@@ -10,8 +10,12 @@ on:
       - 'uv.lock'
       - '.github/workflows/research-offline.yml'
   push:
-    branches: ['codex/research-validity-offline']
+    branches: ['codex/research-validity-offline', 'codex/reviewer-evidence-kit']
   workflow_dispatch:
+
+env:
+  OMP_NUM_THREADS: 2
+  MKL_NUM_THREADS: 2
 
 permissions:
   contents: read
@@ -55,6 +59,47 @@ jobs:
         run: uv run ruff check carla_vision tests restore_project.py
       - name: Run offline regression suite
         run: uv run pytest -q --junitxml=/tmp/research-tests.xml
+      - name: Build and verify commit-bound reviewer source
+        run: |
+          mkdir -p /tmp/reviewer-evidence
+          uv run carla-source-snapshot --repository . --commit HEAD --output /tmp/reviewer-evidence/source-review.zip > /tmp/reviewer-evidence/source.json
+          uv run python - <<'PYCODE'
+          import json
+          from pathlib import Path
+          from carla_vision.reproduction.reviewer import _source_archive
+          record = json.loads(Path('/tmp/reviewer-evidence/source.json').read_text())
+          _source_archive(Path(record['archive']['path']), record['source_commit'])
+          PYCODE
+      - name: Reviewer entry points and honest missing-evidence gate
+        run: |
+          uv run carla-reviewer-evidence --help
+          uv run carla-source-snapshot --help
+          uv run carla-audit-trajectories --help
+          uv run carla-verify-shards --help
+          uv run carla-pool-evaluations --help
+          uv run carla-select-coreset --help
+          uv run carla-score-diagnosis --help
+          uv run carla-analyze-study-seeds --help
+          uv run carla-replay-bundled-metrics --help
+          uv run carla-reviewer-evidence init --output /tmp/reviewer-evidence/submission.template.json
+          uv run python - <<'PYCODE'
+          import json, subprocess, sys
+          from pathlib import Path
+          result = subprocess.run([sys.executable, '-m', 'carla_vision.reproduction.reviewer', 'check', '/tmp/reviewer-evidence/submission.template.json'], capture_output=True, text=True)
+          assert result.returncode == 1, result.stderr
+          payload = json.loads(result.stdout)
+          assert payload['ready'] is False and payload['empirical_submission_ready'] is False
+          assert payload['acceptance_guaranteed'] is False and payload['missing']
+          Path('/tmp/reviewer-evidence/missing-evidence-check.json').write_text(result.stdout)
+          PYCODE
+      - name: Retain reviewer source and readiness evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reviewer-evidence-${{ github.sha }}
+          path: /tmp/reviewer-evidence/
+          retention-days: 14
+          if-no-files-found: warn
       - name: Retain test results even on failure
         if: always()
         uses: actions/upload-artifact@v4

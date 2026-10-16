@@ -1,3 +1,12 @@
+/** Offline research jobs supported by the existing /api/jobs endpoint. */
+export type ResearchEvidenceJobKind =
+  | 'dataset_derive'
+  | 'acquisition_plan'
+  | 'acquisition_pool'
+  | 'diagnosis_benchmark'
+  | 'coreset_select'
+  | 'reviewer_check';
+
 import type {
   CatalogOption,
   ExperimentPresetDefinition,

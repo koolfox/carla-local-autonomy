@@ -115,6 +115,7 @@ jobs:
           tests/test_observable_world_worker.py
           tests/test_prepare_cancellation.py
           tests/test_operator.py
+          tests/test_reviewer_operator.py
           tests/test_operator_artifacts.py
           tests/test_operator_configuration.py
           tests/test_operator_host_allowlist.py

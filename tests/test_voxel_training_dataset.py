@@ -75,6 +75,7 @@ def test_dataset_loads_rgb_history_and_future_targets(tmp_path: Path) -> None:
     dataset = TemporalVoxelDataset(
         [root],
         partition="train",
+        allow_legacy_splits=True,
         history_frames=2,
         horizons_s=(0.0, 0.5),
         image_size=(16, 20),

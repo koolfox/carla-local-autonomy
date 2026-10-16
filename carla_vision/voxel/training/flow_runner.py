@@ -285,6 +285,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=17,
         help="Frozen split seed, independent of model initialization seed",
     )
+    parser.add_argument(
+        "--allow-legacy-splits",
+        action="store_true",
+        help="Development-only compatibility for unpartitioned old episodes",
+    )
     parser.add_argument("--val-fraction", type=float, default=0.2)
     parser.add_argument("--test-fraction", type=float, default=0.1)
     parser.add_argument("--semantic-weight", type=float, default=0.25)
@@ -300,11 +305,20 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-samples", type=int)
     parser.add_argument("--max-batches", type=int)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--allow-training-selection",
+        action="store_true",
+        help="Explicit development-only selection without validation; never confirmatory",
+    )
     return parser
 
 
 def _validate_args(args: argparse.Namespace) -> None:
     _validate_base_args(args)
+    for name in ("flow_weight", "flow_beta"):
+        value = getattr(args, name)
+        if isinstance(value, bool) or not math.isfinite(value) or value < 0:
+            raise ValueError(f"{name} must be finite and non-negative")
     if args.flow_weight < 0 or args.flow_beta <= 0:
         raise ValueError("flow_weight must be non-negative and flow_beta positive")
 
@@ -327,20 +341,22 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         horizons_s=args.horizons,
         image_size=args.image_size,
         split_seed=args.split_seed,
+        allow_legacy_splits=args.allow_legacy_splits,
         val_fraction=args.val_fraction,
         test_fraction=args.test_fraction,
         max_samples=args.max_samples,
     )
     train_dataset = TemporalVoxelFlowDataset(partition="train", **common)
     val_dataset = TemporalVoxelFlowDataset(partition="val", **common)
-    test_dataset = TemporalVoxelFlowDataset(partition="test", **common)
     available = {
         "train": len(train_dataset),
         "val": len(val_dataset),
-        "test": len(test_dataset),
+        "test": None,
     }
     if not len(train_dataset):
         raise RuntimeError("training split has no samples with teacher_flow labels")
+    if not args.dry_run and not len(val_dataset) and not args.allow_training_selection:
+        raise RuntimeError("nonempty validation is required for model selection")
     spec = train_dataset.spec
     model = TemporalVoxelFlowNet(_model_config(args, spec)).to(device)
     train_loader = _loader(
@@ -357,16 +373,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             shuffle=False,
         )
         if len(val_dataset)
-        else None
-    )
-    test_loader = (
-        _loader(
-            test_dataset,
-            batch_size=args.batch_size,
-            num_workers=args.num_workers,
-            shuffle=False,
-        )
-        if len(test_dataset)
         else None
     )
 
@@ -427,6 +433,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 )
         score_metrics = val_metrics or train_metrics
         score = float(score_metrics["mean_dynamic_iou"])
+        if not math.isfinite(score):
+            raise RuntimeError("non-finite model-selection score")
         history.append({"epoch": epoch, "train": train_metrics, "val": val_metrics})
         payload = _checkpoint_payload(
             model,
@@ -442,7 +450,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             torch.save(payload, output / "checkpoint_best.pt")
         _write_json(output / "history.json", history)
 
-    eval_loader = test_loader or val_loader or train_loader
+    selected = torch.load(output / "checkpoint_best.pt", map_location=device, weights_only=True)
+    model.load_state_dict(selected["state_dict"], strict=True)
+    eval_loader = val_loader if val_loader is not None else train_loader
     with torch.no_grad():
         evaluation = _run_epoch(
             model,
@@ -469,14 +479,21 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "splits": split_summary(
             roots,
             split_seed=args.split_seed,
+            allow_legacy_splits=args.allow_legacy_splits,
             val_fraction=args.val_fraction,
             test_fraction=args.test_fraction,
         ),
         "best_epoch": best_epoch,
+        "score_source": "validation" if val_loader is not None else "train_development_only",
+        "test_evaluation_completed": False,
+        "research_scope": "experimental_not_confirmatory",
         "best_mean_dynamic_iou": best_score,
         "flow_head": True,
         "flow_target": "instantaneous_dynamic_velocity_mps_xyz",
         "evaluation": evaluation,
+        "evaluation_partition": "validation"
+        if val_loader is not None
+        else "train_development_only",
         "latency": latency,
         "peak_memory_mb": peak_memory_mb,
         "rgb_only_inference": True,

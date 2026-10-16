@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from ..dataset.lineage import canonical_digest
+from ..reproduction.review_contracts import digest, fields, number, parse_json, text
 
 KINDS = {"render", "probe", "score", "audit", "repair", "storage", "train", "evaluate"}
 OUTCOMES = {"success", "failed", "rejected", "cancelled"}
@@ -46,7 +47,9 @@ class CostLedger:
         resources: Mapping[str, float],
         evidence_ref: str,
     ) -> dict[str, Any]:
-        if not event_id or event_id in self._ids or not evidence_ref:
+        text(event_id, "cost event ID")
+        text(evidence_ref, "cost evidence reference")
+        if event_id in self._ids:
             raise ValueError("cost event needs a unique ID and an evidence reference")
         if kind not in KINDS or outcome not in OUTCOMES or not resources or set(resources) - UNITS:
             raise ValueError("invalid cost kind, outcome or resource units")
@@ -116,22 +119,42 @@ class CostLedger:
 def verify_cost_ledger(path: str | Path) -> dict[str, Any]:
     previous, ids, totals, counts = "0" * 64, set(), dict.fromkeys(sorted(UNITS), 0.0), {}
     for line in Path(path).read_text(encoding="utf-8").splitlines():
-        row = json.loads(line)
-        digest = row.pop("sha256")
-        if row.get("previous_sha256") != previous or canonical_digest(row) != digest:
-            raise ValueError("cost ledger hash chain mismatch")
+        row = parse_json(line)
+        fields(
+            row,
+            {
+                "schema_version",
+                "event_id",
+                "kind",
+                "outcome",
+                "resources",
+                "evidence_ref",
+                "previous_sha256",
+                "sha256",
+            },
+        )
+        current = digest(row.pop("sha256"))
+        if (
+            row["schema_version"] != "1.0"
+            or row["previous_sha256"] != previous
+            or canonical_digest(row) != current
+        ):
+            raise ValueError("cost ledger hash chain/schema mismatch")
+        text(row["event_id"], "cost event ID")
+        text(row["evidence_ref"], "cost evidence reference")
         if row["event_id"] in ids or row["kind"] not in KINDS or row["outcome"] not in OUTCOMES:
             raise ValueError("invalid or duplicated cost event")
+        if not isinstance(row["resources"], dict) or not row["resources"]:
+            raise ValueError("empty or invalid cost resource map")
         ids.add(row["event_id"])
         for name, value in row["resources"].items():
-            if (
-                name not in UNITS
-                or isinstance(value, bool)
-                or not math.isfinite(value)
-                or value < 0
-            ):
+            if name not in UNITS:
                 raise ValueError("invalid cost resource")
-            totals[name] += value
+            totals[name] += number(value, "cost resource", minimum=0)
+            if not math.isfinite(totals[name]):
+                raise ValueError("cost totals overflow")
         counts[row["outcome"]] = counts.get(row["outcome"], 0) + 1
-        previous = digest
+        previous = current
+    if not ids:
+        raise ValueError("empty cost ledger is not execution evidence")
     return {"event_count": len(ids), "totals": totals, "outcomes": counts, "last_sha256": previous}

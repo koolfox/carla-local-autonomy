@@ -224,3 +224,10 @@ live acceptance, blinded human audits and independent reproduction separate.
 Unimplemented optional matched interventions and real-world transfer remain
 outside the current empirical claims. The scientific hypothesis is still open:
 no held-out ADAS performance improvement is asserted by this software change.
+
+## Reviewer-evidence extension
+
+See [the reviewer runbook](reviewer_evidence.md) for source object proofs, recorded
+corridor audits, canonical shards, source-partitioned voxel data, bound result
+tables and portable saved-prediction replay. It supersedes the earlier limitations
+on those implemented software paths; empirical, privacy and rights gates remain.
