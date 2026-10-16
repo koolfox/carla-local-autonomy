@@ -1,0 +1,134 @@
+name: Materialize reviewer evidence source once
+
+on:
+  push:
+    branches: ['codex/reviewer-evidence-kit']
+    paths: ['.review-transport/**', '.github/workflows/reviewer-apply-once.yml']
+
+permissions:
+  contents: write
+
+env:
+  OMP_NUM_THREADS: 2
+  MKL_NUM_THREADS: 2
+
+concurrency:
+  group: reviewer-materialize-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          lfs: false
+          persist-credentials: false
+      - name: Preserve exact transport before validation
+        run: |
+          mkdir -p /tmp/reviewer-transport
+          cp -r .review-transport /tmp/reviewer-transport/transport
+          git rev-parse HEAD > /tmp/reviewer-transport/parent-commit.txt
+      - name: Verify reviewed patch and unchanged dependency source
+        shell: bash
+        run: |
+          git merge-base --is-ancestor ceea4e075dd68be59aacd65d18e5440fc7adf09b HEAD
+          git diff --exit-code ceea4e075dd68be59aacd65d18e5440fc7adf09b HEAD -- carla_vision tests docs configs pyproject.toml uv.lock web
+          python - <<'PY'
+          import base64, bz2, hashlib, json, subprocess
+          from pathlib import Path, PurePosixPath
+          root = Path('.review-transport')
+          encoded = ''.join((root / f'payload.{i:02}').read_text(encoding='ascii') for i in range(9))
+          if len(encoded) != 86440:
+              raise SystemExit('transport length mismatch')
+          compressed = base64.b64decode(encoded, validate=True)
+          if hashlib.sha256(compressed).hexdigest() != '8e40a64b70198888f0684a680ce0e0e4900a17627cd5a453d2a839a6efc7367e':
+              raise SystemExit('compressed patch mismatch; no source applied')
+          patch = bz2.decompress(compressed)
+          if len(patch) != 304978 or hashlib.sha256(patch).hexdigest() != '9a630526062a2f15bc259af589f3b126e5ed3298f2d8f2a01d6bc7fe99b687d8':
+              raise SystemExit('reviewed source patch mismatch')
+          target = Path('/tmp/reviewer-transport/reviewer-source.patch')
+          target.write_bytes(patch)
+          stats = subprocess.check_output(['git', 'apply', '--numstat', str(target)], text=True)
+          names = []
+          for line in stats.splitlines():
+              added, removed, name = line.split('\t', 2)
+              path = PurePosixPath(name)
+              if added == '-' or removed == '-' or path.is_absolute() or '..' in path.parts:
+                  raise SystemExit('binary or unsafe patch path')
+              if not (name.startswith(('carla_vision/', 'tests/', 'docs/', 'configs/reviewer/')) or name in {'pyproject.toml', 'web/src/lib/api/operator.ts'}):
+                  raise SystemExit(f'unexpected source path: {name}')
+              if name.endswith('observable_world_worker.py') or 'console_static' in path.parts or 'static' in path.parts:
+                  raise SystemExit('standalone/product asset boundary changed')
+              names.append(name)
+          if len(names) != 57 or len(set(names)) != 57:
+              raise SystemExit('expected exactly 57 reviewed source files')
+          subprocess.run(['git', 'apply', '--check', '--index', str(target)], check=True)
+          subprocess.run(['git', 'apply', '--index', str(target)], check=True)
+          fingerprints = {name: hashlib.sha256(Path(name).read_bytes()).hexdigest() for name in names}
+          Path('/tmp/reviewer-transport/source-sha256.json').write_text(json.dumps(fingerprints, indent=2) + '\n')
+          print('Applied exactly reviewed source; no simulator invoked.')
+          PY
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+      - name: Install locked profiles and offline encoder
+        run: |
+          uv sync --all-extras --all-groups --frozen
+          sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Lint and whitespace
+        run: |
+          uv run ruff check carla_vision tests restore_project.py
+          git diff --cached --check
+      - name: Complete offline test suite
+        run: uv run pytest -q --junitxml=/tmp/reviewer-transport/tests.xml
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Verify TypeScript mirror and product bundle
+        working-directory: web
+        run: |
+          npm ci --no-audit --no-fund
+          npm run check
+          npm test
+          npm run build
+      - name: Product bundle must remain unchanged
+        run: |
+          git status --porcelain --untracked-files=all -- carla_vision/operator/console_static > /tmp/reviewer-transport/console-status.txt
+          test ! -s /tmp/reviewer-transport/console-status.txt
+      - name: Publish validated source to this branch only
+        shell: bash
+        env:
+          REVIEW_PUSH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import base64, os, subprocess
+          from pathlib import Path
+          branch = 'codex/reviewer-evidence-kit'
+          if os.environ['GITHUB_REF'] != f'refs/heads/{branch}':
+              raise SystemExit('unexpected branch; refusing publication')
+          token = os.environ.pop('REVIEW_PUSH_TOKEN')
+          header = 'AUTHORIZATION: basic ' + base64.b64encode(f'x-access-token:{token}'.encode()).decode()
+          auth = ['git', '-c', f'http.https://github.com/.extraheader={header}']
+          remote = subprocess.check_output(auth + ['ls-remote', 'origin', f'refs/heads/{branch}'], text=True).split()[0]
+          if remote != os.environ['GITHUB_SHA']:
+              raise SystemExit('branch moved during validation; refusing push')
+          env = dict(os.environ, GIT_AUTHOR_NAME='Codex', GIT_AUTHOR_EMAIL='codex@openai.com', GIT_COMMITTER_NAME='Hesam Shani', GIT_COMMITTER_EMAIL='50404883+koolfox@users.noreply.github.com')
+          message = 'feat(research): add reproducible reviewer evidence and close offline integrity gaps\n\nAdvances #142 and #140 on the unchanged PR #141 dependency. Source, geometry, partitions, pooled metrics, cost and claim evidence are checked. Synthetic tests are not empirical ADAS results.\n\nCo-authored-by: Hesam Sheini <50404883+koolfox@users.noreply.github.com>'
+          subprocess.run(['git', 'commit', '-m', message], env=env, check=True)
+          subprocess.run(auth + ['push', 'origin', f'HEAD:refs/heads/{branch}'], check=True)
+          sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True)
+          Path('/tmp/reviewer-transport/published-commit.txt').write_text(sha)
+          print('Published validated source:', sha.strip())
+          PY
+      - name: Retain code identity and tests even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reviewer-source-validation-${{ github.sha }}
+          path: /tmp/reviewer-transport/
+          retention-days: 14
+          if-no-files-found: error
