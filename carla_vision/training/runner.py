@@ -296,6 +296,9 @@ def run_training(
                 "trainer lacks producer-time consumption instrumentation; "
                 "a dataset directory or optimizer summary cannot attest consumed samples"
             )
+        validate_audit = getattr(backend, "validate_consumption_config", None)
+        if validate_audit is not None:
+            validate_audit(config)
         sources = [load_verified_dataset(root) for root in expand_dataset_roots([dataset_path])]
         specs = [
             make_pass(f"{role}/{epoch}", role, partitions, sources, ordered=False)
@@ -305,6 +308,12 @@ def run_training(
                 ("validation", validation_partitions),
             )
         ]
+        if getattr(backend, "consumption_final_validation", False):
+            specs.append(
+                make_pass(
+                    "validation/final", "validation", validation_partitions, sources, ordered=False
+                )
+            )
     tracker = RunArtifactTracker(
         runs_root,
         run_id=run_id,

@@ -439,10 +439,28 @@ def verify_consumption(root, *, split_path=None, require_complete=True):
     missing = any(set(specs[n]["expected_keys"]) != set(keys) for n, keys in seen.items())
     if require_complete and (summary["status"] != "complete" or summary["omissions"] or missing):
         raise ValueError("incomplete consumption coverage")
-    return {
+    result = {
         "processed_samples": summary["processed_samples"],
         "producer": plan["producer"],
         "selected_weights": summary["selected_weights"],
         "split_inventory": plan["split_inventory"],
         "passes": [{**specs[n], "keys": seen[n], "outputs": outputs[n]} for n in specs],
     }
+
+    config = manifest["invocation"]["config"]
+    if plan["producer"] == "detector_training" and config.get("config", {}).get("backend") in {
+        "yolo",
+        "rtdetr",
+        "ultralytics-yolo",
+        "ultralytics-rtdetr",
+    }:
+        from ..training.ultralytics_consumption import verify_receipt_outputs
+
+        verify_receipt_outputs(
+            read_json(artifact("training_summary")),
+            result,
+            inventory,
+            epochs=config["config"]["epochs"],
+            batches_path=trace,
+        )
+    return result

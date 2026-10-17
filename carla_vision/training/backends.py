@@ -29,6 +29,14 @@ def _json_safe_metrics(value: Any) -> Any:
 
 
 class UltralyticsTrainingBackend:
+    consumption_contract_version = "1.0"
+    consumption_final_validation = True
+
+    def validate_consumption_config(self, config: TrainingConfig) -> None:
+        from .ultralytics_consumption import validate_profile
+
+        validate_profile(config)
+
     def __init__(self, architecture: str) -> None:
         if architecture not in {"rtdetr", "yolo"}:
             raise ValueError(f"unsupported Ultralytics architecture {architecture!r}")
@@ -39,10 +47,14 @@ class UltralyticsTrainingBackend:
         return f"ultralytics-{self.architecture}"
 
     def train(self, request: TrainingRequest) -> TrainingResult:
+        if request.sample_consumption is not None:
+            self.validate_consumption_config(request.config)
         from ultralytics import RTDETR, YOLO
 
         model_class = RTDETR if self.architecture == "rtdetr" else YOLO
         model = model_class(str(request.pretrained_weights))
+        if request.sample_consumption is not None and model.task != "detect":
+            raise ValueError("audited consumption supports object-detection checkpoints only")
         config = request.config
         project = request.output_root
         run_name = "fit"
@@ -74,7 +86,30 @@ class UltralyticsTrainingBackend:
             "verbose": True,
             **dict(config.extra_options),
         }
-        metrics_object = model.train(**arguments)
+        view = None
+        if request.sample_consumption is not None:
+            from .ultralytics_consumption import instrumented_trainer
+
+            trainer, view = instrumented_trainer(request, self.architecture)
+            # Explicit, documented audited profile: no composite input or hidden retries.
+            arguments.update(
+                data=str(view.yaml),
+                nbs=config.batch_size,
+                close_mosaic=0,
+                compile=False,
+                fraction=1.0,
+                quantize=None,
+                time=None,
+                single_cls=False,
+                classes=None,
+                multi_scale=0.0,
+                distill_model=None,
+                plots=config.extra_options.get("plots", False),
+            )
+            metrics_object = model.train(trainer=trainer, **arguments)
+            view.check()
+        else:
+            metrics_object = model.train(**arguments)
         output_dir = project / run_name
         best = output_dir / "weights" / "best.pt"
         last = output_dir / "weights" / "last.pt"
@@ -94,6 +129,16 @@ class UltralyticsTrainingBackend:
                 "ultralytics_version": importlib.metadata.version("ultralytics"),
                 "architecture": self.architecture,
                 "arguments": _json_safe_metrics(arguments),
+                **(
+                    {
+                        "consumption_profile": "ultralytics-8.4.137-fixed-pass-v1",
+                        "framework_sources": view.framework_sources,
+                        "source_loader": "verified_read_only_canonical_rgb_and_yolo_no_cache",
+                        "final_validation_weights": view.final_weights,
+                    }
+                    if view is not None
+                    else {}
+                ),
             },
         )
 
