@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import copy
 import json
 import math
@@ -19,6 +20,7 @@ from torch.utils.data import DataLoader
 from ..artifacts import RunArtifactTracker, fingerprint_file
 from ..dataset.lineage import canonical_digest
 from ..dataset.shards import expand_dataset_roots
+from ..reproduction.consumption import consumption_session
 from .checkpoint import atomic_torch_save, capture_rng, restore_rng
 from .dataset import BehaviorImitationDataset, split_summary
 from .model import ImitationControlNet, ImitationModelConfig
@@ -121,6 +123,8 @@ def _run_epoch(
     high_steer_boost: float,
     brake_boost: float,
     max_batches: int | None,
+    consumption=None,
+    pass_id: str | None = None,
 ) -> dict[str, float]:
     training = optimizer is not None
     model.train(training)
@@ -134,39 +138,54 @@ def _run_epoch(
     for batch_index, batch in enumerate(loader):
         if max_batches is not None and batch_index >= max_batches:
             break
-        image, speed, target = _move_batch(batch, device)
-        if optimizer is not None:
-            optimizer.zero_grad(set_to_none=True)
-        with torch.set_grad_enabled(training):
-            outputs = model(image, speed)
-            losses = compute_imitation_losses(
-                outputs,
-                target,
-                steer_weight=steer_weight,
-                longitudinal_weight=longitudinal_weight,
-                high_steer_boost=high_steer_boost,
-                brake_boost=brake_boost,
-            )
+        with (
+            consumption.batch(pass_id, batch["consumption_key"])
+            if consumption
+            else contextlib.nullcontext()
+        ) as observed:
+            image, speed, target = _move_batch(batch, device)
             if optimizer is not None:
-                losses.total.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
-                optimizer.step()
-        metrics = losses.detached()
-        metrics.update(control_metrics(outputs, target))
-        for key in ("steer", "longitudinal"):
-            index = 0 if key == "steer" else 1
-            sufficient[key + "_squared"] += float(
-                ((outputs[key].detach() - target[:, index]) ** 2).sum().cpu()
-            )
-        true_brake, pred_brake = target[:, 1] < -0.05, outputs["longitudinal"].detach() < -0.05
-        sufficient["brake_tp"] += int((true_brake & pred_brake).sum().cpu())
-        sufficient["brake_fp"] += int((~true_brake & pred_brake).sum().cpu())
-        sufficient["brake_fn"] += int((true_brake & ~pred_brake).sum().cpu())
-        batch_samples = int(image.shape[0])
-        for name, value in metrics.items():
-            totals[name] = totals.get(name, 0.0) + float(value) * batch_samples
-        samples += batch_samples
-        batches += 1
+                optimizer.zero_grad(set_to_none=True)
+            with torch.set_grad_enabled(training):
+                outputs = model(image, speed)
+                losses = compute_imitation_losses(
+                    outputs,
+                    target,
+                    steer_weight=steer_weight,
+                    longitudinal_weight=longitudinal_weight,
+                    high_steer_boost=high_steer_boost,
+                    brake_boost=brake_boost,
+                )
+                if optimizer is not None:
+                    losses.total.backward()
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
+                    optimizer.step()
+            metrics = losses.detached()
+            metrics.update(control_metrics(outputs, target))
+            for key in ("steer", "longitudinal"):
+                index = 0 if key == "steer" else 1
+                sufficient[key + "_squared"] += float(
+                    ((outputs[key].detach() - target[:, index]) ** 2).sum().cpu()
+                )
+            true_brake, pred_brake = target[:, 1] < -0.05, outputs["longitudinal"].detach() < -0.05
+            sufficient["brake_tp"] += int((true_brake & pred_brake).sum().cpu())
+            sufficient["brake_fp"] += int((~true_brake & pred_brake).sum().cpu())
+            sufficient["brake_fn"] += int((true_brake & ~pred_brake).sum().cpu())
+            batch_samples = int(image.shape[0])
+            for name, value in metrics.items():
+                totals[name] = totals.get(name, 0.0) + float(value) * batch_samples
+            samples += batch_samples
+            batches += 1
+            if consumption:
+                observed["outputs"] = [
+                    {"prediction": [float(s), float(longitudinal)], "target": truth}
+                    for s, longitudinal, truth in zip(
+                        outputs["steer"].detach().cpu().tolist(),
+                        outputs["longitudinal"].detach().cpu().tolist(),
+                        target.detach().cpu().tolist(),
+                        strict=True,
+                    )
+                ]
     if batches == 0 or samples == 0:
         raise RuntimeError("data loader produced no batches")
     elapsed = time.perf_counter() - started
@@ -260,6 +279,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="Train an RGB-plus-speed BehaviorAgent imitation-driving baseline."
     )
     parser.add_argument("--dataset", action="append", type=Path, default=[])
+    parser.add_argument("--split-inventory", type=Path)
     parser.add_argument("--output", type=Path, default=Path("models/imitation-baseline"))
     parser.add_argument("--image-size", type=_parse_image_size, default=(192, 320))
     parser.add_argument("--speed-scale-mps", type=float, default=20.0)
@@ -364,9 +384,24 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         print(json.dumps(summary, indent=2, sort_keys=True))
         return summary
 
+    split_path = args.split_inventory
+    if split_path and args.resume is not None:
+        raise ValueError(
+            "audited resume needs a complete parent-consumption chain; "
+            "this receipt version supports fresh fixed-epoch training only"
+        )
+    if split_path and (
+        args.skip_dataset_verification
+        or args.max_samples
+        or args.max_batches
+        or args.allow_legacy_action_targets
+        or args.allow_training_selection
+    ):
+        raise ValueError("consumption receipts forbid unverified/subset/legacy training bypasses")
     roots = expand_dataset_roots(args.dataset)
     common = {
         "roots": roots,
+        "audit_rgb": split_path is not None,
         "image_size": args.image_size,
         "speed_scale_mps": args.speed_scale_mps,
         "augmentation_seed": args.augmentation_seed,
@@ -437,6 +472,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     resume_identity = canonical_digest(
         {
             "sources": sorted(ref["sha256"] for ref in source_references),
+            "consumption_split": fingerprint_file(split_path)["sha256"] if split_path else None,
             "split": split_information["split_manifest_sha256"],
             "model": config.as_dict(),
             "training": {
@@ -511,7 +547,28 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "brake_boost": args.brake_boost,
         "max_batches": args.max_batches,
     }
-    with tracker:
+    specs = (
+        [
+            datasets[role].consumption_pass(
+                f"{role}/{epoch}", "validation" if role == "val" else "train", ordered=role == "val"
+            )
+            for epoch in range(start_epoch, args.epochs + 1)
+            for role in ("train", "val")
+            if len(datasets[role])
+        ]
+        if split_path
+        else []
+    )
+    with (
+        tracker,
+        consumption_session(
+            tracker,
+            split_path,
+            specs,
+            producer="imitation_training",
+            initial_weights=args.resume,
+        ) as audit,
+    ):
         git_state = tracker.manifest["git"]
         if args.purpose == "confirmatory" and (
             not git_state.get("available")
@@ -523,9 +580,23 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             )
         for epoch in range(start_epoch, args.epochs + 1):
             datasets["train"].set_epoch(epoch)
-            train_metrics = _run_epoch(model, loaders["train"], optimizer=optimizer, **common_epoch)
+            train_metrics = _run_epoch(
+                model,
+                loaders["train"],
+                optimizer=optimizer,
+                consumption=audit,
+                pass_id=f"train/{epoch}",
+                **common_epoch,
+            )
             val_metrics = (
-                _run_epoch(model, loaders["val"], optimizer=None, **common_epoch)
+                _run_epoch(
+                    model,
+                    loaders["val"],
+                    optimizer=None,
+                    consumption=audit,
+                    pass_id=f"val/{epoch}",
+                    **common_epoch,
+                )
                 if loaders["val"] is not None
                 else None
             )
@@ -553,6 +624,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 split_information=split_information,
             )
             payload["source_references"] = source_references
+            payload["consumption_split"] = fingerprint_file(split_path) if split_path else None
             payload["score_source"] = score_source
             payload["training_state"] = {
                 "identity": resume_identity,
@@ -612,6 +684,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ("summary.json", "training_summary"),
         ):
             tracker.register_artifact(output / name, role=role)
+        if audit:
+            audit.seal(output / "checkpoint_best.pt")
     print(json.dumps(summary, indent=2, sort_keys=True))
     return summary
 

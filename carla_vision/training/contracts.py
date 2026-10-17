@@ -237,6 +237,7 @@ class TrainingRequest:
     data_config: Path
     output_root: Path
     backend_seed: int
+    sample_consumption: Any | None = None
 
 
 @dataclass(frozen=True)

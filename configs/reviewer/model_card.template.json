@@ -3,5 +3,7 @@
   "initial_weights": null,
   "input_contract": null,
   "limitations": null,
+  "pretrained_baselines": [],
+  "training_consumption": [],
   "training_protocol": null
 }

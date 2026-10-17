@@ -282,3 +282,102 @@ uv run carla-reviewer-evidence check study/submission.json
 The report distinguishes individual role failures from `study_linkage`. A passing
 link gate is **consistency only**, never evidence of superiority or guaranteed Q1
 acceptance. Completion is tracked in Issue #144 rather than a parallel doc backlog.
+
+## 10. Verify observed processing, not only the declared split
+
+[ADR 0004](adr/0004-producer-consumption-receipts.md) adds a second empirical gate,
+`study_consumption`, on top of section 9. Supply the **same frozen inventory** to
+an instrumented producer before it runs:
+
+```bash
+uv run carla-evaluate-detector --help
+uv run python -m carla_vision.imitation.runner --help
+uv run carla-evaluate-imitation --help
+uv run carla-pool-evaluations --help
+uv run carla-reviewer-evidence check-consumption --help
+```
+
+The producer flag is `--split-inventory study/split-v1.1.json`. The exact installed
+detector evaluation command is in `pyproject.toml`; do not replace a registered
+command with a shell wrapper. These are interface examples, not existing runs.
+After an actual run, verify its registered trace and selected weights:
+
+```bash
+uv run carla-reviewer-evidence check-consumption runs/evaluation \
+  --split-inventory study/split-v1.1.json --full-holdout
+```
+
+Omit `--full-holdout` for a canonical partial evaluation or training receipt.
+For pooled detection outputs, use `--full-holdout`: this rechecks each child,
+source identities and image-ID remapping. It does not rerun inference.
+The full flag means all test-role samples in that inventory, not an arbitrary
+subset. Freeze a new justified inventory for a different registered study;
+never relabel historical partitions to make a failed gate pass.
+
+The actual producer records a plan, a JSONL stream of acknowledged batches and a
+summary under `consumption/`. Each sample key is `manifest_sha256:sample_id`;
+outputs explicitly include an empty detection array for processed negative
+images. Training is exactly once per scheduled epoch, not once across all
+epochs. Configured training shuffling is retained as observed order. Invalid or
+failed batches do not create success records. Failure diagnostics describe an
+uncertified suffix; a failure after computation but before fsync cannot establish
+whether that suffix was computed. No silently repaired partial success is allowed.
+
+For the empirical model card add both arrays:
+
+```json
+{
+  "training_consumption": [],
+  "pretrained_baselines": []
+}
+```
+
+These are additional fields alongside the existing required card fields, not a
+complete card. In `training_consumption`, put fingerprints of actual completed
+instrumented training `manifest.json` files. In `pretrained_baselines`, each
+entry has exactly `weights` (a real fingerprint) and a nonempty `reason`.
+An empty list is permitted only for a genuinely absent category. Every evaluated
+checkpoint must match exactly one category; training-utility claims need evaluated
+observed-training weights. Existing claim, method, cost and source checks remain.
+
+The imitation loop and canonical detector evaluation are instrumented. Detector
+training adapters receive `TrainingRequest.sample_consumption` only when they
+advertise `consumption_contract_version = "1.0"`. Such adapters must bracket
+**actual** completed batches with `recorder.batch(pass_id, keys)` and set one
+`outputs` record per key. Merely iterating the declared filenames to synthesize
+receipts is invalid. The built-in Ultralytics YOLO/RT-DETR adapters do not yet
+provide this integration: `--split-inventory` is rejected before their training
+starts, rather than pretending it was observed. Non-audited training is unchanged
+and cannot satisfy this empirical gate. Fresh fixed-epoch imitation is supported;
+audited resume, early-stop/replacement sampling and mosaic/mixup are not supported
+by this receipt version. The ordinary non-audited resume path remains available.
+Opaque factory-only weights are not an attested evaluation model identity.
+
+### Source-bound test results
+
+From a clean committed checkout, run the fixed pytest wrapper, writing outside
+the source tree:
+
+```bash
+uv run python -m carla_vision.reproduction.test_evidence \
+  --repository . --output /tmp/reviewer-tests-new
+```
+
+The output directory must not exist. The wrapper retains `pytest.log`, `tests.xml`
+and `test-evidence.json` after a completed subprocess, including a failed result.
+Use the fingerprint of `test-evidence.json` for the empirical `tests` role; bare
+JUnit cannot bind the selected source. Tests and subtests are counted once as
+JUnit cases. A nonzero process, missing/empty JUnit, skipped/failed cases, changed
+source or lock cannot yield a passed receipt. Source commit and verified Git tree
+must match the submitted archive. Preserve selected test arguments; a narrow
+passing suite is not proof of complete regression coverage. The standard research
+CI uses the complete suite. CI environment fields are provenance, not independent
+attestation or proof that the asserted journal requirements were met.
+
+Expected failures include `study_consumption` for legacy/unattested outputs,
+wrong weights or incomplete holdout; `test_source_binding` for unrelated source
+or lock; and consumption coverage errors for duplicates, omissions or edits.
+Do not rehash old artifacts as a repair. Re-execute the appropriate producer in
+a new output directory, retaining original failures. Semantic revalidation still
+requires resolvable source paths; these checks do not add portable inference,
+independent retraining, universal cost instrumentation or empirical ADAS results.

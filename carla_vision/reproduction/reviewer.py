@@ -106,7 +106,7 @@ def _ref(base: Path, value: Any) -> Path:
     return path.resolve(strict=True)
 
 
-def _source_archive(path: Path, commit: str) -> None:
+def _source_archive(path: Path, commit: str) -> str:
     # Inspect only; never extract or execute a reviewer-supplied source archive.
     from .source_snapshot import verify_source_objects
 
@@ -119,7 +119,7 @@ def _source_archive(path: Path, commit: str) -> None:
             if any((x.external_attr >> 16) & 0o170000 == 0o120000 for x in entries):
                 raise ValueError("source archive symlink")
             recorded = archive.read("SOURCE_COMMIT.txt").decode().strip()
-            verify_source_objects(names, archive.read, commit)
+            tree_id = verify_source_objects(names, archive.read, commit)
     else:
         with tarfile.open(path, "r:*") as archive:
             entries = archive.getmembers()
@@ -141,7 +141,7 @@ def _source_archive(path: Path, commit: str) -> None:
                 with member:
                     return member.read()
 
-            verify_source_objects(names, read_member, commit)
+            tree_id = verify_source_objects(names, read_member, commit)
     if recorded != commit:
         raise ValueError("source archive does not bind the selected commit")
     if len(set(names)) != len(names):
@@ -159,6 +159,7 @@ def _source_archive(path: Path, commit: str) -> None:
         raise ValueError("archive has no project source")
     if not any(n.startswith("tests/") and n.endswith(".py") for n in names):
         raise ValueError("archive has no tests")
+    return tree_id
 
 
 def _check_role(role: str, path: Path, manifest: dict, *, empirical: bool) -> dict:
@@ -167,25 +168,37 @@ def _check_role(role: str, path: Path, manifest: dict, *, empirical: bool) -> di
             raise ValueError("dependency lock is empty/trivial")
         return {"status": "present", "verification": "fingerprinted_lock_bytes"}
     if role == "source_snapshot":
-        _source_archive(path, manifest["source_commit"])
-        return {"status": "passed", "verification": "source_archive_identity_and_safe_paths"}
+        tree_id = _source_archive(path, manifest["source_commit"])
+        return {
+            "status": "passed",
+            "tree": tree_id,
+            "verification": "source_archive_identity_and_safe_paths",
+        }
     if role == "tests":
-        if path.stat().st_size > 64 * 1024 * 1024:
-            raise ValueError("JUnit exceeds parsing budget")
-        raw = path.read_bytes()
-        if b"<!DOCTYPE" in raw or b"<!ENTITY" in raw:
-            raise ValueError("JUnit external entities are not allowed")
-        xml = ElementTree.fromstring(raw)
-        cases = list(xml.iter("testcase"))
-        if not cases or any(list(c.iter("failure")) or list(c.iter("error")) for c in cases):
+        if path.suffix == ".json":
+            from .test_evidence import verify_test_receipt
+
+            return verify_test_receipt(path, source_commit=manifest["source_commit"])
+        if empirical:
+            raise ValueError(
+                "empirical review requires source-bound test execution receipt, not bare JUnit"
+            )
+        from .test_evidence import junit_counts
+
+        counts = junit_counts(path)
+        if not counts["cases"] or counts["failures"] or counts["errors"]:
             raise ValueError("JUnit is empty or contains failed tests")
-        skipped = sum(bool(list(c.iter("skipped"))) for c in cases)
-        if skipped:
+        if counts["skipped"]:
             raise ValueError("reviewer validation suite contains unaccounted skipped tests")
-        return {"status": "passed", "cases": len(cases), "empirical_validation": False}
+        return {"status": "passed", **counts, "empirical_validation": False}
     payload = read_json(path)
     if role in DOCUMENTS:
-        fields(payload, DOCUMENTS[role], optional={"schema_version"})
+        fields(
+            payload,
+            DOCUMENTS[role],
+            optional={"schema_version"}
+            | ({"training_consumption", "pretrained_baselines"} if role == "model_card" else set()),
+        )
         if any(not _nonempty(payload[k]) for k in DOCUMENTS[role]):
             raise ValueError(f"incomplete {role}")
         if role == "independent_reproduction":
@@ -268,7 +281,8 @@ def _check_role(role: str, path: Path, manifest: dict, *, empirical: bool) -> di
         left, right, ids = [], [], set()
         for row in payload["records"]:
             fields(
-                row, {"sample_id", "group_id", "reviewer_a", "reviewer_b", "a", "b", "evidence"},
+                row,
+                {"sample_id", "group_id", "reviewer_a", "reviewer_b", "a", "b", "evidence"},
                 optional={"dataset_manifest_sha256"},
             )
             anchor = row.get("dataset_manifest_sha256")
@@ -486,6 +500,19 @@ def review_submission(path: str | Path) -> dict[str, Any]:
                 raise ValueError("dependency lock differs from the selected source tree")
         except (OSError, KeyError, ValueError, tarfile.TarError, zipfile.BadZipFile) as error:
             errors["source_lock_binding"] = str(error)
+    if "tests" in checks and "source_snapshot" in checks:
+        observed_tree = checks["tests"].get("source_tree")
+        if observed_tree is not None and observed_tree != checks["source_snapshot"]["tree"]:
+            errors["test_source_binding"] = "test tree differs from verified Git source object"
+    if "tests" in checks and "dependency_lock" in evidence_paths:
+        digest_value = checks["tests"].get("dependency_lock_sha256")
+        if (
+            digest_value
+            and digest_value != fingerprint_file(evidence_paths["dependency_lock"])["sha256"]
+        ):
+            errors["test_source_binding"] = (
+                "test dependency lock differs from submitted source lock"
+            )
     if empirical:
         from .study_links import LINK_ROLES, check_study_links
 
@@ -496,6 +523,12 @@ def review_submission(path: str | Path) -> dict[str, Any]:
                 )
             except (OSError, ValueError, TypeError, KeyError, RuntimeError) as error:
                 errors["study_linkage"] = str(error)
+            try:
+                from .coverage import check_consumed_study
+
+                checks["study_consumption"] = check_consumed_study(evidence_paths)
+            except (OSError, ValueError, TypeError, KeyError, RuntimeError) as error:
+                errors["study_consumption"] = str(error)
         else:
             missing.append("study_linkage")
     ready = not missing and not errors
@@ -533,14 +566,42 @@ def main(argv: Sequence[str] | None = None) -> int:
     freeze.add_argument("--dataset", type=Path, action="append", required=True)
     freeze.add_argument("--output", type=Path, required=True)
     freeze.add_argument("--maximum-samples", type=int, default=100_000)
+    consumed = commands.add_parser("check-consumption", help="verify producer-observed sample use")
+    consumed.add_argument("run", type=Path)
+    consumed.add_argument("--split-inventory", type=Path, required=True)
+    consumed.add_argument("--full-holdout", action="store_true")
     args = parser.parse_args(argv)
+    if args.command == "check-consumption":
+        from .consumption import verify_consumption
+        from .coverage import verify_evaluation_coverage
+
+        result = (
+            verify_evaluation_coverage(
+                args.run, split_path=args.split_inventory, require_full_holdout=True
+            )
+            if args.full_holdout
+            else verify_consumption(args.run, split_path=args.split_inventory)
+        )
+        # The full ordered trace stays in artifacts; avoid megabytes on stdout.
+        result.pop("outputs", None)
+        result.pop("keys", None)
+        result.pop("passes", None)
+        print(json.dumps(result, indent=2, sort_keys=True, allow_nan=False))
+        return 0
     if args.command == "freeze-split":
         from .study_links import freeze_split
 
         result = freeze_split(args.dataset, args.output, maximum_samples=args.maximum_samples)
-        print(json.dumps({"sample_count": len(result["samples"]),
-                          "holdout_count": result["holdout_count"],
-                          "split": fingerprint_file(args.output)}, indent=2))
+        print(
+            json.dumps(
+                {
+                    "sample_count": len(result["samples"]),
+                    "holdout_count": result["holdout_count"],
+                    "split": fingerprint_file(args.output),
+                },
+                indent=2,
+            )
+        )
         return 0
     if args.command == "init":
         with args.output.open("x", encoding="utf-8") as stream:

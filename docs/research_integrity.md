@@ -62,7 +62,7 @@ wall=4 and terrain=10 must not be classified as dynamic road users.
 
 ## Imitation dry run, train, resume and explicit test
 
-`carla-train-imitation --dry-run` is a forward-only synthetic shape smoke when no
+`python -m carla_vision.imitation.runner --dry-run` is a forward-only synthetic shape smoke when no
 dataset is supplied, and a plan-only read when a dataset is supplied. Neither
 mode constructs an optimizer or saves weights. The default real training path
 requires non-empty train and validation partitions. `--purpose confirmatory`
@@ -71,8 +71,8 @@ options. An explicit `--allow-training-selection` development run reports
 `score_source=train_development_only` and `best_validation_loss=null`.
 
 ```bash
-uv run carla-train-imitation --dataset datasets/train-release --dataset datasets/val-release --output models/imitation-r1 --device cpu --epochs 2
-uv run carla-train-imitation --dataset datasets/train-release --dataset datasets/val-release --output models/imitation-r2 --device cpu --epochs 4 --resume models/imitation-r1/checkpoint_last.pt
+uv run python -m carla_vision.imitation.runner --dataset datasets/train-release --dataset datasets/val-release --output models/imitation-r1 --device cpu --epochs 2
+uv run python -m carla_vision.imitation.runner --dataset datasets/train-release --dataset datasets/val-release --output models/imitation-r2 --device cpu --epochs 4 --resume models/imitation-r1/checkpoint_last.pt
 ```
 
 These are example paths to **real verified releases**, not bundled training data.
@@ -231,3 +231,14 @@ See [the reviewer runbook](reviewer_evidence.md) for source object proofs, recor
 corridor audits, canonical shards, source-partitioned voxel data, bound result
 tables and portable saved-prediction replay. It supersedes the earlier limitations
 on those implemented software paths; empirical, privacy and rights gates remain.
+
+## Producer-time sample use
+
+[Reviewer runbook section 10](reviewer_evidence.md#10-verify-observed-processing-not-only-the-declared-split)
+and [ADR 0004](adr/0004-producer-consumption-receipts.md) document the opt-in
+`--split-inventory` receipts. Actual detector inference and fresh fixed-epoch
+imitation training/validation record acknowledged batch identities and outputs.
+A requested receipt on an uninstrumented detector training backend fails before
+training. Ordinary non-audited training/resume still works but is not observed-use
+evidence. Empirical packages require the additional consumed-study and source-bound
+pytest gates; legacy output must be retained, not retroactively rehashed.
