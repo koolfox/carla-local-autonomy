@@ -73,6 +73,7 @@ jobs:
       - name: Reviewer entry points and honest missing-evidence gate
         run: |
           uv run carla-reviewer-evidence --help
+          uv run carla-reviewer-evidence freeze-split --help
           uv run carla-source-snapshot --help
           uv run carla-audit-trajectories --help
           uv run carla-verify-shards --help
