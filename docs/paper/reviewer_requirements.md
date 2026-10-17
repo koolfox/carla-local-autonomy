@@ -22,7 +22,7 @@ system is legitimate; feature aggregation alone does not prove new methodology.
 | What exactly is new? | nearest-work comparison, formal decision rule and falsifiable H1/H2 | study protocol, methods/claim registry | priority, importance or novelty |
 | Did the claimed implementation run? | selected source commit, exact source bytes, lock, CLI and logs | source snapshot with Git object proof; JUnit; CI | runtime on unseen hardware |
 | Are images and labels aligned? | frame/timing/calibration diagnostics and failed attempts | common dataset/teacher verification; corruption/golden tests | rendered semantics and real sensor timing |
-| Are partitions independent? | source split inventories, lineage and observed corridor audit | voxel/imitation split checks; 3D transitive graph | all unobserved roads or route gaps |
+| Are partitions independent? | source-bound 1.1 sample inventory, lineage and observed corridor audit | frozen membership reconstruction; voxel/imitation checks; 3D graph | all unobserved roads or route gaps |
 | Are hard valid cases retained? | separate clean-hard, capture-fault, label-fault and mixed regimes | diagnosis confusion/action analysis, unknown decisions | actual fault prevalence |
 | Does supervision deserve trust? | blinded paired reviews, adjudication, sample/group sampling rule | audit references, agreement and conservative quality bounds | correctness from agreement alone |
 | Is the teacher available only when permitted? | observation/action and runtime input contract | timing and RGB-plus-speed checks | absence of hidden deployment information in arbitrary plugins |
@@ -38,7 +38,8 @@ system is legitimate; feature aggregation alone does not prove new methodology.
 | Does it generalize? | withheld map/weather/routes; external real data when claimed | scoped reviewer/claim gate | sim-to-real transfer or operational safety |
 | Can another person reproduce it? | relocated package, exact replay commands, independent execution log | closure verification and saved-prediction COCO replay | independent retraining or independence of a named person |
 | Can the artifacts be shared? | owner-reviewed per-asset licenses, provenance, author approvals | rights inventory checks, no automatic uploads | legal permission, choice of project license |
-| Does the prose match results? | claim/table/figure inventory, limitations and author approval | fixed role checker and actual result predicates | peer review of prose or statistics |
+| Do the evidence roles describe the same study? | one frozen protocol, sample inventory, method/seed matrix, audits and all-attempt cost allocation | `study_linkage` in reviewer check | actual test usage, full factorial coverage or historical first access |
+| Does the prose match results? | claim/table/figure inventory, limitations and author approval | claim IDs and table-source binding plus actual result predicates | parsing prose/typeset numbers, peer review or statistics |
 
 ## Experiments before a methods-paper submission
 

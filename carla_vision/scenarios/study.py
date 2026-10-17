@@ -86,7 +86,11 @@ def validate_protocol(raw: Mapping[str, Any]) -> dict[str, Any]:
         if not isinstance(reference, dict) or fingerprint_file(reference["path"]) != reference:
             raise ValueError("preregistered source artifact changed")
     split = json.loads(Path(raw["split_manifest"]["path"]).read_text(encoding="utf-8"))
-    if split.get("schema_version") != "1.0" or not isinstance(split.get("groups"), dict):
+    if split.get("schema_version") == "1.1":
+        from ..reproduction.study_links import verify_split
+
+        split = verify_split(raw["split_manifest"]["path"])
+    elif split.get("schema_version") != "1.0" or not isinstance(split.get("groups"), dict):
         raise ValueError("study split manifest must provide authoritative group partitions")
     from ..dataset.lineage import partition_role
 

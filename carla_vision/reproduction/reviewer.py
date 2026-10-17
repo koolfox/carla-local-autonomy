@@ -267,8 +267,14 @@ def _check_role(role: str, path: Path, manifest: dict, *, empirical: bool) -> di
         _ref(path.parent, payload["sampling_protocol"])
         left, right, ids = [], [], set()
         for row in payload["records"]:
-            fields(row, {"sample_id", "group_id", "reviewer_a", "reviewer_b", "a", "b", "evidence"})
-            identity = text(row["sample_id"], "sample ID")
+            fields(
+                row, {"sample_id", "group_id", "reviewer_a", "reviewer_b", "a", "b", "evidence"},
+                optional={"dataset_manifest_sha256"},
+            )
+            anchor = row.get("dataset_manifest_sha256")
+            if anchor is not None:
+                digest(anchor)
+            identity = (anchor, text(row["sample_id"], "sample ID"))
             if identity in ids or row["reviewer_a"] == row["reviewer_b"]:
                 raise ValueError("duplicate sample or non-independent reviewers")
             ids.add(identity)
@@ -435,6 +441,7 @@ def review_submission(path: str | Path) -> dict[str, Any]:
     empirical = document["mode"] != "offline_fixture"
     required = set(ROLES) if empirical else set(ROLES) - EMPIRICAL_EXTRA
     missing, errors, checks = [], {}, {}
+    evidence_paths = {}
     commit = document["source_commit"]
     if not isinstance(commit, str) or re.fullmatch(r"[a-f0-9]{40}", commit) is None:
         missing.append("source_commit")
@@ -445,6 +452,7 @@ def review_submission(path: str | Path) -> dict[str, Any]:
             continue
         try:
             evidence_path = _ref(path.parent, ref)
+            evidence_paths[role] = evidence_path
             if role == "costs":
                 checks[role] = verify_cost_ledger(evidence_path)
             else:
@@ -478,6 +486,18 @@ def review_submission(path: str | Path) -> dict[str, Any]:
                 raise ValueError("dependency lock differs from the selected source tree")
         except (OSError, KeyError, ValueError, tarfile.TarError, zipfile.BadZipFile) as error:
             errors["source_lock_binding"] = str(error)
+    if empirical:
+        from .study_links import LINK_ROLES, check_study_links
+
+        if LINK_ROLES <= evidence_paths.keys():
+            try:
+                checks["study_linkage"] = check_study_links(
+                    evidence_paths, study_id=document["study_id"]
+                )
+            except (OSError, ValueError, TypeError, KeyError, RuntimeError) as error:
+                errors["study_linkage"] = str(error)
+        else:
+            missing.append("study_linkage")
     ready = not missing and not errors
     return {
         "schema_version": "1.0",
@@ -509,7 +529,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     verify = commands.add_parser("verify")
     verify.add_argument("bundle", type=Path)
     verify.add_argument("--sha256")
+    freeze = commands.add_parser("freeze-split", help="freeze verified source sample membership")
+    freeze.add_argument("--dataset", type=Path, action="append", required=True)
+    freeze.add_argument("--output", type=Path, required=True)
+    freeze.add_argument("--maximum-samples", type=int, default=100_000)
     args = parser.parse_args(argv)
+    if args.command == "freeze-split":
+        from .study_links import freeze_split
+
+        result = freeze_split(args.dataset, args.output, maximum_samples=args.maximum_samples)
+        print(json.dumps({"sample_count": len(result["samples"]),
+                          "holdout_count": result["holdout_count"],
+                          "split": fingerprint_file(args.output)}, indent=2))
+        return 0
     if args.command == "init":
         with args.output.open("x", encoding="utf-8") as stream:
             json.dump(template(), stream, indent=2, sort_keys=True)
