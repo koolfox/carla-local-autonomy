@@ -92,6 +92,14 @@ jobs:
           if remote != os.environ['GITHUB_SHA']:
               raise SystemExit('branch moved during tests; refusing publication')
           subprocess.run(['git', 'diff', '--exit-code'], check=True)
+          # Actions token is contents-only. The workflow is published separately
+          # by the maintainer-authorized connector, not by escalating this token.
+          workflow = '.github/workflows/research-offline.yml'
+          Path('/tmp/consumption-source/research-offline.yml').write_bytes(Path(workflow).read_bytes())
+          subprocess.run(['git', 'restore', '--source=HEAD', '--staged', '--worktree', '--', workflow], check=True)
+          files = subprocess.check_output(['git', 'diff', '--cached', '--name-only'], text=True).splitlines()
+          if len(files) != 21 or any(name.startswith('.github/') for name in files):
+              raise SystemExit('expected 21 non-workflow source files for contents-only publication')
           commit_env = dict(os.environ, GIT_AUTHOR_NAME='Codex', GIT_AUTHOR_EMAIL='codex@openai.com', GIT_COMMITTER_NAME='Hesam Shani', GIT_COMMITTER_EMAIL='50404883+koolfox@users.noreply.github.com')
           message = 'feat(research): attest samples consumed by producers and bind test evidence to source\n\nAdvance S2 of #144 with fixed-pass observed receipts, fail-closed evaluation coverage, imitation loop instrumentation and source-bound pytest evidence. Opaque third-party trainers remain unaudited; no empirical ADAS claim.\n\nCo-authored-by: Hesam Sheini <50404883+koolfox@users.noreply.github.com>'
           subprocess.run(['git', 'commit', '-m', message], env=commit_env, check=True)
