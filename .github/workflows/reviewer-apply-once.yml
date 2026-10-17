@@ -1,0 +1,141 @@
+name: Materialize reviewed readiness patch once
+on:
+  push:
+    branches: ['codex/reviewer-readiness']
+    paths: ['.github/reviewer_transport/**', '.github/workflows/reviewer-apply-once.yml']
+permissions:
+  contents: write
+env:
+  OMP_NUM_THREADS: 2
+  MKL_NUM_THREADS: 2
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          lfs: false
+          persist-credentials: false
+      - name: Retain transport before verification
+        run: |
+          mkdir -p /tmp/readiness-transport
+          cp -r .github/reviewer_transport /tmp/readiness-transport/
+          git rev-parse HEAD > /tmp/readiness-transport/checkout.txt
+      - name: Check exact reviewed patch and apply
+        shell: bash
+        run: |
+          git merge-base --is-ancestor 35a9852dccef62c2d872ad5eca5094872cd2be74 HEAD
+          git diff --exit-code 35a9852dccef62c2d872ad5eca5094872cd2be74 HEAD -- carla_vision tests docs configs web pyproject.toml uv.lock .github/workflows/ci.yml .github/workflows/research-offline.yml
+          python - <<'PY'
+          import base64, bz2, hashlib, json, subprocess
+          from pathlib import Path, PurePosixPath
+          root = Path('.github/reviewer_transport')
+          pieces = {f'payload.{i:02}': (root / f'payload.{i:02}').read_text(encoding='ascii') for i in range(7)}
+          if (root / 'repairs.json').exists():
+              for name, operations in json.loads((root / 'repairs.json').read_text()).items():
+                  value = pieces[name]
+                  for start, old, new in sorted(operations, reverse=True):
+                      if value[start:start + len(old)] != old:
+                          raise SystemExit('transport correction precondition failed')
+                      value = value[:start] + new + value[start + len(old):]
+                  pieces[name] = value
+          encoded = ''.join(pieces[f'payload.{i:02}'] for i in range(7))
+          if len(encoded) != 56188:
+              raise SystemExit('transport length mismatch')
+          compressed = base64.b64decode(encoded, validate=True)
+          if hashlib.sha256(compressed).hexdigest() != '88face60a49655e807b0e21bd000f4a27bf3c0001ac24e67477f256e354c36be':
+              raise SystemExit('compressed digest mismatch; no source applied')
+          patch = bz2.decompress(compressed)
+          if len(patch) != 192875 or hashlib.sha256(patch).hexdigest() != 'fd5adb54a52e01df635673767729756e4989ab348b9f159ca4a1b1be861c823c':
+              raise SystemExit('reviewed patch digest mismatch; no source applied')
+          target = Path('/tmp/readiness-transport/readiness.patch')
+          target.write_bytes(patch)
+          changes = []
+          for line in subprocess.check_output(['git', 'apply', '--numstat', str(target)], text=True).splitlines():
+              added, removed, name = line.split('\t', 2)
+              p = PurePosixPath(name)
+              if added == '-' or removed == '-' or p.is_absolute() or '..' in p.parts:
+                  raise SystemExit('unsafe patch')
+              if not (name.startswith(('carla_vision/', 'tests/', 'docs/', 'configs/reviewer/')) or name in {'pyproject.toml', '.github/workflows/ci.yml', '.github/workflows/research-offline.yml', 'web/src/lib/api/operator.ts'}):
+                  raise SystemExit('unexpected source path')
+              if name.endswith('observable_world_worker.py'):
+                  raise SystemExit('standalone boundary changed')
+              changes.append(name)
+          if len(changes) != 41 or len(set(changes)) != 41:
+              raise SystemExit('expected 41 reviewed files')
+          subprocess.run(['git', 'apply', '--check', '--index', str(target)], check=True)
+          subprocess.run(['git', 'apply', '--index', str(target)], check=True)
+          hashes = {name: hashlib.sha256(Path(name).read_bytes()).hexdigest() for name in changes}
+          Path('/tmp/readiness-transport/changed-file-sha256.json').write_text(json.dumps(hashes, indent=2) + '\n')
+          PY
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+      - name: Install locked profiles
+        run: uv sync --all-extras --all-groups --frozen
+      - name: Install offline recording encoder
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Lint and validate whitespace
+        run: |
+          uv run ruff check carla_vision tests restore_project.py
+          git diff --cached --check
+      - name: Execute complete suite and event reconciliation
+        shell: bash
+        run: |
+          uv run pytest -q -o faulthandler_timeout=60 -p carla_vision.reproduction.pytest_evidence --review-test-events=/tmp/readiness-transport/test-events.jsonl --junitxml=/tmp/readiness-transport/tests.xml 2>&1 | tee /tmp/readiness-transport/pytest.log
+          uv run python - <<'PY'
+          import json
+          from pathlib import Path
+          from carla_vision.reproduction.junit import inspect_junit
+          report = inspect_junit('/tmp/readiness-transport/tests.xml', events_path='/tmp/readiness-transport/test-events.jsonl')
+          assert report['same_run_xml_bound']
+          Path('/tmp/readiness-transport/test-reconciliation.json').write_text(json.dumps(report, indent=2) + '\n')
+          print(report)
+          PY
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Verify frontend mirror without changing built console
+        working-directory: web
+        run: |
+          npm ci --no-audit --no-fund
+          npm run check
+          npm test
+          npm run build
+          test -z "$(git status --porcelain --untracked-files=all -- ../carla_vision/operator/console_static)"
+      - name: Publish tested source only to the feature branch
+        env:
+          REVIEW_PUSH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import base64, os, subprocess
+          from pathlib import Path
+          branch = 'codex/reviewer-readiness'
+          if os.environ['GITHUB_REF'] != f'refs/heads/{branch}':
+              raise SystemExit('unexpected branch')
+          token = os.environ.pop('REVIEW_PUSH_TOKEN')
+          header = 'AUTHORIZATION: basic ' + base64.b64encode(f'x-access-token:{token}'.encode()).decode()
+          auth = ['git', '-c', f'http.https://github.com/.extraheader={header}']
+          remote = subprocess.check_output(auth + ['ls-remote', 'origin', f'refs/heads/{branch}'], text=True).split()[0]
+          if remote != os.environ['GITHUB_SHA']:
+              raise SystemExit('branch moved; refusing to publish')
+          env = dict(os.environ, GIT_AUTHOR_NAME='Codex', GIT_AUTHOR_EMAIL='codex@openai.com', GIT_COMMITTER_NAME='Hesam Shani', GIT_COMMITTER_EMAIL='50404883+koolfox@users.noreply.github.com')
+          message = 'fix(research): bind executed trials and complete reviewer evidence\n\nAdvance #144 on #143. Validate same-session test evidence, source ancestry and full study matrices; add executable detector trials and paper-derived noisy-oracle components. No empirical model or Q1 acceptance claim.\n\nCo-authored-by: Hesam Sheini <50404883+koolfox@users.noreply.github.com>'
+          subprocess.run(['git', 'commit', '-m', message], env=env, check=True)
+          subprocess.run(auth + ['push', 'origin', f'HEAD:refs/heads/{branch}'], check=True)
+          sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True)
+          Path('/tmp/readiness-transport/published-commit.txt').write_text(sha)
+          print('Published tested source:', sha.strip())
+          PY
+      - name: Retain verification and tests on every outcome
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: readiness-transport-${{ github.sha }}
+          path: /tmp/readiness-transport/
+          retention-days: 7
+          if-no-files-found: error
