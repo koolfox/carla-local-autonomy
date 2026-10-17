@@ -211,3 +211,74 @@ The bundle includes original path strings and author metadata. Review privacy,
 licensing and anonymous-review requirements before sharing; there is no automatic
 public upload, license grant, or anonymization. Archive the final code/data with
 persistent identifiers only after owner approval and preserve the prior versions.
+
+## 9. Bind all review roles to the same study
+
+Individual role checks are necessary, not sufficient. Both empirical modes now
+also require the `study_linkage` check described in [ADR 0003](adr/0003-cross-role-study-evidence.md).
+Use the data-custodian workflow to freeze the **already assigned** source releases:
+
+```bash
+uv run carla-reviewer-evidence freeze-split \
+  --dataset datasets/release-train \
+  --dataset datasets/release-validation \
+  --dataset datasets/release-test \
+  --maximum-samples 100000 --output study/split-v1.1.json
+```
+
+These paths and capacity illustrate syntax, not bundled empirical data or a
+recommended sample size. Include all releases used by the study, including
+explicit training-side acquisition/derived releases as appropriate. The tool
+supports canonical and sealed sharded sources; it does not create partitions.
+An existing output is never overwritten. Choose the budget before running it;
+exhausting the bound is a failure, not a certificate of completeness.
+
+Record the emitted split fingerprint in the **new** study protocol. The frozen
+inventory contains exact `(manifest_sha256, sample_id)` identities, original
+partitions, scene roots and RGB digests. Its `holdout_sha256` is the canonical
+JSON digest of the sorted sample rows whose original partition has test role.
+Use that digest in the matrix and in producer bindings. Changing a model seed
+must not alter the inventory. Group-only schema 1.0 remains valid for legacy
+software planning but cannot satisfy empirical review.
+
+The protocol's `primary_metric` must be the canonical dotted field actually used
+by the result producer (for example a field in its registered summary), not a
+human-readable alias. The result matrix's methods and training seeds must match
+the protocol; the baseline registry must cover those methods. The geometry audit
+must reference all frozen dataset manifests, and producer dataset references must
+belong to that inventory. This is additional to, not a substitute for, each role's
+existing semantic checks.
+
+In the manuscript record, use claim ID strings matching the selected claim
+registry, and `tables` entries with **exactly** `table_id` and `results`, where
+`results` is the selected result file's actual fingerprint. In annotation audits,
+add the optional `dataset_manifest_sha256` when a local sample ID/group appears in
+more than one release. Ambiguous or unrelated sample references fail. The template
+stays incomplete until actual evidence and author approval exist.
+
+The global cost ledger must contain exactly the logical events allocated among
+all per-result producer ledgers. Event IDs may not be reused in two producers;
+kind, outcome, resources and evidence reference must be identical. Hash-chain
+positions may differ because each ledger has its own ordering. An unallocated
+failed probe or review is not omitted from method budgets: it makes empirical
+linkage fail. Define and record shared-cost allocation explicitly; the tool does
+not invent such an allocation or measure uninstrumented work.
+
+Verification of links does not parse article prose, regenerate typeset tables or
+prove that a producer evaluated every declared test sample. The matrix currently
+represents one condition/learner/regime and paired training seeds, not automatic
+coverage of the entire generation/learner/ablation Cartesian design. Check those
+additional dimensions and replay saved predictions independently. The checker
+may reject artifacts that are useful for development but inadequate for the
+selected empirical claim. Keep them; do not repair history by rehashing it.
+
+Focused verification, with no CARLA server:
+
+```bash
+uv run pytest -q tests/test_reviewer_study_links.py
+uv run carla-reviewer-evidence check study/submission.json
+```
+
+The report distinguishes individual role failures from `study_linkage`. A passing
+link gate is **consistency only**, never evidence of superiority or guaranteed Q1
+acceptance. Completion is tracked in Issue #144 rather than a parallel doc backlog.

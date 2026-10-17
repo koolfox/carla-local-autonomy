@@ -142,3 +142,5 @@ behavior changes. Link to the [live milestones](https://github.com/koolfox/carla
 instead of copying a second backlog into every document. Older delivery notes
 may describe their original scope; current code/tests and maintained guides
 take precedence when they disagree.
+
+Frozen study sample membership and cross-role evidence consistency: [`reviewer_evidence.md`](reviewer_evidence.md#9-bind-all-review-roles-to-the-same-study), owned by `carla_vision/reproduction/study_links.py`; first test: `tests/test_reviewer_study_links.py`.
