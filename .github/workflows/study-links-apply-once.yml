@@ -1,0 +1,99 @@
+name: Validate and publish reviewed study-link patch once
+on:
+  push:
+    branches: ['codex/144-study-evidence-links']
+    paths: ['.github/study-links-transport/**', '.github/workflows/study-links-apply-once.yml']
+permissions:
+  contents: read
+jobs:
+  validate-source:
+    if: github.repository == 'koolfox/carla-local-autonomy'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      OMP_NUM_THREADS: 2
+      MKL_NUM_THREADS: 2
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          lfs: false
+          persist-credentials: false
+      - name: Verify exact reviewed bytes and allowed source changes
+        shell: bash
+        run: |
+          git merge-base --is-ancestor 35a9852dccef62c2d872ad5eca5094872cd2be74 HEAD
+          git diff --exit-code 35a9852dccef62c2d872ad5eca5094872cd2be74 HEAD -- carla_vision tests docs pyproject.toml uv.lock
+          mkdir -p /tmp/study-link-evidence
+          python - <<'PY'
+          import base64, bz2, hashlib, json, subprocess
+          from pathlib import Path
+          encoded = ''.join(Path(f'.github/study-links-transport/payload.{i:02}').read_text() for i in range(2))
+          if len(encoded) != 19460:
+              raise SystemExit('transport length mismatch')
+          patch = bz2.decompress(base64.b64decode(encoded, validate=True))
+          if len(patch) != 58831 or hashlib.sha256(patch).hexdigest() != 'b9a6a96eb752e03df0e57f30c528f53fcb03abba5c928bed158a6b65ebbf75bf':
+              raise SystemExit('reviewed patch digest mismatch')
+          path = Path('/tmp/study-link-evidence/source.patch')
+          path.write_bytes(patch)
+          allowed = {'carla_vision/reproduction/reviewer.py', 'carla_vision/reproduction/study_links.py', 'carla_vision/scenarios/study.py', 'docs/README.md', 'docs/adr/0003-cross-role-study-evidence.md', 'docs/paper/reviewer_requirements.md', 'docs/reviewer_evidence.md', 'tests/test_reviewer_study_links.py'}
+          rows = subprocess.check_output(['git', 'apply', '--numstat', str(path)], text=True).splitlines()
+          names = [r.split('\t', 2)[2] for r in rows]
+          if len(names) != 8 or set(names) != allowed or any(r.startswith('-') for r in rows):
+              raise SystemExit('unexpected source patch paths')
+          subprocess.run(['git', 'apply', '--check', '--index', str(path)], check=True)
+          subprocess.run(['git', 'apply', '--index', str(path)], check=True)
+          hashes = {p: hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in sorted(allowed)}
+          Path('/tmp/study-link-evidence/changed-file-sha256.json').write_text(json.dumps(hashes, indent=2) + '\n')
+          PY
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+      - name: Install locked profiles without a CARLA server
+        run: uv sync --all-extras --all-groups --frozen
+      - name: Install offline recording encoder
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Lint and validate patch
+        run: |
+          uv run ruff check carla_vision tests restore_project.py
+          git diff --cached --check
+      - name: Full offline regression suite
+        run: uv run pytest -q --junitxml=/tmp/study-link-evidence/tests.xml
+      - name: Publish only the tested source on this feature branch
+        env:
+          BRANCH_PUSH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import base64, os, subprocess
+          from pathlib import Path
+          branch = 'codex/144-study-evidence-links'
+          if os.environ['GITHUB_REF'] != 'refs/heads/' + branch:
+              raise SystemExit('unexpected branch; refusing write')
+          token = os.environ.pop('BRANCH_PUSH_TOKEN')
+          header = 'AUTHORIZATION: basic ' + base64.b64encode(('x-access-token:' + token).encode()).decode()
+          auth_env = dict(os.environ, GIT_CONFIG_COUNT='1', GIT_CONFIG_KEY_0='http.https://github.com/.extraheader', GIT_CONFIG_VALUE_0=header)
+          probe = subprocess.run(['git', 'ls-remote', 'origin', 'refs/heads/' + branch], env=auth_env, capture_output=True, text=True)
+          if probe.returncode or probe.stdout.split()[0] != os.environ['GITHUB_SHA']:
+              raise SystemExit('branch moved or could not be read; refusing push')
+          env = dict(os.environ, GIT_AUTHOR_NAME='Codex', GIT_AUTHOR_EMAIL='codex@openai.com', GIT_COMMITTER_NAME='Hesam Shani', GIT_COMMITTER_EMAIL='50404883+koolfox@users.noreply.github.com')
+          message = 'fix(reviewer): bind evidence roles to verified study sample inventory\n\nAdvance #144 in one bounded slice. Freeze canonical/sharded membership, reject unrelated methods/seeds/holdouts/audits/tables and unallocated costs. Offline contracts are not empirical performance or Q1 acceptance.\n\nCo-authored-by: Hesam Sheini <50404883+koolfox@users.noreply.github.com>'
+          subprocess.run(['git', 'commit', '-m', message], env=env, check=True)
+          pushed = subprocess.run(['git', 'push', 'origin', 'HEAD:refs/heads/' + branch], env=auth_env, capture_output=True, text=True)
+          if pushed.returncode:
+              raise SystemExit('tested source push failed; inspect branch before retry')
+          sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True)
+          Path('/tmp/study-link-evidence/published-commit.txt').write_text(sha)
+          print('Published tested source:', sha.strip())
+          PY
+      - name: Retain source fingerprints and JUnit even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: study-link-tests-${{ github.sha }}
+          path: /tmp/study-link-evidence/
+          retention-days: 14
+          if-no-files-found: warn
