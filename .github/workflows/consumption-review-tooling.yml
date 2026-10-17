@@ -13,14 +13,14 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
-      - name: Download only pinned framework and small support wheels
+      - name: Download pinned table runtime for actual framework tests
         run: |
           mkdir -p /tmp/consumption-wheels
-          python -m pip download --no-deps --only-binary=:all: -d /tmp/consumption-wheels ultralytics==8.4.137 ultralytics-thop==2.1.6 ultralytics-platform==0.1.21
+          python -m pip download --no-deps --only-binary=:all: -d /tmp/consumption-wheels polars==1.43.2 polars-runtime-32==1.43.2
           cd /tmp/consumption-wheels && sha256sum *.whl > checksums.sha256
       - uses: actions/upload-artifact@v4
         with:
-          name: pinned-consumption-framework
+          name: pinned-consumption-table-runtime
           path: /tmp/consumption-wheels
           retention-days: 7
           if-no-files-found: error
