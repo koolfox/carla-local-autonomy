@@ -641,14 +641,18 @@ def test_empirical_gate_cannot_treat_bare_predictions_as_consumption(tmp_path):
         check_consumed_study(paths)
 
 
-def test_uninstrumented_ultralytics_has_no_attestation_capability():
+def test_ultralytics_capability_requires_explicit_fixed_pass_profile():
+    from test_training import training_config
+
     from carla_vision.training.backends import UltralyticsTrainingBackend
+    from carla_vision.training.contracts import TrainingConfig
+    from carla_vision.training.ultralytics_consumption import validate_profile
 
     for architecture in ("yolo", "rtdetr"):
-        assert (
-            getattr(UltralyticsTrainingBackend(architecture), "consumption_contract_version", None)
-            is None
-        )
+        assert UltralyticsTrainingBackend(architecture).consumption_contract_version == "1.0"
+        # Advertising the newly instrumented backend never upgrades ordinary configs.
+        with pytest.raises(ValueError, match="audited"):
+            validate_profile(TrainingConfig.from_mapping(training_config()), version="8.4.137")
 
 
 def test_audited_resume_cannot_hide_parent_epochs(tmp_path):

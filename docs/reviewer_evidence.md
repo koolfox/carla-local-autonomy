@@ -345,10 +345,10 @@ training adapters receive `TrainingRequest.sample_consumption` only when they
 advertise `consumption_contract_version = "1.0"`. Such adapters must bracket
 **actual** completed batches with `recorder.batch(pass_id, keys)` and set one
 `outputs` record per key. Merely iterating the declared filenames to synthesize
-receipts is invalid. The built-in Ultralytics YOLO/RT-DETR adapters do not yet
-provide this integration: `--split-inventory` is rejected before their training
-starts, rather than pretending it was observed. Non-audited training is unchanged
-and cannot satisfy this empirical gate. Fresh fixed-epoch imitation is supported;
+receipts is invalid. The built-in Ultralytics YOLO/RT-DETR adapters now implement
+this boundary **only for the pinned restricted profile in section 11**. Other
+configurations fail before training rather than claiming observed use.
+Non-audited training is unchanged and cannot satisfy this empirical gate. Fresh fixed-epoch imitation is supported;
 audited resume, early-stop/replacement sampling and mosaic/mixup are not supported
 by this receipt version. The ordinary non-audited resume path remains available.
 Opaque factory-only weights are not an attested evaluation model identity.
@@ -381,3 +381,53 @@ Do not rehash old artifacts as a repair. Re-execute the appropriate producer in
 a new output directory, retaining original failures. Semantic revalidation still
 requires resolvable source paths; these checks do not add portable inference,
 independent retraining, universal cost instrumentation or empirical ADAS results.
+
+
+## 11. Audited YOLO/RT-DETR training with the pinned framework
+
+[ADR 0005](adr/0005-pinned-ultralytics-consumption.md) documents the actual
+framework hooks, source-safe loader and deliberately restricted execution profile.
+Keep the existing complete training config, but explicitly set:
+
+```json
+{
+  "workers": 0, "amp": false, "cache": false,
+  "patience": 0, "warmup_epochs": 0.0,
+  "extra_options": {"mosaic": 0.0, "mixup": 0.0, "cutmix": 0.0, "copy_paste": 0.0}
+}
+```
+
+This is a **fragment**, not a complete config or an empirical experiment. Select
+`backend=yolo` or `backend=rtdetr`, `custom_factory=null`, fixed batch/epochs and
+an explicit single device. The pinned version is 8.4.137. No dependency upgrade
+is needed. Do not enable richer sampling through `extra_options` to bypass the
+fixed-pass contract. Training initialization loads a trusted local checkpoint;
+no new pretrained assets are provided by this change.
+
+```bash
+uv run carla-train-detector --help
+uv run pytest -q tests/test_ultralytics_consumption.py
+```
+
+Use the existing detector-training command with `--split-inventory` on actual
+verified source releases. In each new run inspect `backend/consumption_view/`,
+`backend/fit/args.yaml`, `consumption/plan.json`, `consumption/batches.jsonl` and
+`consumption/summary.json`. The final declared pass is `validation/final`; its
+weight digest matches the selected `best.pt`. It is validation, **not** exposure
+to the test partition. Continue to use the independent instrumented detector
+assessment for held-out AP and `check-consumption --full-holdout` on that result.
+
+An image's trace includes source RGB/label hashes, normalized input tensor hash
+and shape, transformed-target hash, and a completed operation boundary. Training
+loss is explicitly a **batch loss repeated alongside each member**, not a
+per-sample loss. Validator predictions use preprocessed-image coordinates, not
+canonical image coordinates. Empty predictions still count as observed inputs.
+
+The profile sets nominal batch size to actual configured batch size, disables
+gradient accumulation and fixes several sampling/precision controls. These
+constraints are reported, affect the experiment, and must be identical for all
+comparators. Repeated hash checks, uncached decode, tensor hashing, finite-value
+checks and fsync add overhead; do not cite normal training throughput for this
+profile. GPU/MPS performance and reliability are not established by CPU tests.
+Model and dataset semantics, source licensing, complete resource metering, and
+empirical learning gains remain separate checks. No old release is reclassified.
