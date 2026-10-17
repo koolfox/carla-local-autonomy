@@ -106,6 +106,7 @@ def verify_source_objects(names, read_member, expected_commit):
             raise ValueError("archived source blob differs from the selected Git tree")
     if used != set(trees):
         raise ValueError("unreferenced source proof trees")
+    return tree_id
 
 
 def build_source_snapshot(repository, output, *, commit="HEAD", maximum_bytes=64 * 1024 * 1024):

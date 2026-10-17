@@ -9,6 +9,7 @@ from pathlib import Path
 import torch
 
 from ..artifacts import RunArtifactTracker, fingerprint_file
+from ..reproduction.consumption import consumption_session
 from .dataset import BehaviorImitationDataset
 from .model import ImitationControlNet, ImitationModelConfig
 from .runner import _loader, _resolve_device, _run_epoch, _write_json
@@ -58,6 +59,7 @@ def validate_external_protocol(path, *, checkpoint, payload, data):
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", type=Path, required=True)
+    parser.add_argument("--split-inventory", type=Path)
     parser.add_argument("--dataset", type=Path, action="append", required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--device", default="cpu")
@@ -73,7 +75,10 @@ def main(argv=None) -> int:
         parser.error("locked-test evaluation requires --acknowledge-locked-test")
     if args.batch_size <= 0:
         parser.error("batch size must be positive")
+    loaded_weights = fingerprint_file(args.checkpoint)
     payload = torch.load(args.checkpoint, map_location="cpu", weights_only=True)
+    if fingerprint_file(args.checkpoint) != loaded_weights:
+        raise ValueError("checkpoint changed while loading")
     if payload.get("task") != "behavior_agent_control_imitation":
         raise ValueError("checkpoint task mismatch")
     if payload.get("runtime_input_contract") != "front_rgb_bgr_uint8_plus_speed_mps":
@@ -81,6 +86,7 @@ def main(argv=None) -> int:
     config = ImitationModelConfig.from_dict(payload["model_config"])
     data = BehaviorImitationDataset(
         args.dataset,
+        audit_rgb=args.split_inventory is not None,
         partition="test",
         image_size=config.image_size_hw,
         speed_scale_mps=config.speed_scale_mps,
@@ -103,7 +109,7 @@ def main(argv=None) -> int:
     model = ImitationControlNet(config).to(device)
     model.load_state_dict(payload["state_dict"], strict=True)
     output = args.output.expanduser().resolve()
-    with RunArtifactTracker(
+    tracker = RunArtifactTracker(
         output.parent,
         run_id=output.name,
         cli_args=vars(args),
@@ -115,7 +121,20 @@ def main(argv=None) -> int:
         dataset_refs=data.source_references,
         model_refs=[fingerprint_file(args.checkpoint)],
         input_refs=[protocol_ref] if protocol_ref else [],
-    ) as tracker:
+    )
+    specs = [data.consumption_pass("evaluation", "evaluation", ordered=True)]
+    with (
+        tracker,
+        consumption_session(
+            tracker,
+            args.split_inventory,
+            specs,
+            producer="imitation_evaluation",
+            initial_weights=args.checkpoint,
+        ) as audit,
+    ):
+        if fingerprint_file(args.checkpoint) != loaded_weights:
+            raise ValueError("checkpoint changed after loading")
         metrics = _run_epoch(
             model,
             _loader(data, batch_size=args.batch_size, num_workers=0, shuffle=False, seed=0),
@@ -123,6 +142,8 @@ def main(argv=None) -> int:
             optimizer=None,
             **payload["objective_config"],
             max_batches=None,
+            consumption=audit,
+            pass_id="evaluation",
         )
         path = tracker.artifact_path("summary.json")
         _write_json(
@@ -135,6 +156,8 @@ def main(argv=None) -> int:
             },
         )
         tracker.register_artifact(path, role="imitation_test_summary")
+        if audit:
+            audit.seal(args.checkpoint)
     return 0
 
 

@@ -89,6 +89,7 @@ class ImitationSampleRef:
     partition: Partition
     source_partition: str
     rgb_sha256: str
+    manifest_sha256: str
     navigation_intent: NavigationIntent | None
 
 
@@ -120,6 +121,7 @@ class BehaviorImitationDataset(Dataset[dict[str, Any]]):
         verify: bool = True,
         max_samples: int | None = None,
         require_navigation_intent: bool = False,
+        audit_rgb: bool = False,
         allow_legacy_action_targets: bool = False,
     ) -> None:
         if partition not in {"train", "val", "test"}:
@@ -159,6 +161,7 @@ class BehaviorImitationDataset(Dataset[dict[str, Any]]):
         self.require_navigation_intent = bool(require_navigation_intent)
         self.samples: list[ImitationSampleRef] = []
         self.group_partitions: dict[str, Partition] = {}
+        self.audit_rgb = audit_rgb
         self.source_references: list[dict[str, Any]] = []
         self.allow_legacy_action_targets = bool(allow_legacy_action_targets)
 
@@ -171,6 +174,9 @@ class BehaviorImitationDataset(Dataset[dict[str, Any]]):
                         f"teacher dataset verification failed for {root}: {report['errors']}"
                     )
             dataset = _read_json(root / "dataset.json")
+            manifest_hash = (
+                fingerprint_file(root / "manifest.json")["sha256"] if audit_rgb else "unattested"
+            )
             source_ref = fingerprint_file(root / "dataset.json")
             if any(ref["sha256"] == source_ref["sha256"] for ref in self.source_references):
                 raise ValueError("duplicate source dataset release")
@@ -264,6 +270,7 @@ class BehaviorImitationDataset(Dataset[dict[str, Any]]):
                         partition=assigned,
                         source_partition=source_partition,
                         rgb_sha256=fingerprint_file(image_path)["sha256"],
+                        manifest_sha256=manifest_hash,
                         navigation_intent=navigation_intent,
                     )
                 )
@@ -278,6 +285,16 @@ class BehaviorImitationDataset(Dataset[dict[str, Any]]):
         )
         if max_samples is not None:
             self.samples = self.samples[:max_samples]
+
+    def consumption_pass(self, pass_id: str, role: str, *, ordered: bool) -> dict:
+        return {
+            "pass_id": pass_id,
+            "role": role,
+            "partitions": sorted({s.source_partition for s in self.samples}),
+            "source_manifests": sorted({s.manifest_sha256 for s in self.samples}),
+            "expected_keys": [f"{s.manifest_sha256}:{s.sample_id}" for s in self.samples],
+            "ordered": ordered,
+        }
 
     def __len__(self) -> int:
         return len(self.samples)
@@ -297,7 +314,13 @@ class BehaviorImitationDataset(Dataset[dict[str, Any]]):
         return random.Random(int.from_bytes(digest, byteorder="big", signed=False))
 
     def _load_image(self, sample: ImitationSampleRef) -> tuple[np.ndarray, float, bool]:
-        image = cv2.imread(str(sample.image_path), cv2.IMREAD_COLOR)
+        from ..reproduction.consumption import decode_rgb
+
+        image = (
+            decode_rgb(sample.image_path, sample.rgb_sha256)
+            if self.audit_rgb
+            else cv2.imread(str(sample.image_path), cv2.IMREAD_COLOR)
+        )
         if image is None or image.size == 0:
             raise RuntimeError(f"could not decode RGB image {sample.image_path}")
         height, width = self.image_size
@@ -354,6 +377,7 @@ class BehaviorImitationDataset(Dataset[dict[str, Any]]):
                 [sample.throttle, steer, sample.brake], dtype=torch.float32
             ),
             "sample_id": sample.sample_id,
+            "consumption_key": f"{sample.manifest_sha256}:{sample.sample_id}",
             "episode_id": sample.episode_id,
             "route_group_key": sample.route_group_key,
             "carla_frame": sample.carla_frame,

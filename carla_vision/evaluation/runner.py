@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import csv
 import json
 import math
@@ -27,6 +28,7 @@ from ..contracts import Detection, Detector, DetectorConfig
 from ..dataset.verified import VerifiedDataset, load_verified_dataset
 from ..detectors.factory import create_detector
 from ..model_release.verified import load_verified_model
+from ..reproduction.consumption import consumption_session, decode_rgb, make_pass
 from ..scenarios.seeds import derive_seed_bundle
 from .coco import CocoEvaluation, evaluate_coco
 from .contracts import EVALUATION_RUN_SCHEMA_VERSION, EvaluationConfig, load_evaluation_config
@@ -493,6 +495,7 @@ def _model_reference(detector_config: DetectorConfig) -> Mapping[str, Any]:
 def run_evaluation(
     *,
     config_path: str | Path,
+    split_inventory_path: str | Path | None = None,
     dataset_path: str | Path,
     detector_config: DetectorConfig,
     runs_root: str | Path = "runs",
@@ -541,6 +544,7 @@ def run_evaluation(
     }
     resolved_config = {
         "schema_version": EVALUATION_RUN_SCHEMA_VERSION,
+        "split_inventory": fingerprint_file(split_inventory_path) if split_inventory_path else None,
         "object_type": "offline_detector_evaluation",
         "evaluation": config.as_dict(),
         "source_config": config_reference,
@@ -562,7 +566,17 @@ def run_evaluation(
         model_refs=[model_reference],
         dataset_refs=[dataset.reference],
     )
-    with tracker:
+    specs = [make_pass("evaluation", "evaluation", config.partitions, [dataset])]
+    with (
+        tracker,
+        consumption_session(
+            tracker,
+            split_inventory_path,
+            specs,
+            producer="detector_evaluation",
+            initial_weights=detector_config.weights,
+        ) as audit,
+    ):
         if threshold_reference is not None:
             tracker.add_input_reference(threshold_reference)
         resolved_path = tracker.artifact_path("resolved_evaluation_config.json")
@@ -595,61 +609,71 @@ def run_evaluation(
             for position, sample in enumerate(samples, start=1):
                 image_id = int(sample["image_id"])
                 image_path = dataset.root / str(sample["rgb"]["path"])
-                image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
+                image = (
+                    decode_rgb(image_path, sample["rgb"]["sha256"])
+                    if audit
+                    else cv2.imread(str(image_path), cv2.IMREAD_COLOR)
+                )
                 if image is None:
                     raise RuntimeError(f"could not read evaluation image {image_path}")
-                from .timing import measured_inference
+                key = f"{dataset.reference['manifest']['sha256']}:{sample['sample_id']}"
+                with (
+                    audit.batch("evaluation", [key]) if audit else contextlib.nullcontext()
+                ) as observed:
+                    from .timing import measured_inference
 
-                detections, elapsed = measured_inference(
-                    lambda image=image: detector.infer(image), device=detector_config.device
-                )
-                inference_seconds.append(elapsed)
-                mapped_rows = []
-                source_rows = []
-                for detection in detections:
-                    mapped, source_metadata = _map_detection(
-                        detection,
-                        image_width=image.shape[1],
-                        image_height=image.shape[0],
-                        category_by_normalized=category_by_normalized,
-                        aliases=normalized_aliases,
+                    detections, elapsed = measured_inference(
+                        lambda image=image: detector.infer(image), device=detector_config.device
                     )
-                    source_rows.append(source_metadata)
-                    if mapped is None:
-                        if source_metadata["rejection_reason"] == "unmapped_class":
-                            unmapped_labels[detection.label] += 1
-                        else:
-                            rejected_degenerate += 1
-                        continue
-                    canonical = {
-                        "image_id": image_id,
-                        **mapped,
-                    }
-                    predictions.append(canonical)
-                    mapped_rows.append(canonical)
-                    accepted_count += 1
-                frame_rows.append(
-                    {
-                        "position": position,
-                        "sample_id": sample["sample_id"],
-                        "image_id": image_id,
-                        "partition": sample["split"],
-                        "scenario_id": sample["scenario_id"],
-                        "episode_id": sample["episode_id"],
-                        "carla_frame": sample["carla_frame"],
-                        "inference_seconds": elapsed,
-                        "source_detection_count": len(detections),
-                        "mapped_prediction_count": len(mapped_rows),
-                        "source_detections": source_rows,
-                        "mapped_predictions": mapped_rows,
-                    }
-                )
-                print(
-                    f"image={position}/{len(samples)} id={image_id} "
-                    f"detections={len(detections)} mapped={len(mapped_rows)} "
-                    f"inference_ms={elapsed * 1000.0:.1f}",
-                    flush=True,
-                )
+                    inference_seconds.append(elapsed)
+                    mapped_rows = []
+                    source_rows = []
+                    for detection in detections:
+                        mapped, source_metadata = _map_detection(
+                            detection,
+                            image_width=image.shape[1],
+                            image_height=image.shape[0],
+                            category_by_normalized=category_by_normalized,
+                            aliases=normalized_aliases,
+                        )
+                        source_rows.append(source_metadata)
+                        if mapped is None:
+                            if source_metadata["rejection_reason"] == "unmapped_class":
+                                unmapped_labels[detection.label] += 1
+                            else:
+                                rejected_degenerate += 1
+                            continue
+                        canonical = {
+                            "image_id": image_id,
+                            **mapped,
+                        }
+                        predictions.append(canonical)
+                        mapped_rows.append(canonical)
+                        accepted_count += 1
+                    frame_rows.append(
+                        {
+                            "position": position,
+                            "sample_id": sample["sample_id"],
+                            "image_id": image_id,
+                            "partition": sample["split"],
+                            "scenario_id": sample["scenario_id"],
+                            "episode_id": sample["episode_id"],
+                            "carla_frame": sample["carla_frame"],
+                            "inference_seconds": elapsed,
+                            "source_detection_count": len(detections),
+                            "mapped_prediction_count": len(mapped_rows),
+                            "source_detections": source_rows,
+                            "mapped_predictions": mapped_rows,
+                        }
+                    )
+                    print(
+                        f"image={position}/{len(samples)} id={image_id} "
+                        f"detections={len(detections)} mapped={len(mapped_rows)} "
+                        f"inference_ms={elapsed * 1000.0:.1f}",
+                        flush=True,
+                    )
+                    if audit:
+                        observed["outputs"] = [mapped_rows]
         finally:
             detector.close()
 
@@ -894,6 +918,8 @@ def run_evaluation(
                     "sample_count": len(samples),
                 },
             )
+        if audit:
+            audit.seal(detector_config.weights)
     return {
         "run_id": tracker.run_id,
         "run_dir": str(tracker.run_dir),
@@ -910,6 +936,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         )
     )
     parser.add_argument("--config", required=True)
+    parser.add_argument(
+        "--split-inventory", help="frozen schema-1.1 study split; enable actual sample receipts"
+    )
     parser.add_argument("--dataset", required=True)
     parser.add_argument(
         "--detector",
@@ -970,6 +999,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     result = run_evaluation(
         config_path=args.config,
+        split_inventory_path=args.split_inventory,
         dataset_path=args.dataset,
         detector_config=detector_config,
         runs_root=args.runs_root,

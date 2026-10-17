@@ -16,7 +16,9 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from ..artifacts import RunArtifactTracker, fingerprint_file
-from ..dataset.verified import VerifiedDataset
+from ..dataset.shards import expand_dataset_roots
+from ..dataset.verified import VerifiedDataset, load_verified_dataset
+from ..reproduction.consumption import consumption_session, make_pass
 from ..scenarios.seeds import derive_seed_bundle
 from .backends import create_training_backend
 from .contracts import (
@@ -115,7 +117,8 @@ def _training_data_yaml(
         if isinstance(dataset, VerifiedShardedTrainingSet):
             return "\n".join(
                 "  - " + json.dumps(str(path), ensure_ascii=False)
-                for partition in partitions for path in dataset.image_directories[partition]
+                for partition in partitions
+                for path in dataset.image_directories[partition]
             )
         return "\n".join(f"  - images/{partition}" for partition in partitions)
 
@@ -232,6 +235,7 @@ def _resolved_payload(
 def run_training(
     *,
     config_path: str | Path,
+    split_inventory_path: str | Path | None = None,
     dataset_path: str | Path,
     pretrained_weights: str | Path,
     runs_root: str | Path = "runs",
@@ -283,6 +287,24 @@ def run_training(
         seeds=seed_bundle.as_dict(),
         dry_run=dry_run,
     )
+    specs = []
+    backend = None
+    if split_inventory_path and not dry_run:
+        backend = backend or backend_override or create_training_backend(config)
+        if getattr(backend, "consumption_contract_version", None) != "1.0":
+            raise ValueError(
+                "trainer lacks producer-time consumption instrumentation; "
+                "a dataset directory or optimizer summary cannot attest consumed samples"
+            )
+        sources = [load_verified_dataset(root) for root in expand_dataset_roots([dataset_path])]
+        specs = [
+            make_pass(f"{role}/{epoch}", role, partitions, sources, ordered=False)
+            for epoch in range(1, config.epochs + 1)
+            for role, partitions in (
+                ("train", train_partitions),
+                ("validation", validation_partitions),
+            )
+        ]
     tracker = RunArtifactTracker(
         runs_root,
         run_id=run_id,
@@ -292,7 +314,16 @@ def run_training(
         model_refs=[weights_reference],
         dataset_refs=[dataset.reference],
     )
-    with tracker:
+    with (
+        tracker,
+        consumption_session(
+            tracker,
+            split_inventory_path if not dry_run else None,
+            specs,
+            producer="detector_training",
+            initial_weights=weights_path,
+        ) as audit,
+    ):
         resolved_path = tracker.artifact_path("resolved_training_config.json")
         seeds_path = tracker.artifact_path("seeds.json")
         data_path = tracker.artifact_path("data/training_data.yaml")
@@ -349,7 +380,7 @@ def run_training(
             seed_bundle,
             deterministic=config.deterministic,
         )
-        backend = backend_override or create_training_backend(config)
+        backend = backend or backend_override or create_training_backend(config)
         backend_root = tracker.artifact_path("backend", create_parent=True)
         backend_root.mkdir(exist_ok=True)
         request = TrainingRequest(
@@ -359,6 +390,7 @@ def run_training(
             data_config=data_path,
             output_root=backend_root,
             backend_seed=seed_bundle.values["model_init"],
+            sample_consumption=audit,
         )
         result: TrainingResult | None = None
         training_error: BaseException | None = None
@@ -450,6 +482,7 @@ def run_training(
             "metrics": _sanitize_metrics(result.metrics),
             "seed_state": seed_state,
             "training_executed": True,
+            "sample_consumption": "instrumented" if audit else "unattested_backend",
         }
         _write_json(summary_path, summary)
         tracker.register_artifact(
@@ -460,6 +493,8 @@ def run_training(
                 "backend": result.backend_name,
             },
         )
+        if audit:
+            audit.seal(best)
     return {
         "run_id": tracker.run_id,
         "run_dir": str(tracker.run_dir),
@@ -476,6 +511,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         )
     )
     parser.add_argument("--config", required=True)
+    parser.add_argument(
+        "--split-inventory", help="require producer-observed fixed-epoch sample coverage"
+    )
     parser.add_argument("--dataset", required=True)
     parser.add_argument("--weights", required=True)
     parser.add_argument("--runs-root", default="runs")
@@ -489,6 +527,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     result = run_training(
         config_path=args.config,
+        split_inventory_path=args.split_inventory,
         dataset_path=args.dataset,
         pretrained_weights=args.weights,
         runs_root=args.runs_root,

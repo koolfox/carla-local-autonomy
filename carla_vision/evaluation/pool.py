@@ -21,7 +21,13 @@ from .verified import load_verified_evaluation
 
 
 def pool_evaluations(
-    roots, *, runs_root="runs", run_id=None, maximum_images=1_000_000, bootstrap_replicates=0
+    roots,
+    *,
+    runs_root="runs",
+    run_id=None,
+    maximum_images=1_000_000,
+    bootstrap_replicates=0,
+    split_inventory_path=None,
 ):
     integer(maximum_images, "maximum_images", minimum=1)
     integer(bootstrap_replicates, "bootstrap_replicates")
@@ -29,10 +35,16 @@ def pool_evaluations(
         raise ValueError("pool at least two explicit canonical evaluations")
     truth = {"images": [], "annotations": [], "categories": []}
     predictions, frames, references = [], [], []
+    dataset_references = []
     seen, groups, group_partitions = set(), {}, {}
     policy, model, config = None, None, None
     for raw_root in roots:
         evaluation = load_verified_evaluation(raw_root)
+        if split_inventory_path:
+            from ..reproduction.coverage import verify_evaluation_coverage
+
+            verify_evaluation_coverage(raw_root, split_path=split_inventory_path)
+        dataset_references.append(evaluation.dataset.reference)
         current_policy = evaluation.config.as_dict()
         # Execution identity differs per shard; scientific policy may not.
         current_policy.pop("evaluation_id")
@@ -126,12 +138,17 @@ def pool_evaluations(
     }
     resolved = {
         "object_type": "pooled_detector_evaluation",
+        "split_inventory": fingerprint_file(split_inventory_path) if split_inventory_path else None,
         "evaluation": policy,
         "model": model,
         "source_evaluations": references,
     }
     with RunArtifactTracker(
-        runs_root, run_id=run_id, input_refs=references, config=resolved
+        runs_root,
+        run_id=run_id,
+        input_refs=references,
+        config=resolved,
+        dataset_refs=dataset_references,
     ) as tracker:
         for name, value, role in (
             ("resolved_evaluation_config.json", resolved, "resolved_evaluation_configuration"),
@@ -145,6 +162,23 @@ def pool_evaluations(
         frame_path = tracker.artifact_path("frames.jsonl")
         frame_path.write_text("".join(json.dumps(r, sort_keys=True) + "\n" for r in frames))
         tracker.register_artifact(frame_path, role="per_image_prediction_log")
+        if split_inventory_path:
+            path = tracker.artifact_path("pooled_consumption.json")
+            path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "split_inventory": fingerprint_file(split_inventory_path),
+                        "source_evaluations": references,
+                        "inference_reexecuted": False,
+                    },
+                    sort_keys=True,
+                    allow_nan=False,
+                )
+                + "\n"
+            )
+            tracker.register_artifact(path, role="pooled_sample_consumption")
+            tracker.add_input_reference(fingerprint_file(split_inventory_path))
         log = tracker.artifact_path("coco.log")
         log.write_text(result.log)
         tracker.register_artifact(log, role="coco_evaluation_log")
@@ -154,6 +188,7 @@ def pool_evaluations(
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--evaluation", action="append", required=True)
+    parser.add_argument("--split-inventory")
     parser.add_argument("--maximum-images", type=int, default=1_000_000)
     parser.add_argument("--bootstrap-replicates", type=int, default=0)
     parser.add_argument("--runs-root", default="runs")
@@ -163,6 +198,7 @@ def main(argv=None):
         json.dumps(
             pool_evaluations(
                 args.evaluation,
+                split_inventory_path=args.split_inventory,
                 runs_root=args.runs_root,
                 run_id=args.run_id,
                 maximum_images=args.maximum_images,

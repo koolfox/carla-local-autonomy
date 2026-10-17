@@ -58,7 +58,9 @@ jobs:
       - name: Lint
         run: uv run ruff check carla_vision tests restore_project.py
       - name: Run offline regression suite
-        run: uv run pytest -q --junitxml=/tmp/research-tests.xml
+        run: |
+          uv run python -m carla_vision.reproduction.test_evidence --output /tmp/consumption-ci
+          cp /tmp/consumption-ci/tests.xml /tmp/research-tests.xml
       - name: Build and verify commit-bound reviewer source
         run: |
           mkdir -p /tmp/reviewer-evidence
@@ -74,6 +76,8 @@ jobs:
         run: |
           uv run carla-reviewer-evidence --help
           uv run carla-reviewer-evidence freeze-split --help
+          uv run carla-reviewer-evidence check-consumption --help
+          uv run python -m carla_vision.imitation.runner --help
           uv run carla-source-snapshot --help
           uv run carla-audit-trajectories --help
           uv run carla-verify-shards --help
@@ -106,7 +110,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: research-tests-${{ github.sha }}
-          path: /tmp/research-tests.xml
+          path: |
+            /tmp/research-tests.xml
+            /tmp/consumption-ci/
           retention-days: 14
           if-no-files-found: warn
 

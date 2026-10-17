@@ -38,8 +38,10 @@ system is legitimate; feature aggregation alone does not prove new methodology.
 | Does it generalize? | withheld map/weather/routes; external real data when claimed | scoped reviewer/claim gate | sim-to-real transfer or operational safety |
 | Can another person reproduce it? | relocated package, exact replay commands, independent execution log | closure verification and saved-prediction COCO replay | independent retraining or independence of a named person |
 | Can the artifacts be shared? | owner-reviewed per-asset licenses, provenance, author approvals | rights inventory checks, no automatic uploads | legal permission, choice of project license |
-| Do the evidence roles describe the same study? | one frozen protocol, sample inventory, method/seed matrix, audits and all-attempt cost allocation | `study_linkage` in reviewer check | actual test usage, full factorial coverage or historical first access |
+| Do the evidence roles describe the same study? | one frozen protocol, sample inventory, method/seed matrix, audits and all-attempt cost allocation | `study_linkage` in reviewer check | full factorial coverage or historical first access |
 | Does the prose match results? | claim/table/figure inventory, limitations and author approval | claim IDs and table-source binding plus actual result predicates | parsing prose/typeset numbers, peer review or statistics |
+| Which samples actually reached the producer? | frozen split plus registered plan/batches/summary and exact selected weights | `check-consumption`, pooled child reconstruction and empirical `study_consumption` | independent execution, opaque trainers or first-access time |
+| Does the test report belong to this code? | completed pytest process receipt, Git tree, lock, JUnit and log | selected archive object proof + test source/lock binding | test sufficiency, signed CI authority or model gains |
 
 ## Experiments before a methods-paper submission
 

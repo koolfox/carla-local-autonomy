@@ -285,6 +285,35 @@ def load_verified_evaluation(path: str | Path) -> VerifiedEvaluation:
         raise EvaluationIntegrityError("evaluation summary dataset reference changed")
     if summary.get("model") != resolved.get("model"):
         raise EvaluationIntegrityError("evaluation model reference changed between artifacts")
+    # Legacy runs remain readable, but cannot pass the empirical consumption gate.
+    consumption_roles = {a["role"] for a in manifest["artifacts"]}
+    if resolved.get("split_inventory") is not None or consumption_roles & {
+        "consumption_plan",
+        "consumed_sample_batches",
+        "sample_consumption",
+    }:
+        from ..reproduction.consumption import verify_consumption
+
+        try:
+            receipt = verify_consumption(root, require_complete=True)
+            if receipt["producer"] != "detector_evaluation" or len(receipt["passes"]) != 1:
+                raise ValueError("wrong evaluation consumption producer/passes")
+            observed = receipt["passes"][0]
+            source = dataset.reference["manifest"]["sha256"]
+            expected_keys = [f"{source}:{s['sample_id']}" for s in selected_samples]
+            from ..dataset.lineage import canonical_digest
+
+            if observed["keys"] != expected_keys or canonical_digest(
+                observed["outputs"]
+            ) != canonical_digest([list(f["mapped_predictions"]) for f in frame_rows]):
+                raise ValueError("actual consumption differs from retained predictions/frames")
+            weights = resolved["detector"].get("weights")
+            if not weights or fingerprint_file(weights) != receipt["selected_weights"]:
+                raise ValueError("consumption weights differ from evaluated detector")
+            if resolved.get("split_inventory") != receipt["split_inventory"]:
+                raise ValueError("consumption split differs from resolved evaluation")
+        except (ValueError, RuntimeError, OSError) as error:
+            raise EvaluationIntegrityError(f"consumption verification failed: {error}") from error
     return VerifiedEvaluation(
         root=root,
         run_id=verification.run_id,
