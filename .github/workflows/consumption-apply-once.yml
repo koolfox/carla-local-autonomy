@@ -69,6 +69,11 @@ jobs:
           subprocess.run(['git','apply','--check','--index',str(path)],check=True)
           subprocess.run(['git','apply','--index',str(path)],check=True)
           (path.parent/'source-sha256.json').write_text(json.dumps({n:hashlib.sha256(Path(n).read_bytes()).hexdigest() for n in names},indent=2)+'\n')
+          workflow='.github/workflows/research-offline.yml'
+          (path.parent/'reviewed-research-offline.yml').write_bytes(Path(workflow).read_bytes())
+          subprocess.run(['git','restore','--source=5e54af837ec67bc101ecd7a80866f1af8dff1ddf','--staged','--worktree','--',workflow],check=True)
+          (path.parent/'tested-source-sha256.json').write_text(json.dumps({n:hashlib.sha256(Path(n).read_bytes()).hexdigest() for n in names if n != workflow},indent=2)+'\n')
+          (path.parent/'publication-scope.txt').write_text('28 source/test/doc files are tested and published here. The separately retained reviewed research workflow must be applied through the authorized connector and final PR CI rerun.\n')
           PY
       - name: Commit locally so execution evidence binds a clean source tree
         env:
