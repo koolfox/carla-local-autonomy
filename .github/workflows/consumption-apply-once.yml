@@ -1,0 +1,131 @@
+name: Validate consumed-sample source once
+on:
+  push:
+    branches: ['codex/144-consumed-sample-evidence']
+    paths: ['.github/workflows/consumption-apply-once.yml', '.github/consumption_transport/**']
+permissions:
+  contents: write
+env:
+  OMP_NUM_THREADS: 2
+  MKL_NUM_THREADS: 2
+jobs:
+  validate-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          lfs: false
+          persist-credentials: false
+      - name: Retain exact transport before checksum validation
+        run: |
+          mkdir -p /tmp/consumption-transport
+          cp -r .github/consumption_transport /tmp/consumption-transport/raw
+          git rev-parse HEAD > /tmp/consumption-transport/trigger-commit.txt
+      - name: Apply only checksum-bound reviewed source
+        shell: bash
+        run: |
+          git merge-base --is-ancestor 5e54af837ec67bc101ecd7a80866f1af8dff1ddf HEAD
+          git diff --exit-code 5e54af837ec67bc101ecd7a80866f1af8dff1ddf HEAD -- carla_vision tests docs pyproject.toml uv.lock .github/workflows/research-offline.yml
+          python - <<'PY'
+          import base64, bz2, hashlib, json, subprocess
+          from pathlib import Path, PurePosixPath
+          root=Path('.github/consumption_transport')
+          pieces={f'payload.{i:02}': (root/f'payload.{i:02}').read_text(encoding='ascii') for i in range(7)}
+          if (root/'repairs.json').exists():
+              repairs=json.loads((root/'repairs.json').read_text())
+              for name, operations in repairs.items():
+                  value=pieces[name]
+                  for start, old, new in sorted(operations, reverse=True):
+                      if value[start:start+len(old)] != old:
+                          raise SystemExit('transport correction precondition failed')
+                      value=value[:start]+new+value[start+len(old):]
+                  pieces[name]=value
+          encoded=''.join(pieces[f'payload.{i:02}'] for i in range(7))
+          if len(encoded)!=53392:
+              raise SystemExit('transport length differs; no source applied')
+          packed=base64.b64decode(encoded,validate=True)
+          if hashlib.sha256(packed).hexdigest()!='42ee329ac8f3b3e9470668c14eaac392c7bcc363e8beaf397c9f3ffac5293523':
+              raise SystemExit('compressed digest differs; no source applied')
+          patch=bz2.decompress(packed)
+          if len(patch)!=197019 or hashlib.sha256(patch).hexdigest()!='421d629e8b2fddb2443022dd34876ea71c848c03f9c4264e67d13e0da48d625b':
+              raise SystemExit('reviewed source digest differs; no source applied')
+          path=Path('/tmp/consumption-transport/stage2.patch'); path.write_bytes(patch)
+          stats=subprocess.check_output(['git','apply','--numstat',str(path)],text=True)
+          names=[]
+          for line in stats.splitlines():
+              added, removed, name=line.split('\t',2)
+              p=PurePosixPath(name)
+              if added=='-' or removed=='-' or p.is_absolute() or '..' in p.parts:
+                  raise SystemExit('unsafe patch entry')
+              if not (name.startswith(('carla_vision/','tests/','docs/')) or name in ('pyproject.toml','.github/workflows/research-offline.yml')):
+                  raise SystemExit('unexpected patch path')
+              if name.startswith('carla_vision/operator/') or name.endswith('observable_world_worker.py'):
+                  raise SystemExit('unexpected runtime boundary mutation')
+              names.append(name)
+          if len(names)!=29 or len(set(names))!=29:
+              raise SystemExit('expected 29 reviewed files')
+          subprocess.run(['git','apply','--check','--index',str(path)],check=True)
+          subprocess.run(['git','apply','--index',str(path)],check=True)
+          (path.parent/'source-sha256.json').write_text(json.dumps({n:hashlib.sha256(Path(n).read_bytes()).hexdigest() for n in names},indent=2)+'\n')
+          PY
+      - name: Commit locally so execution evidence binds a clean source tree
+        env:
+          GIT_AUTHOR_NAME: Codex
+          GIT_AUTHOR_EMAIL: codex@openai.com
+          GIT_COMMITTER_NAME: Hesam Shani
+          GIT_COMMITTER_EMAIL: 50404883+koolfox@users.noreply.github.com
+        run: |
+          git diff --cached --check
+          git commit -m "feat(research): attest consumed samples and commit-bound test execution" -m "Advances S2 of #144: instrument successful batch boundaries, selected-model provenance, pooled holdout coverage and reviewer verification. Synthetic integration checks are not ADAS utility evidence." -m "Co-authored-by: Hesam Sheini <50404883+koolfox@users.noreply.github.com>"
+          git rev-parse HEAD > /tmp/consumption-transport/tested-commit.txt
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+      - name: Install locked profiles without simulator execution
+        run: uv sync --all-extras --all-groups --frozen
+      - name: Install recording encoder
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Lint
+        run: uv run ruff check carla_vision tests restore_project.py
+      - name: Run complete offline suite through execution recorder
+        run: uv run carla-test-execution run --repository . --output /tmp/consumption-execution --timeout-seconds 1200
+      - name: Verify test execution against the exact committed source
+        run: |
+          uv run carla-source-snapshot --repository . --commit HEAD --output /tmp/consumption-transport/source-review.zip > /tmp/consumption-transport/source.json
+          uv run carla-test-execution check /tmp/consumption-execution/execution.json --source-archive /tmp/consumption-transport/source-review.zip --source-commit "$(git rev-parse HEAD)"
+      - name: Publish only after successful checks and unchanged branch head
+        env:
+          REVIEW_PUSH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import base64, os, subprocess
+          from pathlib import Path
+          branch='codex/144-consumed-sample-evidence'
+          if os.environ['GITHUB_REF']!='refs/heads/'+branch:
+              raise SystemExit('unexpected branch; refusing push')
+          token=os.environ.pop('REVIEW_PUSH_TOKEN')
+          header='AUTHORIZATION: basic '+base64.b64encode(('x-access-token:'+token).encode()).decode()
+          command=['git','-c','http.https://github.com/.extraheader='+header]
+          result=subprocess.run(command+['ls-remote','origin','refs/heads/'+branch],capture_output=True,text=True)
+          if result.returncode or not result.stdout.split() or result.stdout.split()[0]!=os.environ['GITHUB_SHA']:
+              raise SystemExit('branch moved or inspection failed; refusing push')
+          result=subprocess.run(command+['push','origin','HEAD:refs/heads/'+branch],capture_output=True,text=True)
+          if result.returncode:
+              raise SystemExit('review branch push failed; no credentials logged')
+          sha=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          Path('/tmp/consumption-transport/published-commit.txt').write_text(sha+'\n')
+          print('Published tested source:',sha)
+          PY
+      - name: Preserve raw transport, source proof and execution even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: consumption-source-tests-${{ github.sha }}
+          path: |
+            /tmp/consumption-transport/
+            /tmp/consumption-execution/
+          retention-days: 14
+          if-no-files-found: error
