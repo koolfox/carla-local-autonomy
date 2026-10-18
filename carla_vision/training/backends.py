@@ -29,6 +29,9 @@ def _json_safe_metrics(value: Any) -> Any:
 
 
 class UltralyticsTrainingBackend:
+    consumption_schema = "1.0"
+    consumption_final_validation = True
+
     def __init__(self, architecture: str) -> None:
         if architecture not in {"rtdetr", "yolo"}:
             raise ValueError(f"unsupported Ultralytics architecture {architecture!r}")
@@ -41,6 +44,10 @@ class UltralyticsTrainingBackend:
     def train(self, request: TrainingRequest) -> TrainingResult:
         from ultralytics import RTDETR, YOLO
 
+        if request.consumption is not None:
+            from .ultralytics_consumption import validate_settings
+
+            validate_settings(request.config)
         model_class = RTDETR if self.architecture == "rtdetr" else YOLO
         model = model_class(str(request.pretrained_weights))
         config = request.config
@@ -74,7 +81,13 @@ class UltralyticsTrainingBackend:
             "verbose": True,
             **dict(config.extra_options),
         }
-        metrics_object = model.train(**arguments)
+        receipt_source = None
+        if request.consumption is not None:
+            from .ultralytics_consumption import train_instrumented
+
+            metrics_object, receipt_source = train_instrumented(model, arguments, request)
+        else:
+            metrics_object = model.train(**arguments)
         output_dir = project / run_name
         best = output_dir / "weights" / "best.pt"
         last = output_dir / "weights" / "last.pt"
@@ -92,6 +105,12 @@ class UltralyticsTrainingBackend:
             metrics=cast(Mapping[str, Any], _json_safe_metrics(metrics or {})),
             metadata={
                 "ultralytics_version": importlib.metadata.version("ultralytics"),
+                "consumption_instrumentation": receipt_source,
+                "arguments_scope": (
+                    "requested runner arguments; actual temporary-projection arguments are in backend args.yaml"
+                    if receipt_source
+                    else "backend call arguments"
+                ),
                 "architecture": self.architecture,
                 "arguments": _json_safe_metrics(arguments),
             },

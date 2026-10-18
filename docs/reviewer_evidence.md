@@ -282,3 +282,104 @@ uv run carla-reviewer-evidence check study/submission.json
 The report distinguishes individual role failures from `study_linkage`. A passing
 link gate is **consistency only**, never evidence of superiority or guaranteed Q1
 acceptance. Completion is tracked in Issue #144 rather than a parallel doc backlog.
+
+## 10. Verify samples actually consumed (S2)
+
+Both empirical modes additionally require `sample_execution`, specified in
+[ADR 0004](adr/0004-consumed-sample-and-test-execution-evidence.md). This is separate
+from `study_linkage`: a source-file list describes intent, not successful model
+work. Existing uninstrumented releases remain useful for development but do not
+pass this gate. New runs use the **same** frozen split inventory:
+
+```bash
+uv run carla-train-detector --help
+uv run carla-train-imitation --help
+uv run carla-evaluate-detector --help
+uv run carla-evaluate-imitation --help
+uv run carla-pool-evaluations --help
+uv run carla-verify-consumption --help
+```
+
+Add `--sample-inventory study/split-v1.1.json` to the relevant producer command.
+For evaluation of newly trained weights also supply `--training-run` pointing to
+the exact producing run and select its best checkpoint. Imitation evaluation uses
+the checkpoint directory as the default training origin. Locked test access still
+requires the existing acknowledgement/protocol, not only the new flag. For pooled
+shards, pass the inventory to every child and the pooling command, then verify:
+
+```bash
+uv run carla-verify-consumption runs/actual-evaluation \
+  --sample-inventory study/split-v1.1.json --require-holdout
+```
+
+Example paths are not bundled empirical data. `--require-holdout` rejects an
+individually valid child or pool that omits any frozen test-role sample. For a
+subset diagnostic, omit that flag; do not promote the subset to the full test.
+
+The study protocol adds a `sample_execution` object keyed by exactly its method
+IDs. Each trained arm has `{"model_origin":"trained"}`. A pretrained-only arm has
+`{"model_origin":"external_frozen","checkpoint": <actual fingerprint_file output>}`.
+The checkpoint fingerprint contains path, SHA-256 and byte size. The checker does
+not invent a hash for a future trained model. Changing methods or the inventory
+requires a new protocol generation; it is not retroactive preregistration.
+
+### What receipts mean
+
+`consumption/plan.json`, `events.jsonl` and `report.json` are registered by the
+actual producer. Events are acknowledged only after successful loop work, not
+`Dataset.__getitem__`/prefetch. They retain ordered sample identities, source RGB
+hashes, input tensor digests, phase/epoch, outputs and actual selected weights.
+Training repeats the full allowed sample set each recorded epoch; validation/test
+are separate phases. An incomplete pass aborts rather than silently dropping its
+samples. The journal records the reason and completed/expected count; comparing
+its committed keys to the plan identifies omitted samples. Reused IDs across
+canonical shards are disambiguated by manifest identity.
+
+Pooled evaluation reconstructs actual child outputs and their entire holdout
+union, checks saved prediction consistency and reruns COCO AP. It does **not**
+rerun model inference or average shard AP. Imitation validation/test metrics are
+checked against per-sample outputs and canonical supervision. Initial, last and
+selected-best weights are not interchangeable. Resumed imitation must retain its
+prior consumed-data producer as well as the checkpoint.
+
+The initial detector training profile is explicitly bounded: Ultralytics 8.4.137
+and the reviewed upstream hook hashes, workers=0, cache=false, amp=false, patience=0,
+positive batch size, `nbs=batch_size` and `mosaic=0`. Other multi-image mixing must
+also be zero. Distributed execution, gradient accumulation, AMP-skipped updates,
+partial epochs, arbitrary transforms and unreviewed source versions fail closed.
+Configuration validation runs before certified training. These restrictions do
+not apply silently to legacy non-attested runs. Canonical inputs are protected by
+an exclusive temporary projection (8 GiB total and 128 MiB per file limits).
+The retained backend args may contain that temporary path; reconstruct it from
+verified source releases on reproduction, never treat it as portable input data.
+
+### Bind executed tests to selected code
+
+From a full clean checkout with the locked dependencies installed:
+
+```bash
+uv sync --all-extras --all-groups --frozen
+uv run carla-test-execution run --repository . --output ../review-tests \
+  --timeout-seconds 1200
+uv run carla-source-snapshot --repository . --commit HEAD \
+  --output ../review-source.zip
+uv run carla-test-execution check ../review-tests/execution.json \
+  --source-archive ../review-source.zip --source-commit "$(git rev-parse HEAD)"
+```
+
+Outputs must be new directories outside the checkout. The wrapper executes pytest,
+records its exit/timeout and exact selected source before and after execution, and
+retains its log/XML even on failure. The default selects `tests`; `--test` narrows
+targets and is retained explicitly, so a focused check is not a full-suite claim.
+A hang, an empty run, skipped test or changed source cannot become a passed receipt.
+The empirical review role `tests` references **execution.json**, not raw XML.
+The source role references its Git-proven ZIP and the selected source commit.
+Producer source-byte digests must agree with that archive, including origins of
+trained and resumed weights. Read-only CI exercises this linkage on the full
+locked-profile checkout and retains the entire execution directory.
+
+This is software traceability, not a cryptographic signature by a trusted witness,
+proof of first test access or empirical accuracy. The new tiny detector fixtures
+perform real optimization and inference solely to validate instrumentation; their
+numbers must not enter the manuscript's performance tables. The rest of the
+reviewer roles, hypothesis studies and owner approvals remain required.

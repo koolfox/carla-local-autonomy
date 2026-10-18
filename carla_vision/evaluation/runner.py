@@ -11,6 +11,7 @@ import re
 import tempfile
 from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
+from contextlib import ExitStack
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -27,6 +28,7 @@ from ..contracts import Detection, Detector, DetectorConfig
 from ..dataset.verified import VerifiedDataset, load_verified_dataset
 from ..detectors.factory import create_detector
 from ..model_release.verified import load_verified_model
+from ..reproduction.consumption import ConsumptionRecorder, checked_image, sample_key, tensor_digest
 from ..scenarios.seeds import derive_seed_bundle
 from .coco import CocoEvaluation, evaluate_coco
 from .contracts import EVALUATION_RUN_SCHEMA_VERSION, EvaluationConfig, load_evaluation_config
@@ -500,6 +502,8 @@ def run_evaluation(
     acknowledge_locked_test: bool = False,
     cli_args: Sequence[str] | Mapping[str, Any] = (),
     repository_root: str | Path | None = None,
+    sample_inventory: str | Path | None = None,
+    training_run: str | Path | None = None,
     detector_override: Detector | None = None,
     model_reference_override: Mapping[str, Any] | None = None,
     threshold_selection_path: str | Path | None = None,
@@ -539,6 +543,15 @@ def run_evaluation(
         "kind": "evaluation_preregistration",
         **fingerprint_file(config_path_resolved),
     }
+    training_origin = None
+    if training_run is not None:
+        if sample_inventory is None:
+            raise ValueError("training origin requires --sample-inventory")
+        from ..reproduction.consumption_verify import training_origin_reference
+
+        training_origin = training_origin_reference(
+            training_run, checkpoint=model_reference, inventory_path=sample_inventory
+        )
     resolved_config = {
         "schema_version": EVALUATION_RUN_SCHEMA_VERSION,
         "object_type": "offline_detector_evaluation",
@@ -548,6 +561,8 @@ def run_evaluation(
         "detector": detector_config.as_dict(),
         "model": model_reference,
         "selected_sample_count": len(samples),
+        "sample_consumption_required": sample_inventory is not None,
+        "training_origin": training_origin,
         "locked_test_acknowledged": acknowledge_locked_test,
         "threshold_selection": threshold_reference,
         "runtime_sensor_contract": "front_monocular_rgb_only",
@@ -562,7 +577,27 @@ def run_evaluation(
         model_refs=[model_reference],
         dataset_refs=[dataset.reference],
     )
-    with tracker:
+    with tracker, ExitStack() as consumption_stack:
+        consumption = None
+        if sample_inventory is not None:
+            if not all(k in model_reference for k in ("path", "sha256", "size_bytes")):
+                raise ValueError("sample-attested evaluation requires fingerprinted weights")
+            consumption = consumption_stack.enter_context(
+                ConsumptionRecorder(
+                    tracker,
+                    sample_inventory,
+                    [dataset.root],
+                    phases={"evaluation": list(config.partitions)},
+                    task="detector_evaluation",
+                    model=model_reference,
+                )
+            )
+            tracker.add_input_reference(
+                {"kind": "frozen_sample_inventory", **consumption.inventory_ref}
+            )
+            consumption.begin("evaluation", 0, ordered=True)
+        if training_origin is not None:
+            tracker.add_input_reference(training_origin)
         if threshold_reference is not None:
             tracker.add_input_reference(threshold_reference)
         resolved_path = tracker.artifact_path("resolved_evaluation_config.json")
@@ -595,7 +630,14 @@ def run_evaluation(
             for position, sample in enumerate(samples, start=1):
                 image_id = int(sample["image_id"])
                 image_path = dataset.root / str(sample["rgb"]["path"])
-                image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
+                if consumption is not None:
+                    image, observed_rgb = checked_image(image_path, sample["rgb"]["sha256"])
+                    key = sample_key(dataset.reference["manifest"]["sha256"], sample["sample_id"])
+                    token = consumption.prepare(
+                        [key], [observed_rgb], input_sha256=tensor_digest(image)
+                    )
+                else:
+                    image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
                 if image is None:
                     raise RuntimeError(f"could not read evaluation image {image_path}")
                 from .timing import measured_inference
@@ -628,6 +670,8 @@ def run_evaluation(
                     predictions.append(canonical)
                     mapped_rows.append(canonical)
                     accepted_count += 1
+                if consumption is not None:
+                    consumption.commit(token, [mapped_rows])
                 frame_rows.append(
                     {
                         "position": position,
@@ -652,6 +696,9 @@ def run_evaluation(
                 )
         finally:
             detector.close()
+
+        if consumption is not None:
+            consumption.end()
 
         image_ids = [int(sample["image_id"]) for sample in samples]
         selected_image_ids = set(image_ids)
@@ -894,6 +941,10 @@ def run_evaluation(
                     "sample_count": len(samples),
                 },
             )
+        if consumption is not None:
+            consumption.finish(
+                {"evaluated": {k: model_reference[k] for k in ("path", "sha256", "size_bytes")}}
+            )
     return {
         "run_id": tracker.run_id,
         "run_dir": str(tracker.run_dir),
@@ -912,6 +963,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--config", required=True)
     parser.add_argument("--dataset", required=True)
     parser.add_argument(
+        "--sample-inventory", help="Verified frozen split; require actual sample receipts"
+    )
+    parser.add_argument(
         "--detector",
         choices=("rtdetr", "yolo", "custom"),
         default=None,
@@ -928,6 +982,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--run-id")
     parser.add_argument("--acknowledge-locked-test", action="store_true")
     parser.add_argument("--threshold-selection", help="verified validation-only operating point")
+    parser.add_argument(
+        "--training-run", help="Attested trainer that produced the selected best weights"
+    )
     args = parser.parse_args(argv)
     if args.model_package:
         conflicting = [
@@ -971,6 +1028,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     result = run_evaluation(
         config_path=args.config,
         dataset_path=args.dataset,
+        sample_inventory=args.sample_inventory,
+        training_run=args.training_run,
         detector_config=detector_config,
         runs_root=args.runs_root,
         run_id=args.run_id,

@@ -665,6 +665,14 @@ def _verify_deep(
     roles: Mapping[str, int],
 ) -> Mapping[str, Any]:
     role_names = set(roles)
+    manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+    if {"consumed_sample_report", "pooled_consumed_sample_report"} & role_names or manifest.get(
+        "invocation", {}
+    ).get("config", {}).get("sample_consumption_required"):
+        from .reproduction.consumption_verify import verify_producer_consumption
+
+        result = verify_producer_consumption(root)
+        return {"kind": "consumed_sample_execution", **result}
     if "dataset_manifest" in role_names:
         from .dataset.verified import load_verified_dataset
 

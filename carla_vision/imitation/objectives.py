@@ -95,9 +95,7 @@ def control_metrics(
         "steer_mae": float(steer_error.abs().mean().cpu()),
         "steer_rmse": float(torch.sqrt(torch.mean(steer_error.square())).cpu()),
         "longitudinal_mae": float(longitudinal_error.abs().mean().cpu()),
-        "longitudinal_rmse": float(
-            torch.sqrt(torch.mean(longitudinal_error.square())).cpu()
-        ),
+        "longitudinal_rmse": float(torch.sqrt(torch.mean(longitudinal_error.square())).cpu()),
         "brake_precision": float(brake_precision),
         "brake_recall": float(brake_recall),
         "steer_direction_accuracy": float(

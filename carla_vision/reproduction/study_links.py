@@ -314,7 +314,17 @@ def check_study_links(paths: Mapping[str, Path], *, study_id: str) -> dict[str, 
         if binding["metric_field"] != protocol["primary_metric"]:
             raise ValueError("result metric field differs from the primary metric")
         producer = _reference(paths["results"].parent, binding["manifest"])
-        registered = _object(producer)["references"]["datasets"]
+        producer_document = _object(producer)
+        registered = producer_document["references"]["datasets"]
+        if (
+            producer_document.get("invocation", {})
+            .get("config", {})
+            .get("sample_consumption_required")
+        ):
+            from .consumption_verify import verify_producer_consumption
+
+            trace = verify_producer_consumption(producer.parent)
+            registered = [{"manifest": r} for r in trace["source_manifests"]]
         if not isinstance(registered, list) or not registered:
             raise ValueError("producer has no bound dataset sources")
         for source in registered:

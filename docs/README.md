@@ -144,3 +144,5 @@ may describe their original scope; current code/tests and maintained guides
 take precedence when they disagree.
 
 Frozen study sample membership and cross-role evidence consistency: [`reviewer_evidence.md`](reviewer_evidence.md#9-bind-all-review-roles-to-the-same-study), owned by `carla_vision/reproduction/study_links.py`; first test: `tests/test_reviewer_study_links.py`.
+
+Actual post-success sample consumption and commit-bound pytest evidence: [`reviewer_evidence.md`](reviewer_evidence.md#10-verify-samples-actually-consumed-s2), owned by `reproduction/consumption.py`, `consumption_verify.py`, `test_execution.py` and existing producer loops; first tests: `tests/test_sample_consumption.py` and `tests/test_execution_receipts.py`.

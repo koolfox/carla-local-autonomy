@@ -13,6 +13,7 @@ import json
 
 from ..artifacts import RunArtifactTracker, fingerprint_file
 from ..dataset.lineage import scene_group_key
+from ..reproduction.consumption import implementation_digest
 from ..reproduction.review_contracts import integer, read_json
 from .coco import evaluate_coco
 from .metrics import operating_metrics
@@ -21,18 +22,33 @@ from .verified import load_verified_evaluation
 
 
 def pool_evaluations(
-    roots, *, runs_root="runs", run_id=None, maximum_images=1_000_000, bootstrap_replicates=0
+    roots,
+    *,
+    runs_root="runs",
+    run_id=None,
+    maximum_images=1_000_000,
+    bootstrap_replicates=0,
+    sample_inventory=None,
 ):
+    implementation = implementation_digest("pooled_detector_evaluation")
     integer(maximum_images, "maximum_images", minimum=1)
     integer(bootstrap_replicates, "bootstrap_replicates")
     if len(roots) < 2:
         raise ValueError("pool at least two explicit canonical evaluations")
     truth = {"images": [], "annotations": [], "categories": []}
     predictions, frames, references = [], [], []
+    consumption_keys, dataset_references, origins = [], [], []
     seen, groups, group_partitions = set(), {}, {}
     policy, model, config = None, None, None
     for raw_root in roots:
         evaluation = load_verified_evaluation(raw_root)
+        dataset_references.append(evaluation.dataset.reference)
+        if sample_inventory is not None:
+            from ..reproduction.consumption_verify import verify_producer_consumption
+
+            checked = verify_producer_consumption(raw_root, inventory_path=sample_inventory)
+            consumption_keys.extend(checked["keys"])
+            origins.append(checked["training_origin"])
         current_policy = evaluation.config.as_dict()
         # Execution identity differs per shard; scientific policy may not.
         current_policy.pop("evaluation_id")
@@ -89,6 +105,8 @@ def pool_evaluations(
                     }
                 )
         predictions.extend({**p, "image_id": remap[p["image_id"]]} for p in evaluation.predictions)
+    if origins and any(origin != origins[0] for origin in origins):
+        raise ValueError("pooled child training origins differ")
     image_ids = [i["id"] for i in truth["images"]]
     result = evaluate_coco(truth, predictions, image_ids=image_ids)
     operating = operating_metrics(
@@ -129,10 +147,42 @@ def pool_evaluations(
         "evaluation": policy,
         "model": model,
         "source_evaluations": references,
+        "sample_consumption_required": sample_inventory is not None,
     }
     with RunArtifactTracker(
-        runs_root, run_id=run_id, input_refs=references, config=resolved
+        runs_root,
+        run_id=run_id,
+        input_refs=references,
+        dataset_refs=dataset_references,
+        config=resolved,
     ) as tracker:
+        if sample_inventory is not None:
+            from ..reproduction.study_links import verify_split
+
+            verify_split(sample_inventory)
+            inventory_ref = fingerprint_file(sample_inventory)
+            tracker.add_input_reference({"kind": "frozen_sample_inventory", **inventory_ref})
+            if implementation_digest("pooled_detector_evaluation") != implementation:
+                raise ValueError("pooled producer source changed during derivation")
+            consumption_path = tracker.artifact_path("consumption/pooled.json")
+            consumption_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "inventory": inventory_ref,
+                        "children": references,
+                        "keys": consumption_keys,
+                        "model": model,
+                        "model_inference_reexecuted": False,
+                        "training_origin": origins[0],
+                        "implementation": implementation,
+                    },
+                    sort_keys=True,
+                    allow_nan=False,
+                )
+                + "\n"
+            )
+            tracker.register_artifact(consumption_path, role="pooled_consumed_sample_report")
         for name, value, role in (
             ("resolved_evaluation_config.json", resolved, "resolved_evaluation_configuration"),
             ("instances.coco.json", truth, "pooled_coco_annotations"),
@@ -158,6 +208,7 @@ def main(argv=None):
     parser.add_argument("--bootstrap-replicates", type=int, default=0)
     parser.add_argument("--runs-root", default="runs")
     parser.add_argument("--run-id")
+    parser.add_argument("--sample-inventory")
     args = parser.parse_args(argv)
     print(
         json.dumps(
@@ -167,6 +218,7 @@ def main(argv=None):
                 run_id=args.run_id,
                 maximum_images=args.maximum_images,
                 bootstrap_replicates=args.bootstrap_replicates,
+                sample_inventory=args.sample_inventory,
             ),
             sort_keys=True,
             indent=2,

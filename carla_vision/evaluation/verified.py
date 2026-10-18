@@ -124,7 +124,9 @@ def _validate_prediction(
         raise EvaluationIntegrityError("evaluation canonical prediction violates its contract")
 
 
-def load_verified_evaluation(path: str | Path) -> VerifiedEvaluation:
+def load_verified_evaluation(
+    path: str | Path, *, verify_receipts: bool = True
+) -> VerifiedEvaluation:
     try:
         verification = verify_research_object(
             path,
@@ -285,6 +287,10 @@ def load_verified_evaluation(path: str | Path) -> VerifiedEvaluation:
         raise EvaluationIntegrityError("evaluation summary dataset reference changed")
     if summary.get("model") != resolved.get("model"):
         raise EvaluationIntegrityError("evaluation model reference changed between artifacts")
+    if verify_receipts and resolved.get("sample_consumption_required"):
+        from ..reproduction.consumption_verify import verify_producer_consumption
+
+        verify_producer_consumption(root)
     return VerifiedEvaluation(
         root=root,
         run_id=verification.run_id,

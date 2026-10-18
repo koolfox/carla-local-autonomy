@@ -57,6 +57,9 @@ voxel = [
 ]
 
 [project.scripts]
+carla-train-imitation = "carla_vision.imitation.runner:main"
+carla-verify-consumption = "carla_vision.reproduction.consumption_verify:main"
+carla-test-execution = "carla_vision.reproduction.test_execution:main"
 carla-pool-evaluations = "carla_vision.evaluation.pool:main"
 carla-replay-bundled-metrics = "carla_vision.reproduction.replay_metrics:main"
 carla-reviewer-evidence = "carla_vision.reproduction.reviewer:main"

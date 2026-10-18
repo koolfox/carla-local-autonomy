@@ -131,3 +131,26 @@ The behavioral teacher and closed-loop observer still require a separate, driver
 bound experimental protocol. Greedy k-center covers one published component only;
 it does not remove the obligation to compare the nearest noisy-oracle competitor.
 Fixtures and CI establish software consistency, not full scientific validity.
+
+
+## Producer-consumed sample evidence (software implementation)
+
+A frozen dataset inventory defines the expected population but is not evidence of
+execution. The implementation now records sample identities at the successful
+producer boundary: completed training work, inference, or validation metric
+update. Preparation and prefetch are not counted. Each phase/epoch is checked
+against immutable source membership; missing, duplicated or substituted samples
+prevent completion. Evaluation of a trained arm binds the consumed training
+producer and selected-best checkpoint. Sharded evaluation reconstructs the union
+of actual child receipts and recomputes pooled metrics, without claiming another
+inference. Recorded producer source bytes and completed pytest/JUnit receipts are
+checked against the selected Git-proven code snapshot.
+
+This instrumentation is tested with synthetic data and tiny real CPU model loops,
+not a dataset-utility experiment. It supplies traceable software records, not
+trusted-hardware attestation, independent human audits or a guarantee of first
+holdout access. Initial detector hooks restrict distributed execution, multi-image
+augmentation, accumulation and AMP to avoid unsupported consumption claims. These
+restrictions and any alternative sampling protocol must be disclosed when the
+empirical experiments are executed. No AP improvement or hypothesis result is
+reported by this implementation alone.

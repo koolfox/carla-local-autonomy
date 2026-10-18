@@ -115,7 +115,8 @@ def _training_data_yaml(
         if isinstance(dataset, VerifiedShardedTrainingSet):
             return "\n".join(
                 "  - " + json.dumps(str(path), ensure_ascii=False)
-                for partition in partitions for path in dataset.image_directories[partition]
+                for partition in partitions
+                for path in dataset.image_directories[partition]
             )
         return "\n".join(f"  - images/{partition}" for partition in partitions)
 
@@ -241,6 +242,7 @@ def run_training(
     cli_args: Sequence[str] | Mapping[str, Any] = (),
     repository_root: str | Path | None = None,
     backend_override: TrainerBackend | None = None,
+    sample_inventory: str | Path | None = None,
 ) -> dict[str, Any]:
     resolved_config_path = Path(config_path).expanduser().resolve(strict=True)
     config = load_training_config(resolved_config_path)
@@ -283,6 +285,7 @@ def run_training(
         seeds=seed_bundle.as_dict(),
         dry_run=dry_run,
     )
+    resolved["sample_consumption_required"] = sample_inventory is not None and not dry_run
     tracker = RunArtifactTracker(
         runs_root,
         run_id=run_id,
@@ -292,7 +295,7 @@ def run_training(
         model_refs=[weights_reference],
         dataset_refs=[dataset.reference],
     )
-    with tracker:
+    with tracker, contextlib.ExitStack() as consumption_stack:
         resolved_path = tracker.artifact_path("resolved_training_config.json")
         seeds_path = tracker.artifact_path("seeds.json")
         data_path = tracker.artifact_path("data/training_data.yaml")
@@ -352,6 +355,32 @@ def run_training(
         backend = backend_override or create_training_backend(config)
         backend_root = tracker.artifact_path("backend", create_parent=True)
         backend_root.mkdir(exist_ok=True)
+        consumption = None
+        if sample_inventory is not None:
+            from ..reproduction.consumption import ConsumptionRecorder
+            from .consumption import TrainingConsumption
+
+            if getattr(backend, "consumption_schema", None) != "1.0":
+                raise ValueError(
+                    "backend has no in-loop consumption capability; no attestation fabricated"
+                )
+            phases = {"train": list(train_partitions), "val": list(validation_partitions)}
+            if getattr(backend, "consumption_final_validation", False) is True:
+                phases["val_final"] = list(validation_partitions)
+            recorder = consumption_stack.enter_context(
+                ConsumptionRecorder(
+                    tracker,
+                    sample_inventory,
+                    [dataset.root],
+                    task="detector_training",
+                    phases=phases,
+                    model=weights_reference,
+                )
+            )
+            tracker.add_input_reference(
+                {"kind": "frozen_sample_inventory", **recorder.inventory_ref}
+            )
+            consumption = TrainingConsumption(recorder)
         request = TrainingRequest(
             config=config,
             pretrained_weights=weights_path,
@@ -359,6 +388,7 @@ def run_training(
             data_config=data_path,
             output_root=backend_root,
             backend_seed=seed_bundle.values["model_init"],
+            consumption=consumption,
         )
         result: TrainingResult | None = None
         training_error: BaseException | None = None
@@ -460,6 +490,8 @@ def run_training(
                 "backend": result.backend_name,
             },
         )
+        if consumption is not None:
+            recorder.finish({"best": fingerprint_file(best), "last": fingerprint_file(last)})
     return {
         "run_id": tracker.run_id,
         "run_dir": str(tracker.run_dir),
@@ -482,6 +514,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--run-id")
     parser.add_argument("--device")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--sample-inventory")
     return parser.parse_args(argv)
 
 
@@ -494,6 +527,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         runs_root=args.runs_root,
         run_id=args.run_id,
         dry_run=args.dry_run,
+        sample_inventory=args.sample_inventory,
         device_override=args.device,
         cli_args=vars(args),
         repository_root=Path.cwd(),

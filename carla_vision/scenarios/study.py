@@ -40,7 +40,11 @@ def validate_protocol(raw: Mapping[str, Any]) -> dict[str, Any]:
         "learner_configs",
         "cost_scope",
     }
-    if set(raw) != required or raw["schema_version"] != "1.0":
+    if (
+        required - set(raw)
+        or set(raw) - required - {"sample_execution"}
+        or raw["schema_version"] != "1.0"
+    ):
         raise ValueError("study protocol fields/schema do not match the preregistration contract")
     if raw["purpose"] not in {"development", "confirmatory"} or not raw["study_id"]:
         raise ValueError("study identity/purpose invalid")
@@ -69,6 +73,10 @@ def validate_protocol(raw: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError("invalid or repeated baselines")
     if not {"random", "capability_matched", "error_source_aware"} <= set(methods):
         raise ValueError("random, capability-matched and full methods are mandatory")
+    if "sample_execution" in raw:
+        from ..reproduction.consumption_verify import validate_execution_policy
+
+        validate_execution_policy(raw["sample_execution"], methods)
     if not {"clean", "capture_fault", "supervision_fault", "mixed"} <= set(raw["regimes"]):
         raise ValueError("clean and distinct fault regimes are required")
     for key in ("training_seeds", "generation_seeds"):

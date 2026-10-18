@@ -169,6 +169,10 @@ def _check_role(role: str, path: Path, manifest: dict, *, empirical: bool) -> di
     if role == "source_snapshot":
         _source_archive(path, manifest["source_commit"])
         return {"status": "passed", "verification": "source_archive_identity_and_safe_paths"}
+    if role == "tests" and (empirical or path.suffix == ".json"):
+        from .test_execution import verify_test_execution
+
+        return verify_test_execution(path, source_commit=manifest["source_commit"])
     if role == "tests":
         if path.stat().st_size > 64 * 1024 * 1024:
             raise ValueError("JUnit exceeds parsing budget")
@@ -498,6 +502,15 @@ def review_submission(path: str | Path) -> dict[str, Any]:
                 errors["study_linkage"] = str(error)
         else:
             missing.append("study_linkage")
+    if empirical:
+        try:
+            from .consumption_verify import check_study_consumption
+
+            checks["sample_execution"] = check_study_consumption(
+                evidence_paths, source_commit=document["source_commit"]
+            )
+        except (OSError, ValueError, TypeError, KeyError, RuntimeError, zipfile.BadZipFile) as error:
+            errors["sample_execution"] = str(error)
     ready = not missing and not errors
     return {
         "schema_version": "1.0",

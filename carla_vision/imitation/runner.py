@@ -9,6 +9,7 @@ import math
 import random
 import time
 from collections.abc import Mapping, Sequence
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,7 @@ from torch.utils.data import DataLoader
 from ..artifacts import RunArtifactTracker, fingerprint_file
 from ..dataset.lineage import canonical_digest
 from ..dataset.shards import expand_dataset_roots
+from ..reproduction.consumption import ConsumptionRecorder, tensor_digest
 from .checkpoint import atomic_torch_save, capture_rng, restore_rng
 from .dataset import BehaviorImitationDataset, split_summary
 from .model import ImitationControlNet, ImitationModelConfig
@@ -121,6 +123,9 @@ def _run_epoch(
     high_steer_boost: float,
     brake_boost: float,
     max_batches: int | None,
+    consumption=None,
+    phase="evaluation",
+    epoch=0,
 ) -> dict[str, float]:
     training = optimizer is not None
     model.train(training)
@@ -131,10 +136,18 @@ def _run_epoch(
         steer_squared=0.0, longitudinal_squared=0.0, brake_tp=0.0, brake_fp=0.0, brake_fn=0.0
     )
     started = time.perf_counter()
+    if consumption is not None:
+        consumption.begin(phase, epoch)
     for batch_index, batch in enumerate(loader):
         if max_batches is not None and batch_index >= max_batches:
             break
         image, speed, target = _move_batch(batch, device)
+        if consumption is not None:
+            token = consumption.prepare(
+                batch["consumption_key"],
+                batch["consumption_rgb_sha256"],
+                input_sha256=tensor_digest(image, speed, target),
+            )
         if optimizer is not None:
             optimizer.zero_grad(set_to_none=True)
         with torch.set_grad_enabled(training):
@@ -147,10 +160,25 @@ def _run_epoch(
                 high_steer_boost=high_steer_boost,
                 brake_boost=brake_boost,
             )
+            if consumption is not None and not bool(torch.isfinite(losses.total)):
+                raise ValueError("nonfinite loss cannot establish successful consumption")
             if optimizer is not None:
                 losses.total.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
                 optimizer.step()
+        if consumption is not None:
+            consumption.commit(
+                token,
+                [
+                    {"steer": float(s), "longitudinal": float(longitudinal), "target": t.tolist()}
+                    for s, longitudinal, t in zip(
+                        outputs["steer"].detach().cpu(),
+                        outputs["longitudinal"].detach().cpu(),
+                        target.detach().cpu(),
+                        strict=True,
+                    )
+                ],
+            )
         metrics = losses.detached()
         metrics.update(control_metrics(outputs, target))
         for key in ("steer", "longitudinal"):
@@ -167,6 +195,8 @@ def _run_epoch(
             totals[name] = totals.get(name, 0.0) + float(value) * batch_samples
         samples += batch_samples
         batches += 1
+    if consumption is not None:
+        consumption.end()
     if batches == 0 or samples == 0:
         raise RuntimeError("data loader produced no batches")
     elapsed = time.perf_counter() - started
@@ -260,6 +290,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="Train an RGB-plus-speed BehaviorAgent imitation-driving baseline."
     )
     parser.add_argument("--dataset", action="append", type=Path, default=[])
+    parser.add_argument("--sample-inventory", type=Path)
     parser.add_argument("--output", type=Path, default=Path("models/imitation-baseline"))
     parser.add_argument("--image-size", type=_parse_image_size, default=(192, 320))
     parser.add_argument("--speed-scale-mps", type=float, default=20.0)
@@ -364,9 +395,21 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         print(json.dumps(summary, indent=2, sort_keys=True))
         return summary
 
+    sample_inventory = getattr(args, "sample_inventory", None)
+    if sample_inventory is not None and (
+        args.skip_dataset_verification
+        or args.max_samples
+        or args.max_batches
+        or args.allow_legacy_action_targets
+        or args.allow_training_selection
+    ):
+        raise ValueError(
+            "attested training rejects truncation, legacy and verification bypass modes"
+        )
     roots = expand_dataset_roots(args.dataset)
     common = {
         "roots": roots,
+        "attest_consumption": sample_inventory is not None,
         "image_size": args.image_size,
         "speed_scale_mps": args.speed_scale_mps,
         "augmentation_seed": args.augmentation_seed,
@@ -493,6 +536,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         config={
             "object_type": "imitation_training",
             "purpose": args.purpose,
+            "start_epoch": start_epoch,
+            "total_epochs": args.epochs,
+            "sample_consumption_required": sample_inventory is not None,
             "resume_identity": resume_identity,
             "split": split_information,
             "model": config.as_dict(),
@@ -511,7 +557,41 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "brake_boost": args.brake_boost,
         "max_batches": args.max_batches,
     }
-    with tracker:
+    with tracker, ExitStack() as consumption_stack:
+        consumption = None
+        if sample_inventory is not None:
+            model_binding = {
+                "initial_state_sha256": tensor_digest(*model.state_dict().values()),
+                "initial_epoch": start_epoch - 1,
+            }
+            if resume_ref is not None:
+                from ..reproduction.consumption_verify import verify_producer_consumption
+
+                prior = verify_producer_consumption(
+                    Path(resume_ref["path"]).parent, inventory_path=sample_inventory
+                )
+                if prior["checkpoints"].get("last") != resume_ref:
+                    raise ValueError("resume checkpoint differs from prior consumed-sample run")
+                model_binding["resume_manifest"] = fingerprint_file(
+                    Path(resume_ref["path"]).parent / "manifest.json"
+                )
+                model_binding["resume_checkpoint"] = resume_ref
+            consumption = consumption_stack.enter_context(
+                ConsumptionRecorder(
+                    tracker,
+                    sample_inventory,
+                    roots,
+                    phases={
+                        p: sorted({s.source_partition for s in d.samples})
+                        for p, d in datasets.items()
+                    },
+                    task="imitation_training",
+                    model=model_binding,
+                )
+            )
+            tracker.add_input_reference(
+                {"kind": "frozen_sample_inventory", **consumption.inventory_ref}
+            )
         git_state = tracker.manifest["git"]
         if args.purpose == "confirmatory" and (
             not git_state.get("available")
@@ -523,9 +603,25 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             )
         for epoch in range(start_epoch, args.epochs + 1):
             datasets["train"].set_epoch(epoch)
-            train_metrics = _run_epoch(model, loaders["train"], optimizer=optimizer, **common_epoch)
+            train_metrics = _run_epoch(
+                model,
+                loaders["train"],
+                optimizer=optimizer,
+                consumption=consumption,
+                phase="train",
+                epoch=epoch,
+                **common_epoch,
+            )
             val_metrics = (
-                _run_epoch(model, loaders["val"], optimizer=None, **common_epoch)
+                _run_epoch(
+                    model,
+                    loaders["val"],
+                    optimizer=None,
+                    consumption=consumption,
+                    phase="val",
+                    epoch=epoch,
+                    **common_epoch,
+                )
                 if loaders["val"] is not None
                 else None
             )
@@ -612,6 +708,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ("summary.json", "training_summary"),
         ):
             tracker.register_artifact(output / name, role=role)
+        if consumption is not None:
+            consumption.finish(
+                {
+                    "best": fingerprint_file(output / "checkpoint_best.pt"),
+                    "last": fingerprint_file(output / "checkpoint_last.pt"),
+                }
+            )
     print(json.dumps(summary, indent=2, sort_keys=True))
     return summary
 

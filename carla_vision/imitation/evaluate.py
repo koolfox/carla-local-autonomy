@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import argparse
 import json
+from contextlib import ExitStack
 from pathlib import Path
 
 import torch
 
 from ..artifacts import RunArtifactTracker, fingerprint_file
+from ..reproduction.consumption import ConsumptionRecorder
 from .dataset import BehaviorImitationDataset
 from .model import ImitationControlNet, ImitationModelConfig
 from .runner import _loader, _resolve_device, _run_epoch, _write_json
@@ -61,6 +63,10 @@ def main(argv=None) -> int:
     parser.add_argument("--dataset", type=Path, action="append", required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--device", default="cpu")
+    parser.add_argument("--sample-inventory", type=Path)
+    parser.add_argument(
+        "--training-run", type=Path, help="Defaults to checkpoint parent in attested mode"
+    )
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument(
         "--evaluation-protocol",
@@ -73,7 +79,21 @@ def main(argv=None) -> int:
         parser.error("locked-test evaluation requires --acknowledge-locked-test")
     if args.batch_size <= 0:
         parser.error("batch size must be positive")
+    checkpoint_ref = fingerprint_file(args.checkpoint)
+    training_origin = None
+    if args.sample_inventory is not None:
+        from ..reproduction.consumption_verify import training_origin_reference
+
+        training_origin = training_origin_reference(
+            args.training_run or args.checkpoint.parent,
+            checkpoint=checkpoint_ref,
+            inventory_path=args.sample_inventory,
+        )
+    elif args.training_run is not None:
+        raise ValueError("training origin requires --sample-inventory")
     payload = torch.load(args.checkpoint, map_location="cpu", weights_only=True)
+    if fingerprint_file(args.checkpoint) != checkpoint_ref:
+        raise ValueError("checkpoint changed while loading model")
     if payload.get("task") != "behavior_agent_control_imitation":
         raise ValueError("checkpoint task mismatch")
     if payload.get("runtime_input_contract") != "front_rgb_bgr_uint8_plus_speed_mps":
@@ -82,6 +102,7 @@ def main(argv=None) -> int:
     data = BehaviorImitationDataset(
         args.dataset,
         partition="test",
+        attest_consumption=args.sample_inventory is not None,
         image_size=config.image_size_hw,
         speed_scale_mps=config.speed_scale_mps,
     )
@@ -103,19 +124,39 @@ def main(argv=None) -> int:
     model = ImitationControlNet(config).to(device)
     model.load_state_dict(payload["state_dict"], strict=True)
     output = args.output.expanduser().resolve()
-    with RunArtifactTracker(
-        output.parent,
-        run_id=output.name,
-        cli_args=vars(args),
-        config={
-            "object_type": "imitation_locked_evaluation",
-            "input_contract": payload["runtime_input_contract"],
-            "locked_test_acknowledged": True,
-        },
-        dataset_refs=data.source_references,
-        model_refs=[fingerprint_file(args.checkpoint)],
-        input_refs=[protocol_ref] if protocol_ref else [],
-    ) as tracker:
+    with (
+        RunArtifactTracker(
+            output.parent,
+            run_id=output.name,
+            cli_args=vars(args),
+            config={
+                "object_type": "imitation_locked_evaluation",
+                "input_contract": payload["runtime_input_contract"],
+                "locked_test_acknowledged": True,
+                "sample_consumption_required": args.sample_inventory is not None,
+                "training_origin": training_origin,
+            },
+            dataset_refs=data.source_references,
+            model_refs=[fingerprint_file(args.checkpoint)],
+            input_refs=[r for r in (protocol_ref, training_origin) if r is not None],
+        ) as tracker,
+        ExitStack() as consumption_stack,
+    ):
+        consumption = None
+        if args.sample_inventory is not None:
+            consumption = consumption_stack.enter_context(
+                ConsumptionRecorder(
+                    tracker,
+                    args.sample_inventory,
+                    args.dataset,
+                    phases={"test": sorted({s.source_partition for s in data.samples})},
+                    task="imitation_evaluation",
+                    model=fingerprint_file(args.checkpoint),
+                )
+            )
+            tracker.add_input_reference(
+                {"kind": "frozen_sample_inventory", **consumption.inventory_ref}
+            )
         metrics = _run_epoch(
             model,
             _loader(data, batch_size=args.batch_size, num_workers=0, shuffle=False, seed=0),
@@ -123,6 +164,9 @@ def main(argv=None) -> int:
             optimizer=None,
             **payload["objective_config"],
             max_batches=None,
+            consumption=consumption,
+            phase="test",
+            epoch=0,
         )
         path = tracker.artifact_path("summary.json")
         _write_json(
@@ -135,6 +179,8 @@ def main(argv=None) -> int:
             },
         )
         tracker.register_artifact(path, role="imitation_test_summary")
+        if consumption is not None:
+            consumption.finish({"evaluated": fingerprint_file(args.checkpoint)})
     return 0
 
 
