@@ -16,19 +16,23 @@ jobs:
           lfs: false
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.12'
-      - name: Download locked wheel for source inspection only
+          python-version: '3.13'
+      - name: Download only checksum-locked offline trainer dependencies
         run: |
           python - <<'PY'
           import hashlib, pathlib, tomllib, urllib.request
           lock=tomllib.loads(pathlib.Path('uv.lock').read_text())
-          package=next(p for p in lock['package'] if p['name']=='ultralytics')
-          wheel=package['wheels'][0]
           root=pathlib.Path('/tmp/consumption-tools'); root.mkdir()
-          data=urllib.request.urlopen(wheel['url'],timeout=60).read()
-          assert hashlib.sha256(data).hexdigest()==wheel['hash'].split(':')[1]
-          (root/pathlib.PurePosixPath(wheel['url']).name).write_bytes(data)
-          (root/'SHA256.txt').write_text(wheel['hash']+'\n')
+          records=[]
+          for name in ('ultralytics','polars','polars-runtime-32'):
+              package=next(p for p in lock['package'] if p['name']==name)
+              wheel=next(w for w in package['wheels'] if w['url'].endswith('none-any.whl') or ('manylinux' in w['url'] and 'x86_64' in w['url']))
+              data=urllib.request.urlopen(wheel['url'],timeout=90).read()
+              assert hashlib.sha256(data).hexdigest()==wheel['hash'].split(':')[1]
+              target=pathlib.PurePosixPath(wheel['url']).name
+              (root/target).write_bytes(data)
+              records.append(wheel['hash']+'  '+target)
+          (root/'SHA256.txt').write_text('\n'.join(records)+'\n')
           PY
       - uses: actions/upload-artifact@v4
         with:
