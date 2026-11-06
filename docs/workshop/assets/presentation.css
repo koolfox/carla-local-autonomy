@@ -131,3 +131,11 @@ button:hover:not(:disabled) { background: #e9effd; }
 .workshop-video figcaption { font-size: 15px; }
 @media (max-width: 760px) { .workshop-video video { max-height: 42vh; } }
 @media print { .workshop-video video { max-height: 65mm; } .workshop-video > a { display: none; } }
+
+.media-slot .media-placeholder { min-height: 220px; padding: 32px; border: 1px dashed #9caec9; background: #eef2f8; display: flex; flex-direction: column; justify-content: center; gap: 12px; text-align: center; color: #394b66; }
+.media-slot .media-placeholder strong { color: #172339; font-size: 23px; }
+.media-slot .media-placeholder span { font-size: 17px; line-height: 1.8; }
+.media-slot video { display: block; width: 100%; max-height: 34vh; background: #101927; object-fit: contain; }
+.slide-body ol { list-style-type: persian; }
+@media (max-width: 760px) { .media-slot .media-placeholder { min-height: 160px; } .media-slot video { max-height: 42vh; } }
+@media print { .media-slot .media-placeholder { min-height: 35mm; } .media-slot video { max-height: 65mm; } }

@@ -1,0 +1,44 @@
+{
+  "project": {
+    "purpose": "نمای واقعی معماری یا اجرای پروژه",
+    "type": null,
+    "src": null,
+    "alt": null
+  },
+  "detection": {
+    "purpose": "خروجی واقعی آشکارساز با مشخصات مدل و فریم",
+    "type": null,
+    "src": null,
+    "alt": null
+  },
+  "segmentation": {
+    "purpose": "خروجی واقعی بخش‌بندی با مشخصات مدل و فریم",
+    "type": null,
+    "src": null,
+    "alt": null
+  },
+  "dataset": {
+    "purpose": "تصویر واقعی نمونهٔ داده و برچسب متناظر",
+    "type": null,
+    "src": null,
+    "alt": null
+  },
+  "control": {
+    "purpose": "ویدیوی واقعی با مشخص‌بودن مالک کنترل",
+    "type": null,
+    "src": null,
+    "alt": null
+  },
+  "console": {
+    "purpose": "تصویر یا ضبط صفحهٔ کنسول پروژه",
+    "type": null,
+    "src": null,
+    "alt": null
+  },
+  "exercise": {
+    "purpose": "فریم یا ویدیوی تمرین با مستندات اجرا",
+    "type": null,
+    "src": null,
+    "alt": null
+  }
+}
