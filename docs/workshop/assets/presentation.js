@@ -188,7 +188,10 @@ function hashIndex() {
 function show(index, focus = false) {
   if (!slides.length) return;
   current = Math.max(0, Math.min(slides.length - 1, index));
-  for (const [number, slide] of slides.entries()) slide.hidden = number !== current;
+  for (const [number, slide] of slides.entries()) {
+    if (number !== current) slide.querySelectorAll("video").forEach(video => video.pause());
+    slide.hidden = number !== current;
+  }
   select.value = String(current);
   previous.disabled = current === 0;
   next.disabled = current === slides.length - 1;
@@ -229,9 +232,31 @@ async function load() {
     }
     slides = [...deck.children];
     if (!slides.length) throw new Error('no slides');
+    // Local historical clips are decoded only on request; the caption is also a text alternative.
+    for (const link of deck.querySelectorAll('a[href^="../assets/video/"][href$=".mp4"]')) {
+      const figure = document.createElement('figure');
+      figure.className = 'workshop-video';
+      const video = document.createElement('video');
+      video.controls = true; video.playsInline = true; video.preload = 'none';
+      video.src = new URL(link.getAttribute('href'), source).href;
+      video.poster = video.src.replace(/\.mp4$/, '.jpg');
+      video.setAttribute('aria-label', link.textContent.trim());
+      const caption = document.createElement('figcaption');
+      caption.textContent = link.textContent.trim() + ' · نمونهٔ تاریخی، بی‌صدا؛ برای پخش کلیک کنید.';
+      const fallback = document.createElement('a');
+      fallback.href = video.src; fallback.textContent = 'دریافت فیلم';
+      fallback.setAttribute('download', '');
+      video.addEventListener('error', () => { caption.textContent = 'پخش ویدیو ممکن نیست؛ از پیوند دریافت فیلم استفاده کنید.'; });
+      const provenance = document.createElement('a');
+      provenance.href = 'https://github.com/koolfox/carla-local-autonomy/blob/main/samples/README.md';
+      provenance.textContent = 'منبع و محدودیت‌ها'; provenance.target = '_blank'; provenance.rel = 'noopener noreferrer';
+      figure.append(video, caption, fallback, provenance);
+      link.parentElement.replaceWith(figure);
+    }
     // The notebook keeps its lab link; slides offer the same model in place.
     for (const link of deck.querySelectorAll('a[href$="#lab"]')) link.parentElement.remove();
     for (const link of deck.querySelectorAll('a[href]')) {
+      if (link.hasAttribute('download')) continue;
       const destination = new URL(link.getAttribute('href'), source);
       const documentName = destination.pathname.match(/\/docs\/([a-z0-9.-]+\.md)$/)?.[1];
       const notebookURL = new URL('index.html?document=' + documentName + '#reading', project);
@@ -271,7 +296,7 @@ async function load() {
         body.replaceChildren(copy, figure);
       }
       if (citations.length) slide.append(references);
-      for (const media of slide.querySelectorAll('figure')) addMediaControls(media);
+      for (const media of slide.querySelectorAll('figure:not(.workshop-video)')) addMediaControls(media);
       addSlideIdentity(slide, details);
       if (body) {
 
@@ -304,7 +329,7 @@ select.addEventListener('change', () => show(Number(select.value), true));
 addEventListener('hashchange', () => show(hashIndex(), true));
 addEventListener('keydown', event => {
   if (mediaDialog.open) return;
-  if (event.altKey || event.ctrlKey || event.metaKey || event.target.closest('select, input, textarea, [contenteditable]')) return;
+  if (event.altKey || event.ctrlKey || event.metaKey || event.target.closest('select, input, textarea, video, [contenteditable]')) return;
   const changes = { ArrowLeft: 1, ArrowRight: -1, PageDown: 1, PageUp: -1 };
   if (event.key in changes) { event.preventDefault(); show(current + changes[event.key], true); }
   if (event.key === 'Home' || event.key === 'End') { event.preventDefault(); show(event.key === 'Home' ? 0 : slides.length - 1, true); }
