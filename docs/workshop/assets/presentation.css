@@ -1,0 +1,126 @@
+@font-face { font-family: arad; src: url('fonts/arad.woff2') format('woff2'); font-display: swap; }
+:root { color-scheme: light; --paper: #f5f5f8; --ink: #172339; --muted: #394b66; --blue: #245dc4; --line: #bfcbe0; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--paper); color: var(--ink); font-family: arad, sans-serif; }
+button, select { font: inherit; }
+a { color: var(--blue); text-underline-offset: 4px; }
+.slide a.term-link, .slide a.term-link:hover, .slide a.term-link:visited { color: inherit; text-decoration-line: underline; text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
+button, select { border: 1px solid var(--line); border-radius: 8px; background: white; color: var(--ink); min-height: 44px; padding: 8px 14px; }
+button { cursor: pointer; }
+button:disabled { cursor: default; opacity: .5; }
+:focus-visible { outline: 3px solid var(--blue); outline-offset: 3px; }
+[hidden] { display: none !important; }
+.deck-toolbar, .deck-controls { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 3vw; }
+.deck-toolbar { border-bottom: 1px solid var(--line); }
+.deck-toolbar > div { display: flex; align-items: center; gap: 16px; }
+.deck-controls { border-top: 1px solid var(--line); justify-content: center; }
+.deck-controls select { max-width: 440px; min-width: 200px; }
+#slide-next { background: var(--blue); border-color: var(--blue); color: white; }
+#slide-progress { min-width: 65px; text-align: center; font-variant-numeric: tabular-nums; }
+#deck:focus-visible { outline: none; }
+#deck { min-height: calc(100dvh - 140px); }
+.slide { max-width: 1440px; margin: auto; padding: 20px clamp(24px, 5vw, 80px) 14px; min-height: calc(100dvh - 140px); display: grid; grid-template-rows: auto 1fr auto; gap: 20px; }
+.slide-header, .slide-footer { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.slide-header p, .slide-footer p { margin: 0; }
+.slide-header { min-height: 78px; color: var(--muted); font-size: 15px; line-height: 1.8; }
+.slide-institution { font-weight: 600; }
+.slide .university-logo { display: block; width: 72px; height: 75px; flex: 0 0 72px; object-fit: contain; filter: brightness(0); }
+.slide-content { min-width: 0; align-self: center; }
+.slide-footer { color: var(--muted); font-size: 14px; line-height: 1.8; }
+.slide-footer > :first-child { text-align: right; }
+.slide-footer > :last-child { white-space: nowrap; }
+.slide.cover h1 { text-align: center; font-size: clamp(42px, 5vw, 72px); margin: 0; }
+.cover-subtitle { text-align: center; color: var(--muted); font-size: clamp(20px, 2vw, 28px); line-height: 1.8; margin: 12px auto 44px; max-width: 44ch; }
+.cover-details { font-size: 20px; line-height: 1.8; }
+.cover-details p { margin: 0 0 4px; }
+.supervisor-profile { color: inherit; text-decoration: none; }
+.supervisor-profile:hover { text-decoration: underline; }
+.slide h1 { margin: 0 0 28px; font-size: clamp(30px, 3.2vw, 46px); line-height: 1.5; font-weight: 700; }
+.slide-body { font-size: clamp(21px, 1.85vw, 28px); line-height: 1.85; color: var(--muted); }
+.slide-body > :first-child, .slide-copy > :first-child { margin-top: 0; }
+.slide-body > :last-child, .slide-copy > :last-child { margin-bottom: 0; }
+.slide-body p { margin: 0 0 20px; }
+.slide-body ul, .slide-body ol { margin: 0; padding-inline-start: 1.3em; }
+.slide-body li { margin-bottom: 12px; }
+.slide-body strong { color: var(--ink); }
+.slide bdi, .slide-body code { direction: ltr; unicode-bidi: isolate; }
+.slide-body code { font-size: .88em; }
+.slide-body table { width: 100%; border-collapse: collapse; font-size: .88em; text-align: right; }
+.slide-body th, .slide-body td { padding: 8px 12px; border-bottom: 1px solid var(--line); }
+.slide-body th { color: var(--ink); font-weight: 700; }
+.slide-references { font-size: 14px; color: var(--muted); line-height: 1.7; border-top: 1px solid var(--line); margin-top: 20px; padding-top: 10px; }
+.slide-references blockquote, .slide-references p { margin: 0; }
+.slide-media-controls { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; font-size: 15px; }
+.slide figure > iframe { display: none; }
+button:hover:not(:disabled) { background: #e9effd; }
+#slide-next:hover:not(:disabled) { background: #164498; }
+::selection { background: #d9e6fc; color: var(--ink); }
+#slide-media-dialog { width: min(96vw, 1500px); max-width: none; max-height: 96dvh; padding: 24px; border: 1px solid var(--line); border-radius: 12px; background: white; color: var(--ink); }
+#slide-media-dialog::backdrop { background: rgb(23 35 57 / .65); }
+.media-dialog-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 16px; }
+.media-dialog-header h2 { font-size: 22px; margin: 0; }
+#slide-media-stage { height: 70dvh; display: grid; place-items: center; }
+#slide-media-stage img, #slide-media-stage svg { width: 100%; height: 100%; object-fit: contain; }
+#slide-media-stage iframe { display: block; border: 0; width: 100%; height: 100%; }
+#slide-media-caption { font-size: 16px; line-height: 1.7; margin: 12px 0 0; }
+.slide.has-media .slide-body { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 40px; }
+.slide.has-media h1 { font-size: clamp(30px, 2.8vw, 40px); }
+.slide.has-media .slide-body { font-size: clamp(21px, 1.55vw, 23px); line-height: 1.75; }
+.slide figure { margin: 0; min-width: 0; }
+.slide img { display: block; width: 100%; max-height: 32vh; object-fit: contain; }
+.slide figcaption { margin-top: 12px; font-size: 16px; line-height: 1.7; }
+.slide .slide-diagram svg { display: block; margin-inline: auto; width: 100%; max-height: 40vh; }
+.slide .slide-diagram { direction: ltr; }
+.slide.sources .slide-body { font-size: clamp(18px, 1.5vw, 23px); }
+.slide.sources a { overflow-wrap: anywhere; }
+#deck-status { text-align: center; margin: 24px; }
+#deck-status:empty { display: none; }
+#retry-deck { display: block; margin: 24px auto; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (max-width: 760px) {
+  .deck-toolbar { flex-wrap: wrap; font-size: 14px; padding: 12px 16px; }
+  .deck-toolbar > div { gap: 10px; }
+  .deck-toolbar button { padding: 8px; }
+  .slide { padding: 20px; min-height: calc(100dvh - 190px); gap: 24px; }
+  .slide-header { align-items: flex-start; gap: 16px; font-size: 13px; min-height: 65px; }
+  .slide .university-logo { width: 56px; height: 58px; flex-basis: 56px; }
+  .slide-footer { align-items: flex-end; font-size: 12px; gap: 14px; }
+  .slide.cover h1 { font-size: 38px; }
+  .cover-subtitle { font-size: 20px; margin-bottom: 32px; }
+  .cover-details { font-size: 17px; }
+  .slide h1 { font-size: 28px; margin-bottom: 24px; }
+  .slide.has-media h1 { font-size: 28px; }
+  .slide.has-media .slide-body { font-size: 20px; line-height: 1.85; }
+  .slide-body { font-size: 20px; }
+  .slide-body table { font-size: 16px; }
+  .slide-body th, .slide-body td { padding: 8px 5px; }
+  #slide-media-dialog { padding: 16px; }
+  .media-dialog-header { flex-wrap: wrap; }
+  #slide-media-stage { height: 60dvh; }
+  .slide.has-media .slide-body { grid-template-columns: 1fr; gap: 24px; }
+  .slide img, .slide .slide-diagram svg { max-height: 45vh; }
+  .deck-controls { flex-wrap: wrap; gap: 10px; padding: 12px 16px; }
+  .deck-controls select { min-width: 0; max-width: 100%; width: 100%; order: -1; }
+}
+@media print {
+  @page { size: 330mm 210mm; margin: 12mm; }
+  body { background: white; }
+  .deck-toolbar, .deck-controls, #deck-status, #retry-deck, #slide-media-dialog, .slide-media-controls { display: none !important; }
+  .slide, .slide[hidden] { display: grid !important; min-height: 0; height: 180mm; max-width: none; padding: 5mm; gap: 12px; break-after: page; break-inside: avoid; }
+  .slide:last-child { break-after: auto; }
+  .slide h1, .slide.has-media h1 { font-size: 26pt; line-height: 1.35; margin-bottom: 5mm; }
+  .slide-body { font-size: 16pt; line-height: 1.65; }
+  .slide.has-media .slide-body { font-size: 15pt; line-height: 1.65; }
+  .slide img, .slide .slide-diagram svg { max-height: 65mm; }
+  .slide.sources .slide-body { font-size: 16pt; }
+  .slide figcaption { font-size: 12pt; }
+  .slide-references { font-size: 10pt; }
+  .slide-header { font-size: 11pt; min-height: 16mm; }
+  .slide .university-logo { width: 16mm; height: 16mm; flex-basis: 16mm; }
+  .slide-footer { font-size: 10pt; }
+  .slide.cover h1 { font-size: 44pt; }
+  .cover-subtitle { font-size: 22pt; }
+  .cover-details { font-size: 17pt; }
+}
+.cover-week { text-align: center; color: var(--blue); font-weight: 700; font-size: clamp(18px, 1.6vw, 24px); margin: -24px auto 32px; }
+.deck-toolbar #all-slides-link { margin-inline-end: 14px; }
