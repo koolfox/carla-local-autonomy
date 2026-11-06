@@ -139,3 +139,10 @@ button:hover:not(:disabled) { background: #e9effd; }
 .slide-body ol { list-style-type: persian; }
 @media (max-width: 760px) { .media-slot .media-placeholder { min-height: 160px; } .media-slot video { max-height: 42vh; } }
 @media print { .media-slot .media-placeholder { min-height: 35mm; } .media-slot video { max-height: 65mm; } }
+
+/* Dedicated visual slides give the supplied recording the main stage. */
+.slide.media-only .slide-body { display: block; }
+.slide.media-only .slide-copy:empty { display: none; }
+.slide.media-only .media-placeholder { min-height: min(48vh, 460px); }
+.slide.media-only .media-slot video, .slide.media-only .media-slot img { max-height: 53vh; }
+@media print { .slide.media-only .media-placeholder { min-height: 80mm; } .slide.media-only .media-slot video, .slide.media-only .media-slot img { max-height: 85mm; } }
