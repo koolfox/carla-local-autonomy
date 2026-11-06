@@ -275,13 +275,17 @@ async function load() {
           else asset.alt = item.alt || caption.textContent;
         }
       }
-      if (asset) figure.append(asset);
-      else {
-        const placeholder = document.createElement('div'); placeholder.className = 'media-placeholder';
+      const placeholder = (unavailable = false) => {
+        const block = document.createElement('div'); block.className = 'media-placeholder';
         const heading = document.createElement('strong'); heading.textContent = 'جای رسانهٔ انتخابی';
-        const hint = document.createElement('span'); hint.textContent = item.purpose || caption.textContent;
-        placeholder.append(heading, hint); figure.append(placeholder);
-      }
+        const hint = document.createElement('span');
+        hint.textContent = unavailable ? 'فایل رسانه در دسترس نیست؛ مسیر و قالب آن را بررسی کنید.' : (item.purpose || caption.textContent);
+        block.append(heading, hint); return block;
+      };
+      if (asset) {
+        asset.addEventListener('error', () => asset.replaceWith(placeholder(true)), { once: true });
+        figure.append(asset);
+      } else figure.append(placeholder());
       figure.append(caption); link.parentElement.replaceWith(figure);
     }
     // The notebook keeps its lab link; slides offer the same model in place.
