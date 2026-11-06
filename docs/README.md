@@ -8,6 +8,7 @@ with one user action, its owner, and its test. This page is the navigation hub;
 
 | I want to… | Read |
 | --- | --- |
+| Present the Persian CARLA Vision workshop | [Workshop slides](https://koolfox.github.io/carla-local-autonomy/workshop/), [speaker notes](workshop/docs/یادداشت-ارائه‌دهنده.md) |
 | Install and use the product | [User guide](user_guide.md) ([فارسی](user_guide_fa.md)), [Main README](../README.md), [TUI guide](desktop_launcher.md) |
 | Configure a custom development environment or standalone Worker | [Developer/manual setup](manual_setup.md) |
 | Test a Windows CARLA server together from another computer (LAN or Cloudflare) | [Remote test session](remote_test_session.md) ([فارسی](remote_test_session_fa.md)) |

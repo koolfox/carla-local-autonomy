@@ -1,0 +1,17 @@
+{
+  "institution": "دانشگاه کاشان",
+  "program": "کارگاه آموزشی بینایی ماشین و رانندگی در شبیه‌ساز",
+  "course": "CARLA Vision",
+  "presenter": "مرجان شاهچرا",
+  "supervisor": "دکتر حسین ابراهیم پور کومله",
+  "supervisor_profile_url": "https://scholar.google.com/citations?user=7ahmLpgAAAAJ",
+  "season": "کارگاه آموزشی",
+  "title": "از تصویر تا تصمیم در CARLA",
+  "subtitle": "ساخت، مشاهده و ارزیابی یک سامانهٔ پژوهشی رانندگی",
+  "short_title": "CARLA Vision · کارگاه آموزشی",
+  "logo": {
+    "path": "",
+    "width": 1,
+    "height": 1
+  }
+}
