@@ -25,7 +25,7 @@ function addSlideIdentity(slide, details) {
   const university = document.createElement('div');
   university.append(
     textElement('p', details.institution, 'slide-institution'),
-    textElement('p', 'درس ' + details.course, 'slide-course'),
+    textElement('p', 'کارگاه ' + details.course, 'slide-course'),
   );
   /* The workshop has no supplied institutional logo. */
   const logo = document.createElement('img');
@@ -209,9 +209,9 @@ async function load() {
   status.textContent = 'در حال آماده‌سازی اسلایدها…';
   try {
     const [response, metadata, slotsResponse] = await Promise.all([
-      fetch(source, { signal: AbortSignal.timeout(15000) }),
-      fetch(new URL('data/metadata/presentation.json', project), { signal: AbortSignal.timeout(15000) }),
-      fetch(new URL('data/metadata/media-slots.json', project), { signal: AbortSignal.timeout(15000) }),
+      fetch(source, { cache: 'no-cache', signal: AbortSignal.timeout(15000) }),
+      fetch(new URL('data/metadata/presentation.json', project), { cache: 'no-cache', signal: AbortSignal.timeout(15000) }),
+      fetch(new URL('data/metadata/media-slots.json', project), { cache: 'no-cache', signal: AbortSignal.timeout(15000) }),
     ]);
     if (!response.ok || !metadata.ok || !slotsResponse.ok) throw new Error('source unavailable');
     const slots = await slotsResponse.json();
