@@ -25,7 +25,7 @@ function addSlideIdentity(slide, details) {
   const university = document.createElement('div');
   university.append(
     textElement('p', details.institution, 'slide-institution'),
-    textElement('p', 'درس ' + details.course, 'slide-course'),
+    textElement('p', 'کارگاه ' + details.course, 'slide-course'),
   );
   /* The workshop has no supplied institutional logo. */
   const logo = document.createElement('img');
@@ -208,11 +208,13 @@ async function load() {
   delete status.dataset.weekError;
   status.textContent = 'در حال آماده‌سازی اسلایدها…';
   try {
-    const [response, metadata] = await Promise.all([
-      fetch(source, { signal: AbortSignal.timeout(15000) }),
-      fetch(new URL('data/metadata/presentation.json', project), { signal: AbortSignal.timeout(15000) }),
+    const [response, metadata, slotsResponse] = await Promise.all([
+      fetch(source, { cache: 'no-cache', signal: AbortSignal.timeout(15000) }),
+      fetch(new URL('data/metadata/presentation.json', project), { cache: 'no-cache', signal: AbortSignal.timeout(15000) }),
+      fetch(new URL('data/metadata/media-slots.json', project), { cache: 'no-cache', signal: AbortSignal.timeout(15000) }),
     ]);
-    if (!response.ok || !metadata.ok) throw new Error('source unavailable');
+    if (!response.ok || !metadata.ok || !slotsResponse.ok) throw new Error('source unavailable');
+    const slots = await slotsResponse.json();
     const details = await metadata.json();
     const markdown = window.markdownit({ html: false, linkify: false });
     const documentRoot = document.createElement('div');
@@ -253,24 +255,48 @@ async function load() {
       figure.append(video, caption, fallback, provenance);
       link.parentElement.replaceWith(figure);
     }
+    // A slot stays visibly empty until an individually selected local asset is supplied.
+    for (const link of deck.querySelectorAll('a[href^="#slot-"]')) {
+      const id = link.getAttribute('href').slice(6);
+      const item = slots[id] || {};
+      const figure = document.createElement('figure');
+      figure.className = 'media-slot'; figure.dataset.slot = id;
+      const caption = document.createElement('figcaption'); caption.textContent = link.textContent.trim();
+      let asset = null;
+      if (typeof item.src === 'string' && ['image', 'video'].includes(item.type)) {
+        let url;
+        try { url = new URL(item.src, project); } catch { /* Invalid paths remain empty slots. */ }
+        if (url && url.origin === project.origin && url.pathname.startsWith(project.pathname + 'assets/')) {
+          asset = document.createElement(item.type === 'video' ? 'video' : 'img');
+          asset.src = url.href;
+          if (item.type === 'video') { asset.controls = true; asset.playsInline = true; asset.preload = 'none'; asset.setAttribute('aria-label', item.alt || caption.textContent); }
+          else asset.alt = item.alt || caption.textContent;
+        }
+      }
+      const placeholder = (unavailable = false) => {
+        const block = document.createElement('div'); block.className = 'media-placeholder';
+        const heading = document.createElement('strong'); heading.textContent = 'جای رسانهٔ انتخابی';
+        const hint = document.createElement('span');
+        hint.textContent = unavailable ? 'فایل رسانه در دسترس نیست؛ مسیر و قالب آن را بررسی کنید.' : (item.purpose || caption.textContent);
+        block.append(heading, hint); return block;
+      };
+      if (asset) {
+        asset.addEventListener('error', () => asset.replaceWith(placeholder(true)), { once: true });
+        figure.append(asset);
+      } else figure.append(placeholder());
+      figure.append(caption); link.parentElement.replaceWith(figure);
+    }
     // The notebook keeps its lab link; slides offer the same model in place.
     for (const link of deck.querySelectorAll('a[href$="#lab"]')) link.parentElement.remove();
     for (const link of deck.querySelectorAll('a[href]')) {
       if (link.hasAttribute('download')) continue;
       const destination = new URL(link.getAttribute('href'), source);
-      const documentName = destination.pathname.match(/\/docs\/([a-z0-9.-]+\.md)$/)?.[1];
-      const notebookURL = new URL('index.html?document=' + documentName + '#reading', project);
-      const chapter = destination.searchParams.get('chapter');
-      if (/^(intro|all|chapter-\d+)$/.test(chapter || '')) notebookURL.searchParams.set('chapter', chapter);
-      link.href = documentName ? notebookURL.href : destination.href;
-      if (documentName === 'glossary.fa.md') {
-        link.classList.add('term-link');
-        link.title = 'توضیح «' + link.textContent.trim() + '» در واژه‌نامه';
-      }
+      link.href = destination.href;
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
     }
     for (const img of deck.querySelectorAll('img')) {
+      if (img.closest('.media-slot')) continue;
       img.src = new URL(img.getAttribute('src'), source).href;
       const figure = document.createElement('figure');
       const caption = document.createElement('figcaption'); caption.textContent = img.alt;
@@ -296,7 +322,7 @@ async function load() {
         body.replaceChildren(copy, figure);
       }
       if (citations.length) slide.append(references);
-      for (const media of slide.querySelectorAll('figure:not(.workshop-video)')) addMediaControls(media);
+      for (const media of slide.querySelectorAll('figure:not(.workshop-video):not(.media-slot)')) addMediaControls(media);
       addSlideIdentity(slide, details);
       if (body) {
 

@@ -1,0 +1,68 @@
+{
+  "project": {
+    "purpose": "نمای واقعی سامانهٔ پژوهشی",
+    "type": null,
+    "src": null,
+    "alt": null
+  },
+  "console": {
+    "purpose": "پنل‌ها و محیط واقعی برنامه",
+    "type": null,
+    "src": null,
+    "alt": null
+  },
+  "scene": {
+    "purpose": "تنظیم سناریو در CARLA",
+    "type": null,
+    "src": null,
+    "alt": null
+  },
+  "detection": {
+    "purpose": "خروجی واقعی تشخیص اشیا",
+    "type": null,
+    "src": null,
+    "alt": null
+  },
+  "signs": {
+    "purpose": "تشخیص و خواندن علائم",
+    "type": null,
+    "src": null,
+    "alt": null
+  },
+  "segmentation": {
+    "purpose": "بخش‌بندی واقعی جاده و خطوط",
+    "type": null,
+    "src": null,
+    "alt": null
+  },
+  "depth": {
+    "purpose": "نمای واقعی عمق یا وکسل",
+    "type": null,
+    "src": null,
+    "alt": null
+  },
+  "dataset": {
+    "purpose": "جمع‌آوری واقعی داده",
+    "type": null,
+    "src": null,
+    "alt": null
+  },
+  "training": {
+    "purpose": "تنظیم یا اجرای واقعی آموزش",
+    "type": null,
+    "src": null,
+    "alt": null
+  },
+  "control": {
+    "purpose": "ویدیو با شیوهٔ کنترل مشخص",
+    "type": null,
+    "src": null,
+    "alt": null
+  },
+  "exercise": {
+    "purpose": "فریم یا ویدیوی تمرین",
+    "type": null,
+    "src": null,
+    "alt": null
+  }
+}
