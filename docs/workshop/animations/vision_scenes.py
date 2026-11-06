@@ -50,33 +50,25 @@ class FrameJourney(Scene):
         ]
         boxes = VGroup()
         for i, (name, detail) in enumerate(steps):
-            x = -5.05 + i * 3.35
+            x, y = [(-3.3, 1.1), (3.3, 1.1), (3.3, -1.0), (-3.3, -1.0)][i]
             box = RoundedRectangle(
-                width=2.8,
-                height=1.5,
+                width=5.0,
+                height=1.35,
                 corner_radius=0.13,
                 color="#bfcbe0",
                 fill_color="#ffffff",
                 fill_opacity=1,
-            ).move_to([x, 0.2, 0])
+            ).move_to([x, y, 0])
             words = (
-                VGroup(label(name, 22), label(detail, 17, MUTED))
+                VGroup(label(name, 30), label(detail, 24, MUTED))
                 .arrange(DOWN, buff=0.2)
                 .move_to(box)
             )
             boxes.add(VGroup(box, words))
         arrows = VGroup(
-            *[
-                Arrow(
-                    boxes[i].get_right(),
-                    boxes[i + 1].get_left(),
-                    buff=0.1,
-                    color=BLUE,
-                    stroke_width=3,
-                    max_tip_length_to_length_ratio=0.22,
-                )
-                for i in range(3)
-            ]
+            Arrow(boxes[0].get_right(), boxes[1].get_left(), buff=0.12, color=BLUE, stroke_width=3),
+            Arrow(boxes[1].get_bottom(), boxes[2].get_top(), buff=0.1, color=BLUE, stroke_width=3),
+            Arrow(boxes[2].get_left(), boxes[3].get_right(), buff=0.12, color=BLUE, stroke_width=3),
         )
         packet = Dot(color=BLUE, radius=0.09).move_to(boxes[0].get_bottom() + DOWN * 0.3)
         for i, box in enumerate(boxes):
@@ -90,7 +82,7 @@ class FrameJourney(Scene):
             self.play(Indicate(box[0], color=BLUE, scale_factor=1.03), run_time=0.55)
         warning = label(
             "Timing matters: a delayed result can describe an older frame.", 23, GOLD
-        ).move_to([0, -1.55, 0])
+        ).move_to([0, -2.3, 0])
         self.play(FadeIn(warning), run_time=0.7)
         self.wait(2.2)
 
