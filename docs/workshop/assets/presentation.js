@@ -208,11 +208,13 @@ async function load() {
   delete status.dataset.weekError;
   status.textContent = 'در حال آماده‌سازی اسلایدها…';
   try {
-    const [response, metadata] = await Promise.all([
+    const [response, metadata, slotsResponse] = await Promise.all([
       fetch(source, { signal: AbortSignal.timeout(15000) }),
       fetch(new URL('data/metadata/presentation.json', project), { signal: AbortSignal.timeout(15000) }),
+      fetch(new URL('data/metadata/media-slots.json', project), { signal: AbortSignal.timeout(15000) }),
     ]);
-    if (!response.ok || !metadata.ok) throw new Error('source unavailable');
+    if (!response.ok || !metadata.ok || !slotsResponse.ok) throw new Error('source unavailable');
+    const slots = await slotsResponse.json();
     const details = await metadata.json();
     const markdown = window.markdownit({ html: false, linkify: false });
     const documentRoot = document.createElement('div');
@@ -242,16 +244,45 @@ async function load() {
       video.poster = video.src.replace(/\.mp4$/, '.jpg');
       video.setAttribute('aria-label', link.textContent.trim());
       const caption = document.createElement('figcaption');
-      caption.textContent = link.textContent.trim() + ' · نمونهٔ تاریخی، بی‌صدا؛ برای پخش کلیک کنید.';
+      const conceptual = /(?:frame-journey|perception-tasks)\.mp4$/.test(video.src);
+      if (conceptual) { const track = document.createElement('track'); track.kind = 'subtitles'; track.srclang = 'fa'; track.label = 'فارسی'; track.src = video.src.replace(/\.mp4$/, '.fa.vtt'); track.default = true; video.append(track); }
+      caption.textContent = link.textContent.trim() + (conceptual ? ' · انیمیشن مفهومی، بی‌صدا؛ داده یا خروجی واقعی نیست.' : ' · نمونهٔ تاریخی، بی‌صدا؛ برای پخش کلیک کنید.');
       const fallback = document.createElement('a');
       fallback.href = video.src; fallback.textContent = 'دریافت فیلم';
       fallback.setAttribute('download', '');
       video.addEventListener('error', () => { caption.textContent = 'پخش ویدیو ممکن نیست؛ از پیوند دریافت فیلم استفاده کنید.'; });
       const provenance = document.createElement('a');
-      provenance.href = 'https://github.com/koolfox/carla-local-autonomy/blob/main/samples/README.md';
+      provenance.href = conceptual ? 'https://github.com/koolfox/carla-local-autonomy/tree/main/docs/workshop/animations' : 'https://github.com/koolfox/carla-local-autonomy/blob/main/samples/README.md';
       provenance.textContent = 'منبع و محدودیت‌ها'; provenance.target = '_blank'; provenance.rel = 'noopener noreferrer';
       figure.append(video, caption, fallback, provenance);
       link.parentElement.replaceWith(figure);
+    }
+    // A slot stays visibly empty until an individually selected local asset is supplied.
+    for (const link of deck.querySelectorAll('a[href^="#slot-"]')) {
+      const id = link.getAttribute('href').slice(6);
+      const item = slots[id] || {};
+      const figure = document.createElement('figure');
+      figure.className = 'media-slot'; figure.dataset.slot = id;
+      const caption = document.createElement('figcaption'); caption.textContent = link.textContent.trim();
+      let asset = null;
+      if (typeof item.src === 'string' && ['image', 'video'].includes(item.type)) {
+        let url;
+        try { url = new URL(item.src, project); } catch { /* Invalid paths remain empty slots. */ }
+        if (url && url.origin === project.origin && url.pathname.startsWith(project.pathname + 'assets/')) {
+          asset = document.createElement(item.type === 'video' ? 'video' : 'img');
+          asset.src = url.href;
+          if (item.type === 'video') { asset.controls = true; asset.playsInline = true; asset.preload = 'none'; asset.setAttribute('aria-label', item.alt || caption.textContent); }
+          else asset.alt = item.alt || caption.textContent;
+        }
+      }
+      if (asset) figure.append(asset);
+      else {
+        const placeholder = document.createElement('div'); placeholder.className = 'media-placeholder';
+        const heading = document.createElement('strong'); heading.textContent = 'جای رسانهٔ انتخابی';
+        const hint = document.createElement('span'); hint.textContent = item.purpose || caption.textContent;
+        placeholder.append(heading, hint); figure.append(placeholder);
+      }
+      figure.append(caption); link.parentElement.replaceWith(figure);
     }
     // The notebook keeps its lab link; slides offer the same model in place.
     for (const link of deck.querySelectorAll('a[href$="#lab"]')) link.parentElement.remove();
@@ -271,6 +302,7 @@ async function load() {
       link.rel = 'noopener noreferrer';
     }
     for (const img of deck.querySelectorAll('img')) {
+      if (img.closest('.media-slot')) continue;
       img.src = new URL(img.getAttribute('src'), source).href;
       const figure = document.createElement('figure');
       const caption = document.createElement('figcaption'); caption.textContent = img.alt;
@@ -296,7 +328,7 @@ async function load() {
         body.replaceChildren(copy, figure);
       }
       if (citations.length) slide.append(references);
-      for (const media of slide.querySelectorAll('figure:not(.workshop-video)')) addMediaControls(media);
+      for (const media of slide.querySelectorAll('figure:not(.workshop-video):not(.media-slot)')) addMediaControls(media);
       addSlideIdentity(slide, details);
       if (body) {
 
@@ -317,7 +349,8 @@ async function load() {
     if (!status.dataset.weekError) status.textContent = '';
     deck.dataset.state = 'ready';
     show(hashIndex());
-  } catch {
+  } catch (error) {
+    console.error('Workshop slides failed to load:', error);
     status.textContent = 'اسلایدها بارگذاری نشدند. دوباره تلاش کنید یا متن ارائه را در کتابچه باز کنید.';
     deck.dataset.state = 'error';
     document.getElementById('retry-deck').hidden = false;

@@ -1,0 +1,32 @@
+{
+  "project": {
+    "purpose": "اجرای واقعی پروژه؛ نمای کلی قابل استناد",
+    "type": null,
+    "src": null,
+    "alt": null
+  },
+  "detection": {
+    "purpose": "تصویر یا ویدیوی واضح برای نمایش کادرهای تشخیص",
+    "type": null,
+    "src": null,
+    "alt": null
+  },
+  "control": {
+    "purpose": "نمای واقعی از ارتباط مشاهده و کنترل با مالک کنترل مشخص",
+    "type": null,
+    "src": null,
+    "alt": null
+  },
+  "console": {
+    "purpose": "تصویر یا فیلم واضح از کنسول و تنظیمات",
+    "type": null,
+    "src": null,
+    "alt": null
+  },
+  "exercise": {
+    "purpose": "ویدیوی کوتاه سناریو برای مکث و پرسش کلاسی",
+    "type": null,
+    "src": null,
+    "alt": null
+  }
+}
