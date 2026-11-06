@@ -124,3 +124,10 @@ button:hover:not(:disabled) { background: #e9effd; }
 }
 .cover-week { text-align: center; color: var(--blue); font-weight: 700; font-size: clamp(18px, 1.6vw, 24px); margin: -24px auto 32px; }
 .deck-toolbar #all-slides-link { margin-inline-end: 14px; }
+
+/* Recorded clips complement the existing slide reader; playback is always deliberate. */
+.workshop-video video { display: block; width: 100%; max-height: 34vh; background: #101927; object-fit: contain; }
+.workshop-video > a { display: inline-block; margin: 8px 0 0 18px; font-size: 15px; }
+.workshop-video figcaption { font-size: 15px; }
+@media (max-width: 760px) { .workshop-video video { max-height: 42vh; } }
+@media print { .workshop-video video { max-height: 65mm; } .workshop-video > a { display: none; } }

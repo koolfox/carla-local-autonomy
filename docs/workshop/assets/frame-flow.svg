@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 540" role="img" aria-labelledby="title desc">
+<title id="title">مسیر یک فریم</title><desc id="desc">تصویر دوربین به آماده‌سازی، سپس مدل بینایی و در نهایت نمایش و ضبط می‌رسد.</desc>
+<rect width="860" height="540" rx="16" fill="#edf1f8"/>
+<g font-family="Tahoma, sans-serif" text-anchor="middle" fill="#172339">
+ <rect x="460" y="42" width="330" height="160" rx="12" fill="#fff" stroke="#bfcbe0"/><text x="625" y="95" font-size="30" font-weight="bold">دوربین</text><text x="625" y="143" font-size="22" fill="#394b66">تصویر و شناسهٔ فریم</text>
+ <rect x="70" y="42" width="330" height="160" rx="12" fill="#fff" stroke="#bfcbe0"/><text x="235" y="95" font-size="30" font-weight="bold">آماده‌سازی</text><text x="235" y="143" font-size="22" fill="#394b66">اندازه و رنگ ورودی</text>
+ <rect x="70" y="337" width="330" height="160" rx="12" fill="#fff" stroke="#bfcbe0"/><text x="235" y="390" font-size="30" font-weight="bold">مدل بینایی</text><text x="235" y="438" font-size="22" fill="#394b66">جعبه، ماسک یا عمق</text>
+ <rect x="460" y="337" width="330" height="160" rx="12" fill="#fff" stroke="#bfcbe0"/><text x="625" y="390" font-size="30" font-weight="bold">نمایش و ضبط</text><text x="625" y="438" font-size="22" fill="#394b66">نتیجه با فریم و تنظیمات</text>
+</g><g fill="none" stroke="#245dc4" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"><path d="M448 122h-34m13-13-13 13 13 13"/><path d="M235 216v104m-13-13 13 13 13-13"/><path d="M413 417h34m-13-13 13 13-13 13"/></g>
+</svg>
