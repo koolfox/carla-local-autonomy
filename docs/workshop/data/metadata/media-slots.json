@@ -1,66 +1,72 @@
 {
   "project": {
-    "purpose": "نمای واقعی سامانهٔ پژوهشی",
+    "purpose": "ویدیو: حرکت در خیابان شهری همراه با خروجی تشخیص",
     "type": null,
     "src": null,
     "alt": null
   },
   "console": {
-    "purpose": "پنل‌ها و محیط واقعی برنامه",
+    "purpose": "تصویر یا ویدیو: پنل‌های سناریو، بینایی و پژوهش",
     "type": null,
     "src": null,
     "alt": null
   },
   "scene": {
-    "purpose": "تنظیم سناریو در CARLA",
+    "purpose": "ویدیو: تنظیم آب‌وهوا و ترافیک و صحنه حاصل",
     "type": null,
     "src": null,
     "alt": null
   },
   "detection": {
-    "purpose": "خروجی واقعی تشخیص اشیا",
+    "purpose": "ویدیو: تشخیص خودرو و عابر روی تصویر دوربین",
     "type": null,
     "src": null,
     "alt": null
   },
   "signs": {
-    "purpose": "تشخیص و خواندن علائم",
+    "purpose": "ویدیو: نزدیک‌شدن به علامت و خروجی تشخیص",
     "type": null,
     "src": null,
     "alt": null
   },
   "segmentation": {
-    "purpose": "بخش‌بندی واقعی جاده و خطوط",
+    "purpose": "ویدیو: محدوده جاده یا خطوط روی تصویر دوربین",
     "type": null,
     "src": null,
     "alt": null
   },
   "depth": {
-    "purpose": "نمای واقعی عمق یا وکسل",
+    "purpose": "ویدیو: نمای تخمین عمق یا وکسل صحنه",
     "type": null,
     "src": null,
     "alt": null
   },
   "dataset": {
-    "purpose": "جمع‌آوری واقعی داده",
+    "purpose": "ویدیو: دوربین‌ها و اجرای واقعی جمع‌آوری داده",
     "type": null,
     "src": null,
     "alt": null
   },
   "training": {
-    "purpose": "تنظیم یا اجرای واقعی آموزش",
+    "purpose": "ویدیو یا تصویر: آموزش واقعی یا نتیجه ثبت‌شده",
     "type": null,
     "src": null,
     "alt": null
   },
   "control": {
-    "purpose": "ویدیو با شیوهٔ کنترل مشخص",
+    "purpose": "ویدیو: رانندگی در شبیه‌ساز با روش کنترل مشخص",
     "type": null,
     "src": null,
     "alt": null
   },
   "exercise": {
-    "purpose": "فریم یا ویدیوی تمرین",
+    "purpose": "ویدیو: یک موقعیت دشوار برای تحلیل مدل",
+    "type": null,
+    "src": null,
+    "alt": null
+  },
+  "evaluation": {
+    "purpose": "تصویر یا ویدیو: مقایسه واقعی مدل‌ها و خطاها",
     "type": null,
     "src": null,
     "alt": null

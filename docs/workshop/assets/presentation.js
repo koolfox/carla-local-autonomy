@@ -59,7 +59,7 @@ function createCover(details) {
   supervisor.append(profile);
   identity.append(
     textElement('p', details.program),
-    textElement('p', 'ارائه‌دهنده: ' + details.presenter),
+    textElement('p', 'ارایه‌دهنده: ' + details.presenter),
     supervisor,
   );
   cover.append(identity);
@@ -244,7 +244,7 @@ async function load() {
       video.poster = video.src.replace(/\.mp4$/, '.jpg');
       video.setAttribute('aria-label', link.textContent.trim());
       const caption = document.createElement('figcaption');
-      caption.textContent = link.textContent.trim() + ' · نمونهٔ تاریخی، بی‌صدا؛ برای پخش کلیک کنید.';
+      caption.textContent = link.textContent.trim() + ' · نمونه تاریخی، بی‌صدا؛ برای پخش کلیک کنید.';
       const fallback = document.createElement('a');
       fallback.href = video.src; fallback.textContent = 'دریافت فیلم';
       fallback.setAttribute('download', '');
@@ -275,7 +275,7 @@ async function load() {
       }
       const placeholder = (unavailable = false) => {
         const block = document.createElement('div'); block.className = 'media-placeholder';
-        const heading = document.createElement('strong'); heading.textContent = 'جای رسانهٔ انتخابی';
+        const heading = document.createElement('strong'); heading.textContent = 'جای رسانه انتخابی';
         const hint = document.createElement('span');
         hint.textContent = unavailable ? 'فایل رسانه در دسترس نیست؛ مسیر و قالب آن را بررسی کنید.' : (item.purpose || caption.textContent);
         block.append(heading, hint); return block;
@@ -317,6 +317,7 @@ async function load() {
       const figure = body?.querySelector(':scope > figure');
       if (figure) {
         slide.classList.add('has-media');
+        if ([...body.children].every(child => child === figure)) slide.classList.add('media-only');
         const copy = document.createElement('div'); copy.className = 'slide-copy';
         for (const child of [...body.childNodes]) if (child !== figure) copy.append(child);
         body.replaceChildren(copy, figure);
@@ -344,7 +345,7 @@ async function load() {
     deck.dataset.state = 'ready';
     show(hashIndex());
   } catch {
-    status.textContent = 'اسلایدها بارگذاری نشدند. دوباره تلاش کنید یا متن ارائه را در کتابچه باز کنید.';
+    status.textContent = 'اسلایدها بارگذاری نشدند. دوباره تلاش کنید یا متن ارایه را در کتابچه باز کنید.';
     deck.dataset.state = 'error';
     document.getElementById('retry-deck').hidden = false;
   } finally { deck.setAttribute('aria-busy', 'false'); }
@@ -365,7 +366,7 @@ document.getElementById('fullscreen').addEventListener('click', async () => {
   try {
     if (document.fullscreenElement) await document.exitFullscreen();
     else await document.documentElement.requestFullscreen();
-  } catch { status.textContent = 'مرورگر اجازهٔ تمام‌صفحه نداد؛ نمایش معمولی همچنان در دسترس است.'; }
+  } catch { status.textContent = 'مرورگر اجازه تمام‌صفحه نداد؛ نمایش معمولی همچنان در دسترس است.'; }
 });
 addEventListener('fullscreenchange', () => { document.getElementById('fullscreen').textContent = document.fullscreenElement ? 'خروج از تمام‌صفحه' : 'تمام‌صفحه'; });
 document.getElementById('print-slides').addEventListener('click', () => window.print());
