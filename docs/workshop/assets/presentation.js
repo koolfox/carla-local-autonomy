@@ -255,6 +255,24 @@ async function load() {
       figure.append(video, caption, fallback, provenance);
       link.parentElement.replaceWith(figure);
     }
+    // These are conceptual teaching graphics, never recordings or model results.
+    const learningDiagrams = {
+      'workflow': `<div class="learning-flow" role="list"><div role="listitem"><b>پرسش</b><span>چه چیزی را می‌سنجیم؟</span></div><div role="listitem"><b>سناریو</b><span>شرایط و دوربین</span></div><div role="listitem"><b>داده</b><span>تصویر و برچسب</span></div><div role="listitem"><b>آموزش</b><span>مدل و تنظیمات</span></div><div role="listitem"><b>آزمون</b><span>داده مستقل</span></div><div role="listitem"><b>تحلیل</b><span>خطا و محدودیت</span></div></div>`,
+      'splits': `<div class="split-diagram"><div><strong>آموزش</strong><span>یادگیری مدل</span></div><div><strong>اعتبارسنجی</strong><span>انتخاب تنظیمات و آستانه</span></div><div><strong>آزمون</strong><span>سنجش پس از تثبیت مدل</span></div></div><p class="diagram-note">واحد جداسازی: اجرا یا گروه سناریو؛ نه فریم‌های کنار هم</p>`,
+      'metrics': `<div class="metric-example"><p class="diagram-note">مثال آموزشی، نه نتیجه یک مدل</p><div class="metric-counts"><span><b>۵</b> تشخیص درست</span><span><b>۲</b> تشخیص نادرست</span><span><b>۳</b> جسم جاافتاده</span></div><div class="metric-formulas"><div><strong dir="ltr">Precision = 5 / (5 + 2)</strong><span>درستی تشخیص‌های اعلام‌شده</span></div><div><strong dir="ltr">Recall = 5 / (5 + 3)</strong><span>پوشش اشیای مرجع</span></div></div></div>`,
+      'comparison': `<div class="comparison-diagram"><div class="compare-input">تصاویر و برچسب‌های یکسان</div><div class="compare-models"><div>مدل A</div><div>مدل B</div></div><div class="compare-output">معیارها، زمان اجرا و خطاها</div><p class="diagram-note">آستانه هر مدل با اعتبارسنجی انتخاب و پیش از آزمون ثابت می‌شود</p></div>`
+    };
+    for (const link of deck.querySelectorAll('a[href^="#diagram-"]')) {
+      const id = link.getAttribute('href').slice(9);
+      if (!Object.hasOwn(learningDiagrams, id)) continue;
+      const figure = document.createElement('figure');
+      figure.className = 'learning-diagram';
+      figure.setAttribute('aria-label', link.textContent.trim());
+      figure.innerHTML = learningDiagrams[id];
+      const caption = textElement('figcaption', link.textContent.trim());
+      figure.append(caption);
+      link.parentElement.replaceWith(figure);
+    }
     // A slot stays visibly empty until an individually selected local asset is supplied.
     for (const link of deck.querySelectorAll('a[href^="#slot-"]')) {
       const id = link.getAttribute('href').slice(6);
@@ -323,7 +341,7 @@ async function load() {
         body.replaceChildren(copy, figure);
       }
       if (citations.length) slide.append(references);
-      for (const media of slide.querySelectorAll('figure:not(.workshop-video):not(.media-slot)')) addMediaControls(media);
+      for (const media of slide.querySelectorAll('figure:not(.workshop-video):not(.media-slot):not(.learning-diagram)')) addMediaControls(media);
       addSlideIdentity(slide, details);
       if (body) {
 
